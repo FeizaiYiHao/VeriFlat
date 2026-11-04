@@ -11,7 +11,7 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(pagetable_map: PageTableLocke
         pagetable_perms_wf(pagetable_map),
         pagetable_lower_wf(pagetable_map, pt_lower),
         page_array_wf(page_array),
-        page_pagetable_wf(pagetable_map, pt_lower, page_array),
+        page_mappings_pagetable_wf(pagetable_map, pt_lower, page_array),
         pagetable_pages_wf(pagetable_map, pt_lower, page_array),
         index_valid(NUM_PAGES, pg_idx),
         page_array.spec_index(pg_idx).view().view().state is Mapped4k,

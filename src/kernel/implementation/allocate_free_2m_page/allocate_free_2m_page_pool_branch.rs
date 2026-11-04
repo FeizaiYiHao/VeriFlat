@@ -147,7 +147,7 @@ verus! {
                 &&& krnl.ctn_mp.dom().contains(ctn_ptr)
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().state == entry_krnl.thrd_mp.spec_index(thrd_ptr).view().state
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress == entry_krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress
-            }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+            }) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
         }
         (pg_ptr, Tracked(page_lock_perm))
     }

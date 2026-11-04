@@ -403,7 +403,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             &&& held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx))
         }) by { held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx)); };
-        assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+        assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.to_set())) by {
             vstd::set::axiom_set_ext_equal(krnl.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.to_set()));
         };

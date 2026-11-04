@@ -17,10 +17,10 @@ pub proof fn hide_user_l4_entries_hide_step_pre_from_k(pre: &KernelK, post: &Ker
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(*pre, *post, pagetable, l4i);
-    process_pagetable_match_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
+    process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
     process_perms_wf_at(pre.prc_mp, prc_ptr);
     process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, prc_ptr);
-    pagetable_no_1g_leaf_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    pagetable_no_huge_leaf_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     kernel_process_projection_at(post, prc_ptr);
     if pre.prc_mp.spec_index(prc_ptr).view().zombie {
         assert(new_c.mapping_4k() =~= old_c.mapping_4k()); assert(new_c.mapping_2m() =~= old_c.mapping_2m()); assert(new_c.mapping_1g() =~= old_c.mapping_1g());
@@ -33,7 +33,7 @@ pub proof fn hide_user_l4_entries_hide_step_pre_from_k(pre: &KernelK, post: &Ker
 /// `l4i` from the table its owning process shows, if any, and keeps the rest of the user view.
 pub proof fn hide_user_l4_entries_hide_step_from_k(pre: &KernelK, post: &KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index)
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         hide_user_l4_entry_eof_transition_framing(*pre, *post, pagetable, l4i),
     ensures
         ({
@@ -74,7 +74,7 @@ pub proof fn hide_user_l4_entries_steps_from_k(steps: Seq<KernelStep>, start: in
         start + hidden.len() <= steps.len(),
         forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
             &&& steps[start + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
-            &&& process_pagetable_match(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
+            &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
         },
     ensures

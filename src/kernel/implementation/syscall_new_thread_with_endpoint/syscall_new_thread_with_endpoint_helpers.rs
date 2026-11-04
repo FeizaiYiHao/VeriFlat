@@ -122,7 +122,7 @@ verus! {
                     new_thread_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, Some(ep_ptr), *initial_regs, Some(ep_idx));
                     new_thread_trace_enter_step(&*steps, enter_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *initial_regs, Some(ep_idx));
                 };
-                assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); };
+                assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); };
             }
             let (pg_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, current_thrd_ptr, ctn_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
             proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, Some(ep_ptr), *initial_regs, Some(ep_idx)); }
@@ -135,7 +135,7 @@ verus! {
                 assert({
                     ||| krnl.ep_mp.spec_index(ep_ptr).view().owning_container == ctn_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(ep_ptr).view().owning_container).view_ghost().subtree_set.view().contains(ctn_ptr)
-                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx); };
+                }) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx); };
             }
             attach_endpoint_and_release_new_thread_locks(
                 krnl, Tracked(&mut *lctx), Ghost(steps.snapshot_k()), cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, sched_ptr, new_thrd_ptr, ep_ptr,

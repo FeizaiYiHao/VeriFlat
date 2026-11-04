@@ -376,7 +376,7 @@ pub proof fn kernel_iommu_table_4k_unmapped_projection_at(krnl: &KernelK, proces
             !kernel_k_to_kernel_u(*krnl).process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova),
 {
     let iommu_table = krnl.prc_mp.spec_index(process).view().iommu_table->Some_0;
-    assert(krnl.it_mp.dom().contains(iommu_table)) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process); };
+    assert(krnl.it_mp.dom().contains(iommu_table)) by { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, process); };
     iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
     let table = krnl.it_mp.spec_index(iommu_table).view();
     assert forall|iova: VAddr| #![trigger table.mapping_4k().dom().contains(iova)] !table.mapping_4k().dom().contains(iova) by {

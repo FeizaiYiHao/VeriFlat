@@ -120,8 +120,8 @@ pub proof fn kernel_zombie_process_retired_implies_u_container_map(
 /// parent's children, and from its ancestors' subtrees; every remaining process keeps its tables.
 pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, parent_ptr: RwLockProcessPtr)
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().parent == Some(parent_ptr),
@@ -173,9 +173,9 @@ pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, 
             kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p);
             let old_p = pre.prc_mp.spec_index(p).view();
             if !old_p.zombie {
-                process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
+                process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
                 if old_p.iommu_table is Some {
-                    process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
+                    process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
                 }
             }
         }

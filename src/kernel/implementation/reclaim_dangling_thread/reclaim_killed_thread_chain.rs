@@ -234,7 +234,7 @@ pub fn release_killed_thread_caller(
             &&& !lctx.thread_lock_map().dom().contains(caller_ptr)
         }) by { thread_caller_callee_wf_at(krnl.thrd_mp, thrd_ptr); };
         assert(!krnl.thrd_mp.spec_index(caller_ptr).being_killed()) by { process_thread_wf_killed_thread_at(krnl.prc_mp, krnl.thrd_mp, caller_ptr); };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, caller_ptr);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, caller_ptr);
     }
     let ghost section_pre = *krnl;
     let Tracked(caller_lock_perm) = krnl.wlock_killed_chain_caller(caller_ptr, Tracked(&mut *lctx)).unwrap();

@@ -726,7 +726,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         proof {
             let leaf_pre = steps.snapshot_k();
             let leaf_post = *krnl;
-            assert(leaf_k.it_mp.spec_index(iommu_table).view().proc_ptr == prc_ptr && leaf_post.it_mp.spec_index(iommu_table).view().proc_ptr == prc_ptr) by { process_iommu_table_match_process_at(leaf_post.prc_mp, leaf_post.it_mp, prc_ptr); };
+            assert(leaf_k.it_mp.spec_index(iommu_table).view().proc_ptr == prc_ptr && leaf_post.it_mp.spec_index(iommu_table).view().proc_ptr == prc_ptr) by { process_iommu_table_wf_process_at(leaf_post.prc_mp, leaf_post.it_mp, prc_ptr); };
             thread_exit_iommu_leaf_step_from_k(&leaf_pre, &leaf_post, &*lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, iommu_table, spec_index2va(next));
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_pre), kernel_k_to_kernel_u(leaf_post), cpu_id);

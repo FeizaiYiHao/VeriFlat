@@ -134,7 +134,7 @@ pub(super) fn iommu_map_4k_map_one_page(
         held_pagetable_window_mapping_4k_unchanged_at(k0.pt_mp, k0.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &lctx0, pagetable_ptr, window_of(va), va);
         va_range.wf_implies_view_index_is_start_plus_offset(); spec_v2l4index_monotonic(va_range.start, va);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
     }
     map_shared_page_into_iommu_4k(krnl, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr, va, iova, Tracked(&mut *lctx), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm));
     let ghost mapped_k = *krnl;
@@ -142,7 +142,7 @@ pub(super) fn iommu_map_4k_map_one_page(
         Tracked(thread_lock_perm));
     proof {
         let leaf_k = *krnl;
-        process_thread_wf_at(leaf_start.prc_mp, leaf_start.thrd_mp, thrd_ptr);
+        process_thread_wf_thread_at(leaf_start.prc_mp, leaf_start.thrd_mp, thrd_ptr);
         iommu_map_4k_leaf_step_from_k(&leaf_start, &mapped_k, &leaf_k, &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         iommu_map_4k_trace_push_range_step(steps.view(), leaf_steps, kernel_k_to_kernel_u(leaf_start), kernel_k_to_kernel_u(leaf_k), cpu_id, *va_range, *iova_range);

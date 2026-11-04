@@ -8,7 +8,7 @@ verus! {
 /// of the projection stay.
 pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index)
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         pre.pt_mp.dom().contains(root),
         post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre }),
         post.pt_mp.unchanged_except(&pre.pt_mp, root),
@@ -57,7 +57,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
     kernel_u_domains_projection(&pre); kernel_u_domains_projection(&post);
     kernel_cpu_array_unchanged_implies_u_cpu_array(&pre, &post); kernel_container_maps_unchanged_implies_u_container_map(&pre, &post);
     kernel_thread_map_unchanged_implies_u_thread_map(&pre, &post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(&pre, &post);
-    process_pagetable_match_pagetable_at(pre.prc_mp, pre.pt_mp, root);
+    process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, root);
     kernel_process_projection_at(&pre, prc_ptr);
     assert(post_table == hidden) by {
         assert(post_table.mapping_4k =~= hidden.mapping_4k);
@@ -66,7 +66,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
         assert(post_table.pagetable_window_locks =~= hidden.pagetable_window_locks);
     };
     assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, ProcessU { pagetable: if a.process_map[prc_ptr].zombie { None } else { Some(hidden) }, ..a.process_map[prc_ptr] }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(&pre, p); kernel_process_projection_at(&post, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); }
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(&pre, p); kernel_process_projection_at(&post, p); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); }
     });
 }
 }

@@ -194,7 +194,7 @@ pub(super) fn publish_staged_process(
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof {
         assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
-            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
+            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
             new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, false);
         };
     }
@@ -208,7 +208,7 @@ pub(super) fn publish_staged_process(
         target_pagetable_ptr, None, source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(ep_idx),
     );
     proof {
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_match); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_wf); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
         };

@@ -44,8 +44,8 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
                 ==> post.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
 {
     assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
-    pagetable_table_stale_cpus_only_when_write_held_at(pre.pt_mp, pagetable_ptr);
-    pagetable_hidden_roots_only_when_write_held_or_emptied_at(pre.pt_mp, pre.prc_mp, pagetable_ptr);
+    pagetable_table_stale_cpus_only_when_write_locked_at(pre.pt_mp, pagetable_ptr);
+    pagetable_hidden_roots_only_when_write_locked_or_emptied_at(pre.pt_mp, pre.prc_mp, pagetable_ptr);
     assert(!pre.pt_mp.spec_index(pagetable_ptr).locked() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).leaves_present()) by {
         pagetable_hidden_leaves_only_when_locked_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
         pre.default_pagetable_wf_at(pagetable_ptr); reveal(pagetable_window_holders_hold_pagetable); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
@@ -62,13 +62,13 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
     assert(post.subsystems_inv()) by {
         lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked); reveal(pagetable_window_stale_cpus_only_when_locked);
-        reveal(pagetable_table_stale_cpus_only_when_write_held);
+        reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        reveal(pagetable_hidden_roots_only_when_write_held_or_emptied);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
         lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
@@ -76,7 +76,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
         lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
@@ -138,7 +138,7 @@ broadcast proof fn pagetable_unlocked_stale_key_absent_at(pre: KernelK, pagetabl
             c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
             pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr, l4i, l3i, k.1, c.lower.l2_owner(k.0, k.1)->Write_thread_id);
         } else {
-            c.wf_window_locks_slot_at(k.0, k.1);
+            c.wf_window_locks_l2_entry_at(k.0, k.1);
         }
     }
 }
@@ -163,13 +163,13 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(post.subsystems_inv()) by {
         lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
-        reveal(pagetable_table_stale_cpus_only_when_write_held);
+        reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        reveal(pagetable_hidden_roots_only_when_write_held_or_emptied);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
         lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
@@ -177,7 +177,7 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
@@ -215,13 +215,13 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(post.subsystems_inv()) by {
         lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
         reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_typed_lock_map_aligned); reveal(pagetable_window_stale_cpus_only_when_locked);
-        reveal(pagetable_table_stale_cpus_only_when_write_held);
+        reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        reveal(pagetable_hidden_roots_only_when_write_held_or_emptied);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
         lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
@@ -229,7 +229,7 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
@@ -279,13 +279,13 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
     assert(pagetable_invariant_fields_unchanged(pre.pt_mp, post.pt_mp, post.pt_lower.view())) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), pagetable_ptr); };
     assert(post.subsystems_inv()) by {
         lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf); reveal(pagetable_hidden_leaves_only_when_locked); reveal(pagetable_hidden_l1_only_when_locked);
-        reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_stale_cpus_only_when_locked); reveal(pagetable_table_stale_cpus_only_when_write_held);
+        reveal(pagetable_window_holders_hold_pagetable); reveal(pagetable_window_stale_cpus_only_when_locked); reveal(pagetable_table_stale_cpus_only_when_write_locked);
     };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        reveal(pagetable_hidden_roots_only_when_write_held_or_emptied);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied);
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
         lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
@@ -293,7 +293,7 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
         lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 } // verus!

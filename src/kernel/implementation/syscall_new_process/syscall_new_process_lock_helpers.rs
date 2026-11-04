@@ -177,7 +177,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().container_depth == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().container_depth
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().process_depth == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth
-        }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
+        }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
         assert({
             &&& krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& krnl.ctn_mp.view().spec_index(ctn_ptr).is_init()

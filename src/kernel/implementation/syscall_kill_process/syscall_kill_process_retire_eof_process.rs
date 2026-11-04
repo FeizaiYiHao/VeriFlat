@@ -146,12 +146,12 @@ pub(crate) proof fn kill_retire_eof_iommu(
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
-        iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_pci_function_ownership_wf); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, target); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_pci_function_ownership_wf); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
 }
 
 /// A CPU/PCID association that the TLB, structure-cache and dirty-map invariants constrain belongs to neither the retired
@@ -166,11 +166,11 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         cpu_array_wf(pre.cpu_arr, pre.dflt_pt.view()),
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
         process_perms_wf(pre.prc_mp),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr),
         cpu_dirty_map_proc_pcid_match(pre.prc_mp, pre.cpu_arr, pre.pcid_needflush, pre.cpu_tlb),
-        tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
-        structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        structure_cache_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
@@ -207,13 +207,13 @@ broadcast proof fn kill_retire_eof_tlb_entry(
     let pagetable = pre.prc_mp.spec_index(target).view().pagetable;
     if cpu.view().current_pcid == p {
         cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), c); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, c);
-        process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, target); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, cpu.view().current_process.unwrap());
+        process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, target); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, cpu.view().current_process.unwrap());
     } else if (!tlb.is_empty() || !cache.is_empty()) && !pre.pcid_needflush.spec_index(c, p).view().needflush {
         process_perms_wf_at(pre.prc_mp, target); process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, target);
-        assert(dirty is Some) by { reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+        assert(dirty is Some) by { reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
         assert(dirty.unwrap().pagetable_ptr == pagetable
-            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()) by { reveal(tlb_wf_spec); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
-        assert(dirty.unwrap().pagetable_ptr == pagetable ==> cache.pml4e.dom() =~= Set::<L4Index>::empty() && cache.pdpte.dom() =~= Set::<(L4Index, L3Index)>::empty() && cache.pde.dom() =~= Set::<(L4Index, L3Index, L2Index)>::empty()) by { reveal(structure_cache_wf_spec); };
+            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()) by { reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+        assert(dirty.unwrap().pagetable_ptr == pagetable ==> cache.pml4e.dom() =~= Set::<L4Index>::empty() && cache.pdpte.dom() =~= Set::<(L4Index, L3Index)>::empty() && cache.pde.dom() =~= Set::<(L4Index, L3Index, L2Index)>::empty()) by { reveal(structure_cache_wf); };
         assert(dirty.unwrap().process_ptr != target) by { reveal(cpu_dirty_map_proc_pcid_match); };
     }
 }
@@ -237,14 +237,14 @@ pub(crate) proof fn kill_retire_eof_tlb(
         kill_retire_tables_emptied(pre, target),
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
-        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
-        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_retire_eof_transition_framing);
-    assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); broadcast use kill_retire_eof_tlb_entry; };
+    assert(cpu_dirty_map_process_in_cpu_container(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); broadcast use kill_retire_eof_tlb_entry; };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_proc_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
-    assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); broadcast use kill_retire_eof_tlb_entry; };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); broadcast use kill_retire_eof_tlb_entry; };
+    assert(cpu_dirty_map_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_pagetable_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); broadcast use kill_retire_eof_tlb_entry; };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); broadcast use kill_retire_eof_tlb_entry; };
 }
 } // verus!

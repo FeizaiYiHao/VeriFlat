@@ -263,11 +263,11 @@ pub(super) proof fn ipc_block_current_eof(
     ipc_block_current_eof_memory(pre, post, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, default_cr3);
     ipc_block_current_eof_process_management_inv(pre, post, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, default_cr3);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match);
+        reveal(cpu_dirty_map_pagetable_pcid_match);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
 }
 
 /// The cpu and emptied-thread relations close after the transition.
@@ -469,7 +469,7 @@ pub(super) proof fn ipc_schedule_waiting_peer_eof_rendezvous_fields(
 {
     reveal(ipc_schedule_waiting_peer_eof_transition_framing);
     running_thread_not_in_endpoint_queue(&pre, ep_ptr, current_thrd_ptr);
-    container_thread_wf_at(pre.ctn_mp, pre.thrd_mp, current_thrd_ptr); container_thread_wf_at(pre.ctn_mp, pre.thrd_mp, peer_thrd_ptr);
+    container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, peer_thrd_ptr);
     reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
     reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);

@@ -403,7 +403,7 @@ impl KernelSteps {
                 ==> pre_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
         }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_ipc_rendezvous_fields); reveal(IommuRootTable::user_view); };
         assert(self.snapshot_k().prc_mp.dom().contains(self.snapshot_k().thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc)) by {
-            reveal(kernel_ipc_rendezvous_fields); reveal(kernel_process_nonlock_fields_unchanged); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, peer_thrd_ptr);
+            reveal(kernel_ipc_rendezvous_fields); reveal(kernel_process_nonlock_fields_unchanged); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, peer_thrd_ptr);
         };
         assert(kernel_u_ipc_rendezvous_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_thrd_ptr,
             ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, pci_transfer)) by {

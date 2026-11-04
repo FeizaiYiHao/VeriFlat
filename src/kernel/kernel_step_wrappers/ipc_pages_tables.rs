@@ -11,7 +11,7 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
     thread: RwLockThreadPtr,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         source != target,
         source_table != target_table,
         pre.prc_mp.dom().contains(source),
@@ -78,7 +78,7 @@ proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(
     pre: &KernelK, post: &KernelK, source: RwLockProcessPtr, target: RwLockProcessPtr, source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         source != target,
         source_table != target_table,
         pre.prc_mp.dom().contains(source),
@@ -119,7 +119,7 @@ proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(
     }).insert(target, ProcessU {
         pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
     }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_wf);
     });
 }
 }

@@ -362,7 +362,7 @@ fn new_container_lock_owners(
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == parent_prc_ptr
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().container_depth == krnl.prc_mp.spec_index(parent_prc_ptr).view_rodata().view().container_depth
             &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().process_depth == krnl.prc_mp.spec_index(parent_prc_ptr).view_rodata().view().depth
-        }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
+        }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
     }
     let requested = LockOwnerId::Some(krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm)).process_depth());
     let container_res = krnl.wlock_container_unless_killed(parent_ctn_ptr, requested, Tracked(&mut *lctx));
@@ -380,7 +380,7 @@ fn new_container_lock_owners(
             return Err(RetValueType::ErrorContainerKilled);
         },
         DynamicWLockResult::DepthConflict { .. } => {
-            proof { assert(krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable)) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); }; }
+            proof { assert(krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable)) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); }; }
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
@@ -645,7 +645,7 @@ fn new_container_lock_entry(
                     &&& krnl.pt_mp.dom().contains(source_pagetable_ptr)
                     &&& !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr)
                     &&& krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable == source_pagetable_ptr
-                }) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); };
+                }) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); };
             }
             proof {
                 pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr);
@@ -660,7 +660,7 @@ fn new_container_lock_entry(
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 // The caller's thread lives in the parent container, so its cpu set is not marked.
                 assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed()) by {
-                    container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_ctn_ptr);
+                    container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_ctn_ptr);
                     cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, parent_cpu_set);
                 };
             }

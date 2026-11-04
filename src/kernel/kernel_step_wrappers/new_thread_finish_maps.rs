@@ -33,8 +33,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers, ep_ptr: Option<RwLockEndpointPtr>, source: RwLockProcessPtr,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table is None,
         source != prc_ptr && pre.prc_mp.dom().contains(source) && !pre.prc_mp.spec_index(source).view().zombie && !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         kernel_new_thread_fields(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, None),
@@ -83,7 +83,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     let process = unlocked.spec_index(prc_ptr);
     assert_maps_equal!(post_u.process_map, unlocked.insert(prc_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thrd_ptr), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged);
         assert(post.prc_mp.spec_index(prc_ptr).view().pagetable == pre.prc_mp.spec_index(prc_ptr).view().pagetable);
         assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
     });

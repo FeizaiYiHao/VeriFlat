@@ -104,7 +104,7 @@ pub(crate) fn kill_container_walk_and_finish(
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     let ghost cleared_k = *krnl;
     proof {
-        assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 0) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
+        assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 0) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
         assert(!krnl.ctn_mp.spec_index(owner_ptr).view_ghost().owned_processes.view().is_empty()) by {
             process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
         };
@@ -186,7 +186,7 @@ pub(crate) fn kill_container_mark_child(
             &&& child_uppers.contains(owner_ptr)
         }) by {
             container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, target, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr);
-            container_perms_wf_at(krnl.ctn_mp, child_ptr); container_children_depth_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr);
+            container_perms_wf_at(krnl.ctn_mp, child_ptr); container_uppertree_seq_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr);
             assert(child_uppers[target_depth as int] == target);
             container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, target, owner_ptr); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr, target);
             assert(child_uppers[owner_depth as int] == owner_ptr);
@@ -258,7 +258,7 @@ pub(crate) fn kill_container_retire_target(
         container_perms_wf_at(krnl.ctn_mp, target); container_without_children_and_processes_owns_no_threads(*krnl, target);
         if chain.len() > 1 { assert(krnl.ctn_mp.spec_index(chain[chain.len() - 1]).view_rodata().view().parent == Some(chain[chain.len() - 2])); }
         assert(krnl.ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view().contains(target)) by {
-            container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner_ptr, target);
+            container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner_ptr, target);
         };
     }
     let ghost entry_k = *krnl;

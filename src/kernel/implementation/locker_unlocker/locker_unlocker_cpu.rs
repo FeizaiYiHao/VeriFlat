@@ -57,7 +57,7 @@ impl KernelK {
             ret is Some ==> typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
             cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, cpu_id);
         }
@@ -152,14 +152,14 @@ impl KernelK {
             ret is Some ==> typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
                 if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom()) {
                     thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, old(lctx).cpu_id()); thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, cpu_id);
                     process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id()); container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
-                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
+                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_thread_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 }
@@ -241,7 +241,7 @@ impl KernelK {
             !final(self).cpu_arr.spec_index(cpu_id).view().being_killed(),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by {
                 container_cpu_set_wf_cpu_set_at(old(self).ctn_mp, old(self).cpu_set_mp, cpu_set_ptr); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr);
                 container_cpu_wf_container_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(self).cpu_set_mp.spec_index(cpu_set_ptr).view().owning_container.view(), cpu_id);
@@ -318,7 +318,7 @@ impl KernelK {
             final(lctx).kernel_call_perm() is None,
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
         }
         assert(self.cpu_arr.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -388,7 +388,7 @@ impl KernelK {
             final(lctx).kernel_call_perm() == old(lctx).kernel_call_perm(),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
             cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, cpu_id);
         }

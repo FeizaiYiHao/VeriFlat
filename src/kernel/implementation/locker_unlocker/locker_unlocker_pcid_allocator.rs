@@ -114,18 +114,18 @@ impl KernelK {
                 if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom()) {
                     thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
                     container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
-                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
+                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_thread_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allc_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, cpu.owning_container);
                 } else if index_valid(NUM_CPUS, old(lctx).cpu_id()) && cpu.state is Running {
                     let owner = old(self).pcid_allc_mp.spec_index(allc_ptr).view().owning_container.view();
                     thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
                     container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
-                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
+                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_thread_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allc_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, owner);
                     container_cpu_offline_flags_wf_container_at(old(self).ctn_mp, old(self).cpu_offline_mp, owner);
-                    cpu_offline_flags_wf_map(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, cpu_offline_flags_ptr(owner));
+                    cpu_offline_flags_wf_implies_perms_wf(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, cpu_offline_flags_ptr(owner));
                 }
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned);
             };

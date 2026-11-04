@@ -2,47 +2,48 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// Processes and IOMMU tables name each other.
 #[verifier::opaque]
-pub open spec fn process_iommu_table_match(process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap) -> bool {
-    // Process -> IOMMU table; the read-only `iommu_table_ptr` and `iommu_cr3` mirror the table object and its root so readers never lock the
-    // process or the table.
-    &&& forall|proc_ptr: RwLockProcessPtr|
-        #![trigger process_map.spec_index(proc_ptr).view().iommu_table]
-        process_map.dom().contains(proc_ptr) ==> {
-            let process = process_map.spec_index(proc_ptr);
+pub open spec fn process_iommu_table_wf(prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap) -> bool {
+    // Process -> IOMMU table; the read-only `iommu_table_ptr` and `iommu_cr3` mirror the table object and its root so
+    // readers never lock the process or the table.
+    &&& forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.spec_index(p).view().iommu_table]
+        prc_mp.dom().contains(p) ==> {
+            let process = prc_mp.spec_index(p);
             &&& process.view_rodata().view().iommu_table_ptr == process.view().iommu_table
             &&& (process.view().iommu_table is Some) == (process.view_rodata().view().iommu_cr3 is Some)
             &&& process.view().iommu_table is Some ==> {
-                let iommu_root = process.view().iommu_table.unwrap();
-                &&& iommu_table_map.dom().contains(iommu_root)
-                &&& iommu_table_map.spec_index(iommu_root).view().proc_ptr == proc_ptr
-                &&& process.view_rodata().view().iommu_cr3 == Some(iommu_table_map.spec_index(iommu_root).view().cr3)
+                let it_ptr = process.view().iommu_table.unwrap();
+                &&& it_mp.dom().contains(it_ptr)
+                &&& it_mp.spec_index(it_ptr).view().proc_ptr == p
+                &&& process.view_rodata().view().iommu_cr3 == Some(it_mp.spec_index(it_ptr).view().cr3)
             }
         }
     // IOMMU table -> process.
-    &&& forall|iommu_root: RwLockPageTableRoot|
-        #![trigger iommu_table_map.spec_index(iommu_root).view().proc_ptr]
-        iommu_table_map.dom().contains(iommu_root) ==> {
-            let proc_ptr = iommu_table_map.spec_index(iommu_root).view().proc_ptr;
-            &&& process_map.dom().contains(proc_ptr)
-            &&& process_map.spec_index(proc_ptr).view().iommu_table == Some(iommu_root)
+    &&& forall|it: RwLockPageTableRoot|
+        #![trigger it_mp.spec_index(it).view().proc_ptr]
+        it_mp.dom().contains(it) ==> {
+            let prc_ptr = it_mp.spec_index(it).view().proc_ptr;
+            &&& prc_mp.dom().contains(prc_ptr)
+            &&& prc_mp.spec_index(prc_ptr).view().iommu_table == Some(it)
         }
 }
 
-pub proof fn process_iommu_table_match_process_at(process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, proc_ptr: RwLockProcessPtr)
+pub proof fn process_iommu_table_wf_process_at(prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap, prc_ptr: RwLockProcessPtr)
     requires
-        process_iommu_table_match(process_map, iommu_table_map),
+        process_iommu_table_wf(prc_mp, it_mp),
     ensures
-        process_map.dom().contains(proc_ptr) ==> ({
-            let process = process_map.spec_index(proc_ptr);
+        prc_mp.dom().contains(prc_ptr) ==> ({
+            let process = prc_mp.spec_index(prc_ptr);
             &&& process.view_rodata().view().iommu_table_ptr == process.view().iommu_table
             &&& (process.view().iommu_table is Some) == (process.view_rodata().view().iommu_cr3 is Some)
             &&& process.view().iommu_table is Some ==> {
-                let iommu_root = process.view().iommu_table.unwrap();
-                &&& iommu_table_map.dom().contains(iommu_root)
-                &&& iommu_table_map.spec_index(iommu_root).view().proc_ptr == proc_ptr
-                &&& process.view_rodata().view().iommu_cr3 == Some(iommu_table_map.spec_index(iommu_root).view().cr3)
+                let it_ptr = process.view().iommu_table.unwrap();
+                &&& it_mp.dom().contains(it_ptr)
+                &&& it_mp.spec_index(it_ptr).view().proc_ptr == prc_ptr
+                &&& process.view_rodata().view().iommu_cr3 == Some(it_mp.spec_index(it_ptr).view().cr3)
             }
         }),
-{ reveal(process_iommu_table_match); }
+{ reveal(process_iommu_table_wf); }
 }

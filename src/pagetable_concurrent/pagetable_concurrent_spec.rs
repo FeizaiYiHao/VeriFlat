@@ -9,7 +9,10 @@ use super::l2_page_map::*;
 /// `LockInvTrait::inv` is the L4/L3/1G half of the table invariant, so the holder of the big lock in either mode
 /// gets it from the lock. The cross-half and lower-half clauses live in `WholePageTable::wf`.
 ///
-/// A directory entry whose word is kernel-present but not present is a placeholder: page walks and every
+/// `l3_rev_map` gives, for each L3 page, the user L4 entry that holds it; `l2_rev_map` gives, for each L2 page, the
+/// path of the L3 entry that holds it; `kernel_entries` are the root's kernel L4 entries `[0, kernel_l4_end)`.
+///
+/// A directory entry with the kernel_present bit set and the present bit clear is hidden: page walks and every
 /// `spec_resolve_mapping_*` stop there, while the table still holds the page below it (`spec_held_*`).
 /// `table_stale_cpus` lists the CPUs that may still cache paging-structure entries of the hidden user half; a
 /// kernel-level invariant governs it.
@@ -96,6 +99,7 @@ pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
 }
 
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
+    /// A CPU table has a PCID; an IOMMU table has none.
     pub open spec fn pcid_wf(&self) -> bool {
         &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some
         &&& TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
@@ -115,11 +119,17 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         self.pcid.unwrap()
     }
 
+    #[verifier::inline]
+    pub open spec fn l4_entry(&self, i: L4Index) -> PageEntry { self.l4_table.view().spec_index(self.cr3).value().spec_index(i) }
+
+    #[verifier::inline]
+    pub open spec fn l3_entry(&self, p: PageMapPtr, i: L3Index) -> PageEntry { self.l3_tables.view().spec_index(p).value().spec_index(i) }
+
     pub open spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
     {
-        if self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.present || l4i < self.kernel_l4_end { Some(self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i)) }
+        if self.l4_entry(l4i).perm.present || l4i < self.kernel_l4_end { Some(self.l4_entry(l4i)) }
         else { None }
     }
 
@@ -129,9 +139,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(l3i),
     {
         if self.spec_resolve_mapping_l4(l4i) is Some
-            && self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i).perm.ps
-            && self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i).perm.kernel_present {
-            Some(self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i))
+            && self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i).perm.ps
+            && self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i).perm.kernel_present {
+            Some(self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i))
         } else {
             None
         }
@@ -143,37 +153,32 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(l3i),
     {
         if self.spec_resolve_mapping_l4(l4i) is Some
-            && self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i).perm.present
-            && self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i).perm.ps == false {
-            Some(self.l3_tables.view().spec_index(self.spec_resolve_mapping_l4(l4i)->0.addr).value().spec_index(l3i))
+            && self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i).perm.present
+            && self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i).perm.ps == false {
+            Some(self.l3_entry(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i))
         } else {
             None
         }
     }
 
-    /// User root entry `l4i` while it links an L3 page, present or as a placeholder.
+    /// User root entry `l4i` while it links an L3 page, present or hidden.
     pub open spec fn spec_held_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
     {
-        if self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.kernel_present {
-            Some(self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i))
-        } else {
-            None
-        }
+        if self.l4_entry(l4i).perm.present || self.l4_entry(l4i).perm.kernel_present { Some(self.l4_entry(l4i)) } else { None }
     }
 
-    /// Non-huge L3 entry `(l4i, l3i)` under a held root entry while it links an L2 page, present or as a placeholder.
+    /// Non-huge L3 entry `(l4i, l3i)` under a held root entry while it links an L2 page, present or hidden.
     pub open spec fn spec_held_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
     {
         if self.spec_held_l4(l4i) is Some
-            && (self.l3_tables.view().spec_index(self.spec_held_l4(l4i)->0.addr).value().spec_index(l3i).perm.present
-                || self.l3_tables.view().spec_index(self.spec_held_l4(l4i)->0.addr).value().spec_index(l3i).perm.kernel_present)
-            && self.l3_tables.view().spec_index(self.spec_held_l4(l4i)->0.addr).value().spec_index(l3i).perm.ps == false {
-            Some(self.l3_tables.view().spec_index(self.spec_held_l4(l4i)->0.addr).value().spec_index(l3i))
+            && (self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.present || self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.kernel_present)
+            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.ps == false {
+            Some(self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i))
         } else {
             None
         }
@@ -185,84 +190,94 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         &&& self.cr3 == self.l4_table.view().spec_index(self.cr3).addr()
         &&& self.l4_table.view().spec_index(self.cr3).is_init()
         &&& self.l4_table.view().spec_index(self.cr3).value().wf()
+        // A present or hidden user L4 entry is not huge and links an L3 page.
         &&& forall|i: L4Index|
-            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present]
-            self.kernel_l4_end <= i && pei_valid(i) && (self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.kernel_present) ==> {
-                &&& !self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.ps
-                &&& self.l3_tables.view().dom().contains(self.l4_table.view().spec_index(self.cr3).value().spec_index(i).addr)
+            #![trigger self.l4_entry(i).perm.present]
+            self.kernel_l4_end <= i && pei_valid(i) && (self.l4_entry(i).perm.present || self.l4_entry(i).perm.kernel_present) ==> {
+                &&& !self.l4_entry(i).perm.ps
+                &&& self.l3_tables.view().dom().contains(self.l4_entry(i).addr)
             }
     }
 
+    /// Present or hidden user L4 entries link distinct L3 pages.
     #[verifier::opaque]
     pub open spec fn disjoint_l4(&self) -> bool {
         &&& forall|i: L4Index, j: L4Index|
-            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i), self.l4_table.view().spec_index(self.cr3).value().spec_index(j)]
+            #![trigger self.l4_entry(i), self.l4_entry(j)]
             i != j && self.kernel_l4_end <= i && pei_valid(i) && self.kernel_l4_end <= j && pei_valid(j)
-                && (self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.kernel_present)
-                && (self.l4_table.view().spec_index(self.cr3).value().spec_index(j).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(j).perm.kernel_present)
-                ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).addr != self.l4_table.view().spec_index(self.cr3).value().spec_index(j).addr
+                && (self.l4_entry(i).perm.present || self.l4_entry(i).perm.kernel_present)
+                && (self.l4_entry(j).perm.present || self.l4_entry(j).perm.kernel_present)
+                ==> self.l4_entry(i).addr != self.l4_entry(j).addr
     }
 
+    /// L3 pages and 1G leaves: the L3 half of `PageTable::wf_l3`; the L3→L2 link half is `WholePageTable::l3_links_l2_wf`.
     #[verifier::opaque]
     pub open spec fn wf_l3(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(p)]
-            self.l3_tables.view().dom().contains(p) ==> self.l3_tables.view().spec_index(p).addr() == p && self.l3_tables.view().spec_index(p).is_init() && self.l3_tables.view().spec_index(p).value().wf()
+            self.l3_tables.view().dom().contains(p) ==> {
+                &&& self.l3_tables.view().spec_index(p).addr() == p
+                &&& self.l3_tables.view().spec_index(p).is_init()
+                &&& self.l3_tables.view().spec_index(p).value().wf()
+            }
+        // Last level page entry must have kernel present set if it's present
         &&& forall|p: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p) ==> forall|i: L3Index|
-                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
-                pei_valid(i) && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present
-                    ==> self.l3_tables.view().spec_index(p).value().spec_index(i).perm.kernel_present
+                #![trigger self.l3_entry(p, i)]
+                pei_valid(i) && self.l3_entry(p, i).perm.ps && self.l3_entry(p, i).perm.present ==> self.l3_entry(p, i).perm.kernel_present
     }
 
+    /// Present or hidden non-huge L3 entries link distinct L2 pages, in one L3 page and across L3 pages.
     #[verifier::opaque]
     pub open spec fn disjoint_l3(&self) -> bool {
         &&& forall|pi: PageMapPtr, pj: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(pi), self.l3_tables.view().dom().contains(pj)]
             self.l3_tables.view().dom().contains(pi) && self.l3_tables.view().dom().contains(pj) ==> forall|l3i: L3Index, l3j: L3Index|
-                #![trigger self.l3_tables.view().spec_index(pi).value().spec_index(l3i), self.l3_tables.view().spec_index(pj).value().spec_index(l3j)]
+                #![trigger self.l3_entry(pi, l3i), self.l3_entry(pj, l3j)]
                 pei_valid(l3i) && pei_valid(l3j)
-                && (self.l3_tables.view().spec_index(pi).value().spec_index(l3i).perm.present || self.l3_tables.view().spec_index(pi).value().spec_index(l3i).perm.kernel_present)
-                && !self.l3_tables.view().spec_index(pi).value().spec_index(l3i).perm.ps
-                && (self.l3_tables.view().spec_index(pj).value().spec_index(l3j).perm.present || self.l3_tables.view().spec_index(pj).value().spec_index(l3j).perm.kernel_present)
-                && !self.l3_tables.view().spec_index(pj).value().spec_index(l3j).perm.ps ==> {
-                    &&& pi != pj ==> self.l3_tables.view().spec_index(pi).value().spec_index(l3i).addr != self.l3_tables.view().spec_index(pj).value().spec_index(l3j).addr
-                    &&& pi == pj && l3i != l3j ==> self.l3_tables.view().spec_index(pi).value().spec_index(l3i).addr != self.l3_tables.view().spec_index(pj).value().spec_index(l3j).addr
+                && (self.l3_entry(pi, l3i).perm.present || self.l3_entry(pi, l3i).perm.kernel_present) && !self.l3_entry(pi, l3i).perm.ps
+                && (self.l3_entry(pj, l3j).perm.present || self.l3_entry(pj, l3j).perm.kernel_present) && !self.l3_entry(pj, l3j).perm.ps ==> {
+                    &&& pi != pj ==> self.l3_entry(pi, l3i).addr != self.l3_entry(pj, l3j).addr
+                    &&& pi == pj && l3i != l3j ==> self.l3_entry(pi, l3i).addr != self.l3_entry(pj, l3j).addr
                 }
     }
 
+    /// L4/L3 half of `PageTable::user_only`: every present user L4 or L3 entry has the user bit.
     #[verifier::opaque]
     pub open spec fn user_only(&self) -> bool {
         &&& forall|i: L4Index|
-            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i)]
-            self.kernel_l4_end <= i && pei_valid(i) && self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present
-                ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.user
+            #![trigger self.l4_entry(i)]
+            self.kernel_l4_end <= i && pei_valid(i) && self.l4_entry(i).perm.present ==> self.l4_entry(i).perm.user
         &&& forall|p: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p) ==> forall|i: L3Index|
-                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
-                pei_valid(i) && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present ==> self.l3_tables.view().spec_index(p).value().spec_index(i).perm.user
+                #![trigger self.l3_entry(p, i)]
+                pei_valid(i) && self.l3_entry(p, i).perm.present ==> self.l3_entry(p, i).perm.user
     }
 
+    /// L4/L3 half of `PageTable::rwx_upper_level_entries`: present non-leaf L4 and L3 entries have the write bit set and
+    /// the execute_disable bit clear.
     #[verifier::opaque]
     pub open spec fn rwx_upper_level_entries(&self) -> bool {
         &&& forall|i: L4Index|
-            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i)]
-            self.kernel_l4_end <= i && pei_valid(i) && self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present
-                ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.write && !self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.execute_disable
+            #![trigger self.l4_entry(i)]
+            self.kernel_l4_end <= i && pei_valid(i) && self.l4_entry(i).perm.present ==> self.l4_entry(i).perm.write && !self.l4_entry(i).perm.execute_disable
         &&& forall|p: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p) ==> forall|i: L3Index|
-                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
-                pei_valid(i) && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present && !self.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps
-                    ==> self.l3_tables.view().spec_index(p).value().spec_index(i).perm.write && !self.l3_tables.view().spec_index(p).value().spec_index(i).perm.execute_disable
+                #![trigger self.l3_entry(p, i)]
+                pei_valid(i) && self.l3_entry(p, i).perm.present && !self.l3_entry(p, i).perm.ps
+                    ==> self.l3_entry(p, i).perm.write && !self.l3_entry(p, i).perm.execute_disable
     }
 
+    /// The root and the L3 pages are valid page pointers, and the root is not an L3 page.
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
         &&& page_ptr_valid(self.cr3)
-        &&& forall|p: PageMapPtr| #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)] self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr|
+            #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)]
+            self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
         &&& self.l4_table.view().dom().disjoint(self.l3_tables.view().dom())
     }
 
@@ -278,6 +293,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             }
     }
 
+    /// 1G keys and frames are valid; the 4K/2M half is `WholePageTable::va_addr_valid`.
     pub open spec fn va_addr_valid(&self) -> bool {
         forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
@@ -286,33 +302,36 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
+    /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.
     #[verifier::opaque]
     pub open spec fn wf_mapping_1g(&self) -> bool {
         &&& forall|l4i: L4Index, l3i: L3Index|
             #![trigger self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0)))]
             #![trigger self.spec_resolve_mapping_1g_l3(l4i, l3i)]
             self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> {
-                    &&& self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) == self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
-                    &&& self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
-                        ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
-                        && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
-                        && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
-                        && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
-                }
+                &&& self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) == self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
+                &&& self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
+                    ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
+                    && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
+                    && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                    && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
+            }
     }
 
+    /// kernel_entries equals the root's kernel L4 entries `[0, kernel_l4_end)`; an IOMMU table has none.
     #[verifier::opaque]
     pub open spec fn kernel_entries_wf(&self) -> bool {
         &&& TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
         &&& pei_valid(self.kernel_l4_end)
         &&& self.kernel_entries.view().len() =~= self.kernel_l4_end as nat
-        &&& forall|i: usize|
+        &&& forall|i: L4Index|
             #![trigger self.kernel_entries.view().spec_index(i as int)]
-            0 <= i < self.kernel_l4_end && pei_valid(i) ==> self.kernel_entries.view().spec_index(i as int) == self.l4_table.view().spec_index(self.cr3).value().spec_index(i)
+            0 <= i < self.kernel_l4_end && pei_valid(i) ==> self.kernel_entries.view().spec_index(i as int) == self.l4_entry(i)
     }
 }
 
 impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
+    /// The L4/L3/1G half of the page-table invariant; `WholePageTable::wf` adds the cross-half and lower-half clauses.
     open spec fn inv(&self) -> bool {
         &&& self.va_addr_valid()
         &&& self.wf_l4()
@@ -367,8 +386,8 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     #[verifier::inline]
     pub open spec fn l1_page(&self, p: PageMapPtr, i: L2Index) -> PageMap { self.l1_perm(p, i).value() }
 
-    /// Entry `i` of L2 page `p` still owns its L1 page while the user present bit is clear: the page is hidden and waits in
-    /// the window lock for `unlink_hidden_l1_page`.
+    /// Entry `i` of L2 page `p` still owns its L1 page while the present bit is clear: the page is hidden and stays owned
+    /// under the write-locked window until `unlink_hidden_l1_page`.
     #[verifier::inline]
     pub open spec fn l2_entry_hides_l1(&self, p: PageMapPtr, i: L2Index) -> bool { self.l2_page(p).entry_lock(i).l1() is Some && !self.l2_entry(p, i).perm.present }
 
@@ -548,17 +567,24 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id == thread_id
     }
 
-    /// Window `(l4i, l3i, l2i)` exists and some thread holds its lock; that holder is named so the window-holder
-    /// invariant can fire on it.
+    /// Window `(l4i, l3i, l2i)` exists and its lock is write-held.
     pub open spec fn window_locked(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
         self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id)
     }
 
     /// Every 4K or 2M leaf the user cannot see lies in a locked 2M window; every 1G leaf is present.
     pub open spec fn hidden_leaves_in_locked_windows(&self) -> bool {
-        &&& forall|va: VAddr| #![trigger self.mapping_4k().spec_index(va)] self.mapping_4k().dom().contains(va) && !self.mapping_4k().spec_index(va).present ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
-        &&& forall|va: VAddr| #![trigger self.mapping_2m().spec_index(va)] self.mapping_2m().dom().contains(va) && !self.mapping_2m().spec_index(va).present ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
-        &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
+        &&& forall|va: VAddr|
+            #![trigger self.mapping_4k().spec_index(va)]
+            self.mapping_4k().dom().contains(va) && !self.mapping_4k().spec_index(va).present
+                ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
+        &&& forall|va: VAddr|
+            #![trigger self.mapping_2m().spec_index(va)]
+            self.mapping_2m().dom().contains(va) && !self.mapping_2m().spec_index(va).present
+                ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
+        &&& forall|va: VAddr|
+            #![trigger self.mapping_1g().dom().contains(va)]
+            self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
     }
 
     /// The 4K leaves of window `w` and its 2M leaf are present.
@@ -590,22 +616,23 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             ==> self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id == thread_id
     }
 
-    /// Every non-huge L3 entry that is present or a placeholder links an L2 page of the window half.
+    /// Every present or hidden non-huge L3 entry links an L2 page of the window half: the L3→L2 link half of
+    /// `PageTable::wf_l3`; the other half is `PageTableHigher::wf_l3`.
     #[verifier::opaque]
-    pub open spec fn wf_l3(&self) -> bool {
+    pub open spec fn l3_links_l2_wf(&self) -> bool {
         forall|p: PageMapPtr|
             #![trigger self.higher.l3_tables.view().dom().contains(p)]
             self.higher.l3_tables.view().dom().contains(p) ==> forall|i: L3Index|
-                #![trigger self.higher.l3_tables.view().spec_index(p).value().spec_index(i)]
-                pei_valid(i) && (self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.present || self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.kernel_present)
-                    && !self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps ==> self.lower.l2_perms.dom().contains(self.higher.l3_tables.view().spec_index(p).value().spec_index(i).addr)
+                #![trigger self.higher.l3_entry(p, i)]
+                pei_valid(i) && (self.higher.l3_entry(p, i).perm.present || self.higher.l3_entry(p, i).perm.kernel_present)
+                    && !self.higher.l3_entry(p, i).perm.ps
+                    ==> self.lower.l2_perms.dom().contains(self.higher.l3_entry(p, i).addr)
     }
 
-    /// Each L2 page sits at its address with every entry `inv`; a huge present entry is kernel-present; a present
-    /// non-huge entry owns an L1 page, and only a non-huge entry, linked or hiding it, owns one; a hiding entry is a
-    /// placeholder (kernel-present); an owned L1 page sits at its entry's address, which the L1 reverse map records.
+    /// Every L2 page is well formed, and its entries own the L1 pages they link or hide.
     #[verifier::opaque]
     pub open spec fn wf_l2(&self) -> bool {
+        // Every L2 page sits at its address and every entry satisfies its `inv`.
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> {
@@ -614,11 +641,15 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& self.lower.l2_page(p).addr() == p
                 &&& self.lower.l2_page(p).wf()
             }
+        // A present huge L2 entry (2M leaf) has the kernel_present bit set.
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
                 #![trigger self.lower.l2_entry(p, i)]
                 pei_valid(i) && self.lower.l2_entry(p, i).perm.ps && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present
+        // A present non-huge entry owns an L1 page and only a non-huge entry owns one; an entry that owns one but has the
+        // present bit clear hides it and has the kernel_present bit set; an owned L1 page sits at its entry's address,
+        // which the L1 reverse map records.
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
@@ -626,7 +657,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pei_valid(i) ==> {
                     &&& self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps ==> self.lower.l2_page(p).entry_lock(i).l1() is Some
                     &&& self.lower.l2_page(p).entry_lock(i).l1() is Some ==> !self.lower.l2_entry(p, i).perm.ps
-                    &&& self.lower.l2_page(p).entry_lock(i).l1() is Some && !self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present
+                    &&& self.lower.l2_page(p).entry_lock(i).l1() is Some && !self.lower.l2_entry(p, i).perm.present
+                        ==> self.lower.l2_entry(p, i).perm.kernel_present
                     &&& self.lower.l2_page(p).entry_lock(i).l1() is Some
                         ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr)
                 }
@@ -655,25 +687,33 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some ==> self.lower.l1_perm(p, i).is_init() && self.lower.l1_page(p, i).wf()
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
-            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index, j: L1Index|
-                #![trigger self.lower.l1_page(p, i).spec_index(j)]
-                pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some && pei_valid(j) && self.lower.l1_page(p, i).spec_index(j).perm.present
-                    ==> self.lower.l1_page(p, i).spec_index(j).perm.ps == false && self.lower.l1_page(p, i).spec_index(j).perm.kernel_present
+            self.lower.l2_perms.dom().contains(p) ==> forall|l2i: L2Index, l1i: L1Index|
+                #![trigger self.lower.l1_page(p, l2i).spec_index(l1i)]
+                pei_valid(l2i) && self.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                    && pei_valid(l1i) && self.lower.l1_page(p, l2i).spec_index(l1i).perm.present
+                    ==> !self.lower.l1_page(p, l2i).spec_index(l1i).perm.ps && self.lower.l1_page(p, l2i).spec_index(l1i).perm.kernel_present
     }
 
+    /// L2/L1 half of `PageTable::user_only`: every present L2 entry and every present entry of an owned L1 page has the user
+    /// bit.
     #[verifier::opaque]
     pub open spec fn user_only(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
-            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index| #![trigger self.lower.l2_entry(p, i)] pei_valid(i) && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.user
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
+                #![trigger self.lower.l2_entry(p, i)]
+                pei_valid(i) && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.user
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
-            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index, j: L1Index|
-                #![trigger self.lower.l1_page(p, i).spec_index(j)]
-                pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some && pei_valid(j) && self.lower.l1_page(p, i).spec_index(j).perm.present
-                    ==> self.lower.l1_page(p, i).spec_index(j).perm.user
+            self.lower.l2_perms.dom().contains(p) ==> forall|l2i: L2Index, l1i: L1Index|
+                #![trigger self.lower.l1_page(p, l2i).spec_index(l1i)]
+                pei_valid(l2i) && self.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                    && pei_valid(l1i) && self.lower.l1_page(p, l2i).spec_index(l1i).perm.present
+                    ==> self.lower.l1_page(p, l2i).spec_index(l1i).perm.user
     }
 
+    /// L2 half of `PageTable::rwx_upper_level_entries`: present non-leaf L2 entries have the write bit set and the
+    /// execute_disable bit clear.
     #[verifier::opaque]
     pub open spec fn rwx_upper_level_entries(&self) -> bool {
         forall|p: PageMapPtr|
@@ -684,10 +724,16 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     ==> self.lower.l2_entry(p, i).perm.write && !self.lower.l2_entry(p, i).perm.execute_disable
     }
 
+    /// L2/L1 half of `PageTable::table_pages_wf`: L2 and L1 pages are valid page pointers and each lies in exactly one level
+    /// map.
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
-        &&& forall|p: PageMapPtr| #![trigger self.lower.l2_perms.dom().contains(p), page_ptr_valid(p)] self.lower.l2_perms.dom().contains(p) ==> page_ptr_valid(p)
-        &&& forall|p: PageMapPtr| #![trigger self.lower.l1_rev_map.dom().contains(p), page_ptr_valid(p)] self.lower.l1_rev_map.dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr|
+            #![trigger self.lower.l2_perms.dom().contains(p), page_ptr_valid(p)]
+            self.lower.l2_perms.dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr|
+            #![trigger self.lower.l1_rev_map.dom().contains(p), page_ptr_valid(p)]
+            self.lower.l1_rev_map.dom().contains(p) ==> page_ptr_valid(p)
         &&& self.higher.l4_table.view().dom().disjoint(self.lower.l2_perms.dom())
         &&& self.higher.l4_table.view().dom().disjoint(self.lower.l1_rev_map.dom())
         &&& self.higher.l3_tables.view().dom().disjoint(self.lower.l2_perms.dom())
@@ -732,39 +778,43 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.lower.mapping_2m.dom().contains(va) ==> page_table_key_2m_valid::<TABLE_TYPE>(va) && page_ptr_2m_valid(self.lower.mapping_2m.spec_index(va).addr)
     }
 
+    /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
     #[verifier::opaque]
     pub open spec fn wf_mapping_4k(&self) -> bool {
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
             #![trigger self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i)))]
             #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
             self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> {
-                    &&& self.lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
-                    &&& self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
-                        ==> self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
-                        && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
-                        && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
-                        && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
-                }
+                &&& self.lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                &&& self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                    ==> self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
+                    && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
+                    && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                    && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
+            }
     }
 
+    /// mapping_2m holds exactly the resolved 2M leaves, with their frame, write, execute_disable and present bits.
     #[verifier::opaque]
     pub open spec fn wf_mapping_2m(&self) -> bool {
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0)))]
             #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
-            self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                ==> (self.lower.mapping_2m.dom().contains(spec_index2va((l4i, l3i, l2i, 0))) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some) && (self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
+            self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> {
+                &&& self.lower.mapping_2m.dom().contains(spec_index2va((l4i, l3i, l2i, 0))) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
+                &&& self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
                     ==> self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
-                    && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present)
+                    && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present
+            }
     }
 
     /// `pagetable_window_locks` records, for every window it holds, an existing user window and the mode of that
     /// window's lock bit; it holds every window of every L2 page whose L3 entry resolves, and no entry of an L2 page whose
     /// L3 path does not resolve is locked.
-    // Proof dependencies (confirmed for `lock_window`): PageTableHigher::wf_l4, wf_l3, tables_reachable_wf,
-    // PageTableHigher::disjoint_l4, PageTableHigher::disjoint_l3.
+    // Proof dependencies: PageTableHigher::wf_l4, PageTableHigher::disjoint_l4, PageTableHigher::disjoint_l3,
+    // WholePageTable::l3_links_l2_wf, WholePageTable::tables_reachable_wf.
     #[verifier::opaque]
     pub open spec fn wf_window_locks(&self) -> bool {
         &&& forall|w: WindowVa|
@@ -792,10 +842,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             }
     }
 
+    /// The whole page-table invariant: the big-lock half `PageTableHigher::inv` plus the cross-half and window-half
+    /// clauses.
     pub open spec fn wf(&self) -> bool {
         &&& self.higher.inv()
         &&& self.va_addr_valid()
-        &&& self.wf_l3()
+        &&& self.l3_links_l2_wf()
         &&& self.wf_l2()
         &&& self.wf_l1()
         &&& self.disjoint_l2()

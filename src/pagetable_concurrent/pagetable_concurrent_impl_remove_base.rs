@@ -53,7 +53,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
             c.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i);
@@ -127,7 +127,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
             mem_valid_zero();
@@ -197,7 +197,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_mapping_2m_at(target_l4i, target_l3i, target_l2i);
         }
@@ -267,7 +267,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_mapping_2m_at(target_l4i, target_l3i, target_l2i);
             mem_valid_zero();
@@ -346,7 +346,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.table_pages_wf_l1_at(target_l1_p);
             page_ptr_valid_imply_mem_valid(target_l1_p);
@@ -412,7 +412,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
         }
@@ -486,7 +486,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
             mem_valid_zero();
@@ -561,12 +561,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 let target_l2_p = l3_entry.addr;
                 proof {
                     self.wf_l4_at(target_l4i);
-                    pre.wf_l3_at(l4_entry.addr, target_l3i);
+                    pre.l3_links_l2_wf_at(l4_entry.addr, target_l3i);
                     pre.wf_l2_at(target_l2_p, target_l2i);
                     pre.wf_l1_at(target_l2_p, target_l2i);
                     pre.tables_reachable_wf_l2_at(target_l2_p);
                     self.disjoint_l4_l3_implies_held_l3_addr_unique_at(target_l4i, target_l3i, self.l2_rev_map.view().spec_index(target_l2_p).0, self.l2_rev_map.view().spec_index(target_l2_p).1);
-                    pre.wf_window_locks_slot_at(target_l2_p, target_l2i);
+                    pre.wf_window_locks_l2_entry_at(target_l2_p, target_l2i);
                     mem_valid_zero();
                 }
                 let tracked l2_perm_ref = lower.l2_perms.tracked_borrow(target_l2_p);
@@ -646,7 +646,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             c.wf_l1_at(target_l2_p, target_l2i);
             mem_valid_zero();
@@ -743,7 +743,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             self.wf_l3_at(target_l3_p);
-            c.wf_l3_at(target_l3_p, target_l3i);
+            c.l3_links_l2_wf_at(target_l3_p, target_l3i);
             c.wf_l2_at(target_l2_p, 0);
             mem_valid_zero();
         }

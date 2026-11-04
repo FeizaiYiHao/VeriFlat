@@ -143,7 +143,7 @@ pub fn drain_2m_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         assert(page_ptr_valid(pg_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_2m_mp, allocator, cpu_id, pg_ptr); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
-            container_allocator_free_2m_page_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
+            allocator_free_2m_pages_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
             page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));

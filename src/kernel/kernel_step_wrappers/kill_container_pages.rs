@@ -178,8 +178,8 @@ pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, ctn_ptr: Rw
             let i = page_ptr2page_index(pg_ptr);
             let j = page_ptr2page_index(allc_ptr);
             assert(pool.contains(pg_ptr));
-            allocator_free_page_ptrs_wf_global_at(krnl.allc_1g_mp, allc_ptr, pg_ptr); container_allocator_free_1g_page_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, pg_ptr);
-            page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allc_ptr);
+            allocator_free_page_ptrs_wf_global_at(krnl.allc_1g_mp, allc_ptr, pg_ptr); allocator_free_1g_pages_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, pg_ptr);
+            page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr);
             hugepage_1g_wf_head_at(krnl.pg_arr, i); hugepage_1g_wf_tail_forward_at(krnl.pg_arr, i, j);
         }
     };
@@ -196,7 +196,7 @@ proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allc_ptr: RwLockPageA
         0 <= n <= NUM_CPUS,
     ensures
         krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.view().take(n)
-            .fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == 0,
+            .fold_left(0int, |sum: int, cache_lock: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cache_lock.view().linked_list.len() }) == 0,
         forall|i: CpuId| #![trigger krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.spec_index(i)]
             i < n ==> krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0,
     decreases n,
@@ -216,8 +216,8 @@ proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allc_ptr: RwLockPageA
                 let j = page_ptr2page_index(allc_ptr);
                 assert(caches.spec_index((n - 1) as usize).view().view().view().contains(pg_ptr));
                 allocator_free_page_ptrs_wf_cache_at(krnl.allc_1g_mp, allc_ptr, (n - 1) as usize, pg_ptr);
-                container_allocator_free_1g_page_wf_cache_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, (n - 1) as usize, pg_ptr);
-                page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allc_ptr);
+                allocator_free_1g_pages_wf_cache_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, (n - 1) as usize, pg_ptr);
+                page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr);
                 hugepage_1g_wf_head_at(krnl.pg_arr, i); hugepage_1g_wf_tail_forward_at(krnl.pg_arr, i, j);
             }
         };

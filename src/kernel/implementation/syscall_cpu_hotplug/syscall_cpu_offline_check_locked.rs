@@ -91,7 +91,7 @@ pub(super) fn cpu_offline_check_locked(
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
         }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); };
-        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr); };
+        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr); };
     }
     let flags_ptr = ctn_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));

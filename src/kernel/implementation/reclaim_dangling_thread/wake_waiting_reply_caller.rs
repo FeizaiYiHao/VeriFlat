@@ -78,7 +78,7 @@ pub fn wake_waiting_reply_caller(
             } else { scheduler_shards_of(old(krnl).sched_mp.spec_index(s)) },
 {
     proof {
-        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_caller_callee_wf_at(krnl.thrd_mp, thrd_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
     }
@@ -86,7 +86,7 @@ pub fn wake_waiting_reply_caller(
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
-        container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, caller_ptr);
+        container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, caller_ptr);
         scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id);
     }
     {

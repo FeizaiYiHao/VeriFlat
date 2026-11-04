@@ -115,9 +115,9 @@ pub fn kill_container_move_free_page_2m(
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, dst);
         allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, src_allocator); allocator_perms_wf_at(krnl.allc_2m_mp, dst_allocator);
         container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, src); container_perms_wf_at(krnl.ctn_mp, dst);
-        container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, src_allocator, pg_ptr);
-        container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, dst_allocator, pg_ptr);
-        container_allocator_free_2m_page_wf_at(krnl.allc_2m_mp, krnl.pg_arr, pg_idx);
+        allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, src_allocator, pg_ptr);
+        allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, dst_allocator, pg_ptr);
+        allocator_free_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, pg_idx);
         krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         assert(krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().view().contains(pg_ptr));
         owned_2m_all_ptrs_belong_to_container(&*krnl, pg_idx, src);

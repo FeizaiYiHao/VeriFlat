@@ -49,7 +49,7 @@ impl StructureScan {
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// `scan` names a table page that the matching `remove_l*_entry` can unlink, or reports that no user L4 entry is present.
-    pub open spec fn spec_structure_scan_wf(&self, scan: StructureScan) -> bool {
+    pub open spec fn structure_scan_wf(&self, scan: StructureScan) -> bool {
         match scan {
             StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } => {
                 &&& self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
@@ -74,11 +74,14 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 &&& self.page_closure().contains(l3_p) && l3_p != self.cr3
             },
             StructureScan::Empty => {
-                &&& forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None
+                &&& forall|i: L4Index| #![trigger self.spec_resolve_mapping_l4(i)] self.kernel_l4_end <= i && pei_valid(i) ==> self.spec_resolve_mapping_l4(i) is None
                 &&& self.page_closure() =~= set![self.cr3]
-                &&& self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty()
-                &&& self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> self.mapping_2m().dom() =~= Set::<VAddr>::empty()
-                &&& self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> self.mapping_1g().dom() =~= Set::<VAddr>::empty()
+                // When every valid key lies in the user part, no mapping is left.
+                &&& self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> {
+                    &&& self.mapping_4k().dom() =~= Set::<VAddr>::empty()
+                    &&& self.mapping_2m().dom() =~= Set::<VAddr>::empty()
+                    &&& self.mapping_1g().dom() =~= Set::<VAddr>::empty()
+                }
             },
             StructureScan::Blocked => true,
         }
@@ -88,10 +91,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub fn next_structure_page(&self) -> (ret: StructureScan)
         requires self.wf(),
         ensures
-            self.spec_structure_scan_wf(ret),
+            self.structure_scan_wf(ret),
             self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
-        proof { self.kernel_l4_end_valid(); }
+        proof { self.kernel_entries_wf_l4_end_valid_at(); }
         let mut l4i = self.kernel_l4_end;
         while l4i < 512
             invariant
@@ -114,7 +117,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub fn remove_structure_page(&mut self, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PointsTo<PageMap>>)
         requires
             old(self).wf(),
-            old(self).spec_structure_scan_wf(scan),
+            old(self).structure_scan_wf(scan),
             scan.spec_table_page() is Some,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
@@ -150,7 +153,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
         ensures
-            self.spec_structure_scan_wf(ret),
+            self.structure_scan_wf(ret),
             !(ret is Empty),
             self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
@@ -186,7 +189,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
         ensures
-            self.spec_structure_scan_wf(ret),
+            self.structure_scan_wf(ret),
             !(ret is Empty),
             self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty() && self.mapping_1g().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {

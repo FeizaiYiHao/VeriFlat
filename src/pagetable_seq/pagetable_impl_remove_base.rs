@@ -80,7 +80,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// present bit is already clear, or directly from an IOMMU table that no
     /// device domain references (`did is None`), which no IOTLB can cache.
     /// Kernel-level callers must additionally establish that no stale TLB entry
-    /// remains; restoring `tlb_wf_spec` after this removal enforces that obligation.
+    /// remains; restoring `cpu_tlb_wf` after this removal enforces that obligation.
     pub fn unmap_4k_page_kernel(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),

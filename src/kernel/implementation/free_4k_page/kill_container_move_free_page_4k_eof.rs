@@ -125,7 +125,7 @@ proof fn kill_container_move_free_page_4k_eof_process_management(
         reveal(container_thread_wf); reveal(container_scheduler_wf); container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.sched_mp);
     };
     assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); };
+    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); };
 }
 
 proof fn kill_container_move_free_page_4k_eof_free_page_ptrs(
@@ -154,7 +154,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_forward(
     pg_ptr: PagePtr, node: usize,
 )
     requires
-        container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_global_pool_4k_pages_forward_wf(pre.allc_4k_mp, pre.pg_arr),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
         src != dst,
@@ -173,7 +173,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_forward(
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr),
+        allocator_global_pool_4k_pages_forward_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
     seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
@@ -184,7 +184,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_backward(
     pg_ptr: PagePtr, node: usize,
 )
     requires
-        container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_global_pool_4k_pages_backward_wf(pre.allc_4k_mp, pre.pg_arr),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
         src != dst,
@@ -203,7 +203,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_backward(
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_allocator_global_free_4k_backward_wf(post.allc_4k_mp, post.pg_arr),
+        allocator_global_pool_4k_pages_backward_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
     seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
@@ -215,7 +215,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages(
     pg_ptr: PagePtr, node: usize,
 )
     requires
-        container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_free_4k_pages_wf(pre.allc_4k_mp, pre.pg_arr),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
         src != dst,
@@ -234,14 +234,14 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages(
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+        allocator_global_pool_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
-    assert(container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr) && container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr)) by {
-        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
+    assert(allocator_global_pool_4k_pages_forward_wf(pre.allc_4k_mp, pre.pg_arr) && allocator_global_pool_4k_pages_backward_wf(pre.allc_4k_mp, pre.pg_arr)) by {
+        reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
     };
     kill_container_move_free_page_4k_eof_global_free_pages_forward(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     kill_container_move_free_page_4k_eof_global_free_pages_backward(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
-    reveal(container_allocator_global_free_4k_page_wf);
+    reveal(allocator_global_pool_4k_pages_wf);
 }
 
 proof fn kill_container_move_free_page_4k_eof_cpu_cache_free_pages(
@@ -249,7 +249,7 @@ proof fn kill_container_move_free_page_4k_eof_cpu_cache_free_pages(
     pg_ptr: PagePtr, node: usize,
 )
     requires
-        container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_free_4k_pages_wf(pre.allc_4k_mp, pre.pg_arr),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
         src_allocator != dst_allocator,
@@ -260,10 +260,10 @@ proof fn kill_container_move_free_page_4k_eof_cpu_cache_free_pages(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+        allocator_cpu_cache_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
+    reveal(allocator_free_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf);
 }
 
 proof fn kill_container_move_free_page_4k_eof_free_pages(
@@ -271,7 +271,7 @@ proof fn kill_container_move_free_page_4k_eof_free_pages(
     pg_ptr: PagePtr, node: usize,
 )
     requires
-        container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_free_4k_pages_wf(pre.allc_4k_mp, pre.pg_arr),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         src != dst,
         src_allocator != dst_allocator,
@@ -289,13 +289,13 @@ proof fn kill_container_move_free_page_4k_eof_free_pages(
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+        allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
 {
     kill_container_move_free_page_4k_eof_free_page_ptrs(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     kill_container_move_free_page_4k_eof_global_free_pages(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     kill_container_move_free_page_4k_eof_cpu_cache_free_pages(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
-    reveal(container_allocator_free_4k_page_wf);
+    reveal(allocator_free_4k_pages_wf);
 }
 
 proof fn kill_container_move_free_page_4k_eof_pages_wf(
@@ -308,37 +308,37 @@ proof fn kill_container_move_free_page_4k_eof_pages_wf(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+        allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr),
         hugepage_2m_wf(post.pg_arr),
         hugepage_1g_wf(post.pg_arr),
-        container_pages_wf(post.pg_arr, post.ctn_mp),
-        process_pages_wf(post.pg_arr, post.prc_mp),
+        container_pages_wf(post.ctn_mp, post.pg_arr),
+        process_pages_wf(post.prc_mp, post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
         thread_pages_wf(post.thrd_mp, post.pg_arr),
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
-        pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
+        pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr),
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
         thread_staged_pages_wf(post.thrd_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
-        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
-    allocator_2m_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_2m_mp, post.allc_2m_mp);
-    allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
+    allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
+    allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
+    allocator_1g_pages_wf_preserved_for_page_state_eq(pre.allc_1g_mp, post.allc_1g_mp, pre.pg_arr, post.pg_arr);
     hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr);
-    container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp);
-    process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp);
+    container_pages_wf_preserved_for_page_state_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr);
+    process_pages_wf_preserved_for_page_state_eq(pre.prc_mp, post.prc_mp, pre.pg_arr, post.pg_arr);
     pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr);
     iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr);
     thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
     scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr);
-    pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp);
+    pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pcid_allc_mp, post.pcid_allc_mp, pre.pg_arr, post.pg_arr);
     cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr);
-    thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
-    thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
-    thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+    thread_staged_4k_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+    thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+    thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
     endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr);
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
 }
@@ -358,12 +358,12 @@ proof fn kill_container_move_free_page_4k_eof_page_owners(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { page_array_wf_at(pre.pg_arr, page_ptr2page_index(pg_ptr)); reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { page_array_wf_at(pre.pg_arr, page_ptr2page_index(pg_ptr)); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
 }
 
 proof fn kill_container_move_free_page_4k_eof_page_tables(
@@ -381,7 +381,7 @@ proof fn kill_container_move_free_page_4k_eof_page_tables(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
-        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
@@ -391,7 +391,7 @@ proof fn kill_container_move_free_page_4k_eof_page_tables(
         assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
         reveal(process_emptied_tables_wf);
     };
-    assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); };
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
 }
@@ -452,8 +452,8 @@ proof fn kill_container_move_free_page_4k_eof_allocators(
         container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
-        container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
-        container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
+        allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
+        allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {

@@ -183,7 +183,7 @@ pub(super) proof fn new_container_finish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).container_map.spec_index(child_ptr).root_process == root_ptr,
         kernel_k_to_kernel_u(*krnl).process_map.spec_index(root_ptr).iommu_table is None,
 {
-    process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(share_4k_objects_k);
+    process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(share_4k_objects_k);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, ep_ptr);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, root_ptr, thrd_ptr, None);
     kernel_share_4k_objects_projection(krnl, lctx, cpu_id);

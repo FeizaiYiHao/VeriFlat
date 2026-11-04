@@ -156,7 +156,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             if let Some(l3_entry) = self.get_held_entry_l3(l4i, l3i, l4_entry) {
                 proof {
                     self.wf_l4_at(l4i);
-                    c.wf_l3_at(l4_entry.addr, l3i);
+                    c.l3_links_l2_wf_at(l4_entry.addr, l3i);
                 }
                 if let Some((found, is_2m, entry)) = self.next_held_leaf_l2_from(Tracked(lower), l4i, l3i, &l3_entry, if l3i == start.0 { (start.1, start.2) } else { (0, 0) }) {
                     return Some(((l3i, found.0, found.1), is_2m, entry));

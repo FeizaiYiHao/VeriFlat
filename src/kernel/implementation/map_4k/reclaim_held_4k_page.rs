@@ -354,7 +354,7 @@ fn reclaim_last_held_4k_mapping(
 {
     let ghost pg_idx = page_ptr2page_index(pg_ptr);
     proof { page_ptr_valid_imply_page_index_valid(); }
-    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
+    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
     let depth = owner_ro.depth;
     let allc_ptr = owner_ro.allocator_ptr_4k;
@@ -364,14 +364,14 @@ fn reclaim_last_held_4k_mapping(
     proof {
         let thread_owner = thread.owning_container;
         container_process_page_pagetable_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr, pg_idx, pagetable, va);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, thread.owning_proc);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, thread_owner);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, thread.owning_proc);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, thread_owner);
         container_subtree_set_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, thread_owner);
         assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); };
     }
     let Tracked(cache_perm) = reclaim_last_lock_4k_cache_with_room(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps));
     assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
-        && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
+        && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
     let mut counter = if depth == thread_depth { *direct } else { indirect[depth] };
     remove_last_held_4k_mapping_to_allocator(krnl, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, &mut counter, Tracked(&mut *lctx), page_perm, pagetable_perm, thread_perm,
         Tracked(&cache_perm));
@@ -502,7 +502,7 @@ fn remove_last_held_4k_mapping_to_allocator(
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     assert(krnl.thrd_mp.spec_index(thrd_ptr).is_init() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allc_ptr).wf() && !krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by {
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
-        container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
+        allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
     };
     let (node_addr, node_perm) = page_array_remove_last_4k_mapping_to_cache(&mut krnl.pg_arr, pg_idx, pagetable, va, allc_ptr, cpu_id, Tracked(&*lctx), page_perm);
     krnl.allc_4k_mp.push_cache_page_typed(allc_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);

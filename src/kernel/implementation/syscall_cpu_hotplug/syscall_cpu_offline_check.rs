@@ -187,8 +187,8 @@ pub(super) fn cpu_offline_commit(
         }) by {
             scheduler_perms_wf_map(krnl.sched_mp);
             scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr);
-            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
-            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
+            cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
             scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id);
         };
         if current_thread is Some { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }

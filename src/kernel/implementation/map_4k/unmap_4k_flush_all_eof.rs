@@ -28,10 +28,10 @@ pub(super) proof fn cpu_outside_container_implies_no_tlb_of_container_pagetable(
     container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
     if (!krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty() || !krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty())
         && !(krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && cpu.view().current_pcid != pcid) {
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match);
+        reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match);
         let dirty = cpu.tlb_dirty_bitmap().spec_index(pcid).unwrap();
         container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr, prc_ptr); container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, cpu.view().owning_container, dirty.process_ptr);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, dirty.process_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, dirty.process_ptr);
     }
 }
 

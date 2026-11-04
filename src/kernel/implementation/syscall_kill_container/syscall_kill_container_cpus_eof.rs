@@ -189,8 +189,8 @@ proof fn kill_container_cpus_eof_memory_and_tlb(
     assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
     assert(post.inv()) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-        reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); reveal(structure_cache_wf_spec);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match);
+        reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); reveal(structure_cache_wf);
     };
 }
 

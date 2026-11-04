@@ -476,14 +476,14 @@ verus! {
         let iommu_table = if transferred && attached { krnl.prc_mp.borrow_rodata(sender_proc).borrow().iommu_table_ptr } else { None };
         let Tracked(iommu_table_lock_perm) = match iommu_table {
             Some(t) => {
-                proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, sender_proc); }
+                proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, sender_proc); }
                 let Tracked(perm) = krnl.wlock_iommu_table(t, Tracked(&mut *lctx));
                 Tracked(Some(perm))
             },
             None => Tracked(None),
         };
         let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_sched_ptr, wake_cpu, Tracked(&mut *lctx));
-        proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
+        proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
         let ghost old_peer_thread_lock_id = krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr);
         assert(krnl.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_sched_ptr, wake_cpu); };
         let (_, Tracked(endpoint_node_perm)) = ipc_dequeue_endpoint_waiter(&mut krnl.ep_mp, Tracked(&*lctx), ep_ptr, peer_thrd_ptr, Tracked(endpoint_lock_perm));

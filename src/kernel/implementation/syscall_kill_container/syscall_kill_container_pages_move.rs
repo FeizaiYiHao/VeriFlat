@@ -154,7 +154,7 @@ pub(crate) fn kill_container_pages_move_4k(
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
             reveal(LinkedList::wf_value_list);
-            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, a4, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx);
+            allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, a4, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
         let ghost before_lctx = *lctx;
@@ -314,7 +314,7 @@ pub(crate) fn kill_container_pages_move_2m(
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR && page_index_2m_valid(pg_idx)
             && krnl.pg_arr.spec_index(pg_idx).view().view().state is Free2m) by {
             reveal(LinkedList::wf_value_list);
-            container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, a2, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx); hugepage_2m_wf_head_at(krnl.pg_arr, pg_idx);
+            allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, a2, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx); hugepage_2m_wf_head_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
         let ghost before_lctx = *lctx;

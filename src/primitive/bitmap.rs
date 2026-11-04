@@ -4,6 +4,7 @@ use vstd::set::*;
 
 use crate::*;
 verus! {
+/// A fixed array of `N` values. `map` is its abstract view: index to value for each index below `N`.
 pub struct BitMap<T, const N: usize> {
     pub bit_map: Array<T, N>,
     pub map: Ghost<Map<usize, T>>,
@@ -12,10 +13,20 @@ pub struct BitMap<T, const N: usize> {
 impl<T: Copy, const N: usize> BitMap<T, N> {
     pub open spec fn view(&self) -> Map<usize, T> { self.map.view() }
 
+    /// `map` covers exactly the indices below `N` and agrees with the array there.
     pub open spec fn inv(&self) -> bool {
         &&& self.bit_map.wf()
-        &&& forall|i: usize| #![trigger self.view().dom().contains(i)] #![trigger usize_in_range::<N>(i)] usize_in_range::<N>(i) == self.view().dom().contains(i)
-        &&& forall|i: usize| #![trigger usize_in_range::<N>(i)] #![trigger self.view().spec_index(i)] #![trigger self.bit_map.spec_index(i)] usize_in_range::<N>(i) ==> self.view().spec_index(i) == self.bit_map.spec_index(i)
+        &&& forall|i: usize|
+            #![trigger self.view().dom().contains(i)]
+            #![trigger usize_in_range::<N>(i)]
+            usize_in_range::<N>(i) <==> self.view().dom().contains(i)
+        &&& forall|i: usize|
+            #![trigger usize_in_range::<N>(i)]
+            #![trigger self.view().spec_index(i)]
+            #![trigger self.bit_map.spec_index(i)]
+            usize_in_range::<N>(i)
+                ==>
+                self.view().spec_index(i) == self.bit_map.spec_index(i)
     }
 
     pub fn new_with_init_value(value: T) -> (ret: Self)

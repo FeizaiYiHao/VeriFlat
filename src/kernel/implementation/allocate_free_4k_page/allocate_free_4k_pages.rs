@@ -8,15 +8,18 @@ pub open spec fn page_ptrs_to_indices(pages: Seq<PagePtr>) -> Set<PageIndex> {
     pages.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).to_set()
 }
 
+/// Write-lock perms of the new 4K pages: each is a valid page in state Owned4k { thrd_ptr } of container `ctn_ptr`,
+/// write-locked by this thread.
 pub open spec fn allocated_4k_page_lock_perms_wf(perms: Map<PagePtr, LockPerm>, krnl: &KernelK, lctx: &LocalContext, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr) -> bool {
     forall|pg_ptr: PagePtr|
         #![trigger perms.dom().contains(pg_ptr)]
         perms.dom().contains(pg_ptr) ==> {
+            let page = krnl.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& page_ptr_valid(pg_ptr)
             &&& perms.spec_index(pg_ptr).state() is WriteLock
             &&& perms.spec_index(pg_ptr).thread_id() == lctx.thread_id()
-            &&& krnl.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == PageState::Owned4k { thread_ptr: thrd_ptr }
-            &&& krnl.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr
+            &&& page.state == PageState::Owned4k { thread_ptr: thrd_ptr }
+            &&& page.owning_container == ctn_ptr
             &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write)
             &&& perms.spec_index(pg_ptr).lock_id() == krnl.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread()->Write_lock_id
         }
@@ -139,7 +142,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         };
     }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
-    assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+    assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
     while i < N
         invariant
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),

@@ -229,7 +229,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable_ptr);
         pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable_ptr);
         assert(krnl.prc_mp.dom().contains(parent_ptr) && !krnl.prc_mp.spec_index(parent_ptr).view().zombie && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr
-            && parent_ptr != child_ptr) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
+            && parent_ptr != child_ptr) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
     }
     let (new_thrd_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
         krnl, thread_pg_ptr, child_ptr, current_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&thread_page_lock_perm),
@@ -237,12 +237,12 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
     );
     let ghost mid_k = *krnl;
     proof {
-        assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_match); };
+        assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_wf); };
         if let Some(ep_ptr) = endpoint {
             assert({
                 ||| krnl.ep_mp.spec_index(ep_ptr).view().owning_container == ctn_ptr
                 ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(ep_ptr).view().owning_container).view_ghost().subtree_set.view().contains(ctn_ptr)
-            }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx); };
+            }) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx); };
         }
     }
     release_new_process_locks_and_attach_endpoint(

@@ -28,7 +28,7 @@ pub(super) proof fn cpu_set_lock_op_eof(pre: KernelK, post: KernelK, cpu_set_ptr
     assert(cpu_set_invariant_fields_unchanged(pre.cpu_set_mp, post.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(pre.cpu_set_mp, post.cpu_set_mp, cpu_set_ptr); };
     assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); };
     reveal(container_cpu_set_wf);
 }
 
@@ -65,7 +65,7 @@ pub(super) proof fn mark_kill_cpu_set_eof(pre: KernelK, post: KernelK, pre_lctx:
         reveal(cpu_set_kill_mark_wf);
     };
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); };
 }
 
 /// Relocking one cpu set back to its original lock mode keeps every container field, quota, and cpu-set lock mode.

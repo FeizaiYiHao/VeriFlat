@@ -150,7 +150,7 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
     iova: VAddr, range: usize,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
@@ -216,7 +216,7 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
     iommu_table_ptr: RwLockPageTableRoot, iova_range: VaRange4K, unmapped: usize,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
@@ -254,7 +254,7 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     let iova = iova_range.view()[unmapped as int];
-    assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_iommu_table_match); };
+    assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_iommu_table_wf); };
     kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thrd_ptr);
     kernel_iommu_table_4k_present_cleared_implies_u_step(mid, post, iommu_table_ptr, iova);
     kernel_u_domains_projection(pre);
@@ -271,7 +271,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     iommu_table_ptr: RwLockPageTableRoot, iova_range: VaRange4K,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
@@ -305,7 +305,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
-    assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_match); };
+    assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_wf); };
     if let Some(did) = pre.it_mp.spec_index(iommu_table_ptr).view().did {
         assert(mid.iommu_tlb.view().dom().contains(did) ==> vtd_domain_id_valid(did)) by { reveal(IommuTLB::inv); };
         kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);
@@ -323,7 +323,7 @@ pub(super) proof fn iommu_unmap_4k_exit_step_from_k(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,

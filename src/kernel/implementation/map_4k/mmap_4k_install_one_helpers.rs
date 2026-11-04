@@ -382,9 +382,9 @@ verus! {
         install_one_mmap_4k_directory_page_end_step(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), level, cpu_id, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, write_held,
             transfer_source, pg_ptr, indices, lo, hi, progress_thread, Ghost(share_lctx), Ghost(mmap_guard), Ghost(share_guard), Tracked(progress_thread_lock_perm));
         proof {
-            assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { if transfer_source is None { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, quota_thrd_ptr); } };
+            assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { if transfer_source is None { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, quota_thrd_ptr); } };
             assert(krnl.prc_mp.dom().contains(prc_ptr) && ((krnl.thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && krnl.thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr)
-                || (typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write) && !krnl.prc_mp.spec_index(prc_ptr).view().zombie))) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); };
+                || (typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write) && !krnl.prc_mp.spec_index(prc_ptr).view().zombie))) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); };
             if !write_held {
                 spec_va_4k_index_roundtrip_at(window_va.va, indices.0, indices.1, indices.2, 0usize);
                 assert(directory_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_va)));
@@ -960,7 +960,7 @@ verus! {
         if let Some(source) = transfer_source {
             let tracked source_lock_perm = transfer_source_lock_perm.tracked_unwrap();
             let tracked target_lock_perm = transfer_target_lock_perm.tracked_unwrap();
-            proof { assert(krnl.ctn_mp.spec_index(source).view().owned_pages.view().contains(pg_ptr)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(pg_ptr)); }; }
+            proof { assert(krnl.ctn_mp.spec_index(source).view().owned_pages.view().contains(pg_ptr)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(pg_ptr)); }; }
             transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), pg_ptr, quota_thrd_ptr, source, ctn_ptr, Tracked(page_lock_perm), Tracked(source_lock_perm), Tracked(target_lock_perm));
         }
     }

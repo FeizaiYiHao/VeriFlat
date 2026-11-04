@@ -8,7 +8,6 @@ verus! {
 #[verifier::reject_recursive_types(T)]
 pub struct LockedMap<K, T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     map: Tracked<Map<K, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>>,
-    map_u: Ghost<Map<K, LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>,
 }
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {
@@ -17,18 +16,19 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, Gho
             ret.perms_wf(),
             ret.dom() =~= Set::<usize>::empty(),
     {
-        Self { map: Tracked(Map::<usize, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>::tracked_empty()), map_u: Ghost(Map::<usize, LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>::empty()) }
+        Self { map: Tracked(Map::<usize, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>::tracked_empty()) }
     }
 
     pub closed spec fn view(&self) -> Map<usize, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>> { self.map.view() }
     pub open spec fn dom(&self) -> Set<usize> { self.view().dom() }
+    /// Every token is initialized and sits at its key's address.
     pub open spec fn perms_wf(&self) -> bool {
-        &&& forall|k: usize|
-            #![trigger self.view().spec_index(k).is_init()]
-            #![trigger self.view().dom().contains(k)]
-            self.view().dom().contains(k) ==> {
-                &&& self.view().spec_index(k).is_init()
-                &&& self.view().spec_index(k).addr() == k
+        &&& forall|key: usize|
+            #![trigger self.view().spec_index(key).is_init()]
+            #![trigger self.view().dom().contains(key)]
+            self.view().dom().contains(key) ==> {
+                &&& self.view().spec_index(key).is_init()
+                &&& self.view().spec_index(key).addr() == key
             }
     }
     pub open spec fn spec_index(&self, key: usize) -> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>

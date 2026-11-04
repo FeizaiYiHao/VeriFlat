@@ -31,8 +31,8 @@ pub proof fn kernel_iommu_root_table_projection(krnl: &KernelK)
 /// modes.
 pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_eq(tracked steps: &KernelSteps, krnl: &KernelK)
     requires
-        process_pagetable_match(krnl.prc_mp, krnl.pt_mp),
-        process_iommu_table_match(krnl.prc_mp, krnl.it_mp),
+        process_pagetable_wf(krnl.prc_mp, krnl.pt_mp),
+        process_iommu_table_wf(krnl.prc_mp, krnl.it_mp),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
         kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp),
         krnl.irt.view().owners() == steps.snapshot_k().irt.view().owners(),
@@ -105,7 +105,7 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
 /// table; nothing else in the complete projection changes.
 pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, did: Option<VtdDomainId>)
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         pre.it_mp.dom().contains(iommu_table),
         pre.it_mp.spec_index(iommu_table).view().did == did,
         *post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..*pre }),
@@ -135,7 +135,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
     kernel_iommu_root_table_projection(pre); kernel_iommu_root_table_projection(post);
     pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
     let a = kernel_k_to_kernel_u(*pre);

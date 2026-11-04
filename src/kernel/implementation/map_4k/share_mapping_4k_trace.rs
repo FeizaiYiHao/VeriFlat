@@ -124,7 +124,7 @@ pub proof fn share_4k_leaf_step_from_k(
         pre.thrd_mp.spec_index(source_thread).view().owning_proc == source,
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == share_4k_objects_k(*pre, cpu_id).target_container,
         share_4k_objects_k(*pre, cpu_id).transfer_source matches Some(s) ==> pre.ctn_mp.spec_index(share_4k_objects_k(*pre, cpu_id).target_container).view_rodata().view().parent == Some(s),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         source != target,
         pre.prc_mp.dom().contains(source),
         pre.prc_mp.dom().contains(target),
@@ -307,7 +307,7 @@ pub proof fn share_4k_directory_step_from_k(
     }
     kernel_thread_syscall_progress_changed_implies_u_step(mid, post, progress_thread);
     kernel_share_4k_objects_projection(pre, pre_lctx, cpu_id);
-    process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
+    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range;

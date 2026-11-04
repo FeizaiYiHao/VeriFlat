@@ -89,8 +89,8 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by {
-        reveal(page_object_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
+        reveal(page_object_owner_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
         broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
     };
 }

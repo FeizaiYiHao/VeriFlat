@@ -420,7 +420,7 @@ fn ipc_map_pages_and_release_tables(
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             running_thread_not_in_endpoint_queue(old(krnl), ep_ptr, current_thrd_ptr);
-            container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, peer_thrd_ptr);
+            container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, peer_thrd_ptr);
         };
         endpoint_perms_wf_at(old(krnl).ep_mp, ep_ptr); old(krnl).ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len();
         ipc_pages_enter_step_pre_from_k(&pre_k, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, channel_index, waiting_state, range,
@@ -474,8 +474,8 @@ fn ipc_map_pages_and_release_tables(
             &&& krnl.pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process
             &&& source_pagetable != target_pagetable
         }) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         };
     }
     ipc_lock_tables_and_share_pages(

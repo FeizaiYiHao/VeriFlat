@@ -31,7 +31,7 @@ pub(super) proof fn boot_memory_management_inv_eof_container_pages(
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-    ensures container_pages_wf(krnl.pg_arr, krnl.ctn_mp),
+    ensures container_pages_wf(krnl.ctn_mp, krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
     assert(page_ptr_valid(layout.root_container) && index_valid(NUM_PAGES, page_ptr2page_index(layout.root_container)) && page_index2page_ptr(page_ptr2page_index(layout.root_container)) == layout.root_container) by {
@@ -67,7 +67,7 @@ pub(super) proof fn boot_memory_management_inv_eof_process_pages(
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-    ensures process_pages_wf(krnl.pg_arr, krnl.prc_mp),
+    ensures process_pages_wf(krnl.prc_mp, krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
     reveal(process_pages_wf); reveal(boot_page_array_ready);
@@ -232,7 +232,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-    ensures pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp),
+    ensures pcid_allocator_pages_wf(krnl.pcid_allc_mp, krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
     assert(page_ptr_valid(layout.pcid_allocator) && index_valid(NUM_PAGES, page_ptr2page_index(layout.pcid_allocator)) && page_index2page_ptr(page_ptr2page_index(layout.pcid_allocator)) == layout.pcid_allocator) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
@@ -269,7 +269,7 @@ pub(super) proof fn boot_memory_management_inv_eof_thread_staged_pages(
     ensures thread_staged_pages_wf(krnl.thrd_mp, krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
-    reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); reveal(boot_page_array_ready);
+    reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf); reveal(boot_page_array_ready);
 }
 
 pub(super) proof fn boot_memory_management_inv_eof_endpoint_pages(

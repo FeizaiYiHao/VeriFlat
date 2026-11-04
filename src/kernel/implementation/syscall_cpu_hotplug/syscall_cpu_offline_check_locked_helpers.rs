@@ -211,7 +211,7 @@ pub(super) fn cpu_offline_check_recheck(
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
         }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); };
-        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr); };
+        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr); };
         assert({
             &&& (current_process is Some ==> krnl.prc_mp.dom().contains(current_process.unwrap()) && krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running)
             &&& (current_process is Some == current_thread is Some)
@@ -232,7 +232,7 @@ pub(super) fn cpu_offline_check_recheck(
         }) by {
             thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
             cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
-            if current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thread.unwrap()); }
+            if current_thread is Some { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thread.unwrap()); }
             if current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, current_process.unwrap()); }
         };
     }
@@ -419,7 +419,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
     let container_ro = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow();
     let sched_ptr = container_ro.scheduler;
     let cpu_set_ptr = container_ro.cpu_set;
-    proof { assert(krnl.sched_mp.dom().contains(sched_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); }; assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); }; }
+    proof { assert(krnl.sched_mp.dom().contains(sched_ptr)) by { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); }; assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); }; }
     let cpu_set_res = krnl.wlock_cpu_set_unless_killed(cpu_set_ptr, Tracked(&mut *lctx));
     if cpu_set_res.is_none() {
         proof {
@@ -436,7 +436,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
     let Tracked(cpu_set_lock_perm) = cpu_set_res.unwrap();
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
     proof {
-        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap())) by { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); };
+        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap())) by { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
     }
     cpu_offline_commit(

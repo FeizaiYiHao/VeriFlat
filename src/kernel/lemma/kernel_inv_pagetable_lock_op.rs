@@ -31,23 +31,23 @@ pub proof fn lemma_pagetable_perms_wf_preserved_for_lock_op_forall()
 pub proof fn lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|process_map: ProcessLockedMap, pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap|
-            #![trigger process_pagetable_match(process_map, pre), process_pagetable_match(process_map, post), pagetable_invariant_fields_unchanged(pre, post, pt_lower)]
-            process_pagetable_match(process_map, pre) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> process_pagetable_match(process_map, post),
-{ reveal(process_pagetable_match); }
+            #![trigger process_pagetable_wf(process_map, pre), process_pagetable_wf(process_map, post), pagetable_invariant_fields_unchanged(pre, post, pt_lower)]
+            process_pagetable_wf(process_map, pre) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> process_pagetable_wf(process_map, post),
+{ reveal(process_pagetable_wf); }
 
 pub proof fn lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray|
-            #![trigger page_pagetable_wf(pre, pt_lower, page_array), page_pagetable_wf(post, pt_lower, page_array)]
-            page_pagetable_wf(pre, pt_lower, page_array) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> page_pagetable_wf(post, pt_lower, page_array),
+            #![trigger page_mappings_pagetable_wf(pre, pt_lower, page_array), page_mappings_pagetable_wf(post, pt_lower, page_array)]
+            page_mappings_pagetable_wf(pre, pt_lower, page_array) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> page_mappings_pagetable_wf(post, pt_lower, page_array),
 { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); }
 
 pub proof fn container_process_page_pagetable_wf_preserved_for_pagetable_fields()
     ensures
         forall|container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray|
             #![trigger container_process_page_pagetable_wf(container_map, process_map, pre, page_array), container_process_page_pagetable_wf(container_map, process_map, post, page_array), pagetable_invariant_fields_unchanged(pre, post, pt_lower)]
-            container_process_page_pagetable_wf(container_map, process_map, pre, page_array) && process_pagetable_match(process_map, pre) && page_pagetable_wf(pre, pt_lower, page_array)
-                && container_page_owner_wf(container_map, page_array) && pagetable_invariant_fields_unchanged(pre, post, pt_lower)
+            container_process_page_pagetable_wf(container_map, process_map, pre, page_array) && process_pagetable_wf(process_map, pre) && page_mappings_pagetable_wf(pre, pt_lower, page_array)
+                && container_owned_pages_wf(container_map, page_array) && pagetable_invariant_fields_unchanged(pre, post, pt_lower)
                 ==> container_process_page_pagetable_wf(container_map, process_map, post, page_array),
 { reveal(container_process_page_pagetable_wf); }
 
@@ -65,12 +65,12 @@ pub proof fn lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_for
             #![trigger cpu_dirty_map_wf(container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre, needflush), cpu_dirty_map_wf(container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post, needflush), pagetable_invariant_fields_unchanged(pre, post, pt_lower)]
             cpu_dirty_map_wf(container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre, needflush) && pagetable_invariant_fields_unchanged(pre, post, pt_lower)
                 ==> cpu_dirty_map_wf(container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post, needflush),
-{ reveal(cpu_dirty_map_contains_pagetable_pcid_match); }
+{ reveal(cpu_dirty_map_pagetable_pcid_match); }
 
 pub proof fn lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|cpu_tlb: CpuTLB, needflush: PcidNeedFlushArray, cpu_array: CpuLockedArray, pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap|
-            #![trigger tlb_wf_spec(cpu_tlb, pre, pt_lower, cpu_array, needflush), tlb_wf_spec(cpu_tlb, post, pt_lower, cpu_array, needflush)]
-            tlb_wf_spec(cpu_tlb, pre, pt_lower, cpu_array, needflush) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> tlb_wf_spec(cpu_tlb, post, pt_lower, cpu_array, needflush),
-{ reveal(tlb_wf_spec); }
+            #![trigger cpu_tlb_wf(cpu_tlb, pre, pt_lower, cpu_array, needflush), cpu_tlb_wf(cpu_tlb, post, pt_lower, cpu_array, needflush)]
+            cpu_tlb_wf(cpu_tlb, pre, pt_lower, cpu_array, needflush) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> cpu_tlb_wf(cpu_tlb, post, pt_lower, cpu_array, needflush),
+{ reveal(cpu_tlb_wf); }
 }

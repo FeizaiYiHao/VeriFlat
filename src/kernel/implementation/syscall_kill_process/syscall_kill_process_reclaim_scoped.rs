@@ -114,7 +114,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped_to_cache(
     assert(krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr && index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.spec_index(pg_idx).view().is_init()) by { page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx); page_ptr_roundtrip(); };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allc_ptr).wf() && krnl.allc_4k_mp.spec_index(allc_ptr).quota.is_init() && !krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by {
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
+        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
     };
     let (node_addr, node_perm) = page_array_remove_last_4k_mapping_to_cache(&mut krnl.pg_arr, pg_idx, pagetable, va, allc_ptr, cpu_id, Tracked(&*lctx), Tracked(page_perm));
     krnl.allc_4k_mp.push_cache_page_typed(allc_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
@@ -237,7 +237,7 @@ pub(crate) fn kill_reclaim_held_4k_page_scoped(
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         page_ptr_valid_imply_page_index_valid();
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
+        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
     }
     let ghost entry_lctx = *lctx;
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
@@ -357,7 +357,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allc_ptr).wf() && krnl.allc_4k_mp.spec_index(allc_ptr).quota.is_init() && !krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by {
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
+        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr);
     };
     let (node_addr, node_perm) = page_array_remove_last_4k_iommu_mapping_to_cache(&mut krnl.pg_arr, pg_idx, iommu_table, iova, allc_ptr, cpu_id, Tracked(&*lctx), Tracked(page_perm));
     krnl.allc_4k_mp.push_cache_page_typed(allc_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
@@ -468,7 +468,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
     let iova = index2va(indices);
     proof {
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
-        process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+        process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
     }
     let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm));
     assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };

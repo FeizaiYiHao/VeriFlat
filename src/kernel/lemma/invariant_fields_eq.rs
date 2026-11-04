@@ -45,22 +45,22 @@ pub open spec fn allocator_invariant_fields_except_quota_unchanged<const SIZE: u
 pub proof fn allocator_pages_wf_preserved_for_allocator_fields_except_quota()
     ensures
         forall|page_array: PageLockedArray, pre: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, post: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>|
-            #![trigger allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map), allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map)]
-            allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map) && allocator_invariant_fields_except_quota_unchanged(pre, post) ==> allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map),
+            #![trigger allocator_pages_wf(pre, allocator_2m_map, allocator_1g_map, page_array), allocator_pages_wf(post, allocator_2m_map, allocator_1g_map, page_array)]
+            allocator_pages_wf(pre, allocator_2m_map, allocator_1g_map, page_array) && allocator_invariant_fields_except_quota_unchanged(pre, post) ==> allocator_pages_wf(post, allocator_2m_map, allocator_1g_map, page_array),
 { reveal(allocator_4k_pages_wf); }
 
 pub proof fn lemma_process_pages_wf_preserved_for_process_domain_eq_forall()
     ensures
         forall|page_array: PageLockedArray, pre: ProcessLockedMap, post: ProcessLockedMap|
-            #![trigger process_pages_wf(page_array, pre), process_pages_wf(page_array, post)]
-            process_pages_wf(page_array, pre) && post.dom() == pre.dom() ==> process_pages_wf(page_array, post),
+            #![trigger process_pages_wf(pre, page_array), process_pages_wf(post, page_array)]
+            process_pages_wf(pre, page_array) && post.dom() == pre.dom() ==> process_pages_wf(post, page_array),
 { reveal(process_pages_wf); }
 
 pub proof fn container_process_page_pagetable_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, pagetable_map: PageTableLockedMap, page_array: PageLockedArray|
             #![trigger container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array), container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array)]
-            container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array) && process_pagetable_match(pre, pagetable_map) && process_invariant_fields_except_quota_unchanged(pre, post)
+            container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array) && process_pagetable_wf(pre, pagetable_map) && process_invariant_fields_except_quota_unchanged(pre, post)
                 ==> container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array),
 { reveal(container_process_page_pagetable_wf); }
 
@@ -83,8 +83,8 @@ pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_cont
 pub proof fn lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, pagetable_map: PageTableLockedMap|
-            #![trigger process_pagetable_match(pre, pagetable_map), process_pagetable_match(post, pagetable_map)]
-            process_pagetable_match(pre, pagetable_map) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
+            #![trigger process_pagetable_wf(pre, pagetable_map), process_pagetable_wf(post, pagetable_map)]
+            process_pagetable_wf(pre, pagetable_map) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
@@ -92,22 +92,22 @@ pub proof fn lemma_process_pagetable_match_preserved_for_process_pagetable_field
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
                     &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
-                }) ==> process_pagetable_match(post, pagetable_map),
-{ reveal(process_pagetable_match); }
+                }) ==> process_pagetable_wf(post, pagetable_map),
+{ reveal(process_pagetable_wf); }
 
 pub proof fn lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap|
-            #![trigger process_iommu_table_match(pre, iommu_table_map), process_iommu_table_match(post, iommu_table_map)]
-            process_iommu_table_match(pre, iommu_table_map) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
+            #![trigger process_iommu_table_wf(pre, iommu_table_map), process_iommu_table_wf(post, iommu_table_map)]
+            process_iommu_table_wf(pre, iommu_table_map) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
                     &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().iommu_table == pre.spec_index(p_ptr).view().iommu_table
-                }) ==> process_iommu_table_match(post, iommu_table_map),
-{ reveal(process_iommu_table_match); }
+                }) ==> process_iommu_table_wf(post, iommu_table_map),
+{ reveal(process_iommu_table_wf); }
 
 pub proof fn iommu_root_table_process_wf_preserved_for_process_fields_except_quota()
     ensures
@@ -126,10 +126,10 @@ pub proof fn process_pci_function_ownership_wf_preserved_for_process_fields_exce
 pub proof fn iommu_tlb_wf_spec_preserved_for_process_fields_except_quota()
     ensures
         forall|iommu_tlb: IommuTLB, root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap|
-            #![trigger iommu_tlb_wf_spec(iommu_tlb, root_table, pre, iommu_table_map), iommu_tlb_wf_spec(iommu_tlb, root_table, post, iommu_table_map)]
-            iommu_tlb_wf_spec(iommu_tlb, root_table, pre, iommu_table_map) && iommu_root_table_process_wf(root_table, pre, iommu_table_map) && process_invariant_fields_except_quota_unchanged(pre, post)
-                ==> iommu_tlb_wf_spec(iommu_tlb, root_table, post, iommu_table_map),
-{ reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); }
+            #![trigger iommu_tlb_wf(iommu_tlb, root_table, pre, iommu_table_map), iommu_tlb_wf(iommu_tlb, root_table, post, iommu_table_map)]
+            iommu_tlb_wf(iommu_tlb, root_table, pre, iommu_table_map) && iommu_root_table_process_wf(root_table, pre, iommu_table_map) && process_invariant_fields_except_quota_unchanged(pre, post)
+                ==> iommu_tlb_wf(iommu_tlb, root_table, post, iommu_table_map),
+{ reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); }
 
 pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
     ensures
@@ -191,7 +191,7 @@ pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_
         forall|pre: ThreadLockedMap, post: ThreadLockedMap, page_array: PageLockedArray|
             #![trigger thread_staged_pages_wf(pre, page_array), thread_staged_pages_wf(post, page_array)]
             thread_staged_pages_wf(pre, page_array) && thread_invariant_fields_unchanged(pre, post) ==> thread_staged_pages_wf(post, page_array),
-{ reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); }
+{ reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf); }
 
 pub proof fn per_container_process_tree_wf_preserved_for_process_fields_except_quota()
     ensures
@@ -242,7 +242,7 @@ pub proof fn cpu_dirty_map_wf_preserved_for_process_fields_except_quota()
 
 pub proof fn process_pagetable_match_preserved_for_pagetable_fields_eq(process_map: ProcessLockedMap, old_pagetable_map: PageTableLockedMap, new_pagetable_map: PageTableLockedMap)
     requires
-        process_pagetable_match(process_map, old_pagetable_map),
+        process_pagetable_wf(process_map, old_pagetable_map),
         new_pagetable_map.dom() == old_pagetable_map.dom(),
         forall|pt_ptr: RwLockPageTableRoot|
             #![trigger new_pagetable_map.spec_index(pt_ptr).view()]
@@ -252,12 +252,12 @@ pub proof fn process_pagetable_match_preserved_for_pagetable_fields_eq(process_m
                 &&& new_pagetable_map.spec_index(pt_ptr).view().pcid_value() == old_pagetable_map.spec_index(pt_ptr).view().pcid_value()
             },
     ensures
-        process_pagetable_match(process_map, new_pagetable_map),
-{ reveal(process_pagetable_match); }
+        process_pagetable_wf(process_map, new_pagetable_map),
+{ reveal(process_pagetable_wf); }
 
 pub proof fn process_pagetable_match_preserved_for_process_fields_eq(old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap)
     requires
-        process_pagetable_match(old_process_map, pagetable_map),
+        process_pagetable_wf(old_process_map, pagetable_map),
         new_process_map.dom() == old_process_map.dom(),
         forall|proc_ptr: RwLockProcessPtr|
             #![trigger new_process_map.spec_index(proc_ptr).view()]
@@ -269,6 +269,6 @@ pub proof fn process_pagetable_match_preserved_for_process_fields_eq(old_process
                 &&& new_process_map.spec_index(proc_ptr).view_rodata().view().cr3 == old_process_map.spec_index(proc_ptr).view_rodata().view().cr3
             },
     ensures
-        process_pagetable_match(new_process_map, pagetable_map),
-{ reveal(process_pagetable_match); }
+        process_pagetable_wf(new_process_map, pagetable_map),
+{ reveal(process_pagetable_wf); }
 }

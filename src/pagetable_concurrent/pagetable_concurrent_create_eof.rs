@@ -117,7 +117,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -127,7 +127,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.va_addr_valid(),
     {
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
@@ -343,7 +343,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
-        assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); reveal(WholePageTable::wf_l3); };
+        assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); };
         assert(post.higher.user_only()) by { reveal(PageTableHigher::user_only); };
         assert(post.higher.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
@@ -366,7 +366,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -376,7 +376,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.va_addr_valid(),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
@@ -402,7 +402,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_4k(),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); };
     }
 
     /// EOF closure of `create_entry_l3`: `wf_mapping_2m`.
@@ -422,7 +422,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_2m(),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); };
     }
 
     /// EOF closure of `create_entry_l3`: `tables_reachable_wf`.
@@ -442,7 +442,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(PageTableHigher::disjoint_l4); };
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::disjoint_l4); };
     }
 
     /// EOF closure of `create_entry_l3`: the window-map half of `wf_window_locks`. Proved apart from the L2-slot half:
@@ -476,7 +476,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             },
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::tables_reachable_wf);
+        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::tables_reachable_wf);
         spec_index2va_injective();
         broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     }
@@ -635,7 +635,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l2_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -645,7 +645,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.va_addr_valid(),
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); reveal(WholePageTable::wf_l2); };
@@ -672,7 +672,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_4k(),
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); };
     }
 
     /// EOF closure of `create_entry_l2`: `wf_mapping_2m`.
@@ -693,7 +693,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_2m(),
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); };
     }
 
     /// EOF closure of `create_entry_l2`: `tables_reachable_wf`.
@@ -715,7 +715,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `create_entry_l2`: `wf_window_locks`.
@@ -820,7 +820,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::create_entry_l3_eof_held_l3(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 
     /// EOF closure of `create_entry_l2`: the new L2 entry holds the empty L1 page; the rest of the held chain is unchanged.

@@ -9,9 +9,9 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
 )
     requires
         container_process_page_pagetable_wf(container_map, process_map, pre_pagetable_map, pre_page_array),
-        container_page_owner_wf(container_map, pre_page_array),
-        container_page_owner_wf(container_map, post_page_array),
-        process_pagetable_match(process_map, pre_pagetable_map),
+        container_owned_pages_wf(container_map, pre_page_array),
+        container_owned_pages_wf(container_map, post_page_array),
+        process_pagetable_wf(process_map, pre_pagetable_map),
         pre_pagetable_map.dom().contains(pagetable_ptr),
         page_ptr_valid(pg_ptr),
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
@@ -32,7 +32,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
         },
     ensures
         container_process_page_pagetable_wf(container_map, process_map, post_pagetable_map, post_page_array),
-{ reveal(container_page_owner_wf); reveal(container_process_page_pagetable_wf); }
+{ reveal(container_owned_pages_wf); reveal(container_process_page_pagetable_wf); }
 
 pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
@@ -43,7 +43,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         pagetable_lower_wf(post_pagetable_map, post_pt_lower),
         page_array_wf(pre_page_array),
         page_array_wf(post_page_array),
-        page_pagetable_wf(pre_pagetable_map, pre_pt_lower, pre_page_array),
+        page_mappings_pagetable_wf(pre_pagetable_map, pre_pt_lower, pre_page_array),
         pre_pagetable_map.dom().contains(pagetable_ptr),
         page_ptr_valid(pg_ptr),
         va_4k_valid(va),
@@ -78,7 +78,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
     ensures
-        page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
+        page_mappings_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
 {
     broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip};
     page_ptr_valid_imply_page_index_valid();
@@ -93,7 +93,7 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
     old_page_array: PageLockedArray, new_page_array: PageLockedArray, changed_page: PageIndex,
 )
     requires
-        page_pagetable_wf(old_pagetable_map, old_pt_lower, old_page_array),
+        page_mappings_pagetable_wf(old_pagetable_map, old_pt_lower, old_page_array),
         pagetable_lower_wf(old_pagetable_map, old_pt_lower),
         new_pagetable_map == old_pagetable_map,
         new_pt_lower == old_pt_lower,
@@ -102,7 +102,7 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
         !old_page_array.spec_index(changed_page).view().view().is_mapped(),
         !new_page_array.spec_index(changed_page).view().view().is_mapped(),
     ensures
-        page_pagetable_wf(new_pagetable_map, new_pt_lower, new_page_array),
+        page_mappings_pagetable_wf(new_pagetable_map, new_pt_lower, new_page_array),
 { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); }
 
 pub proof fn container_process_page_pagetable_wf_preserved_for_page_mapping_fields_eq(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray)

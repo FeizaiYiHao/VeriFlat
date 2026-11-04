@@ -21,7 +21,7 @@ pub(crate) proof fn refund_unmap_4k_quota_owner_at_depth_implies_parent_is_previ
             &&& krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()
         }),
 {
-    reveal(container_thread_wf); reveal(container_root_wf); reveal(container_children_depth_wf); reveal(container_uppertree_seq_wf);
+    reveal(container_thread_wf); reveal(container_root_wf); reveal(container_uppertree_seq_parent_wf); reveal(container_uppertree_seq_wf);
     reveal(container_perms_wf); reveal(container_tree_fields_wf);
 }
 }

@@ -290,7 +290,7 @@ fn build_new_child_page_structure(
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf_mapping_2m_at(cur.0, cur.1, cur.2);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf_mapping_4k_at(cur.0, cur.1, cur.2, cur.3);
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-        if c.window_exists(cur.0, cur.1) { c.higher.wf_l4_at(cur.0); c.wf_l3_at(c.spec_resolve_mapping_l4(cur.0)->0.addr, cur.1); }
+        if c.window_exists(cur.0, cur.1) { c.higher.wf_l4_at(cur.0); c.l3_links_l2_wf_at(c.spec_resolve_mapping_l4(cur.0)->0.addr, cur.1); }
     }
     let ghost before = steps.view();
     let Tracked(minted) = mmap_4k_build_one_structure(

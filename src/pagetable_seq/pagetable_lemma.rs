@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
-    pub broadcast proof fn resolve_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
+    pub broadcast proof fn disjoint_l4_l3_implies_resolve_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
         requires
             self.wf_l4(),
             self.disjoint_l4(),
@@ -21,7 +21,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         reveal(PageTable::disjoint_l3);
     }
 
-    pub broadcast proof fn resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
+    pub broadcast proof fn disjoint_l2_implies_resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
         requires
             self.wf_l4(),
             self.wf_l3(),
@@ -46,7 +46,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         reveal(PageTable::disjoint_l2);
     }
 
-    pub broadcast proof fn l2_entry_addr_unique_at(&self, pi: PageMapPtr, l2i: L2Index, pj: PageMapPtr, l2j: L2Index)
+    pub broadcast proof fn disjoint_l2_implies_l2_entry_addr_unique_at(&self, pi: PageMapPtr, l2i: L2Index, pj: PageMapPtr, l2j: L2Index)
         requires
             self.disjoint_l2(),
             self.l2_tables.view().dom().contains(pi),
@@ -62,7 +62,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         reveal(PageTable::disjoint_l2);
     }
 
-    pub broadcast proof fn resolve_l2_target_exists(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    pub broadcast proof fn wf_l2_implies_resolve_l2_target_in_l1_rev_map_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
             self.wf_l4(),
             self.wf_l3(),

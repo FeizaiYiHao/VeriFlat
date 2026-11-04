@@ -38,14 +38,14 @@ pub(crate) proof fn kill_container_retire_eof_container_tree(
     assert(target.view_ghost().uppertree_seq.view().len() > 0);
     container_root_wf_at(pre.rt_ctn, pre.ctn_mp, pre.rt_ctn);
     assert(ctn_ptr != pre.rt_ctn && pre.ctn_mp.dom().contains(pre.rt_ctn)) by { reveal(container_root_wf); };
-    containers_linkedlist_wf_at(pre.rt_ctn, pre.ctn_mp, ctn_ptr); container_perms_wf_at(pre.ctn_mp, parent_ptr);
+    container_linkedlist_wf_at(pre.rt_ctn, pre.ctn_mp, ctn_ptr); container_perms_wf_at(pre.ctn_mp, parent_ptr);
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
     assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
-    assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
-    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); };
+    assert(container_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_linkedlist_wf); reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
+    assert(container_uppertree_seq_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_parent_wf); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); };
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_wf); broadcast use kill_container_retire_eof_subtree_empty; };
-    assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_exclusive); };
+    assert(container_subtree_uppertree_agree_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_uppertree_agree_wf); };
 }
 
 /// Retiring the container together with its scheduler, cpu set, offline request table, and PCID allocator keeps the
@@ -71,7 +71,7 @@ pub(crate) proof fn kill_container_retire_eof_container_objects(
 {
     reveal(kill_container_retire_eof_transition_framing);
     let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
-    container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
+    container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
     container_cpu_offline_flags_wf_container_at(pre.ctn_mp, pre.cpu_offline_mp, ctn_ptr); container_pcid_allocator_wf_container_at(pre.ctn_mp, pre.pcid_allc_mp, ctn_ptr);
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
@@ -102,7 +102,7 @@ pub(crate) proof fn kill_container_retire_eof_container_threads(
 {
     reveal(kill_container_retire_eof_transition_framing);
     let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
-    container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, ctn_ptr);
+    container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, ctn_ptr);
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); broadcast use kill_container_retire_eof_no_endpoint; };
     assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { reveal(container_thread_wf); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by {
@@ -151,13 +151,13 @@ pub(crate) proof fn kill_container_retire_eof_tlb(
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
-        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
-        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_container_retire_eof_transition_framing);
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
-    assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(cpu_dirty_map_process_in_cpu_container(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by {
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
     };
 }
 } // verus!

@@ -18,6 +18,7 @@ pub struct PageAllocator<const SIZE: usize> {
 }
 
 impl<const SIZE: usize> LockInvTrait for PageAllocator<SIZE> {
+    /// The allocator is well formed and its quota lock is well formed.
     open spec fn inv(&self) -> bool {
         &&& self.wf()
         &&& self.quota.inv()
@@ -126,6 +127,8 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
         ret
     }
 
+    /// The cache and pool locks are well formed with the allocator's container as their minor, and the free-page total
+    /// counts every pool and cache page.
     pub open spec fn wf(&self) -> bool {
         &&& self.cpu_caches.inv()
         &&& self.global_pool.inv()
@@ -135,23 +138,24 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
         &&& self.total_free_pages_wf()
     }
 
+    /// Every cpu's cache lock is well formed.
     pub open spec fn cpu_caches_wf(&self) -> bool {
-        forall|cpu_i: CpuId| #![trigger self.cpu_caches.spec_index(cpu_i)] index_valid(NUM_CPUS, cpu_i) ==> self.cpu_caches.spec_index(cpu_i).inv()
+        forall|cpu_id: CpuId|
+            #![trigger self.cpu_caches.spec_index(cpu_id)]
+            index_valid(NUM_CPUS, cpu_id) ==> self.cpu_caches.spec_index(cpu_id).inv()
     }
 
-    /// The quota's intrinsic minor lock id is the owning container pointer.
-    /// `AllocatorQuota` sits in a bare `LockCell` (not in a wrapper that
-    /// provides a minor), so it carries its own `Ghost<usize>` minor field;
-    /// this invariant pins that minor to `owning_container`.
+    /// The quota lock's minor is the owning container.
     pub open spec fn quota_minor_wf(&self) -> bool { self.quota.view().lock_minor() == seq![self.owning_container] }
 
-    /// The global pool's intrinsic minor lock id is the owning container
-    /// pointer. Same reasoning as `quota_minor_wf` — `LinkedList` carries
-    /// its own minor.
+    /// The global pool lock's minor is the owning container.
     pub open spec fn global_pool_minor_wf(&self) -> bool { self.global_pool.view().lock_minor() == seq![self.owning_container] }
 
+    /// Free pages = global pool + every cpu cache.
     pub open spec fn total_free_pages_wf(&self) -> bool {
-        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()
+        let cache_pages = self.cpu_caches.view().fold_left(0int,
+            |sum: int, cache_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cache_lock.view().linked_list.len() });
+        self.global_pool.view().len() + cache_pages == self.total_free_pages.view()
     }
 }
 

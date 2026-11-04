@@ -11,8 +11,8 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     pre: &KernelK, post: &KernelK, iommu: bool, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
         *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
@@ -69,8 +69,8 @@ pub proof fn kernel_zombie_root_process_retired_implies_u_step(
     pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().zombie,
@@ -129,9 +129,9 @@ pub proof fn kernel_zombie_root_process_retired_implies_u_step(
         if post.prc_mp.dom().contains(p) {
             kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p);
             if !pre.prc_mp.spec_index(p).view().zombie {
-                process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
+                process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
                 if pre.prc_mp.spec_index(p).view().iommu_table is Some {
-                    process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
+                    process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
                 }
             }
         }

@@ -53,7 +53,7 @@ pub(super) proof fn ipc_pages_finish_step_pre_from_k(
             &&& pre.container_map.dom().contains(pre.thread_map[peer_ptr].owning_container)
         }),
 {
-    container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_ptr);
+    container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_ptr);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, peer_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, peer_ptr, Some(channel_ptr)); kernel_thread_projection_at(krnl, thrd_ptr);
 }

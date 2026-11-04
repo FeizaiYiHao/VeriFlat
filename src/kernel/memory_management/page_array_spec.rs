@@ -1,28 +1,32 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    #[verifier::opaque]
-    pub open spec fn page_array_wf(page_array: PageLockedArray) -> bool {
-        &&& page_array.inv()
-        &&& forall|p_i:PageIndex|
-            #![trigger index_valid(NUM_PAGES, p_i)]
-            #![trigger page_array.spec_index(p_i).view().inv()]
-            index_valid(NUM_PAGES, p_i) ==> page_array.spec_index(p_i).view().inv() && page_array.spec_index(p_i).view().view().addr == page_index2page_ptr(p_i)
-    }
+/// Every page slot satisfies inv() and holds the page at its own index's address.
+#[verifier::opaque]
+pub open spec fn page_array_wf(pg_arr: PageLockedArray) -> bool {
+    &&& pg_arr.inv()
+    &&& forall|p_i: PageIndex|
+        #![trigger index_valid(NUM_PAGES, p_i)]
+        #![trigger pg_arr.spec_index(p_i).view().inv()]
+        index_valid(NUM_PAGES, p_i)
+            ==>
+            pg_arr.spec_index(p_i).view().inv()
+            && pg_arr.spec_index(p_i).view().view().addr == page_index2page_ptr(p_i)
+}
 
-    pub proof fn page_array_wf_at(page_array: PageLockedArray, pg_idx: PageIndex)
-        requires
-            page_array_wf(page_array),
-            index_valid(NUM_PAGES, pg_idx),
-        ensures
-            page_array.spec_index(pg_idx).view().inv(),
-            page_array.spec_index(pg_idx).view().is_init(),
-            page_array.spec_index(pg_idx).view().view().inv(),
-            page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx),
-    { reveal(page_array_wf); }
+pub proof fn page_array_wf_at(pg_arr: PageLockedArray, pg_idx: PageIndex)
+    requires
+        page_array_wf(pg_arr),
+        index_valid(NUM_PAGES, pg_idx),
+    ensures
+        pg_arr.spec_index(pg_idx).view().inv(),
+        pg_arr.spec_index(pg_idx).view().is_init(),
+        pg_arr.spec_index(pg_idx).view().view().inv(),
+        pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx),
+{ reveal(page_array_wf); }
 
-    pub proof fn page_array_wf_map(page_array: PageLockedArray)
-        requires page_array_wf(page_array)
-        ensures page_array.inv()
-    { reveal(page_array_wf); }
+pub proof fn page_array_wf_map(pg_arr: PageLockedArray)
+    requires page_array_wf(pg_arr)
+    ensures pg_arr.inv()
+{ reveal(page_array_wf); }
 }

@@ -363,8 +363,8 @@ pub(super) fn publish_staged_container_root_mutation(
             && bootstrap_pages.contains(cpu_set_page) && bootstrap_pages.contains(process_page) && bootstrap_pages.contains(pagetable_page) && bootstrap_pages.contains(l4_page)) by {
             bootstrap_seq.to_set_ensures(); reveal(new_container_bootstrap_4k_pages); reveal(Seq::contains);
         };
-        assert(krnl.dflt_pt.view().wf()) by { krnl.default_pagetable_view_inv(); };
-        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { krnl.dflt_pt.view().kernel_l4_end_valid(); };
+        assert(krnl.dflt_pt.view().wf()) by { krnl.default_pagetable_wf_implies_view_inv(); };
+        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { krnl.dflt_pt.view().kernel_entries_wf_l4_end_valid_at(); };
     }
     let child_depth = krnl.ctn_mp.borrow_rodata(parent_ctn_ptr).borrow().depth + 1;
     let ghost parent_uppers = krnl.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view();
@@ -373,7 +373,7 @@ pub(super) fn publish_staged_container_root_mutation(
     proof {
         assert(!parent_uppers.contains(parent_ctn_ptr)) by { container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, parent_ctn_ptr); };
         assert(child_uppers.no_duplicates()) by { seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>(); };
-        assert(child_uppers.to_set().subset_of(krnl.ctn_mp.dom())) by { parent_uppers.to_set_ensures(); child_uppers.to_set_ensures(); seq_push_implies_contains::<RwLockContainerPtr>(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, parent_ctn_ptr); };
+        assert(child_uppers.to_set().subset_of(krnl.ctn_mp.dom())) by { parent_uppers.to_set_ensures(); child_uppers.to_set_ensures(); seq_push_implies_contains::<RwLockContainerPtr>(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, parent_ctn_ptr); };
         assert(!child_uppers.to_set().contains(child_ctn_ptr)) by { child_uppers.to_set_ensures(); };
         owned_4k_page_not_in_2m_region(krnl, thread_page, container_head); owned_4k_page_not_in_2m_region(krnl, thread_page, pcid_allocator_head);
         owned_4k_page_not_in_2m_tail(krnl, allocator_4k_page, container_head); owned_4k_page_not_in_2m_tail(krnl, allocator_2m_page, container_head);
@@ -449,7 +449,7 @@ pub(super) fn publish_staged_container_root_mutation(
             container_cpu_offline_flags_wf_flags_at(old(krnl).ctn_mp, old(krnl).cpu_offline_mp, cpu_offline_flags_ptr(child_ctn_ptr));
             let owner = old(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ctn_ptr)).owning_container.view();
             assert(old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_ctn_ptr)) ==> old(krnl).ctn_mp.dom().contains(owner) && page_ptr_2m_valid(owner) && cpu_offline_flags_ptr(owner) == cpu_offline_flags_ptr(child_ctn_ptr)) by {
-                container_pages_backward_at(old(krnl).pg_arr, old(krnl).ctn_mp, owner);
+                container_pages_wf_container_at(old(krnl).ctn_mp, old(krnl).pg_arr, owner);
             };
         };
     }
@@ -857,7 +857,7 @@ pub fn publish_staged_container_root(
             reveal(publish_staged_container_root_eof_preconditions); reveal(new_container_moved_pages);
             page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
             owned_4k_page_not_in_2m_region(krnl, thread_page, page_ptr2page_index(container_page)); owned_4k_page_not_in_2m_region(krnl, thread_page, page_ptr2page_index(pcid_allocator_page));
-            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(thread_page));
+            container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(thread_page));
         };
     }
     let ret = publish_staged_container_root_mutation(

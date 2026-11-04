@@ -72,7 +72,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.l2_perms.dom().contains(target_l2_p),
             Self::hide_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -83,7 +83,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_window_locks(),
     {
         reveal(WholePageTable::hide_l1_page_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
@@ -124,7 +124,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
                 post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
     {
-        broadcast use PageTableHigher::resolve_l3_addr_unique_at;
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at;
         reveal(WholePageTable::hide_l1_page_eof_transition_framing);
     }
 
@@ -244,7 +244,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l1(),
             post.disjoint_l2(),
             post.user_only(),
@@ -254,7 +254,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
     {
         reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
         assert(post.user_only()) by { reveal(WholePageTable::user_only); };
@@ -279,7 +279,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_l2(),
     {
         reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.wf_l2()) by { broadcast use WholePageTable::l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l2()) by { broadcast use WholePageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: the 4K and 2M abstract-mapping leaves. No walk reads the hidden entry.
@@ -299,8 +299,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_2m(),
     {
         reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: `tables_reachable_wf`. Every L1 page left in the reverse index is owned by
@@ -320,7 +320,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: the entry no longer owns an L1 page.
@@ -443,7 +443,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l1(),
             post.disjoint_l2(),
             post.user_only(),
@@ -453,7 +453,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
     {
         reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
         assert(post.user_only()) by { reveal(WholePageTable::user_only); };
@@ -477,7 +477,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_l2(),
     {
         reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
-        assert(post.wf_l2()) by { broadcast use WholePageTable::l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l2()) by { broadcast use WholePageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
     }
 
     /// EOF closure of `unlink_unresolvable_l1_page`: the 4K and 2M abstract-mapping leaves; the target entry resolved nothing before and after.

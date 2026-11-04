@@ -132,7 +132,7 @@ pub(super) fn mmap_4k_fill_enter(
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
     proof {
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
         process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
     }
     let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
@@ -150,7 +150,7 @@ pub(super) fn mmap_4k_fill_enter(
                 locked_k.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), entered_k.pt_mp.spec_index(pagetable_ptr).view().proc_ptr);
             mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(locked_k), cpu_id, *va_range, Mmap4kPhase::Fill);
         };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
     }
     let ghost entered = steps.view();
@@ -170,11 +170,11 @@ pub(super) fn mmap_4k_fill_enter(
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kernel_pagetable_downgraded_and_progress_changed_implies_u_step(&filled_k, &downgraded_k, &filled_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
-        process_cpu_wf_at(filled_k.prc_mp, filled_k.cpu_arr, cpu_id); process_pagetable_match_process_at(filled_k.prc_mp, filled_k.pt_mp, prc_ptr);
+        process_cpu_wf_at(filled_k.prc_mp, filled_k.cpu_arr, cpu_id); process_pagetable_wf_process_at(filled_k.prc_mp, filled_k.pt_mp, prc_ptr);
         mmap_4k_downgrade_step_from_u(&filled_k, kernel_k_to_kernel_u(downgraded_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr,
             whole_pagetable(downgraded_k.pt_mp, downgraded_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
         mmap_4k_range_steps_from_downgrade(&*steps, filled_steps, entered.len() as int, cpu_id);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         broadcast use spec_va_2m_valid_index_roundtrip;
     }

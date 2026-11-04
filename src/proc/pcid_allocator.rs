@@ -10,6 +10,7 @@ pub struct PcidAllocator {
     pub owning_container: Ghost<RwLockContainerPtr>,
     pub container_depth: Ghost<usize>,
     pub ref_counters: Array<usize, PCID_MAX>,
+    /// The processes holding each PCID.
     pub id_to_proc: Ghost<Seq<Set<RwLockProcessPtr>>>,
 }
 
@@ -40,26 +41,31 @@ impl PcidAllocator {
         Self { owning_container: Ghost(owning_container), container_depth: Ghost(container_depth), ref_counters: Array::new_with_init_value(0), id_to_proc: Ghost(Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty())) }
     }
 
+    /// Every PCID's counter is the number of processes holding it, at most one.
     pub open spec fn wf(&self) -> bool {
         &&& self.ref_counters.wf()
         &&& self.id_to_proc.view().len() == PCID_MAX
+        // PCID 0 is the kernel's and is never handed out.
         &&& self.ref_counters.spec_index(KERNEL_DEFAULT_PCID) == 0
         &&& self.id_to_proc.view().spec_index(KERNEL_DEFAULT_PCID as int).is_empty()
-        &&& forall|id: usize|
-            #![trigger self.ref_counters.spec_index(id)]
-            #![trigger self.id_to_proc.view().spec_index(id as int)]
-            usize_in_range::<PCID_MAX>(id) ==> {
-                &&& self.ref_counters.spec_index(id) == self.id_to_proc.view().spec_index(id as int).len()
-                &&& self.ref_counters.spec_index(id) <= 1
+        &&& forall|pcid: Pcid|
+            #![trigger self.ref_counters.spec_index(pcid)]
+            #![trigger self.id_to_proc.view().spec_index(pcid as int)]
+            pcid_valid(pcid) ==> {
+                &&& self.ref_counters.spec_index(pcid) == self.id_to_proc.view().spec_index(pcid as int).len()
+                // A PCID has at most one process.
+                &&& self.ref_counters.spec_index(pcid) <= 1
             }
     }
 
     pub open spec fn process_is_unallocated(&self, prc_ptr: RwLockProcessPtr) -> bool {
-        forall|id: usize| #![trigger self.id_to_proc.view().spec_index(id as int).contains(prc_ptr)] usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(prc_ptr) == false
+        forall|pcid: Pcid|
+            #![trigger self.id_to_proc.view().spec_index(pcid as int).contains(prc_ptr)]
+            pcid_valid(pcid) ==> !self.id_to_proc.view().spec_index(pcid as int).contains(prc_ptr)
     }
 
     pub open spec fn pcid_is_free(&self, id: Pcid) -> bool {
-        &&& usize_in_range::<PCID_MAX>(id)
+        &&& pcid_valid(id)
         &&& id != KERNEL_DEFAULT_PCID
         &&& self.ref_counters.spec_index(id) == 0
     }
@@ -74,7 +80,7 @@ impl PcidAllocator {
         ensures
             ret is Some ==> self.pcid_is_free(ret->Some_0),
             ret is Some ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] KERNEL_DEFAULT_PCID < id < ret->Some_0 ==> !self.pcid_is_free(id),
-            ret is None ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] usize_in_range::<PCID_MAX>(id) ==> !self.pcid_is_free(id),
+            ret is None ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] pcid_valid(id) ==> !self.pcid_is_free(id),
     {
         let mut id = KERNEL_DEFAULT_PCID + 1;
         while id < PCID_MAX
@@ -102,7 +108,7 @@ impl PcidAllocator {
     pub fn alloc(&mut self, id: usize, prc_ptr: RwLockProcessPtr)
         requires
             old(self).wf(),
-            usize_in_range::<PCID_MAX>(id),
+            pcid_valid(id),
             id != KERNEL_DEFAULT_PCID,
             old(self).process_is_unallocated(prc_ptr),
             old(self).ref_counters.spec_index(id) == 0,
@@ -126,7 +132,7 @@ impl PcidAllocator {
     pub fn release(&mut self, id: usize, prc_ptr: RwLockProcessPtr)
         requires
             old(self).wf(),
-            usize_in_range::<PCID_MAX>(id),
+            pcid_valid(id),
             id != KERNEL_DEFAULT_PCID,
             old(self).id_to_proc.view().spec_index(id as int).contains(prc_ptr),
         ensures
@@ -139,6 +145,7 @@ impl PcidAllocator {
 }
 
 impl LockInvTrait for PcidAllocator {
+    /// Same as `wf`.
     open spec fn inv(&self) -> bool { self.wf() }
 }
 

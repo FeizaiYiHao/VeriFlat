@@ -114,7 +114,7 @@ pub(super) fn enter_new_process_commit(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thrd_ptr);
         assert(new_process_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), entry_u, cpu_id,
             *source_range, regs, endpoint_index_opt, with_iommu)) by {
-            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, endpoint,
                 None, None);
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thrd_ptr);

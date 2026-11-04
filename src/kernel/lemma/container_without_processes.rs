@@ -15,7 +15,7 @@ proof fn container_thread_own_process_at(k: KernelK, t_ptr: RwLockThreadPtr)
     if thread_is_dangling(k.thrd_mp.spec_index(t_ptr)) {
         process_thread_wf_killed_thread_at(k.prc_mp, k.thrd_mp, t_ptr);
     } else {
-        process_thread_wf_at(k.prc_mp, k.thrd_mp, t_ptr);
+        process_thread_wf_thread_at(k.prc_mp, k.thrd_mp, t_ptr);
         process_thread_wf_process_at(k.prc_mp, k.thrd_mp, p_ptr, t_ptr);
     }
     container_process_wf_process_at(k.ctn_mp, k.prc_mp, p_ptr);
@@ -69,8 +69,8 @@ proof fn container_indirect_thread_child_at(k: KernelK, c_ptr: RwLockContainerPt
     assert(k.ctn_mp.dom().contains(child) && k.ctn_mp.spec_index(child).view_rodata().view().depth == depth + 1
         && k.ctn_mp.spec_index(child).view_ghost().uppertree_seq.view()[depth as int] == c_ptr);
     container_root_wf_at(k.rt_ctn, k.ctn_mp, child);
-    container_children_depth_wf_at(k.rt_ctn, k.ctn_mp, child);
-    containers_linkedlist_wf_at(k.rt_ctn, k.ctn_mp, child);
+    container_uppertree_seq_parent_wf_at(k.rt_ctn, k.ctn_mp, child);
+    container_linkedlist_wf_at(k.rt_ctn, k.ctn_mp, child);
 }
 
 /// A container without children and processes owns no threads, directly or below it, and its scheduler queues no thread.
@@ -100,15 +100,15 @@ pub proof fn container_without_children_and_processes_owns_no_threads(k: KernelK
     };
     assert(container.view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty());
     let s_ptr = container.view_rodata().view().scheduler;
-    container_scheduler_wf_at(k.ctn_mp, k.sched_mp, c);
+    container_scheduler_wf_container_at(k.ctn_mp, k.sched_mp, c);
     assert forall|i: CpuId| #![trigger k.sched_mp.spec_index(s_ptr).shards.spec_index(i)]
         index_valid(NUM_CPUS, i) implies k.sched_mp.spec_index(s_ptr).shards.spec_index(i).view().view().queue.view().len() == 0 by {
         let queue = k.sched_mp.spec_index(s_ptr).shards.spec_index(i).view().view().queue.view();
         if queue.len() > 0 {
             let t = queue[0];
             assert(queue.contains(t));
-            container_thread_scheduler_wf_at(k.ctn_mp, k.thrd_mp, k.sched_mp, s_ptr, i, t);
-            container_thread_wf_at(k.ctn_mp, k.thrd_mp, t);
+            container_thread_scheduler_wf_shard_at(k.ctn_mp, k.thrd_mp, k.sched_mp, s_ptr, i, t);
+            container_thread_wf_thread_at(k.ctn_mp, k.thrd_mp, t);
         }
     };
 }

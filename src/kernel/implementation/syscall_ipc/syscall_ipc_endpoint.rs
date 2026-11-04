@@ -378,7 +378,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             running_thread_not_in_endpoint_queue(old(krnl), channel_ep_ptr, current_thrd_ptr);
-            container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, peer_thrd_ptr);
+            container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, peer_thrd_ptr);
         };
         endpoint_perms_wf_at(old(krnl).ep_mp, channel_ep_ptr); old(krnl).ep_mp.spec_index(channel_ep_ptr).view().queue.wf_implies_view_len_eq_len();
         ipc_endpoint_transit_step_pre_from_k(&pre_k, cpu_id, prc_ptr, current_thrd_ptr, channel_ep_ptr, peer_thrd_ptr, channel_index, waiting_state, source_ep_idx,

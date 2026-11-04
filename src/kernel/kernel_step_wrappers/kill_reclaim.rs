@@ -11,7 +11,7 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
     pre: &KernelK, post: &KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>, did: Option<VtdDomainId>,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         *post == (KernelK { prc_mp: post.prc_mp, irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..*pre }),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.dom().contains(owner),
@@ -71,7 +71,7 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
             &&& kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post)
         },
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
     kernel_iommu_root_table_projection(pre); kernel_iommu_root_table_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);

@@ -94,7 +94,7 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
     let quota_4k = post.allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view();
     let quota_2m = post.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view();
     kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(pre, owner_ptr);
-    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr); container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, ctn_ptr);
+    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr); container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, ctn_ptr);
     container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr); container_cpu_offline_flags_wf_container_at(pre.ctn_mp, pre.cpu_offline_mp, ctn_ptr);
     container_pcid_allocator_wf_container_at(pre.ctn_mp, pre.pcid_allc_mp, ctn_ptr); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner_ptr);
     assert_maps_equal!(b.container_map, Map::new(a.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
@@ -110,7 +110,7 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
     }), c => {
         if post.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c);
-            container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c); container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, c);
+            container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c); container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, c);
             container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, c); container_cpu_offline_flags_wf_container_at(pre.ctn_mp, pre.cpu_offline_mp, c);
             container_pcid_allocator_wf_container_at(pre.ctn_mp, pre.pcid_allc_mp, c);
         }

@@ -197,9 +197,9 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thrd_ptr, ctn_ptr, cpu_id, Tracked(&current_thread_lock_perm),
     );
     proof {
-        assert(!krnl.prc_mp.dom().contains(process_pg_ptr)) by { page_ptr_roundtrip(); if krnl.prc_mp.dom().contains(process_pg_ptr) { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, process_pg_ptr); } };
-        assert(!krnl.pt_mp.dom().contains(pagetable_pg_ptr)) by { page_ptr_roundtrip(); if krnl.pt_mp.dom().contains(pagetable_pg_ptr) { pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable_pg_ptr); } };
-        assert(!krnl.it_mp.dom().contains(iommu_table_pg_ptr)) by { page_ptr_roundtrip(); if krnl.it_mp.dom().contains(iommu_table_pg_ptr) { iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, iommu_table_pg_ptr); } };
+        assert(!krnl.prc_mp.dom().contains(process_pg_ptr)) by { page_ptr_roundtrip(); if krnl.prc_mp.dom().contains(process_pg_ptr) { process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, process_pg_ptr); } };
+        assert(!krnl.pt_mp.dom().contains(pagetable_pg_ptr)) by { page_ptr_roundtrip(); if krnl.pt_mp.dom().contains(pagetable_pg_ptr) { pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable_pg_ptr); } };
+        assert(!krnl.it_mp.dom().contains(iommu_table_pg_ptr)) by { page_ptr_roundtrip(); if krnl.it_mp.dom().contains(iommu_table_pg_ptr) { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, iommu_table_pg_ptr); } };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
     }
     let ghost publish_before = steps.view();

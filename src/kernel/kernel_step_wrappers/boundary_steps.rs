@@ -72,7 +72,7 @@ impl KernelK {
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
         old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); old(self).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id());
-        reveal(container_page_owner_wf); reveal(container_thread_wf); reveal(mapped_4k_page_pagetable_wf);
+        reveal(container_owned_pages_wf); reveal(container_thread_wf); reveal(mapped_4k_page_pagetable_wf);
     }
 
     pub proof fn kernel_step_boundary_cpu_tlb_updated(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, flushed: bool)
@@ -389,7 +389,7 @@ impl KernelK {
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable);
         let iommu_table = old(self).prc_mp.spec_index(prc_ptr).view().iommu_table;
         if iommu_table is Some {
-            assert(old(self).it_mp.dom().contains(iommu_table.unwrap())) by { reveal(process_iommu_table_match); };
+            assert(old(self).it_mp.dom().contains(iommu_table.unwrap())) by { reveal(process_iommu_table_wf); };
         }
     }
 
@@ -434,16 +434,16 @@ impl KernelK {
         use_type_invariant(&*steps);
         assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
         kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, prc_ptr, pagetable_ptr, va);
-        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_thread_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_thread_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), stable_pagetable_ptr);
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), stable_pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), stable_pagetable_ptr);
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 
@@ -495,11 +495,11 @@ impl KernelK {
         use_type_invariant(&*steps);
         assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
         kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, prc_ptr, pagetable_ptr, va);
-        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_thread_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_thread_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) {
             old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
             pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
@@ -509,7 +509,7 @@ impl KernelK {
         } else {
             old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), stable_pagetable_ptr);
         }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
         kernel_process_projection_at(old(self), stable_prc_ptr); kernel_process_projection_at(&*self, stable_prc_ptr);
         kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_eq(old(self), &*self, old(lctx), stable_prc_ptr, stable_pagetable_ptr);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);

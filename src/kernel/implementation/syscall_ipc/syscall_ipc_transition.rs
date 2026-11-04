@@ -124,7 +124,7 @@ verus! {
                 &&& krnl.cpu_arr.inv()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
-            }) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            }) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
             assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.length != usize::MAX) by { endpoint_queue_len_bounded(&*krnl, ep_ptr); };
             assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.view().len() == krnl.ep_mp.spec_index(ep_ptr).view().queue.length) by { endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); reveal(LinkedList::wf_value_list); };
         }
@@ -135,7 +135,7 @@ verus! {
 
         let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
         let default_cr3 = krnl.dflt_pt.borrow().cr3;
-        assert(page_ptr_valid(default_cr3)) by { old(krnl).default_pagetable_view_inv(); old(krnl).dflt_pt.view().table_pages_wf_cr3_at(); };
+        assert(page_ptr_valid(default_cr3)) by { old(krnl).default_pagetable_wf_implies_view_inv(); old(krnl).dflt_pt.view().table_pages_wf_cr3_at(); };
         krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
 
         proof {
@@ -145,7 +145,7 @@ verus! {
             ipc_block_current_eof(locked_k, *krnl, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, default_cr3);
         }
 
-        proof { assert(old(krnl).ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container)) by { container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); }; }
+        proof { assert(old(krnl).ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container)) by { container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); }; }
         ipc_block_current_release_and_end_step(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, pt_regs,
             Ghost(default_cr3), Ghost(*old(krnl)), Ghost(locked_k), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(needflush_perm),
@@ -458,9 +458,9 @@ verus! {
         let peer_last_cpu = peer_thread_ref.last_cpu;
         let caller_ctn_ptr = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
         let wake_cpu = if peer_ctn_ptr == caller_ctn_ptr { cpu_id } else { peer_last_cpu };
-        proof { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
+        proof { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
         let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_ctn_ptr).borrow().scheduler;
-        proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
+        proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
         let Tracked(peer_scheduler_lock_perm) = ipc_schedule_peer_on_shard(
             krnl, Tracked(&mut *lctx), cpu_id, current_thrd_ptr, ep_ptr, peer_thrd_ptr, result, peer_sched_ptr, wake_cpu, Tracked(&endpoint_lock_perm),
             Tracked(&peer_thread_lock_perm),

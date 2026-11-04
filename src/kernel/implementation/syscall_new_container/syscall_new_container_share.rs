@@ -179,7 +179,7 @@ pub(super) fn end_new_container_created_step(
     transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), thread_pg_ptr, current_thrd_ptr, parent_ctn_ptr, child_ctn_ptr, Tracked(thread_page_lock_perm), Tracked(parent_container_lock_perm), Tracked(child_container_lock_perm));
     proof {
         assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_prc_ptr)) by { reveal(kernel_process_added); };
-        assert(krnl.prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr) by { reveal(process_pagetable_match); };
+        assert(krnl.prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr) by { reveal(process_pagetable_wf); };
         assert(kernel_u_cpu_and_page_owner_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), transfer_cpu_id, parent_ctn_ptr, child_ctn_ptr, thread_pg_ptr)) by {
             kernel_cpu_and_page_owner_changed_implies_u_step(old(krnl), &*krnl, transfer_cpu_id, parent_ctn_ptr, child_ctn_ptr, thread_pg_ptr);
         };
@@ -395,11 +395,11 @@ pub(super) fn share_new_container_range(
         assert(krnl.allc_4k_mp.dom().contains(child_allocator_4k_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, child_ctn_ptr); };
         assert(lctx.page_lock_map().dom().contains(page_ptr2page_index(thread_pg_ptr)));
         assert(krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable == source_pagetable_ptr && krnl.prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_prc_ptr);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, child_prc_ptr);
         };
-        assert(!krnl.prc_mp.spec_index(parent_prc_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
+        assert(!krnl.prc_mp.spec_index(parent_prc_ptr).view().zombie) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_prc_ptr && krnl.pt_mp.spec_index(child_pagetable_ptr).view().proc_ptr == child_prc_ptr) by {
-            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_prc_ptr);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, child_prc_ptr);
         };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == krnl.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
             krnl.default_pagetable_wf_at(child_pagetable_ptr); krnl.default_pagetable_wf_at(source_pagetable_ptr);
@@ -418,7 +418,7 @@ pub(super) fn share_new_container_range(
     );
     proof {
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_ctn_ptr, source_range)) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr);
             share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, parent_ctn_ptr, source_range);
         };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, child_ctn_ptr, source_range)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
@@ -896,7 +896,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
 {
-    proof { assert(krnl.sched_mp.dom().contains(child_sched_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, child_ctn_ptr); }; }
+    proof { assert(krnl.sched_mp.dom().contains(child_sched_ptr)) by { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, child_ctn_ptr); }; }
     let child_scheduler_lock_perm = krnl.wlock_scheduler_shard(child_sched_ptr, caller_cpu_id, Tracked(&mut *lctx));
     proof {
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
@@ -909,10 +909,10 @@ pub(super) fn create_new_container_root_thread_and_finish(
         if let Some(ep_ptr) = endpoint {
             let owner = krnl.ep_mp.spec_index(ep_ptr).view().owning_container;
             let parent_upper = krnl.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view();
-            assert(krnl.ctn_mp.dom().contains(owner)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
+            assert(krnl.ctn_mp.dom().contains(owner)) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
             assert(owner == child_ctn_ptr || krnl.ctn_mp.spec_index(owner).view_ghost().subtree_set.view().contains(child_ctn_ptr)) by {
                 container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx);
-                container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, parent_ctn_ptr); container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, child_ctn_ptr);
+                container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, parent_ctn_ptr); container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, child_ctn_ptr);
                 vstd::seq_lib::lemma_seq_contains_after_push(parent_upper, parent_ctn_ptr, owner);
             };
         }
@@ -1019,7 +1019,7 @@ fn end_new_container_finish_step(
         steps.end_kernel_step_new_thread(krnl, lctx, child_prc_ptr, current_thrd_ptr, child_ctn_ptr, caller_cpu_id, new_thrd_ptr, *initial_regs, endpoint, None);
         assert(new_container_finish_step_pre(steps.view().last().old_u, caller_cpu_id) && new_container_finish_step(steps.view().last().old_u, steps.view().last().new_u, caller_cpu_id)) by {
             new_container_finish_step_pre_from_k(&pre, &finish_lctx, caller_cpu_id, parent_prc_ptr, current_thrd_ptr, parent_ctn_ptr, child_ctn_ptr, child_prc_ptr, endpoint);
-            process_thread_wf_at(pre.prc_mp, pre.thrd_mp, current_thrd_ptr);
+            process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, current_thrd_ptr);
             kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implies_u_step(&pre, krnl, caller_cpu_id, child_prc_ptr, current_thrd_ptr, child_ctn_ptr,
                 new_thrd_ptr, *initial_regs, endpoint, parent_prc_ptr, parent_ctn_ptr);
             new_container_finish_step_from_u(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(*krnl), caller_cpu_id, parent_prc_ptr, current_thrd_ptr, parent_ctn_ptr,

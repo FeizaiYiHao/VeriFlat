@@ -107,7 +107,7 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
 {
     proof {
         assert(krnl.prc_mp.dom().contains(prc_ptr)) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), current_thrd_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thrd_ptr);
     }
@@ -123,9 +123,9 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
     let wake_cpu = if peer_ctn_ptr == caller_ctn_ptr { cpu_id } else { peer_last_cpu };
     proof { container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
     let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_ctn_ptr).borrow().scheduler;
-    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
+    proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
     let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_sched_ptr, wake_cpu, Tracked(&mut *lctx));
-    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
+    proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
     ipc_finish_endpoint_transit(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, payload_ep_ptr, peer_thrd_ptr, peer_sched_ptr,
         wake_cpu, result, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(payload_endpoint_lock_perm),

@@ -114,7 +114,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|k: int| #![trigger hidden.view()[k]] 0 <= k < hidden.view().len() ==> {
             &&& final(steps).view()[old(steps).view().len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden.view()[k].1), new_u: kernel_k_to_kernel_u(hidden.view()[k].2) })
-            &&& process_pagetable_match(hidden.view()[k].1.prc_mp, hidden.view()[k].1.pt_mp)
+            &&& process_pagetable_wf(hidden.view()[k].1.prc_mp, hidden.view()[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden.view()[k].1, hidden.view()[k].2, pagetable, hidden.view()[k].0)
             &&& typed_lock_maps_aligned(&hidden.view()[k].1, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden.view()[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden.view()[k].1.ctn_mp, old(lctx))
@@ -209,7 +209,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
                 &&& steps.view()[old(steps).view().len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
-                &&& process_pagetable_match(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
+                &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
                 &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
                 &&& typed_lock_maps_aligned(&hidden[k].1, old(lctx))
                 &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden[k].1.ctn_mp, old(lctx))

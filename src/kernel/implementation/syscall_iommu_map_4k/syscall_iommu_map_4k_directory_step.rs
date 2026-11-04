@@ -124,7 +124,7 @@ pub(super) fn iommu_map_4k_install_directory(
     let ghost section_start = *krnl;
     let ghost section_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
     install_staged_4k_iommu_table_page(krnl, level, pg_ptr, thrd_ptr, prc_ptr, ctn_ptr, iommu_table_ptr, indices, Tracked(&mut *lctx), Tracked(&page_lock_perm),
         Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));

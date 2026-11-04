@@ -12,33 +12,38 @@ pub struct LockedArray2D<T, ROT, GhostT, const ROWS: usize, const COLS: usize> {
 }
 
 impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> where LockCell<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
-    /// `perms` holds exactly one token per in-range cell, each covering an initialized lock at its cell address.
-    pub open spec fn token_cells_wf(perms: Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>) -> bool {
+    /// `perms` holds exactly one token per in-range cell, each covering an initialized lock at its cell address: the
+    /// two-dimensional form of `TokenCells::wf`, `TokenLock::wf`, and the `perms_wf` of `LockedMap` and `UnLockedMap`.
+    pub open spec fn perms_wf(perms: Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>) -> bool {
+        // cell index row * COLS + col fits in usize
         &&& ROWS * COLS <= usize::MAX
-        &&& forall|row: usize, col: usize| #![trigger perms.dom().contains((row, col))] perms.dom().contains((row, col)) <==> index_valid(ROWS, row) && index_valid(COLS, col)
+        &&& forall|row: usize, col: usize|
+            #![trigger perms.dom().contains((row, col))]
+            perms.dom().contains((row, col)) <==> index_valid(ROWS, row) && index_valid(COLS, col)
         &&& forall|row: usize, col: usize|
             #![trigger perms.dom().contains((row, col))]
             #![trigger perms[(row, col)]]
             perms.dom().contains((row, col)) ==> {
                 &&& perms[(row, col)].is_init()
-                &&& perms[(row, col)].addr() == lock_cell_addr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * COLS + col)
+                &&& perms[(row, col)].addr()
+                    == lock_cell_addr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * COLS + col)
             }
     }
 
-    pub closed spec fn inv(&self) -> bool { Self::token_cells_wf(self.perms@) }
+    pub closed spec fn inv(&self) -> bool { Self::perms_wf(self.perms.view()) }
 
     pub closed spec fn spec_index(&self, row: usize, col: usize) -> LockCell<T, ROT, GhostT, NO_KILL_STATE>
         recommends
             index_valid(ROWS, row),
             index_valid(COLS, col),
     {
-        self.perms@[(row, col)].value()
+        self.perms.view()[(row, col)].value()
     }
 
     /// Builds the array over cells that boot initialized in place.
     pub fn from_token_cells(perms: Tracked<Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>>) -> (ret: Self)
         requires
-            Self::token_cells_wf(perms@),
+            Self::perms_wf(perms.view()),
         ensures
             ret.inv(),
     {
@@ -51,7 +56,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
             index_valid(ROWS, row),
             index_valid(COLS, col),
         ensures
-            ret == self.perms@[(row, col)].addr(),
+            ret == self.perms.view()[(row, col)].addr(),
     {
         assert(row * COLS + col < ROWS * COLS) by (nonlinear_arith) requires row < ROWS, col < COLS;
         lock_cell_addr_exec::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base(), row * COLS + col)

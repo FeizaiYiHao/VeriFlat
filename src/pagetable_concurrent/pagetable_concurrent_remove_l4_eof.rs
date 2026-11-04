@@ -82,7 +82,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
         ensures
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -92,7 +92,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l3_p),
     {
         reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };

@@ -159,7 +159,7 @@ pub(super) fn mmap_4k_lock_current_thread(
         &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
     }) by {
         container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
@@ -197,8 +197,8 @@ pub(super) fn mmap_4k_lock_current_thread(
         &&& krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
         &&& krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr
     }) by {
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     };
     proof { if quota_4k < 4 * range { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorNoQuota, None, None); } }
     Some((prc_ptr, thrd_ptr, ctn_ptr, alloc_ptr_4k, pagetable_ptr, quota_4k, Tracked(thread_lock_perm), Tracked(cpu_lock_perm)))

@@ -155,11 +155,11 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
     let ghost prc_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
     proof {
         let cpu = krnl.cpu_arr.spec_index(local_cpu).view().view().view();
-        cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), local_cpu);
+        cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), local_cpu);
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, local_cpu); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, local_cpu);
         container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, cpu.owning_container, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-        pagetable_table_stale_cpus_only_when_write_held_at(krnl.pt_mp, pagetable);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+        pagetable_table_stale_cpus_only_when_write_locked_at(krnl.pt_mp, pagetable);
         if !table_write_held { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
     }
     let cpu = krnl.cpu_arr.borrow_typed(local_cpu, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_perm);
@@ -278,7 +278,7 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             }
         } else {
             proof {
-                process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
+                process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
                 cpu_outside_container_implies_no_tlb_of_container_pagetable(krnl, ctn_ptr, prc_ptr, cpu_id, pcid);
             }
             let ghost krnl_i = *krnl;

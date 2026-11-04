@@ -256,7 +256,7 @@ fn flush_pcid_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLockPa
             || single_structure_cache_subset_of_present_pagetable(krnl.cpu_tlb.structure_cache((cpu_id, pcid)), table)
     }) by {
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
     krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
     proof {
@@ -365,7 +365,7 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
             if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
                 assert(flushed.pt_mp.dom().contains(cpu.current_pagetable->Some_0)) by {
                     cpu_array_wf_at(flushed.cpu_arr, flushed.dflt_pt.view(), cpu_id); process_cpu_wf_at(flushed.prc_mp, flushed.cpu_arr, cpu_id);
-                    process_pagetable_match_process_at(flushed.prc_mp, flushed.pt_mp, cpu.current_process.unwrap());
+                    process_pagetable_wf_process_at(flushed.prc_mp, flushed.pt_mp, cpu.current_process.unwrap());
                 };
                 if cpu.current_pagetable->Some_0 == pagetable {
                     let pre = whole_pagetable(flushed.pt_mp, flushed.pt_lower.view(), pagetable);

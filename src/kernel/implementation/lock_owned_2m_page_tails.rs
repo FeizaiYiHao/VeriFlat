@@ -175,9 +175,9 @@ pub proof fn owned_2m_all_ptrs_belong_to_container(krnl: &KernelK, head: PageInd
     ensures
         page_2m_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view()),
 {
-    assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { reveal(container_page_owner_wf); };
+    assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { reveal(container_owned_pages_wf); };
     assert(page_2m_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view())) by {
-        reveal(hugepage_2m_wf); reveal(container_page_owner_wf); broadcast use page_2m_ptr_prefix_member_bounds;
+        reveal(hugepage_2m_wf); reveal(container_owned_pages_wf); broadcast use page_2m_ptr_prefix_member_bounds;
         page_ptr_roundtrip();
     };
 }
@@ -233,18 +233,19 @@ pub(super) open spec fn page_2m_tail_prefix_indices(head: PageIndex, count: usiz
     Set::range((head + 1) as usize, (head + 1 + count) as usize)
 }
 
-pub open spec fn owned_2m_tail_lock_perms_wf(perms: Map<PageIndex, LockPerm>, pages: PageLockedArray, lctx: &LocalContext, head: PageIndex) -> bool {
+/// Write-lock perms for the Merged2m tails of the 2M page at `head`, keyed by page index.
+pub open spec fn owned_2m_tail_lock_perms_wf(perms: Map<PageIndex, LockPerm>, pg_arr: PageLockedArray, lctx: &LocalContext, head: PageIndex) -> bool {
     &&& perms.dom() == page_2m_tail_indices(head)
-    &&& forall|index: PageIndex|
-        #![trigger perms.dom().contains(index)]
-        perms.dom().contains(index) ==> {
-            &&& index_valid(NUM_PAGES, index)
-            &&& pages.spec_index(index).view().is_init()
-            &&& pages.spec_index(index).view().view().state is Merged2m
-            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
-            &&& perms.spec_index(index).state() is WriteLock
-            &&& perms.spec_index(index).thread_id() == lctx.thread_id()
-            &&& perms.spec_index(index).lock_id() == pages.spec_index(index).view().locking_thread()->Write_lock_id
+    &&& forall|p_i: PageIndex|
+        #![trigger perms.dom().contains(p_i)]
+        perms.dom().contains(p_i) ==> {
+            &&& index_valid(NUM_PAGES, p_i)
+            &&& pg_arr.spec_index(p_i).view().is_init()
+            &&& pg_arr.spec_index(p_i).view().view().state is Merged2m
+            &&& perms.spec_index(p_i).state() is WriteLock
+            &&& perms.spec_index(p_i).thread_id() == lctx.thread_id()
+            &&& perms.spec_index(p_i).lock_id() == pg_arr.spec_index(p_i).view().locking_thread()->Write_lock_id
+            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p_i, TypedLockMode::Write)
         }
 }
 
@@ -359,7 +360,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         decreases 511 - count,
     {
         let index = head + 1usize + count;
-        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { hugepage_2m_wf_tail_at(krnl.pg_arr, head, index); }; }
+        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { hugepage_2m_wf_tail_forward_at(krnl.pg_arr, head, index); }; }
         let Tracked(perm) = krnl.wlock_page(index, Tracked(&mut *lctx));
         proof {
             perms.tracked_insert(index, perm);

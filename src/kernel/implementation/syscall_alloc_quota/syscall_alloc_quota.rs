@@ -115,7 +115,7 @@ verus! {
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
             proof { assert(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Running) by {
-                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
                 process_perms_wf_at(krnl.prc_mp, prc_ptr);
             }; }
 
@@ -244,7 +244,7 @@ verus! {
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().process_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().depth
             }) by {
-                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
+                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
                 process_perms_wf_at(krnl.prc_mp, prc_ptr);
             };
             let thread_res = krnl.wlock_current_running_thread_unless_killed(thrd_ptr, Tracked(lctx));
@@ -419,7 +419,7 @@ verus! {
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
             proof { assert(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Running) by {
-                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
                 process_perms_wf_at(krnl.prc_mp, prc_ptr);
             }; }
 
@@ -548,7 +548,7 @@ verus! {
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth
                 &&& krnl.thrd_mp.spec_index(thrd_ptr).view().process_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().depth
             }) by {
-                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
+                thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
                 process_perms_wf_at(krnl.prc_mp, prc_ptr);
             };
             let thread_res = krnl.wlock_current_running_thread_unless_killed(thrd_ptr, Tracked(lctx));

@@ -82,7 +82,7 @@ pub(crate) proof fn kill_retire_eof_process_tree_wf(
     kill_retire_eof_process_tree_parent_links_wf(pre, post, root_process, process_tree_dom, parent_ptr, target);
     assert(process_subtree_set_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_subtree_set_wf); };
     assert(process_uppertree_seq_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_uppertree_seq_wf); };
-    assert(process_subtree_set_exclusive(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_subtree_set_exclusive); };
+    assert(process_subtree_uppertree_agree_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_subtree_uppertree_agree_wf); };
 }
 
 /// Every process below the retired `target` in its tree records `target` at `target`'s depth in its upper tree, followed by
@@ -177,7 +177,7 @@ proof fn kill_retire_eof_target_descendant_child(pre: KernelK, root_process: RwL
     kill_retire_eof_target_descendant_uppers(pre, root_process, process_tree_dom, target);
     kill_retire_eof_target_descendant_successor(pre, root_process, process_tree_dom, target);
     kill_retire_eof_target_descendant_root(pre, root_process, process_tree_dom, target);
-    reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
+    reveal(process_linkedlist_wf); reveal(process_uppertree_seq_parent_wf);
 }
 
 /// No other process of the tree has the childless `target` in its upper tree.
@@ -229,7 +229,7 @@ pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
         process_root_wf(root_process, process_tree_dom.remove(target), post.prc_mp),
         process_children_parent_wf(root_process, process_tree_dom.remove(target), post.prc_mp),
         process_linkedlist_wf(root_process, process_tree_dom.remove(target), post.prc_mp),
-        process_children_depth_wf(root_process, process_tree_dom.remove(target), post.prc_mp),
+        process_uppertree_seq_parent_wf(root_process, process_tree_dom.remove(target), post.prc_mp),
 {
     let new_tree_dom = process_tree_dom.remove(target);
     assert(process_tree_dom.subset_of(pre.prc_mp.dom())) by { reveal(process_root_wf); };
@@ -245,7 +245,7 @@ pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
     assert(process_linkedlist_wf(root_process, new_tree_dom, post.prc_mp)) by {
         reveal(process_root_wf); reveal(process_linkedlist_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>();
     };
-    assert(process_children_depth_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_children_depth_wf); };
+    assert(process_uppertree_seq_parent_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_uppertree_seq_parent_wf); };
 }
 
 /// Container-level form of `kill_retire_eof_process_tree_wf`: `ctn_ptr`, the owner of the retired leaf

@@ -4,6 +4,7 @@ use crate::define::*;
 use super::*;
 verus! {
 pub trait LockInvTrait {
+    /// Invariant of a locked object; `LockCell::inv` requires it in every lock state.
     spec fn inv(&self) -> bool;
 }
 

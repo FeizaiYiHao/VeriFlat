@@ -31,7 +31,7 @@ pub(super) proof fn allocate_new_container_pages_eof(
 {
     page_ptr_roundtrip();
     assert(page_index_2m_valid(page_ptr2page_index(container_page)) && page_index_2m_valid(page_ptr2page_index(pcid_allocator_page))) by { reveal(hugepage_2m_wf); };
-    assert(pages_4k.to_set().subset_of(post.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view())) by { pages_4k.to_set_ensures(); reveal(container_page_owner_wf); };
+    assert(pages_4k.to_set().subset_of(post.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view())) by { pages_4k.to_set_ensures(); reveal(container_owned_pages_wf); };
     assert(!post.thrd_mp.dom().contains(pages_4k.spec_index(7))) by {
         assert(perms.dom().contains(pages_4k.spec_index(7))) by { pages_4k.to_set_ensures(); };
         reveal(thread_pages_wf);

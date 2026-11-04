@@ -13,8 +13,7 @@ use crate::*;
 
 pub type VtdDomainId = usize;
 
-/// The current kernel model has one VT-d remapping unit and therefore one
-/// global IOTLB.  Generalizing this becomes an array indexed by unit id.
+/// Number of VT-d domain IDs (16-bit DID).
 pub const VTD_DOMAIN_COUNT: usize = 65_536;
 
 pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAIN_COUNT }
@@ -99,11 +98,18 @@ impl IommuTLB {
         self.view().spec_index(did)
     }
 
+    /// One TLB per valid domain ID, and the context cache holds only valid B/D/Fs tagged with valid domain IDs.
     #[verifier::opaque]
     pub open spec fn inv(&self) -> bool {
-        &&& forall|did: VtdDomainId| #![trigger self.view().dom().contains(did)] self.view().dom().contains(did) <==> vtd_domain_id_valid(did)
-        &&& forall|bdf: PciBdf| #![trigger self.context_cache().dom().contains(bdf)]
-            self.context_cache().dom().contains(bdf) ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2) && vtd_domain_id_valid(self.context_cache()[bdf].1)
+        &&& forall|did: VtdDomainId|
+            #![trigger self.view().dom().contains(did)]
+            self.view().dom().contains(did) <==> vtd_domain_id_valid(did)
+        &&& forall|bdf: PciBdf|
+            #![trigger self.context_cache().dom().contains(bdf)]
+            self.context_cache().dom().contains(bdf)
+                ==>
+                pci_bdf_valid(bdf.0, bdf.1, bdf.2)
+                && vtd_domain_id_valid(self.context_cache()[bdf].1)
     }
 }
 }

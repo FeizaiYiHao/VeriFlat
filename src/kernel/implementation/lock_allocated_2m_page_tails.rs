@@ -127,7 +127,7 @@ pub fn wlock_allocated_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracke
         decreases 511 - count,
     {
         let index = head + 1usize + count;
-        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { hugepage_2m_wf_tail_at(krnl.pg_arr, head, index); }; }
+        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { hugepage_2m_wf_tail_forward_at(krnl.pg_arr, head, index); }; }
         let Tracked(perm) = krnl.wlock_page(index, Tracked(&mut *lctx));
         proof {
             perms.tracked_insert(index, perm);

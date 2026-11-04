@@ -117,9 +117,9 @@ impl KernelK {
             };
             assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by {
                 let rev = pre_c.higher.l2_rev_map.view().spec_index(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.wf_l4_at(l4i); pre_c.wf_l3_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
+                pre_c.higher.wf_l4_at(l4i); pre_c.l3_links_l2_wf_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
                 pre_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre_c.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
-                pre_c.wf_window_locks_slot_at(pre_c.window_l2_page(l4i, l3i), l2i);
+                pre_c.wf_window_locks_l2_entry_at(pre_c.window_l2_page(l4i, l3i), l2i);
             };
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
@@ -135,7 +135,7 @@ impl KernelK {
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(lock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id())) by {
-                reveal(lock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+                reveal(lock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
                 pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             };
             assert(pre_c.lower.pagetable_window_locks[w] is Unlocked) by { reveal(lock_pagetable_window_eof_transition_framing); pre_c.wf_window_locks_va_at(w); };
@@ -234,9 +234,9 @@ impl KernelK {
             assert(spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && spec_v2l2index(w.va) == l2i) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
             assert(pre_c.lower.pagetable_window_locks.dom().contains(w)) by {
                 let rev = pre_c.higher.l2_rev_map.view().spec_index(pre_c.window_l2_page(l4i, l3i));
-                pre_c.higher.wf_l4_at(l4i); pre_c.wf_l3_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
+                pre_c.higher.wf_l4_at(l4i); pre_c.l3_links_l2_wf_at(pre_c.spec_resolve_mapping_l4(l4i)->0.addr, l3i); pre_c.tables_reachable_wf_l2_at(pre_c.window_l2_page(l4i, l3i));
                 pre_c.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre_c.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
-                pre_c.wf_window_locks_slot_at(pre_c.window_l2_page(l4i, l3i), l2i);
+                pre_c.wf_window_locks_l2_entry_at(pre_c.window_l2_page(l4i, l3i), l2i);
             };
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
@@ -251,7 +251,7 @@ impl KernelK {
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(unlock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i)) by {
-                reveal(unlock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+                reveal(unlock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
             };
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(unlock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);

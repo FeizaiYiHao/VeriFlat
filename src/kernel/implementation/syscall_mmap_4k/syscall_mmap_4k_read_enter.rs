@@ -261,7 +261,7 @@ pub(super) fn mmap_4k_try_read_enter(
                 mmap_4k_hold_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(held_k), cpu_id, thrd_ptr);
                 mmap_4k_trace_hold_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(held_k), cpu_id, *va_range);
             };
-            process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
             container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         }
         let ghost anchor = kernel_k_to_kernel_u(*krnl);

@@ -83,7 +83,7 @@ fn refund_unmap_2m_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
     proof {
         let origin = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
         assert(steps.snapshot_k().ctn_mp.dom().contains(origin) && (owner == origin || steps.snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner))) by {
-            container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
             broadcast use vstd::seq::Seq::lemma_index_contains;
         };
     }
@@ -102,7 +102,7 @@ fn refund_unmap_2m_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
             && krnl.ctn_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1)) by {
             let origin = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
             let uppers = krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view();
-            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr);
+            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr);
             container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, owner); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, uppers[depth - 1]);
             broadcast use vstd::seq::Seq::lemma_index_contains;
         };
@@ -304,7 +304,7 @@ pub fn refund_unmap_2m_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx) && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx)
         && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by {
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, owner);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, owner);
     };
     let mut remaining = thread_depth + 1;
     while remaining > 0

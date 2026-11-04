@@ -517,11 +517,11 @@ fn ipc_pages_fill_target(
     }
     proof {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
         container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
-        container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
+        container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
     }
     let Tracked(read_perm) = ipc_pages_downgrade_target(
         krnl, source_range, target_range, source_thread, target_thread, cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, source_process,
@@ -868,7 +868,7 @@ fn ipc_pages_downgrade_target(
     let ghost pre_k = *krnl;
     let ghost before = steps.view();
     proof {
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
         ipc_pages_downgrade_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thrd_ptr, peer_thrd_ptr, source_thread, target_thread, source_process, target_process,
             source_pagetable, target_pagetable, *source_range, *target_range);
@@ -886,10 +886,10 @@ fn ipc_pages_downgrade_target(
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         ipc_pages_trace_downgrade_step(&*steps, before, start, kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(downgraded_k), cpu_id);
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         container_thread_wf_uppertree_at(pre_k.ctn_mp, pre_k.thrd_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
-        container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
+        container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
         va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
     }
@@ -1257,14 +1257,14 @@ pub(super) fn ipc_pages_prepare_target(
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
-        process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
+        process_pagetable_wf_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
         assert(share_mapping_4k_range_owner_compatible(&*krnl, source_pagetable, target_container, source_range)) by {
             container_thread_wf_uppertree_at(check_pre_k.ctn_mp, check_pre_k.thrd_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
-            container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
+            container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
         };
     }
     let target_allocator = krnl.ctn_mp.borrow_rodata(target_container).borrow().allocator_ptr_4k;

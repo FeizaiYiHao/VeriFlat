@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
-use crate::{define::*, primitive::*, va_4k_valid};
+use crate::{define::*, primitive::*, va_4k_valid, va_2m_valid, va_1g_valid, iova_4k_valid, iova_2m_valid, iova_1g_valid};
 use crate::locks::*;
 use crate::linkedlist::*;
 verus! {
@@ -11,10 +11,13 @@ pub struct Page {
     pub is_io_page: bool,
     pub ref_count: usize,
     pub owning_container: RwLockContainerPtr,
+    /// Reverse map of the page tables that map this page, keyed by VA.
     pub mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
     /// Reverse map of the IOMMU tables that map this page, keyed by IOVA; `ref_count` counts both reverse maps.
     pub iommu_mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+    /// The page's free-list node: held here unless the page is free and the node is linked into a pool or cache.
     pub free_list_node_storage: ExternalNode<PageIndex>,
+    /// The next page of a syscall-local staging chain, meaningful only until an owned page is published.
     pub free_list: RwLockContainerPtr,
 
     /// Tracked ownership of the physical memory backing this page. Ordinary
@@ -29,20 +32,21 @@ impl Page {
     pub open spec fn mappings(&self) -> Set<(RwLockPageTableRoot, VAddr)> { self.mappings.view() }
     pub open spec fn iommu_mappings(&self) -> Set<(RwLockPageTableRoot, VAddr)> { self.iommu_mappings.view() }
 
+    /// The reference count counts both reverse maps.
     pub open spec fn ref_count_inv(&self) -> bool {
         &&& self.ref_count == self.mappings.view().len() + self.iommu_mappings.view().len()
     }
 
-    pub open spec fn mapped_state_inv(&self) -> bool {
+    /// A mapped page has a nonzero reference count; every other page has none.
+    pub open spec fn ref_count_nonzero_iff_mapped(&self) -> bool {
         &&& match self.state {
-            PageState::Mapped4k => { self.ref_count != 0 },
-            PageState::Mapped2m => { self.ref_count != 0 },
-            PageState::Mapped1g => { self.ref_count != 0 },
+            PageState::Mapped4k | PageState::Mapped2m | PageState::Mapped1g => { self.ref_count != 0 },
             _ => { self.ref_count == 0 }
         }
     }
 
-    pub open spec fn free_state_inv(&self) -> bool {
+    /// A page in a per-cpu cache names a valid cpu.
+    pub open spec fn free_cache_cpu_valid(&self) -> bool {
         &&& match self.state {
             PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id }, .. }
             | PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id }, .. }
@@ -66,30 +70,39 @@ impl Page {
             PageState::Free1g { .. } | PageState::Owned1g { .. } | PageState::Mapped1g => self.perm_1g.view().is_some(),
             _ => self.perm_1g.view().is_none(),
         }
-        // The perm's address matches this page's address.
+        // A present perm is initialized.
         &&& self.perm_4k.view().is_some() ==> self.perm_4k.view().unwrap().is_init()
         &&& self.perm_2m.view().is_some() ==> self.perm_2m.view().unwrap().is_init()
         &&& self.perm_1g.view().is_some() ==> self.perm_1g.view().unwrap().is_init()
+        // The perm's address matches this page's address.
         &&& self.perm_4k.view().is_some() ==> self.perm_4k.view().unwrap().addr() == self.addr
         &&& self.perm_2m.view().is_some() ==> self.perm_2m.view().unwrap().addr() == self.addr
         &&& self.perm_1g.view().is_some() ==> self.perm_1g.view().unwrap().addr() == self.addr
     }
 
+    /// A free page's node is linked in its free list; every other page holds its node.
     pub open spec fn node_storage_inv(&self) -> bool {
         &&& match self.state {
-            PageState::Free4k { .. } | PageState::Free2m { .. } | PageState::Free1g { .. } => { self.free_list_node_storage.is_init() == false },
-            _ => { self.free_list_node_storage.is_init() == true }
+            PageState::Free4k { .. } | PageState::Free2m { .. } | PageState::Free1g { .. } => { !self.free_list_node_storage.is_init() },
+            _ => { self.free_list_node_storage.is_init() }
         }
     }
 
+    /// Every VA and IOVA in the page's mappings is aligned to the page's mapped size.
     #[verifier::opaque]
     pub open spec fn mappings_va_valid(&self) -> bool {
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped4k && self.mappings().contains((pt_p, va)) ==> va_4k_valid(va)
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped2m && self.mappings().contains((pt_p, va)) ==> crate::va_2m_valid(va)
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped4k && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_4k_valid(iova)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped2m && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_2m_valid(iova)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped1g && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_1g_valid(iova)
+        &&& forall|pt: RwLockPageTableRoot, va: VAddr|
+            self.state is Mapped4k && self.mappings().contains((pt, va)) ==> va_4k_valid(va)
+        &&& forall|pt: RwLockPageTableRoot, va: VAddr|
+            self.state is Mapped2m && self.mappings().contains((pt, va)) ==> va_2m_valid(va)
+        &&& forall|pt: RwLockPageTableRoot, va: VAddr|
+            self.state is Mapped1g && self.mappings().contains((pt, va)) ==> va_1g_valid(va)
+        &&& forall|it: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped4k && self.iommu_mappings().contains((it, iova)) ==> iova_4k_valid(iova)
+        &&& forall|it: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped2m && self.iommu_mappings().contains((it, iova)) ==> iova_2m_valid(iova)
+        &&& forall|it: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped1g && self.iommu_mappings().contains((it, iova)) ==> iova_1g_valid(iova)
     }
 
     pub open spec fn is_mapped(&self) -> bool {
@@ -141,14 +154,16 @@ impl Page {
 }
 
 impl LockInvTrait for Page {
+    /// The page's mappings, reference count, free-list node, allocator cpu, and memory perm agree with its state.
     open spec fn inv(&self) -> bool {
         &&& self.mappings_va_valid()
         &&& self.ref_count_inv()
-        &&& self.mapped_state_inv()
+        &&& self.ref_count_nonzero_iff_mapped()
         &&& self.node_storage_inv()
-        &&& self.free_state_inv()
+        &&& self.free_cache_cpu_valid()
         &&& self.perm_inv()
-        &&& self.is_io_page ==> self.state is Mapped4k || self.state is Unavailable
+        // An IO page is only mapped 4K or unavailable.
+        &&& self.is_io_page ==> (self.state is Mapped4k || self.state is Unavailable)
     }
 }
 

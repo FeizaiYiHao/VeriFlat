@@ -303,17 +303,17 @@ pub(super) proof fn process_subsystem_create_scheduled_thread_eof_process_thread
 }
 
 pub(super) proof fn process_subsystem_create_scheduled_thread_eof_scheduler_wf(
-    container_map: ContainerLockedMap, pre_process: ProcessLockedMap, post_process: ProcessLockedMap,
+    ctn_mp: ContainerLockedMap, pre_process: ProcessLockedMap, post_process: ProcessLockedMap,
     pre_thread: ThreadLockedMap, post_thread: ThreadLockedMap, pre_scheduler: SchedulerUnLockedMap,
     post_scheduler: SchedulerUnLockedMap, pre_lctx: &LocalContext, post_lctx: &LocalContext,
     pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId, thread_value: Thread, process_node_addr: usize, sched_node_addr: usize,
 )
     requires
-        container_thread_scheduler_wf(container_map, pre_thread, pre_scheduler),
-        container_thread_wf(container_map, pre_thread),
-        container_scheduler_wf(container_map, pre_scheduler),
-        container_map.dom().contains(ctn_ptr),
+        container_thread_scheduler_wf(ctn_mp, pre_thread, pre_scheduler),
+        container_thread_wf(ctn_mp, pre_thread),
+        container_scheduler_wf(ctn_mp, pre_scheduler),
+        ctn_mp.dom().contains(ctn_ptr),
         pre_scheduler.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         !pre_scheduler.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(pg_ptr),
@@ -321,16 +321,16 @@ pub(super) proof fn process_subsystem_create_scheduled_thread_eof_scheduler_wf(
             pg_ptr, prc_ptr, staging_thrd_ptr, sched_ptr, cpu_id, thread_value, process_node_addr, sched_node_addr),
         !pre_thread.dom().contains(pg_ptr),
         pg_ptr != staging_thrd_ptr,
-        container_map.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
+        ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
         !pre_scheduler.spec_index(sched_ptr).shard(cpu_id).queue.dom().contains(sched_node_addr),
         !pre_scheduler.spec_index(sched_ptr).shard(cpu_id).queue.map().dom().contains(sched_node_addr),
         thread_value.state == (ThreadState::SCHEDULED { cpu_id }),
         thread_value.owning_container == ctn_ptr,
         thread_value.scheduler_linkedlist_node.addr() == sched_node_addr,
     ensures
-        container_thread_scheduler_wf(container_map, post_thread, post_scheduler),
-        forall|t_ptr: RwLockThreadPtr| #![trigger post_thread.dom().contains(t_ptr)] post_thread.dom().contains(t_ptr) ==> container_map.dom().contains(post_thread.spec_index(t_ptr).view().owning_container),
-        forall|c_ptr: RwLockContainerPtr| #![trigger container_map.dom().contains(c_ptr)] container_map.dom().contains(c_ptr) ==> post_scheduler.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().scheduler),
+        container_thread_scheduler_wf(ctn_mp, post_thread, post_scheduler),
+        forall|t_ptr: RwLockThreadPtr| #![trigger post_thread.dom().contains(t_ptr)] post_thread.dom().contains(t_ptr) ==> ctn_mp.dom().contains(post_thread.spec_index(t_ptr).view().owning_container),
+        forall|c_ptr: RwLockContainerPtr| #![trigger ctn_mp.dom().contains(c_ptr)] ctn_mp.dom().contains(c_ptr) ==> post_scheduler.dom().contains(ctn_mp.spec_index(c_ptr).view_rodata().view().scheduler),
 {
     reveal(process_subsystem_create_scheduled_thread_eof_transition_framing);
     reveal(container_thread_scheduler_wf);

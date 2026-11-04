@@ -106,7 +106,7 @@ pub(super) fn iommu_map_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx)
     let prc_ptr = cpu.current_process().unwrap();
     let thrd_ptr = cpu.current_thread().unwrap();
     let ctn_ptr = cpu.owning_container();
-    proof { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); }
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); }
     let process_res = krnl.wlock_process_unless_killed(prc_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

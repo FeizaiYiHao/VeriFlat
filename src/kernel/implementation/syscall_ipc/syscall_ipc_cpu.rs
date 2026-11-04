@@ -469,7 +469,7 @@ verus! {
     {
         proof {
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
-                cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view());
+                cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view());
                 cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
             };
         }
@@ -573,7 +573,7 @@ verus! {
         proof {
             assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, transfer_cpu_id); };
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
-                cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
+                cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
             };
         }
         let source_set = krnl.cpu_set_mp.borrow_mut_typed(source_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(lctx), Tracked(source_cpu_set_lock_perm));
@@ -971,7 +971,7 @@ verus! {
                 &&& krnl.ctn_mp.view().spec_index(source_container).addr() == source_container
                 &&& krnl.ctn_mp.view().spec_index(target_container).is_init()
                 &&& krnl.ctn_mp.view().spec_index(target_container).addr() == target_container
-            }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, source_container); container_perms_wf_at(krnl.ctn_mp, target_container); };
+            }) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, source_container); container_perms_wf_at(krnl.ctn_mp, target_container); };
         }
         let source_cpu_set = krnl.ctn_mp.borrow_rodata(source_container).borrow().cpu_set;
         let target_cpu_set = krnl.ctn_mp.borrow_rodata(target_container).borrow().cpu_set;
@@ -995,15 +995,15 @@ verus! {
                 &&& krnl.sched_mp.spec_index(peer_sched_ptr).owning_container == peer_container
                 &&& !krnl.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.view().contains(peer_thrd_ptr)
             }) by {
-                thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container);
-                container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr);
+                thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_container);
+                container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr);
             };
         }
         assert(krnl.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_sched_ptr, wake_cpu); };
         proof {
             // Both containers own a thread of the rendezvous, so neither cpu set is marked.
             assert(!krnl.cpu_set_mp.spec_index(source_cpu_set).being_killed() && !krnl.cpu_set_mp.spec_index(target_cpu_set).being_killed()) by {
-                container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
+                container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
                 container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, source_container); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, target_container);
                 cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, source_cpu_set); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, target_cpu_set);
             };

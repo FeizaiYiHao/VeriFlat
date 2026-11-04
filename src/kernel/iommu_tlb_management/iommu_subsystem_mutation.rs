@@ -89,7 +89,7 @@ pub fn iommu_root_table_reassign_detached(
     let old_did = irt.borrow(Tracked(irt_lock_perm)).iommu_did(bus, device, function);
     match old_did {
         None => {
-            assert(irt.view().spec_index_iommu_root(bus, device, function) is None) by { irt.view().context_wf_at(bus, device, function); };
+            assert(irt.view().spec_index_iommu_root(bus, device, function) is None) by { irt.view().wf_context_entry_at(bus, device, function); };
             irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).set_owner(bus, device, function, owner);
             proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
             None

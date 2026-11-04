@@ -179,16 +179,16 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     assert(post.cpu_tlb.inv()) by { reveal(CpuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match);
+        reveal(cpu_dirty_map_covers_nonempty_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
         assert(filled.tlb_4k() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k().union_prefer_right(added.tlb_4k())
             && filled.tlb_2m() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m()));
     };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(structure_cache_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
 }
 
@@ -210,8 +210,8 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
     }
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-    reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
+    reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf);
 }
 
 pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId))
@@ -220,9 +220,9 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
         kernel_k_iommu_context_cache_filled(pre, post, bdf, entry),
     ensures post.inv(),
 {
-    assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); pre.irt.view().context_wf_at(bdf.0, bdf.1, bdf.2); };
+    assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); pre.irt.view().wf_context_entry_at(bdf.0, bdf.1, bdf.2); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
 }
 
 pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
@@ -270,7 +270,7 @@ pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, 
 {
     assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
@@ -285,7 +285,7 @@ pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK,
 {
     assert(post.inv()) by { kernel_k_trap_return_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
@@ -301,7 +301,7 @@ pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK,
 {
     assert(post.inv()) by { kernel_k_trap_divert_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
@@ -315,7 +315,7 @@ pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: Kerne
 {
     assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added, added_cache); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
@@ -330,7 +330,7 @@ pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: Ker
 {
     kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
@@ -344,7 +344,7 @@ pub proof fn kernel_k_iommu_context_cache_filled_respects_boundary(pre: KernelK,
 {
     assert(post.inv()) by { kernel_k_iommu_context_cache_filled_preserves_inv(pre, post, bdf, entry); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
     reveal(iommu_table_tlb_entries_present);
 }
@@ -380,7 +380,7 @@ pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: Ke
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned);
     reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
@@ -399,7 +399,7 @@ pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id:
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 }

@@ -734,8 +734,8 @@ pub(super) proof fn pagetable_map_remove_table_page_eof(
         pagetable_lower_backup_wf(pre_pt, pre_lower),
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
-        pagetable_table_stale_cpus_only_when_write_held(pre_pt),
-        page_pagetable_wf(pre_pt, pre_lower, page_array),
+        pagetable_table_stale_cpus_only_when_write_locked(pre_pt),
+        page_mappings_pagetable_wf(pre_pt, pre_lower, page_array),
         forall|p_i: PageIndex, va: VAddr| #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pagetable_ptr, va))]
             index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().is_mapped() ==> !page_array.spec_index(p_i).view().view().mappings().contains((pagetable_ptr, va)),
         pagetable_map_remove_table_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
@@ -749,12 +749,12 @@ pub(super) proof fn pagetable_map_remove_table_page_eof(
         pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
         pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(post_pt, post_lower),
-        pagetable_table_stale_cpus_only_when_write_held(post_pt),
-        page_pagetable_wf(post_pt, post_lower, page_array),
+        pagetable_table_stale_cpus_only_when_write_locked(post_pt),
+        page_mappings_pagetable_wf(post_pt, post_lower, page_array),
 {
     reveal(pagetable_map_remove_table_page_eof_transition_framing);
-    assert(pagetable_table_stale_cpus_only_when_write_held(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
-    assert(page_pagetable_wf(post_pt, post_lower, page_array)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
+    assert(page_mappings_pagetable_wf(post_pt, post_lower, page_array)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
@@ -1185,7 +1185,7 @@ pub proof fn wlocker_holds_no_windows_implies_l2_windows_unlocked(
     reveal(pagetable_window_holders_hold_pagetable);
     reveal(pagetable_window_typed_lock_map_aligned);
     c.higher.wf_l4_at(l4i);
-    c.wf_l3_at(c.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+    c.l3_links_l2_wf_at(c.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
     assert(c.lower.l2_page(l2_p).wf()) by { reveal(WholePageTable::wf_l2); };
 }
 
@@ -1233,7 +1233,7 @@ pub(super) proof fn pagetable_map_hide_l4_entry_eof(
         pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
         pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(pre_pt, pre_lower),
-        pagetable_table_stale_cpus_only_when_write_held(pre_pt),
+        pagetable_table_stale_cpus_only_when_write_locked(pre_pt),
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         forall|w: WindowVa| #![trigger window_lock_map.dom().contains((pagetable_ptr, w))] spec_v2l4index(w.va) == l4i ==> !window_lock_map.dom().contains((pagetable_ptr, w)),
@@ -1248,10 +1248,10 @@ pub(super) proof fn pagetable_map_hide_l4_entry_eof(
         pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
         pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(post_pt, post_lower),
-        pagetable_table_stale_cpus_only_when_write_held(post_pt),
+        pagetable_table_stale_cpus_only_when_write_locked(post_pt),
 {
     reveal(pagetable_map_hide_l4_entry_eof_transition_framing);
-    assert(pagetable_table_stale_cpus_only_when_write_held(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
@@ -1322,10 +1322,10 @@ pub(super) proof fn pagetable_map_unlink_unresolvable_l1_page_eof(
         pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
         pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(pre_pt, pre_lower),
-        pagetable_table_stale_cpus_only_when_write_held(pre_pt),
+        pagetable_table_stale_cpus_only_when_write_locked(pre_pt),
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
-        page_pagetable_wf(pre_pt, pre_lower, page_array),
+        page_mappings_pagetable_wf(pre_pt, pre_lower, page_array),
         forall|p_i: PageIndex, va: VAddr| #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pagetable_ptr, va))]
             index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().is_mapped() ==> !page_array.spec_index(p_i).view().view().mappings().contains((pagetable_ptr, va)),
         pagetable_map_unlink_unresolvable_l1_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
@@ -1339,12 +1339,12 @@ pub(super) proof fn pagetable_map_unlink_unresolvable_l1_page_eof(
         pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
         pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(post_pt, post_lower),
-        pagetable_table_stale_cpus_only_when_write_held(post_pt),
-        page_pagetable_wf(post_pt, post_lower, page_array),
+        pagetable_table_stale_cpus_only_when_write_locked(post_pt),
+        page_mappings_pagetable_wf(post_pt, post_lower, page_array),
 {
     reveal(pagetable_map_unlink_unresolvable_l1_page_eof_transition_framing);
-    assert(page_pagetable_wf(post_pt, post_lower, page_array)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
-    assert(pagetable_table_stale_cpus_only_when_write_held(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
+    assert(page_mappings_pagetable_wf(post_pt, post_lower, page_array)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
@@ -1413,7 +1413,7 @@ pub(super) proof fn pagetable_map_clear_held_4k_leaf_eof(
         pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
         pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(pre_pt, pre_lower),
-        pagetable_table_stale_cpus_only_when_write_held(pre_pt),
+        pagetable_table_stale_cpus_only_when_write_locked(pre_pt),
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         pagetable_map_clear_held_4k_leaf_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
@@ -1427,10 +1427,10 @@ pub(super) proof fn pagetable_map_clear_held_4k_leaf_eof(
         pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
         pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
         pagetable_lower_backup_wf(post_pt, post_lower),
-        pagetable_table_stale_cpus_only_when_write_held(post_pt),
+        pagetable_table_stale_cpus_only_when_write_locked(post_pt),
 {
     reveal(pagetable_map_clear_held_4k_leaf_eof_transition_framing);
-    assert(pagetable_table_stale_cpus_only_when_write_held(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
@@ -1535,7 +1535,7 @@ pub(super) proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: 
     iommu_table_map_set_did_eof_table_mappings(pre_table, post_table, did);
     iommu_table_map_set_did_eof_table_permissions(pre_table, post_table, did);
     iommu_table_map_set_did_eof_table_table_pages(pre_table, post_table, did);
-    reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
+    reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked);
 }
 
 /// S of `page_array_retype_owned_4k`: only page `pg_idx` changes, by retyping the owned 4K page to a kernel object; it stays well formed at its address.
@@ -1844,7 +1844,7 @@ pub(super) proof fn iommu_table_map_clear_4k_present_eof(pre: IommuTableLockedMa
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_clear_4k_present_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_clear_4k_present_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_clear_4k_present_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_unmap_4k_kernel`: only the write-held IOMMU table `iommu_table_ptr` changes, by unmapping one 4K leaf; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1862,7 +1862,7 @@ pub(super) proof fn iommu_table_map_unmap_4k_kernel_eof(pre: IommuTableLockedMap
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_unmap_4k_kernel_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_unmap_4k_kernel_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_unmap_4k_kernel_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_insert_4k`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one 4K leaf; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1880,7 +1880,7 @@ pub(super) proof fn iommu_table_map_insert_4k_eof(pre: IommuTableLockedMap, post
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_insert_4k_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_insert_4k_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_insert_4k_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_create_entry_l4`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L3 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1898,7 +1898,7 @@ pub(super) proof fn iommu_table_map_create_entry_l4_eof(pre: IommuTableLockedMap
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_create_entry_l4_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_create_entry_l4_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_create_entry_l4_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_create_entry_l3`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L2 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1916,7 +1916,7 @@ pub(super) proof fn iommu_table_map_create_entry_l3_eof(pre: IommuTableLockedMap
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_create_entry_l3_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_create_entry_l3_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_create_entry_l3_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_create_entry_l2`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L1 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1934,7 +1934,7 @@ pub(super) proof fn iommu_table_map_create_entry_l2_eof(pre: IommuTableLockedMap
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_create_entry_l2_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_create_entry_l2_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_create_entry_l2_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `iommu_table_map_remove_table_page`: only the write-held IOMMU table `iommu_table_ptr` changes, by removing one structure page; it stays well formed and keeps its lock.
 #[verifier::opaque]
@@ -1952,7 +1952,7 @@ pub(super) proof fn iommu_table_map_remove_table_page_eof(pre: IommuTableLockedM
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
         iommu_table_map_remove_table_page_eof_transition_framing(pre, post, iommu_table_ptr),
     ensures iommu_table_perms_wf(post),
-{ reveal(iommu_table_map_remove_table_page_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_map_remove_table_page_eof_transition_framing); reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// S of `page_allocator_map_insert_new`: allocator `allocator_page` is added with value `allocator_value`; every other allocator stays.
 #[verifier::opaque]

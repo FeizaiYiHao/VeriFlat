@@ -216,8 +216,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
     iommu: Option<RwLockPageTableRoot>,
 )
     requires
-        process_pagetable_match(before.prc_mp, before.pt_mp),
-        process_iommu_table_match(before.prc_mp, before.it_mp),
+        process_pagetable_wf(before.prc_mp, before.pt_mp),
+        process_iommu_table_wf(before.prc_mp, before.it_mp),
         before.prc_mp.dom().contains(parent),
         !before.prc_mp.dom().contains(child),
         after.prc_mp.dom() == before.prc_mp.dom().insert(child),
@@ -294,7 +294,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
     }).insert(child, post.process_map[child]), p => {
         if before.prc_mp.dom().contains(p) {
             kernel_process_projection_at(before, p); kernel_process_projection_at(after, p);
-            process_pagetable_match_process_at(before.prc_mp, before.pt_mp, p); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, p);
+            process_pagetable_wf_process_at(before.prc_mp, before.pt_mp, p); process_iommu_table_wf_process_at(before.prc_mp, before.it_mp, p);
         }
     });
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_4k, Map::empty(), va => {});
@@ -309,7 +309,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
 
 pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, thread: RwLockThreadPtr, source: RwLockContainerPtr, target: RwLockContainerPtr, page: PagePtr, table: RwLockPageTableRoot)
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         pre.thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         post.thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thread, TypedLockMode::Write),
@@ -390,7 +390,7 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
     source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot, source_va: VAddr, target_va: VAddr, progress_thread: RwLockThreadPtr,
 )
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         typed_lock_maps_aligned(pre, lctx),
         source != target,
         pre.prc_mp.dom().contains(source),
@@ -466,7 +466,7 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
             ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_pagetable_match);
+        reveal(process_pagetable_wf);
         if p == target {
             assert_maps_equal!(b.process_map[target].pagetable->Some_0.mapping_4k,
                 a.process_map[target].pagetable->Some_0.mapping_4k.insert(target_va, a.process_map[source].pagetable->Some_0.mapping_4k[source_va]), va => {});
@@ -483,8 +483,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     ep_ptr: Option<RwLockEndpointPtr>, release_source_process: Option<RwLockProcessPtr>, staging_progress: Option<SyscallProgress>,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         release_source_process matches Some(source) ==> source != prc_ptr && pre.prc_mp.dom().contains(source) && !pre.prc_mp.spec_index(source).view().zombie && !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         index_valid(NUM_CPUS, cpu_id),
@@ -594,7 +594,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     if let Some(source) = release_source_process {
         kernel_process_projection_at(post, source); kernel_process_projection_at(pre, source);
         assert(pre.pt_mp.dom().contains(pre.prc_mp.spec_index(prc_ptr).view().pagetable) && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(source).view().pagetable)) by {
-            reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
+            reveal(kernel_new_thread_fields); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source);
         };
         kernel_process_projection_at(pre, prc_ptr);
     }
@@ -758,7 +758,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_container_map(
     };
     reveal(kernel_new_thread_fields);
     assert(post_u.container_map[ctn_ptr] == new_c) by {
-        kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(post, ctn_ptr); container_scheduler_wf_at(post.ctn_mp, post.sched_mp, ctn_ptr);
+        kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(post, ctn_ptr); container_scheduler_wf_container_at(post.ctn_mp, post.sched_mp, ctn_ptr);
     };
     assert_maps_equal!(post_u.container_map, unlocked.insert(ctn_ptr, new_c), p => {
         if pre.ctn_mp.dom().contains(p) && p != ctn_ptr {
@@ -777,8 +777,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
     release_source_process: Option<RwLockProcessPtr>,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         release_source_process matches Some(source) ==> source != prc_ptr && pre.prc_mp.dom().contains(source) && !pre.prc_mp.spec_index(source).view().zombie && !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         kernel_new_thread_fields(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress),
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == match release_source_process { Some(source) => source, None => prc_ptr },
@@ -839,12 +839,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
     assert_maps_equal!(post_u.process_map, unlocked.insert(prc_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thrd_ptr), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
         reveal(kernel_new_thread_fields); reveal(kernel_pagetable_nonlock_fields_unchanged);
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, prc_ptr);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, prc_ptr);
         assert(post.prc_mp.spec_index(prc_ptr).view().pagetable == pre.prc_mp.spec_index(prc_ptr).view().pagetable);
         if let Some(source) = release_source_process {
             assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
-            process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
+            process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source);
         }
     });
 }

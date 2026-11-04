@@ -99,7 +99,7 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& krnl.ctn_mp.view().spec_index(ctn_ptr).is_init()
             &&& krnl.ctn_mp.view().spec_index(ctn_ptr).addr() == ctn_ptr
-        }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
+        }) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
         assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); };
         let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_2m(alloc_ptr_2m, cpu_id, Tracked(&mut *lctx));
@@ -192,7 +192,7 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& krnl.ctn_mp.view().spec_index(ctn_ptr).is_init()
             &&& krnl.ctn_mp.view().spec_index(ctn_ptr).addr() == ctn_ptr
-        }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
+        }) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
         assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); };
         let (cache_perms, pool_perm) = wlock_all_caches_and_global_pool(krnl, alloc_ptr_2m, Tracked(&mut *lctx));
@@ -208,7 +208,7 @@ verus! {
             // are all empty, and the held thread still has effective_quota_2m >= 1,
             // so total_free_pages >= 1 and hence pool.len() >= 1.
             assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().len() > 0) by {
-                assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+                assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
                 lemma_scan_fail_pool_nonempty(krnl, ctn_ptr, alloc_ptr_2m, thrd_ptr);
                 allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().wf_implies_view_len_eq_len();
@@ -242,7 +242,7 @@ verus! {
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thrd_ptr); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+            assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
         }
         (pg_ptr, Tracked(page_lock_perm))
     }

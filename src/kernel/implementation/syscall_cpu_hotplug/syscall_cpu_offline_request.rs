@@ -53,7 +53,7 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let ctn_ptr = cpu.owning_container();
     proof {
-        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr); };
+        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr); };
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).owning_container.view() == ctn_ptr

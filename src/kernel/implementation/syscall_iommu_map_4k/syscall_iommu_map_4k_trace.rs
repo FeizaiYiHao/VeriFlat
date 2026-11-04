@@ -77,8 +77,8 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
 )
     requires
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         iommu_map_4k_syscall_result(kernel_k_to_kernel_u(*pre), cpu_id, va, iova, range) is Success,
         iommu_map_4k_syscall_range(va, range).wf(),
@@ -133,7 +133,7 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
 {
     reveal(iommu_map_4k_enter_step_pre); reveal(iommu_map_4k_enter_step);
     assert(pre.prc_mp.dom().contains(prc_ptr) && !pre.prc_mp.spec_index(prc_ptr).view().zombie && pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr
-        && pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); };
+        && pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
     kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -146,8 +146,8 @@ pub(super) proof fn iommu_map_4k_exit_step_from_k(
 )
     requires
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(pre, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -202,7 +202,7 @@ pub(super) proof fn iommu_map_4k_exit_step_from_k(
 {
     reveal(iommu_map_4k_exit_step_pre); reveal(iommu_map_4k_exit_step);
     assert(pre.prc_mp.dom().contains(prc_ptr) && !pre.prc_mp.spec_index(prc_ptr).view().zombie) by { reveal(process_cpu_wf); };
-    process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
+    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
     kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
     iommu_map_4k_locked_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -216,7 +216,7 @@ pub(super) proof fn iommu_map_4k_locked_from_k(
 )
     requires
         process_cpu_wf(krnl.prc_mp, krnl.cpu_arr),
-        process_pagetable_match(krnl.prc_mp, krnl.pt_mp),
+        process_pagetable_wf(krnl.prc_mp, krnl.pt_mp),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(krnl, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -234,7 +234,7 @@ pub(super) proof fn iommu_map_4k_locked_from_k(
         iommu_map_4k_locked(kernel_k_to_kernel_u(*krnl), cpu_id),
 {
     assert(krnl.prc_mp.dom().contains(prc_ptr) && !krnl.prc_mp.spec_index(prc_ptr).view().zombie && krnl.pt_mp.dom().contains(pagetable_ptr)) by {
-        reveal(process_cpu_wf); reveal(process_pagetable_match);
+        reveal(process_cpu_wf); reveal(process_pagetable_wf);
     };
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
@@ -249,8 +249,8 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
 )
     requires
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(pre, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -301,7 +301,7 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
     let va = progress->Some_0->IommuMap4k_va_range.view()[progress->Some_0->IommuMap4k_mapped as int];
     let iova = progress->Some_0->IommuMap4k_iova_range.view()[progress->Some_0->IommuMap4k_mapped as int];
     assert(pre.prc_mp.dom().contains(prc_ptr) && !pre.prc_mp.spec_index(prc_ptr).view().zombie && pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)
-        && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); };
+        && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
     kernel_iommu_table_4k_mapping_added_implies_u_step(pre, mid, iommu_table_ptr, iova, table.mapping_4k()[va]);
     kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thrd_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -315,8 +315,8 @@ pub(super) proof fn iommu_map_4k_directory_step_from_k(
 )
     requires
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(pre, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),

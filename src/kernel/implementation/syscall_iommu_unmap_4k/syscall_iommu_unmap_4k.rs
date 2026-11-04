@@ -67,7 +67,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         iommu_unmap_4k_flush_step_from_k(&flush_pre, &flush_mid, &flush_post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, r);
         iommu_unmap_4k_trace_range_steps(before, steps.view(), cpu_id, r);
     }
-    proof { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
+    proof { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     iommu_unmap_4k_reclaim_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, &iova_range, &mut indirect, &mut direct,

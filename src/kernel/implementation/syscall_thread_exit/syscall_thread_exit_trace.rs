@@ -490,7 +490,7 @@ pub(super) proof fn thread_exit_table_hidden_steps_implies_partial_trace(
         entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
             &&& steps[before_len + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
-            &&& process_pagetable_match(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
+            &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
             &&& typed_lock_maps_aligned(&hidden[k].1, lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, lctx) && held_processes_unchanged(entry.prc_mp, hidden[k].1.prc_mp, lctx)
@@ -502,7 +502,7 @@ pub(super) proof fn thread_exit_table_hidden_steps_implies_partial_trace(
     if count > 0 {
         let h = hidden[count - 1];
         thread_exit_table_hidden_steps_implies_partial_trace(steps, start, before_len, pre, hidden, entry, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, count - 1);
-        process_pagetable_match_process_at(h.1.prc_mp, h.1.pt_mp, prc_ptr);
+        process_pagetable_wf_process_at(h.1.prc_mp, h.1.pt_mp, prc_ptr);
         hide_user_l4_entries_hide_step_from_k(&h.1, &h.2, pagetable, h.0);
         thread_exit_table_hidden_step_pre_from_k(&h.1, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable);
         thread_exit_table_hidden_step_from_u(kernel_k_to_kernel_u(h.1), kernel_k_to_kernel_u(h.2), cpu_id, prc_ptr, thrd_ptr, h.0);
@@ -597,7 +597,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
         post.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         post.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         pre.it_mp.dom().contains(iommu_table),
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == prc_ptr,
         *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),

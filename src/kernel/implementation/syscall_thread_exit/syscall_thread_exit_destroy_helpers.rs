@@ -194,25 +194,25 @@ pub(super) fn thread_exit_destroy_remove_thread(
     proof {
         thread_perms_wf_map(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
         container_perms_wf_map(krnl.ctn_mp);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); };
         container_process_thread_quota_sums_bounded(&*krnl, ctn_ptr, prc_ptr, thrd_ptr);
         assert(page_ptr_valid(thrd_ptr) && krnl.pg_arr.spec_index(pg_idx).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thrd_mp, krnl.pg_arr, thrd_ptr); };
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
+        assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
-        assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thrd_ptr)) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, thrd_ptr); };
+        assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thrd_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, thrd_ptr); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {
-            uppers.to_set_ensures(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
+            uppers.to_set_ensures(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         };
         assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.dom().contains(proc_node_addr)) by { krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.wf_map_at(proc_node_addr); };
-        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         assert(krnl.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); };
         assert(krnl.pcid_needflush.inv() && krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID); };
         assert(krnl.pcid_allc_mp.dom().contains(pcid_allc_ptr)) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr); };
@@ -221,12 +221,12 @@ pub(super) fn thread_exit_destroy_remove_thread(
             &&& pcid_valid(krnl.prc_mp.spec_index(prc_ptr).view().pcid)
             &&& !krnl.prc_mp.spec_index(prc_ptr).view().zombie
             &&& krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().id_to_proc.view().spec_index(krnl.prc_mp.spec_index(prc_ptr).view().pcid as int).contains(prc_ptr)
-        }) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); };
+        }) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); };
     }
     let pcid = krnl.prc_mp.borrow_rodata(prc_ptr).borrow().pcid;
     let root_process = krnl.ctn_mp.borrow_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm)).root_process;
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_wf_implies_view_inv(); };
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
     krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(needflush_lock_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); }

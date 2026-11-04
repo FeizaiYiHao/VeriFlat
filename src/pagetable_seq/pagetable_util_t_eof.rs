@@ -35,7 +35,7 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
         pagetable_hidden_l1_only_when_locked(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_hidden_l1_only_when_locked(new_k.pt_mp, new_k.pt_lower.view()),
         pagetable_window_stale_cpus_only_when_locked(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_stale_cpus_only_when_locked(new_k.pt_mp, new_k.pt_lower.view()),
         pagetable_lower_backup_wf(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_lower_backup_wf(new_k.pt_mp, new_k.pt_lower.view()),
-        page_pagetable_wf(old_k.pt_mp, old_k.pt_lower.view(), old_k.pg_arr) ==> page_pagetable_wf(new_k.pt_mp, new_k.pt_lower.view(), new_k.pg_arr),
+        page_mappings_pagetable_wf(old_k.pt_mp, old_k.pt_lower.view(), old_k.pg_arr) ==> page_mappings_pagetable_wf(new_k.pt_mp, new_k.pt_lower.view(), new_k.pg_arr),
         pagetable_window_typed_lock_map_aligned(old_k.pt_mp, old_k.pt_lower.view(), old_lctx.pagetable_window_lock_map(), old_lctx.pagetable_lock_map(), old_lctx.thread_id())
             ==> pagetable_window_typed_lock_map_aligned(new_k.pt_mp, new_k.pt_lower.view(), new_lctx.pagetable_window_lock_map(), new_lctx.pagetable_lock_map(), new_lctx.thread_id()),
 {
@@ -53,7 +53,7 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
     assert(pagetable_window_stale_cpus_only_when_locked(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_stale_cpus_only_when_locked(new_k.pt_mp, new_k.pt_lower.view())) by {
         reveal(pagetable_window_stale_cpus_only_when_locked);
     };
-    assert(page_pagetable_wf(old_k.pt_mp, old_k.pt_lower.view(), old_k.pg_arr) ==> page_pagetable_wf(new_k.pt_mp, new_k.pt_lower.view(), new_k.pg_arr)) by {
+    assert(page_mappings_pagetable_wf(old_k.pt_mp, old_k.pt_lower.view(), old_k.pg_arr) ==> page_mappings_pagetable_wf(new_k.pt_mp, new_k.pt_lower.view(), new_k.pg_arr)) by {
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(PageTableHigher::wf_l4);
     };
     assert(pagetable_window_typed_lock_map_aligned(old_k.pt_mp, old_k.pt_lower.view(), old_lctx.pagetable_window_lock_map(), old_lctx.pagetable_lock_map(), old_lctx.thread_id())
@@ -69,7 +69,7 @@ pub(super) proof fn remove_iommu_table_and_reclaim_4k_page_perms_eof(pre: IommuT
         post.dom() =~= pre.dom().remove(iommu_table_ptr),
         forall|p: RwLockPageTableRoot| #![trigger post.spec_index(p)] post.dom().contains(p) ==> post.spec_index(p) == pre.spec_index(p),
     ensures iommu_table_perms_wf(pre) ==> iommu_table_perms_wf(post),
-{ reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
+{ reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); }
 
 /// EOF closure of `KernelK::remove_pagetable_and_reclaim_4k_page_perms`: the removed table owned no window page, so
 /// this thread held none of its windows and the page-table invariants and lock alignment carry over.

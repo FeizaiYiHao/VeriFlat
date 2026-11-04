@@ -27,6 +27,8 @@ pub struct Cpu {
     current_thread: Option<RwLockThreadPtr>,
     current_pagetable: Option<RwLockPageTableRoot>,
     cr3_pcid: CpuCr3Pcid,
+    /// For each user PCID, the process and page table whose translations this cpu may cache under it; `None` when it
+    /// caches none.
     tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     container_depth: usize,
     process_depth: usize,
@@ -45,6 +47,8 @@ pub ghost struct CpuView {
     pub current_cr3: PageTableRoot,
     pub current_pcid: Pcid,
 
+    /// For each user PCID, the process and page table whose translations this cpu may cache under it; `None` when it
+    /// caches none.
     pub tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
@@ -300,14 +304,20 @@ impl Cpu {
     /// The cpu's exec copy of (cr3, pcid) matches the physical register whenever the cpu is unlocked.
     pub closed spec fn cr3_matches_hardware(&self) -> bool { self.cr3_pcid.wf() }
 
+    /// The cpu's current process, thread, and page table agree with its state, and an off cpu has no dirty entry.
     pub open spec fn wf(&self) -> bool {
         &&& self.cr3_matches_hardware()
+        // An off or idle cpu runs no process and no thread.
         &&& self.view().state is Off ==> (self.view().current_process is None && self.view().current_thread is None)
         &&& self.view().state is Idle ==> (self.view().current_process is None && self.view().current_thread is None)
-        &&& (self.view().state is Off ==> forall|pcid: Pcid| #![trigger self.tlb_dirty_bitmap().spec_index(pcid)] pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID ==> self.tlb_dirty_bitmap().spec_index(pcid) is None)
+        // An off cpu has no dirty entry for a user PCID.
+        &&& (self.view().state is Off ==> forall|pcid: Pcid|
+            #![trigger self.tlb_dirty_bitmap().spec_index(pcid)]
+            pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID ==> self.tlb_dirty_bitmap().spec_index(pcid) is None)
         &&& self.view().state is Running ==> (self.view().current_process is Some && self.view().current_thread is Some)
-        &&& self.view().current_process is None == self.view().current_thread is None
-        &&& self.view().current_process is None == self.view().current_pagetable is None
+        &&& (self.view().current_process is None) == (self.view().current_thread is None)
+        // No current process means the kernel page table.
+        &&& (self.view().current_process is None) == (self.view().current_pagetable is None)
         &&& self.view().tlb_dirty_bitmap.inv()
     }
 
@@ -783,9 +793,8 @@ impl CpuLockedArray {
 }
 
 impl LockInvTrait for Cpu {
-    open spec fn inv(&self) -> bool {
-        &&& self.wf()
-    }
+    /// Same as `wf`.
+    open spec fn inv(&self) -> bool { self.wf() }
 }
 
 impl LockMajorTrait for Cpu {

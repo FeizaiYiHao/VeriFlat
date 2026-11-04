@@ -379,12 +379,12 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         assert(mmap_4k_syscall_trace(steps.view(), cpu_id, va, range, enter_phase)) by {
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
-            process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
+            process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
             mmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, *va_range, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u(),
                 whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);
         };
-        assert(mmap_4k_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
+        assert(mmap_4k_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
     }
 }
 } // verus!

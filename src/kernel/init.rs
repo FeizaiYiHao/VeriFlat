@@ -30,6 +30,8 @@ pub struct BootKernelLayout {
 }
 
 impl BootKernelLayout {
+    /// Every boot object pointer is a valid page pointer (2M-aligned for the root container and the PCID allocator), and
+    /// the CPU page table and the IOMMU table are different pages.
     pub open spec fn pointers_wf(&self) -> bool {
         &&& page_ptr_2m_valid(self.root_container)
         &&& page_ptr_2m_valid(self.pcid_allocator)
@@ -57,17 +59,19 @@ impl BootKernelLayout {
     }
 }
 
+/// Every boot page-table page permission is for a valid page, initialized, at its own address, and well-formed.
 pub open spec fn boot_page_map_perms_wf(perms: Map<PageMapPtr, PointsTo<PageMap>>) -> bool {
-    forall|ptr: PageMapPtr|
-        #![trigger perms.dom().contains(ptr)]
-        perms.dom().contains(ptr) ==> {
-            &&& page_ptr_valid(ptr)
-            &&& perms.spec_index(ptr).is_init()
-            &&& perms.spec_index(ptr).addr() == ptr
-            &&& perms.spec_index(ptr).value().wf()
+    forall|p: PageMapPtr|
+        #![trigger perms.dom().contains(p)]
+        perms.dom().contains(p) ==> {
+            &&& page_ptr_valid(p)
+            &&& perms.spec_index(p).is_init()
+            &&& perms.spec_index(p).addr() == p
+            &&& perms.spec_index(p).value().wf()
         }
 }
 
+/// Every dom0 boot mapping maps a valid 4K virtual address to a present, valid page owned by the root container.
 pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_container: RwLockContainerPtr) -> bool {
     forall|va: VAddr|
         #![trigger manifest.dom().contains(va)]
@@ -95,72 +99,81 @@ pub open spec fn boot_dom0_pagetable_model(
     }
 }
 
-pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
+/// Boot 4K free list: every Free4k page is in it under its node address, and every page in it is a valid Free4k page of
+/// the root container.
+pub open spec fn boot_free_4k_pool_wf(pg_arr: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
+    // The pool belongs to the root container (depth 0).
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|pg_idx: PageIndex|
-        #![trigger page_array.spec_index(pg_idx).view().view().state]
-        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free4k ==> {
-            let page = page_array.spec_index(pg_idx).view().view();
+    &&& forall|p_i: PageIndex|
+        #![trigger pg_arr.spec_index(p_i).view().view().state]
+        index_valid(NUM_PAGES, p_i) && pg_arr.spec_index(p_i).view().view().state is Free4k ==> {
+            let page = pg_arr.spec_index(p_i).view().view();
             &&& page.state == PageState::Free4k { allocator_ptr: Ghost(layout.allocator_4k), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(pg_idx))
+            &&& pool.view().contains(page_index2page_ptr(p_i))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(p_i)
         }
     &&& forall|pg_ptr: PagePtr|
         #![trigger pool.view().contains(pg_ptr)]
         pool.view().contains(pg_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            let page = pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& page_ptr_valid(pg_ptr)
             &&& page.state == PageState::Free4k { allocator_ptr: Ghost(layout.allocator_4k), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
         }
 }
 
-pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
+/// Boot 2M free list: every Free2m page is in it under its node address, and every page in it is a valid Free2m page of
+/// the root container.
+pub open spec fn boot_free_2m_pool_wf(pg_arr: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
+    // The pool belongs to the root container (depth 0).
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|pg_idx: PageIndex|
-        #![trigger page_array.spec_index(pg_idx).view().view().state]
-        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free2m ==> {
-            let page = page_array.spec_index(pg_idx).view().view();
+    &&& forall|p_i: PageIndex|
+        #![trigger pg_arr.spec_index(p_i).view().view().state]
+        index_valid(NUM_PAGES, p_i) && pg_arr.spec_index(p_i).view().view().state is Free2m ==> {
+            let page = pg_arr.spec_index(p_i).view().view();
             &&& page.state == PageState::Free2m { allocator_ptr: Ghost(layout.allocator_2m), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(pg_idx))
+            &&& pool.view().contains(page_index2page_ptr(p_i))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(p_i)
         }
     &&& forall|pg_ptr: PagePtr|
         #![trigger pool.view().contains(pg_ptr)]
         pool.view().contains(pg_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            let page = pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& page_ptr_2m_valid(pg_ptr)
             &&& page.state == PageState::Free2m { allocator_ptr: Ghost(layout.allocator_2m), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
         }
 }
 
-pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
+/// Boot 1G free list: every Free1g page is in it under its node address, and every page in it is a valid Free1g page of
+/// the root container.
+pub open spec fn boot_free_1g_pool_wf(pg_arr: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
+    // The pool belongs to the root container (depth 0).
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|pg_idx: PageIndex|
-        #![trigger page_array.spec_index(pg_idx).view().view().state]
-        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free1g ==> {
-            let page = page_array.spec_index(pg_idx).view().view();
+    &&& forall|p_i: PageIndex|
+        #![trigger pg_arr.spec_index(p_i).view().view().state]
+        index_valid(NUM_PAGES, p_i) && pg_arr.spec_index(p_i).view().view().state is Free1g ==> {
+            let page = pg_arr.spec_index(p_i).view().view();
             &&& page.state == PageState::Free1g { allocator_ptr: Ghost(layout.allocator_1g), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(pg_idx))
+            &&& pool.view().contains(page_index2page_ptr(p_i))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(p_i)
         }
     &&& forall|pg_ptr: PagePtr|
         #![trigger pool.view().contains(pg_ptr)]
         pool.view().contains(pg_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            let page = pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& page_ptr_1g_valid(pg_ptr)
             &&& page.state == PageState::Free1g { allocator_ptr: Ghost(layout.allocator_1g), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
@@ -169,25 +182,27 @@ pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootK
 
 #[verifier::opaque]
 pub open spec fn boot_page_array_ready(
-    page_array: PageLockedArray, layout: BootKernelLayout, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
+    pg_arr: PageLockedArray, layout: BootKernelLayout, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
     free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>,
 ) -> bool {
-    &&& page_array_wf(page_array)
-    &&& hugepage_2m_wf(page_array)
-    &&& hugepage_1g_wf(page_array)
-    &&& boot_free_4k_pool_wf(page_array, layout, free_4k_pool)
-    &&& boot_free_2m_pool_wf(page_array, layout, free_2m_pool)
-    &&& boot_free_1g_pool_wf(page_array, layout, free_1g_pool)
+    &&& page_array_wf(pg_arr)
+    &&& hugepage_2m_wf(pg_arr)
+    &&& hugepage_1g_wf(pg_arr)
+    &&& boot_free_4k_pool_wf(pg_arr, layout, free_4k_pool)
+    &&& boot_free_2m_pool_wf(pg_arr, layout, free_2m_pool)
+    &&& boot_free_1g_pool_wf(pg_arr, layout, free_1g_pool)
     &&& cpu_page_closure.contains(layout.cpu_cr3)
     &&& !cpu_page_closure.contains(layout.cpu_pagetable)
-    &&& forall|pg_idx: PageIndex|
-        #![trigger page_array.spec_index(pg_idx).view().view().state]
-        #![trigger page_array.spec_index(pg_idx).view().view().owning_container]
-        index_valid(NUM_PAGES, pg_idx) ==> {
-            let pg_ptr = page_index2page_ptr(pg_idx);
-            let page = page_array.spec_index(pg_idx).view().view();
-            &&& !page_array.spec_index(pg_idx).view().locked()
+    &&& forall|p_i: PageIndex|
+        #![trigger pg_arr.spec_index(p_i).view().view().state]
+        #![trigger pg_arr.spec_index(p_i).view().view().owning_container]
+        index_valid(NUM_PAGES, p_i) ==> {
+            let pg_ptr = page_index2page_ptr(p_i);
+            let page = pg_arr.spec_index(p_i).view().view();
+            let is_cpu_table_page = page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE;
+            let is_iommu_table_page = page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE;
+            &&& !pg_arr.spec_index(p_i).view().locked()
             &&& page.owning_container == layout.root_container
             &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) <==> pg_ptr == layout.root_container
             &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) <==> pg_ptr == layout.pcid_allocator
@@ -201,20 +216,20 @@ pub open spec fn boot_page_array_ready(
             &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsThread }) <==> pg_ptr == layout.root_thread
             &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }) <==> pg_ptr == layout.root_endpoint
             &&& (page.state == PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } }) <==> pg_ptr == layout.iommu_table
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE) <==> cpu_page_closure.contains(pg_ptr)
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE) ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.cpu_pagetable
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE) <==> pg_ptr == layout.iommu_l4
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE) ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.iommu_table
+            &&& is_cpu_table_page <==> cpu_page_closure.contains(pg_ptr)
+            &&& is_cpu_table_page ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.cpu_pagetable
+            &&& is_iommu_table_page <==> pg_ptr == layout.iommu_l4
+            &&& is_iommu_table_page ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.iommu_table
             &&& !(page.state is Owned4k)
             &&& !(page.state is Owned2m)
             &&& !(page.state is Owned1g)
             &&& !(page.state is Mapped2m)
             &&& !(page.state is Mapped1g)
-            &&& forall|pagetable_ptr: RwLockPageTableRoot, va: VAddr|
-                #![trigger page.mappings().contains((pagetable_ptr, va))]
-                page.mappings().contains((pagetable_ptr, va)) <==> {
+            &&& forall|pt: RwLockPageTableRoot, va: VAddr|
+                #![trigger page.mappings().contains((pt, va))]
+                page.mappings().contains((pt, va)) <==> {
                     &&& page.state is Mapped4k
-                    &&& pagetable_ptr == layout.cpu_pagetable
+                    &&& pt == layout.cpu_pagetable
                     &&& manifest_4k.dom().contains(va)
                     &&& manifest_4k.spec_index(va).addr == pg_ptr
                 }
@@ -223,7 +238,7 @@ pub open spec fn boot_page_array_ready(
     &&& forall|va: VAddr|
         #![trigger manifest_4k.dom().contains(va)]
         manifest_4k.dom().contains(va) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(manifest_4k.spec_index(va).addr)).view().view();
+            let page = pg_arr.spec_index(page_ptr2page_index(manifest_4k.spec_index(va).addr)).view().view();
             &&& page.state is Mapped4k
             &&& page.mappings().contains((layout.cpu_pagetable, va))
             &&& page.owning_container == manifest_4k.spec_index(va).owning_container.view()
@@ -489,8 +504,8 @@ proof fn prove_boot_container_page_owner_wf(
         krnl.ctn_mp.spec_index(layout.root_container).view().owned_pages.view() =~= all_valid_pages,
         forall|pg_ptr: PagePtr| #![trigger all_valid_pages.contains(pg_ptr)] all_valid_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
     ensures
-        container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr),
-{ reveal(container_page_owner_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); }
+        container_owned_pages_wf(krnl.ctn_mp, krnl.pg_arr),
+{ reveal(container_owned_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); }
 
 /// Every boot object page is named by the root container, and the root container has no parent.
 proof fn prove_boot_page_object_owner_wf(
@@ -507,7 +522,7 @@ proof fn prove_boot_page_object_owner_wf(
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_endpoints.view() =~= set![layout.root_endpoint],
     ensures
-        page_object_owner_wf(krnl.pg_arr, krnl.ctn_mp, krnl.thrd_mp),
+        page_object_owner_wf(krnl.ctn_mp, krnl.thrd_mp, krnl.pg_arr),
 { reveal(page_object_owner_wf); reveal(boot_page_array_ready); }
 
 /// Every boot page and the root process belong to the root container.
@@ -521,14 +536,14 @@ proof fn prove_boot_process_kernel_pages_owner_wf(
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
         krnl.prc_mp.dom() =~= set![layout.root_process],
         krnl.prc_mp.spec_index(layout.root_process).view_rodata().view().owning_container == layout.root_container,
-        process_pages_wf(krnl.pg_arr, krnl.prc_mp),
+        process_pages_wf(krnl.prc_mp, krnl.pg_arr),
         pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr),
-        process_pagetable_match(krnl.prc_mp, krnl.pt_mp),
-        process_iommu_table_match(krnl.prc_mp, krnl.it_mp),
+        process_pagetable_wf(krnl.prc_mp, krnl.pt_mp),
+        process_iommu_table_wf(krnl.prc_mp, krnl.it_mp),
     ensures
-        process_kernel_pages_owner_wf(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp),
-{ reveal(process_kernel_pages_owner_wf); reveal(boot_page_array_ready); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); }
+        process_object_pages_owner_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, krnl.pg_arr),
+{ reveal(process_object_pages_owner_wf); reveal(boot_page_array_ready); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); }
 
 proof fn prove_boot_iommu_table_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>,
@@ -595,46 +610,66 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
 /// Operation summary of `finish_init_from_boot`: every field of the kernel object it assembles.
 pub open spec fn boot_kernel_state(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 ) -> bool {
     &&& krnl.rt_ctn == layout.root_container
-    &&& krnl.pg_arr == page_array
+    &&& krnl.pg_arr == pg_arr
     &&& krnl.pcid_needflush == pcid_needflush
     &&& krnl.cpu_hw_cr3_pcid == cpu_hw_cr3_pcid
     &&& *krnl.dflt_pt == default_pagetable
+    // CPUs.
     &&& krnl.cpu_op.view().view() == Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off })
     &&& krnl.cpu_arr.inv()
-    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_arr.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().inv()
-        &&& !krnl.cpu_arr.spec_index(cpu_id).view().locked()
-        &&& !krnl.cpu_arr.spec_index(cpu_id).view().being_killed()
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() is None
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id)
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == layout.root_container
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == 0
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_pagetable.view().cr3
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.cpu_arr.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().inv()
+            &&& !krnl.cpu_arr.spec_index(cpu_id).view().locked()
+            &&& !krnl.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() is None
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id)
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == layout.root_container
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == 0
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_pagetable.view().cr3
+            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
+        }
+    // TLBs.
     &&& krnl.cpu_tlb.inv()
-    &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
-    &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.structure_cache((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+    &&& forall|cpu_id: CpuId, pcid: Pcid|
+        #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))]
+        index_valid(NUM_CPUS, cpu_id)
+            && pcid_valid(pcid)
+            ==>
+            krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+    &&& forall|cpu_id: CpuId, pcid: Pcid|
+        #![trigger krnl.cpu_tlb.structure_cache((cpu_id, pcid))]
+        index_valid(NUM_CPUS, cpu_id)
+            && pcid_valid(pcid)
+            ==>
+            krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
     &&& krnl.iommu_tlb.inv()
-    &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
+    &&& forall|did: VtdDomainId|
+        #![trigger krnl.iommu_tlb.spec_index(did)]
+        vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
     &&& krnl.iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty()
+    // IOMMU root table.
     &&& krnl.irt.inv()
     &&& krnl.irt.locking_thread() is None
     &&& !krnl.irt.locked()
     &&& !krnl.irt.being_killed()
     &&& krnl.irt.view().wf()
     &&& krnl.irt.view().table_base() == layout.iommu_root_table_base()
-    &&& forall|bus: usize, device: usize, function: usize| #![trigger krnl.irt.view().spec_index_iommu_root(bus, device, function)]
+    &&& forall|bus: usize, device: usize, function: usize|
+        #![trigger krnl.irt.view().spec_index_iommu_root(bus, device, function)]
         pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_iommu_root(bus, device, function) is None
-    &&& forall|bus: usize, device: usize, function: usize| #![trigger krnl.irt.view().spec_index_owner(bus, device, function)]
+    &&& forall|bus: usize, device: usize, function: usize|
+        #![trigger krnl.irt.view().spec_index_owner(bus, device, function)]
         pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_owner(bus, device, function) == layout.root_process
+    // CPU page table.
     &&& krnl.pt_mp.perms_wf()
     &&& krnl.pt_mp.dom() =~= set![layout.cpu_pagetable]
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).is_init()
@@ -643,7 +678,8 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
     &&& krnl.pt_lower.view().dom() =~= set![layout.cpu_pagetable]
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
-    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
+    &&& forall|p: PageMapPtr, i: L2Index|
+        #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.hidden_l1_tables_in_locked_windows()
@@ -660,12 +696,20 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& forall|l4i: L4Index|
         #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i)]
-        kernel_l4_end <= l4i && pei_valid(l4i) && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i) is Some
-            ==> krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l4(l4i) is Some
+        kernel_l4_end <= l4i
+            && pei_valid(l4i)
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i) is Some
+            ==>
+            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l4(l4i) is Some
     &&& forall|l4i: L4Index, l3i: L3Index|
         #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i)]
-        kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i) is Some
-            ==> krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some
+        kernel_l4_end <= l4i
+            && pei_valid(l4i)
+            && pei_valid(l3i)
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i) is Some
+            ==>
+            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some
+    // IOMMU table.
     &&& krnl.it_mp.perms_wf()
     &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
     &&& krnl.it_mp.spec_index(layout.iommu_table).is_init()
@@ -681,6 +725,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().is_empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4]
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().proc_ptr == layout.root_process
+    // Root container.
     &&& krnl.ctn_mp.perms_wf()
     &&& krnl.ctn_mp.dom() =~= set![layout.root_container]
     &&& krnl.ctn_mp.spec_index(layout.root_container).is_init()
@@ -703,17 +748,21 @@ pub open spec fn boot_kernel_state(
         uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
         owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)), retire_ready: false,
     })
+    // Scheduler.
     &&& krnl.sched_mp.perms_wf()
     &&& krnl.sched_mp.dom() =~= set![layout.scheduler]
     &&& krnl.sched_mp.spec_index(layout.scheduler).inv()
     &&& krnl.sched_mp.spec_index(layout.scheduler).owning_container == layout.root_container
-    &&& forall|cpu_id: CpuId| #![trigger krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& !krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id).view().locked()
-        &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.view() == if cpu_id == 0 { seq![layout.root_thread] } else { Seq::<RwLockThreadPtr>::empty() }
-        &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.map() == if cpu_id == 0 {
-            Map::<usize, RwLockThreadPtr>::empty().insert(scheduler_node_addr, layout.root_thread)
-        } else { Map::<usize, RwLockThreadPtr>::empty() }
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& !krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id).view().locked()
+            &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.view() == if cpu_id == 0 { seq![layout.root_thread] } else { Seq::<RwLockThreadPtr>::empty() }
+            &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.map() == if cpu_id == 0 {
+                Map::<usize, RwLockThreadPtr>::empty().insert(scheduler_node_addr, layout.root_thread)
+            } else { Map::<usize, RwLockThreadPtr>::empty() }
+        }
+    // PCID allocator.
     &&& krnl.pcid_allc_mp.perms_wf()
     &&& krnl.pcid_allc_mp.dom() =~= set![layout.pcid_allocator]
     &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).is_init()
@@ -725,8 +774,19 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().container_depth.view() == 0
     &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(1) == 1
     &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(1) =~= set![layout.root_process]
-    &&& forall|id: Pcid| #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(id)] pcid_valid(id) && id != 1 ==> krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(id) == 0
-    &&& forall|id: Pcid| #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(id as int)] pcid_valid(id) && id != 1 ==> krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(id as int).is_empty()
+    &&& forall|pcid: Pcid|
+        #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(pcid)]
+        pcid_valid(pcid)
+            && pcid != 1
+            ==>
+            krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(pcid) == 0
+    &&& forall|pcid: Pcid|
+        #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(pcid as int)]
+        pcid_valid(pcid)
+            && pcid != 1
+            ==>
+            krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(pcid as int).is_empty()
+    // CPU set.
     &&& krnl.cpu_set_mp.perms_wf()
     &&& krnl.cpu_set_mp.dom() =~= set![layout.cpu_set]
     &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).is_init()
@@ -736,9 +796,13 @@ pub open spec fn boot_kernel_state(
     &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().inv()
     &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owning_container.view() == layout.root_container
     &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().container_depth.view() == 0
-    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id)] krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id)
-    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.closed_view().contains(cpu_id)]
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id)]
+        krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id)
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.closed_view().contains(cpu_id)]
         krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.closed_view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id) && cpu_id != 0
+    // Root process.
     &&& krnl.prc_mp.perms_wf()
     &&& krnl.prc_mp.dom() =~= set![layout.root_process]
     &&& krnl.prc_mp.spec_index(layout.root_process).is_init()
@@ -764,6 +828,7 @@ pub open spec fn boot_kernel_state(
         iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
     })
     &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
+    // Root thread.
     &&& krnl.thrd_mp.perms_wf()
     &&& krnl.thrd_mp.dom() =~= set![layout.root_thread]
     &&& krnl.thrd_mp.spec_index(layout.root_thread).is_init()
@@ -779,8 +844,12 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(0) == Some(layout.root_endpoint)
-    &&& forall|ep_idx: EndpointIdx| #![trigger krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx)]
-        edp_idx_valid(ep_idx) && ep_idx != 0 ==> krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx) is None
+    &&& forall|ep_idx: EndpointIdx|
+        #![trigger krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx)]
+        edp_idx_valid(ep_idx)
+            && ep_idx != 0
+            ==>
+            krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx) is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().ipc_payload is Empty
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().error_code is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().caller is None
@@ -801,6 +870,7 @@ pub open spec fn boot_kernel_state(
     &&& !krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr
+    // Root endpoint.
     &&& krnl.ep_mp.perms_wf()
     &&& krnl.ep_mp.dom() =~= set![layout.root_endpoint]
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).is_init()
@@ -816,6 +886,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().rf_counter == 1
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().owning_threads.view() =~= set![(layout.root_thread, 0usize)]
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().owning_container == layout.root_container
+    // Page allocators.
     &&& krnl.allc_4k_mp.perms_wf()
     &&& krnl.allc_4k_mp.dom() =~= set![layout.allocator_4k]
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).inv()
@@ -828,11 +899,13 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().view() == free_4k_pool.view()
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().map() == free_4k_pool.map()
     &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.locked()
-    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
-        &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
-        &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().locked()
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+            &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+            &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().locked()
+        }
     &&& krnl.allc_2m_mp.perms_wf()
     &&& krnl.allc_2m_mp.dom() =~= set![layout.allocator_2m]
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).inv()
@@ -845,11 +918,13 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().view() == free_2m_pool.view()
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().map() == free_2m_pool.map()
     &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.locked()
-    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
-        &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
-        &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().locked()
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+            &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+            &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().locked()
+        }
     &&& krnl.allc_1g_mp.perms_wf()
     &&& krnl.allc_1g_mp.dom() =~= set![layout.allocator_1g]
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).inv()
@@ -862,21 +937,26 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().view() == free_1g_pool.view()
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().map() == free_1g_pool.map()
     &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.locked()
-    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
-        &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
-        &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().locked()
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+            &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+            &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().locked()
+        }
+    // CPU offline flags.
     &&& krnl.cpu_offline_mp.perms_wf()
     &&& krnl.cpu_offline_mp.dom() =~= set![cpu_offline_flags_ptr(layout.root_container)]
     &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).inv()
     &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).owning_container.view() == layout.root_container
     &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).container_depth.view() == 0
-    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-        &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().locked()
-        &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(layout.root_container), cpu_id)
-        &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().requested
-    }
+    &&& forall|cpu_id: CpuId|
+        #![trigger krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().locked()
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(layout.root_container), cpu_id)
+            &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().requested
+        }
 }
 
 pub fn finish_init_from_boot(

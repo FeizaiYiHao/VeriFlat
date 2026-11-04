@@ -159,20 +159,20 @@ proof fn ipc_pci_rendezvous_eof_object_pages_wf(
     ensures
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
         thread_pages_wf(post.thrd_mp, post.pg_arr),
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
-        thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr),
-        thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr),
-        thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr),
+        thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr),
+        thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr),
+        thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr),
 {
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
-    assert(thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
-    assert(thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
-    assert(thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_4k_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
 }
 
 proof fn ipc_pci_rendezvous_eof_memory_management_inv(
@@ -194,14 +194,14 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-        assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+        assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
         assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-        assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
-        assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-        assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
-        assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
-        assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
+        assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
+        assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+        assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
+        assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
+        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
+        assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
     };
 }
 
@@ -243,7 +243,7 @@ proof fn ipc_pci_rendezvous_eof_sender_table(
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf) by (nonlinear_arith) requires pci_bdf_valid(bdf.0, bdf.1, bdf.2);
     assert(transferred && pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some ==> pre.prc_mp.spec_index(sender_proc).view_rodata().view().iommu_table_ptr is Some) by {
-        process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc); reveal(iommu_root_table_process_wf);
+        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); reveal(iommu_root_table_process_wf);
     };
     if let Some(t) = iommu_table {
         assert({
@@ -254,14 +254,14 @@ proof fn ipc_pci_rendezvous_eof_sender_table(
             &&& pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == pre.it_mp.spec_index(t).view().did
             &&& pre.it_mp.spec_index(t).view().did is Some
             &&& vtd_domain_id_valid(pre.it_mp.spec_index(t).view().did->Some_0)
-        }) by { process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc); reveal(iommu_root_table_process_wf); };
+        }) by { process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); reveal(iommu_root_table_process_wf); };
         let od = pre.it_mp.spec_index(t).view().did->Some_0;
         assert(pci_bdf_valid(pci_bdf_of_did(od).0, pci_bdf_of_did(od).1, pci_bdf_of_did(od).2) && pci_bdf_did(pci_bdf_of_did(od).0, pci_bdf_of_did(od).1, pci_bdf_of_did(od).2) == od)
             by (nonlinear_arith) requires vtd_domain_id_valid(od);
     }
     if let Some(a) = anchor {
         assert(pci_bdf_of_did(pci_bdf_did(a.0, a.1, a.2)) == a && vtd_domain_id_valid(pci_bdf_did(a.0, a.1, a.2))) by (nonlinear_arith) requires pci_bdf_valid(a.0, a.1, a.2);
-        assert(pre.irt.view().spec_index_iommu_root(a.0, a.1, a.2) is Some) by { pre.irt.view().context_wf_at(a.0, a.1, a.2); };
+        assert(pre.irt.view().spec_index_iommu_root(a.0, a.1, a.2) is Some) by { pre.irt.view().wf_context_entry_at(a.0, a.1, a.2); };
     }
 }
 
@@ -287,7 +287,7 @@ proof fn ipc_pci_rendezvous_eof_iommu_root_table_wf(
 {
     ipc_pci_rendezvous_eof_sender_table(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
 }
 
 /// A handed-over function keeps a unique owner in the receiver's reverse set.
@@ -328,7 +328,7 @@ proof fn ipc_pci_rendezvous_eof_iotlb(
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.iommu_tlb.inv(),
-    ensures iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+    ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     ipc_pci_rendezvous_eof_sender_table(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
@@ -337,7 +337,7 @@ proof fn ipc_pci_rendezvous_eof_iotlb(
         assert(post.iommu_tlb.context_cache() =~= Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
             .union_prefer_right(Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 == did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])));
     }
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); };
 }
 
 /// The transfer's root-table, IOTLB, and IOMMU-table effects in the form of `kernel_ipc_rendezvous_fields`: the old DID domain
@@ -473,10 +473,10 @@ proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         &&& iommu_table matches Some(t) ==> snapshot.it_mp.spec_index(t).view().did == pre.it_mp.spec_index(t).view().did
     }) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-        process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc);
+        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc);
     };
     assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, None, if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None })) by {
-        running_thread_not_in_endpoint_queue(&pre, ep_ptr, current_thrd_ptr); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc);
+        running_thread_not_in_endpoint_queue(&pre, ep_ptr, current_thrd_ptr); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc);
         reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
         reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);

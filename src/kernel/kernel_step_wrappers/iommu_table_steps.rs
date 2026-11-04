@@ -31,7 +31,7 @@ pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, p
 /// IOMMU mapping and changes nothing else in the complete projection.
 pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, thrd_ptr: RwLockThreadPtr)
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         pre.it_mp.dom().contains(iommu_table),
         *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
@@ -65,7 +65,7 @@ pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK,
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
@@ -90,7 +90,7 @@ pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK,
 /// entry into the owning process's user IOMMU mapping and changes nothing else in the complete projection.
 pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, entry: MapEntry)
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         pre.it_mp.dom().contains(iommu_table),
         *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, ..*pre }),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
@@ -119,7 +119,7 @@ pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, p
             })
         }),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
@@ -139,8 +139,8 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot,
 )
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, ..*pre }),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
@@ -202,7 +202,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
-    assert(pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_pagetable_match); reveal(process_iommu_table_match); };
+    assert(pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);
     kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
@@ -218,7 +218,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
         iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
     });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {
         lock_state: post.thrd_mp.spec_index(thrd_ptr).lock_state_u(), syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thrd_ptr)
@@ -233,7 +233,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
 )
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, it_mp: post.it_mp, ..*pre }),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
@@ -293,7 +293,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
-    assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_match); };
+    assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_wf); };
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);
     kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
     kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(post, ctn_ptr);
@@ -309,7 +309,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
         iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_iommu_table_match);
+        reveal(process_iommu_table_wf);
     });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {
         lock_state: post.thrd_mp.spec_index(thrd_ptr).lock_state_u(), syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thrd_ptr)
@@ -324,7 +324,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
 /// and progress in the complete projection.
 pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_implies_u_step(pre: &KernelK, post: &KernelK, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot)
     requires
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, ..*pre }),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
@@ -362,7 +362,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_i
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_iommu_table_match);
+        reveal(process_iommu_table_wf);
     });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {
         quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k, syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..pre_u.thread_map[thrd_ptr]

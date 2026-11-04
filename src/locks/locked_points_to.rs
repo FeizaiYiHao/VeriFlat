@@ -9,6 +9,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockMinorTrait for LockObjPe
 }
 
 impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockInvTrait for LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I> {
+    /// The token is initialized and the locked object satisfies its own invariant. Weaker than `LockCell::inv` of
+    /// `value()`, which also requires the lock's own `is_init` and a reader behind every read hold.
     open spec fn inv(&self) -> bool {
         &&& self.is_init()
         &&& self.value().view().inv()

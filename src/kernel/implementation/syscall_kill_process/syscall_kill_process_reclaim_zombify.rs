@@ -602,7 +602,7 @@ pub(crate) fn kill_reclaim_unlock_table(
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_perm.tracked_unwrap()));
     }
-    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
+    proof { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     proof {
         let unlocked_k = *krnl;
@@ -698,7 +698,7 @@ pub(crate) fn kill_reclaim_zombify(
             &&& pcid_valid(pcid)
             &&& pcid != KERNEL_DEFAULT_PCID
             &&& krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(target)
-        }) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, target); };
+        }) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, target); };
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;

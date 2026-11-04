@@ -57,14 +57,14 @@ pub fn move_pool_page_to_cache(krnl: &mut KernelK, allocator: RwLockPageAllocato
     };
     assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: FreePageAllocatorState::GlobalList })
         && !krnl.allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by {
-        container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, pg_ptr); container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr);
+        allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, pg_ptr); allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cpu_id, pg_ptr);
     };
     assert(krnl.allc_4k_mp.spec_index(allocator).global_pool.view().len() > 0 && krnl.allc_4k_mp.spec_index(allocator).global_pool.view().view().no_duplicates()) by {
         krnl.allc_4k_mp.spec_index(allocator).global_pool.view().wf_implies_view_len_eq_len(); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
     };
     let (node_addr, Tracked(node_perm)) = krnl.allc_4k_mp.pop_global_pool_page_typed(allocator, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
     assert(node_addr == krnl.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage.addr()) by {
-        container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, pg_idx);
+        allocator_free_4k_pages_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, pg_idx);
         old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage.addr());
     };
     krnl.allc_4k_mp.push_cache_page_typed(allocator, cpu_id, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);

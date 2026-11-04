@@ -267,7 +267,7 @@ pub(super) fn ipc_pages_fill_target_page(
         spec_v2l4index_monotonic(target_range.start, cur_va);
         spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread); process_perms_wf_at(krnl.prc_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread); process_perms_wf_at(krnl.prc_mp, target_process);
         process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, target_process, target_thread);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).higher.wf_mapping_1g_at(cur.0, cur.1);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).wf_mapping_2m_at(cur.0, cur.1, cur.2);

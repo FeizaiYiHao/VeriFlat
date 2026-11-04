@@ -81,7 +81,7 @@ pub fn reclaim_dangling_thread(
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
-    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
+    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
     proof { assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; }
     let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_4k(allc_ptr, cpu_id, Tracked(&mut *lctx));
@@ -92,7 +92,7 @@ pub fn reclaim_dangling_thread(
     reclaim_dangling_thread_drain_full_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, allc_ptr, Tracked(&cache_lock_perm));
     proof {
         assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr) by {
-            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx);
+            container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx);
         };
         assert(krnl.allc_4k_mp.spec_index(allc_ptr).wf()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); };
     }

@@ -39,7 +39,8 @@ pub open spec fn first_nonempty_shard(shards: Seq<Seq<RwLockThreadPtr>>, from: i
 }
 
 impl LockInvTrait for SchedulerShard {
-    open spec fn inv(&self) -> bool { self.queue.inv() }
+    /// The run queue is well formed.
+    open spec fn inv(&self) -> bool { self.queue.wf() }
 }
 
 impl LockMajorTrait for SchedulerShard {

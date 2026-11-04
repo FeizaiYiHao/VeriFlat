@@ -16,7 +16,7 @@ use crate::*;
 /// while attached and re-establishes this with an IOTLB flush before unlocking.
 // Proof dependency (confirmed): iommu_root_table_process_wf.
 #[verifier::opaque]
-pub open spec fn iommu_tlb_wf_spec(iommu_tlb: IommuTLB, root_table: IommuRootTable, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap) -> bool {
+pub open spec fn iommu_tlb_wf(iommu_tlb: IommuTLB, root_table: IommuRootTable, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap) -> bool {
     &&& iommu_tlb.inv()
     &&& forall|bus: usize, device: usize, function: usize|
         #![trigger root_table.spec_index_owner(bus, device, function)]
@@ -43,8 +43,8 @@ pub open spec fn iommu_tlb_wf_spec(iommu_tlb: IommuTLB, root_table: IommuRootTab
 }
 
 /// The DID domain of IOMMU table `it` caches only present leaves of `it`: the write holder's flush establishes it and the
-/// step boundary keeps it.  A table without a DID constrains nothing; its domain-emptiness lives in `iommu_tlb_wf_spec`.
-/// Opaque: callers forward it unchanged; only the flush producer and the EOF closures that relate it to `iommu_tlb_wf_spec` reveal it.
+/// step boundary keeps it.  A table without a DID constrains nothing; its domain-emptiness lives in `iommu_tlb_wf`.
+/// Opaque: callers forward it unchanged; only the flush producer and the EOF closures that relate it to `iommu_tlb_wf` reveal it.
 #[verifier::opaque]
 pub open spec fn iommu_table_tlb_entries_present(iommu_tlb: IommuTLB, root_table: IommuRootTable, iommu_table_map: IommuTableLockedMap, it: RwLockPageTableRoot) -> bool {
     iommu_table_map.spec_index(it).view().did matches Some(did) ==> single_tlb_subset_of_present_pagetable(iommu_tlb.spec_index(did), iommu_table_map.spec_index(it).view())

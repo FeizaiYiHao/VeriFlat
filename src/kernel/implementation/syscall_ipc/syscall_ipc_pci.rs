@@ -164,7 +164,7 @@ verus! {
         let sender_proc = if is_send { prc_ptr } else { peer_proc };
         let receiver_proc = if is_send { peer_proc } else { prc_ptr };
         proof {
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, peer_thrd_ptr);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, peer_thrd_ptr);
             assert({
                 let pre = steps.snapshot_k();
                 &&& pre.thrd_mp.dom().contains(current_thrd_ptr) && pre.thrd_mp.dom().contains(peer_thrd_ptr) && pre.ep_mp.dom().contains(ep_ptr)
@@ -190,10 +190,10 @@ verus! {
                 Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
             );
         }
-        proof { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container); }
+        proof { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container); }
         let wake_cpu = if peer_container == current_container { cpu_id } else { peer_last_cpu };
         let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_container).borrow().scheduler;
-        proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container); }
+        proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_container); }
         let (result, iommu_table, Ghost(anchor), Tracked(irt_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(iommu_table_lock_perm)) = ipc_pci_lock_transfer_and_schedule_peer(
             krnl, Tracked(&mut *lctx), cpu_id, current_thrd_ptr, ep_ptr, peer_thrd_ptr, peer_sched_ptr, wake_cpu, bus, dev, fun, sender_proc, receiver_proc,
             Tracked(&endpoint_lock_perm), Tracked(&peer_thread_lock_perm),

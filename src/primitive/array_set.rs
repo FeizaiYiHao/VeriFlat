@@ -3,7 +3,8 @@ verus! {
 use crate::*;
 use vstd::set_lib::*;
 
-/// A set of integers from 0 to N - 1.
+/// A set of integers from 0 to N - 1. `closed_set` is the subset of members marked closed; for the owned cpus of a cpu
+/// set, the cpus that are Off.
 pub struct ArraySet<const N: usize> {
     pub data: Array<bool, N>,
     pub closed: Array<bool, N>,
@@ -72,24 +73,58 @@ impl<const N: usize> ArraySet<N> {
 
     pub closed spec fn spec_len(&self) -> usize { self.set.view().len() as usize }
 
+    /// Members lie in 0..N, the arrays match the ghost sets, and closed members are members.
     pub open spec fn wf(&self) -> bool {
         &&& self.elements_in_range()
         &&& self.internal_wf()
         &&& self.closed_view().subset_of(self.view())
     }
 
+    /// Every member lies in 0..N.
     pub open spec fn elements_in_range(&self) -> bool {
-        &&& forall|i: usize| #![trigger self.view().contains(i)] self.view().contains(i) ==> 0 <= i < N
+        &&& forall|i: usize|
+            #![trigger self.view().contains(i)]
+            self.view().contains(i)
+                ==>
+                0 <= i < N
     }
 
+    /// `data` and `closed` mark exactly the members of `set` and `closed_set`, closed members are members, and `len` counts
+    /// `set`.
     pub closed spec fn internal_wf(&self) -> bool {
         &&& self.data.wf()
         &&& self.closed.wf()
         &&& 0 <= self.len <= N
-        &&& forall|i: usize| #![trigger self.data.view().spec_index(i as int)] #![trigger self.set.view().contains(i)] 0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
-        &&& forall|i: usize| #![trigger self.data.view().spec_index(i as int)] #![trigger self.set.view().contains(i)] self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
-        &&& forall|i: usize| #![trigger self.closed.view().spec_index(i as int)] #![trigger self.closed_set.view().contains(i)] 0 <= i < N && self.closed.view().spec_index(i as int) ==> self.closed_set.view().contains(i)
-        &&& forall|i: usize| #![trigger self.closed.view().spec_index(i as int)] #![trigger self.closed_set.view().contains(i)] self.closed_set.view().contains(i) ==> 0 <= i < N && self.closed.view().spec_index(i as int)
+        // `data` marks exactly the members
+        &&& forall|i: usize|
+            #![trigger self.data.view().spec_index(i as int)]
+            #![trigger self.set.view().contains(i)]
+            0 <= i < N
+                && self.data.view().spec_index(i as int)
+                ==>
+                self.set.view().contains(i)
+        &&& forall|i: usize|
+            #![trigger self.data.view().spec_index(i as int)]
+            #![trigger self.set.view().contains(i)]
+            self.set.view().contains(i)
+                ==>
+                0 <= i < N
+                && self.data.view().spec_index(i as int)
+        // `closed` marks exactly the closed members
+        &&& forall|i: usize|
+            #![trigger self.closed.view().spec_index(i as int)]
+            #![trigger self.closed_set.view().contains(i)]
+            0 <= i < N
+                && self.closed.view().spec_index(i as int)
+                ==>
+                self.closed_set.view().contains(i)
+        &&& forall|i: usize|
+            #![trigger self.closed.view().spec_index(i as int)]
+            #![trigger self.closed_set.view().contains(i)]
+            self.closed_set.view().contains(i)
+                ==>
+                0 <= i < N
+                && self.closed.view().spec_index(i as int)
         &&& self.closed_set.view().subset_of(self.set.view())
         &&& self.len == self.set.view().len()
     }

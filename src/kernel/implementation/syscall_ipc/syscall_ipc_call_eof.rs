@@ -45,7 +45,7 @@ proof fn ipc_call_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId,
     reveal(ipc_call_handoff_eof_transition_framing);
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_thread_wf); };
     assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }
 
@@ -279,7 +279,7 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         reveal(KernelK::default_pagetable_wf);
@@ -371,12 +371,12 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
     ipc_call_handoff_eof_memory(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
     ipc_call_handoff_eof_process_management_inv(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-        reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
+        reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc); };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(structure_cache_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc);
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc); };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(callee_ptr).view().owning_proc);
     };
 }
 
@@ -663,7 +663,7 @@ pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
     assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
     ipc_accept_call_eof_process_management_inv(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
-    assert(post.inv()) by { reveal(cpu_array_wf); reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
+    assert(post.inv()) by { reveal(cpu_array_wf); reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); };
 }
 
 /// The reply handoff leaves the cpu and emptied-thread relations closed.
@@ -704,7 +704,7 @@ proof fn ipc_reply_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId
     reveal(ipc_reply_handoff_eof_transition_framing);
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_thread_wf); };
     assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }
 
@@ -915,7 +915,7 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         reveal(KernelK::default_pagetable_wf);
@@ -998,12 +998,12 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
     ipc_reply_handoff_eof_memory(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
     ipc_reply_handoff_eof_process_management_inv(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-        reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
+        reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc); };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(structure_cache_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc);
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc); };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(caller_ptr).view().owning_proc);
     };
 }
 }

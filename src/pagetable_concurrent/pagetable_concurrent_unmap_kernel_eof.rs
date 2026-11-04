@@ -65,7 +65,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.disjoint_l2(),
             post.wf_mapping_2m(),
@@ -84,16 +84,16 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::unmap_4k_page_kernel_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
     }
 
-    /// EOF closure of `unmap_4k_page_kernel` for `wf_l3`.
+    /// EOF closure of `unmap_4k_page_kernel` for `l3_links_l2_wf`.
     proof fn unmap_4k_page_kernel_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
     {
         reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `wf_l2`.
@@ -203,7 +203,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.wf_mapping_4k()) by {
             reveal(WholePageTable::wf_mapping_4k);
             spec_index2va_injective();
-            broadcast use WholePageTable::resolve_l2_addr_unique_at, WholePageTable::resolve_l2_target_exists;
+            broadcast use WholePageTable::disjoint_l2_implies_resolve_l2_addr_unique_at, WholePageTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
         };
     }
 
@@ -308,7 +308,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -322,7 +322,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
         reveal(WholePageTable::clear_held_4k_leaf_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };

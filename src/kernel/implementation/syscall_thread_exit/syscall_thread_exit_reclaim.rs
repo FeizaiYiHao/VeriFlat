@@ -312,21 +312,21 @@ fn thread_exit_reclaim_lock_table(
         &&& pcid_valid(pcid)
         &&& pcid != KERNEL_DEFAULT_PCID
     }) by {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
     };
     assert({
         &&& !krnl.prc_mp.spec_index(prc_ptr).view().zombie
         &&& krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
         &&& krnl.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr
-    }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
-    proof { krnl.default_pagetable_wf_at(pagetable); pagetable_no_1g_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
+    }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
+    proof { krnl.default_pagetable_wf_at(pagetable); pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     assert({
         &&& krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr)
         &&& krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)
         &&& krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr
-    }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
-    assert(old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
+    }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
+    assert(old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
     let ghost lock_k = *krnl;
     let ghost lock_lctx = *lctx;
     let ghost lock_before = steps.view();
@@ -336,7 +336,7 @@ fn thread_exit_reclaim_lock_table(
     let ghost mut locked_lctx = *lctx;
     let iommu_table_lock_perm = match iommu_table {
         Some(it) => {
-            proof { assert(krnl.it_mp.dom().contains(it) && krnl.it_mp.spec_index(it).view().proc_ptr == prc_ptr) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }; }
+            proof { assert(krnl.it_mp.dom().contains(it) && krnl.it_mp.spec_index(it).view().proc_ptr == prc_ptr) by { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }; }
             let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
             krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_lock_perm));
@@ -383,7 +383,7 @@ fn thread_exit_reclaim_lock_table(
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         if iommu_table is Some {
             iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0); iommu_table_perms_wf_at(lock_k.it_mp, iommu_table->Some_0);
-            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_l4_end_at(); };
+            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_iommu_l4_end_at(); };
         }
     }
     (Tracked(pagetable_lock_perm), iommu_table_lock_perm, Ghost(table_lctx))

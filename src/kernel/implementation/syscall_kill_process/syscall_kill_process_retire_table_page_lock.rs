@@ -30,14 +30,14 @@ pub(crate) fn kill_retire_lock_table_page(
             &&& old(krnl).pt_mp.dom().contains(table)
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), table, TypedLockMode::Write)
             &&& old(lctx).pagetable_lock_map().dom() == set![table]
-            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).structure_scan_wf(scan)
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
         },
         iommu ==> {
             &&& old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table)
             &&& old(krnl).it_mp.dom().contains(table)
             &&& typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), table, TypedLockMode::Write)
-            &&& old(krnl).it_mp.spec_index(table).view().spec_structure_scan_wf(scan)
+            &&& old(krnl).it_mp.spec_index(table).view().structure_scan_wf(scan)
         },
         old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
@@ -98,7 +98,7 @@ pub(crate) fn kill_retire_lock_table_page(
     }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;
     proof {
-        assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
+        assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
         container_perms_wf_at(krnl.ctn_mp, owner);
     }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;

@@ -35,7 +35,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
         container_process_wf(pre.ctn_mp, pre.prc_mp),
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
@@ -52,10 +52,10 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
     ensures
         post.memory_management_inv(),
 {
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_container_invariant_fields_forall(); };
-    assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
+    assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_allocator_quota_2m_wf);
@@ -117,5 +117,5 @@ pub proof fn cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre: Kern
         post.cpu_tlb == pre.cpu_tlb,
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
-{ reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); }
+{ reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); }
 }

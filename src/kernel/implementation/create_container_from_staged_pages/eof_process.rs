@@ -59,17 +59,17 @@ pub(super) proof fn publish_staged_container_root_eof_container_tree_wf(
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
     assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
-    assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); };
+    assert(container_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_linkedlist_wf); reveal(container_children_parent_wf); };
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); reveal(container_tree_fields_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
+    assert(container_uppertree_seq_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_parent_wf); reveal(container_tree_fields_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
     publish_staged_container_root_eof_container_uppertree_seq_wf(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by {
-        reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
+    assert(container_subtree_uppertree_agree_wf(post.rt_ctn, post.ctn_mp)) by {
+        reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_uppertree_agree_wf);
         seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
     };
 }
@@ -226,8 +226,8 @@ pub(super) proof fn publish_staged_container_root_eof_container_relations_wf(
     assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { reveal(container_thread_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(process_tree_wf(process_page, set![process_page], post.prc_mp,)) by {
-        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf);
-        reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
+        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_uppertree_seq_parent_wf); reveal(process_subtree_set_wf);
+        reveal(process_uppertree_seq_wf); reveal(process_subtree_uppertree_agree_wf);
     };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall(); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
@@ -317,14 +317,14 @@ pub(super) proof fn publish_staged_container_root_eof_direct_invariants(
         ),
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush,),
-        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
-        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(container_cpu_wf); reveal(cpu_dirty_map_contains_container_processes); };
+    assert(cpu_dirty_map_process_in_cpu_container(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(container_cpu_wf); reveal(cpu_dirty_map_process_in_cpu_container); };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(cpu_dirty_map_proc_pcid_match); };
-    assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(cpu_dirty_map_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
@@ -344,12 +344,12 @@ pub(super) proof fn publish_staged_container_root_eof_iommu_invariants(
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
-        iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
 }
 
 pub(super) broadcast proof fn publish_staged_container_root_eof_container_page_owner_forward(
@@ -359,7 +359,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_container_page_o
     allocator_quota_4k: usize, process_quota_4k: usize, c_ptr: RwLockContainerPtr, pg_ptr: PagePtr,
 )
     requires
-        container_page_owner_forward_wf(pre.ctn_mp, pre.pg_arr),
+        container_owned_pages_forward_wf(pre.ctn_mp, pre.pg_arr),
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
         page_ptr_valid(allocator_4k_page),
@@ -440,7 +440,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_container_page_o
     allocator_quota_4k: usize, process_quota_4k: usize, pg_idx: PageIndex,
 )
     requires
-        container_page_owner_backward_wf(pre.ctn_mp, pre.pg_arr),
+        container_owned_pages_backward_wf(pre.ctn_mp, pre.pg_arr),
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
         page_ptr_valid(allocator_4k_page),
@@ -538,13 +538,13 @@ pub(super) proof fn publish_staged_container_root_eof_container_page_owner_wf(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
 {
-    assert(container_page_owner_forward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(container_page_owner_backward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(container_page_owner_forward_wf(post.ctn_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_container_page_owner_forward; };
-    assert(container_page_owner_backward_wf(post.ctn_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_container_page_owner_backward; };
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
+    assert(container_owned_pages_forward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_owned_pages_wf); };
+    assert(container_owned_pages_backward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_owned_pages_wf); };
+    assert(container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_container_page_owner_forward; };
+    assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_container_page_owner_backward; };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
 }
 
 pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
@@ -596,7 +596,7 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_match); };
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     publish_staged_container_root_eof_object_pages_wf(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -617,13 +617,13 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(process_emptied_tables_wf); reveal(process_pagetable_match);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
-    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
     publish_staged_container_root_eof_allocator_free_pages_wf(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -681,12 +681,12 @@ pub(super) proof fn publish_staged_container_root_eof_process_kernel_pages_owner
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
     broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq;
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_object_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
 }
 
 /// The new container's object pages are named by the new container; every other object page keeps its state, its owner,
@@ -721,7 +721,7 @@ pub(super) proof fn publish_staged_container_root_eof_page_object_owner_wf(
         ),
         page_array_wf(post.pg_arr),
     ensures
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     broadcast use publish_staged_container_root_eof_page_object_owner_at;
     reveal(page_object_owner_wf);
@@ -814,7 +814,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_page_object_owne
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k, pg_idx,
         );
-        page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pg_idx); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pg_idx);
+        page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pg_idx); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pg_idx);
         reveal(publish_staged_container_root_eof_preconditions);
     }
 }

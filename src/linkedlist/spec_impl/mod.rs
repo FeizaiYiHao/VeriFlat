@@ -6,19 +6,25 @@ use crate::*;
 use super::*;
 
 verus! {
+/// A doubly linked list of nodes in memory, with ghost views of its node addresses and values.
 #[verifier::reject_recursive_types(T)]
 pub struct LinkedList<T, const MAJOR: LockMajorId> {
+    /// Points-to tokens of the nodes, keyed by node address.
     pub perms: Tracked<Map<usize, PointsTo<Node<T>>>>,
+    /// Node addresses from head to tail.
     pub addr_list: Ghost<Seq<usize>>,
+    /// Node values from head to tail.
     pub value_list: Ghost<Seq<T>>,
     pub length: usize,
     pub head: Option<usize>,
     pub tail: Option<usize>,
+    /// Node address to node value.
     pub map: Ghost<Map<usize, T>>,
 
     /// Lock-ordering metadata only; never read by exec code.
     pub container_depth: Ghost<Option<usize>>,
 
+    /// Lock minor id of the list (`lock_minor`).
     pub minor: Ghost<Option<usize>>,
 }
 
@@ -78,8 +84,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         self.length
     }
 
-    /// Expose the (otherwise closed-`wf`) fact that the stored `length` equals
-    /// the view length.
+    /// Expose the opaque `wf_value_list` fact that the stored `length` equals the view length.
     pub proof fn wf_implies_view_len_eq_len(&self)
         requires
             self.wf(),
@@ -90,14 +95,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         reveal(LinkedList::wf_value_list);
     }
 
-    /// Address ↔ value uniqueness: in a wf list the address holding a given
-    /// value is unique. Concretely, any two in-domain addresses mapping to the
-    /// same value are equal.
-    ///
-    /// Proof idiom (as in `unlink_interior_node`): materialize each address's position in
-    /// `addr_list`, push the value equality through `wf_value_list` so both
-    /// positions hold the same `view()` element, then `value_list_unique`
-    /// forces the positions — hence the addresses — equal.
+    /// Address ↔ value uniqueness: in a wf list the address holding a given value is unique. Concretely, any two
+    /// in-domain addresses mapping to the same value are equal.
     pub proof fn wf_and_equal_values_implies_equal_addrs(&self, a: usize, b: usize)
         requires
             self.wf(),
@@ -106,16 +105,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map().spec_index(a) == self.map().spec_index(b),
         ensures
             a == b,
-    {
-        assert(self.perms.view().dom().contains(a) && self.perms.view().dom().contains(b) && self.addr_list.view().contains(a) && self.addr_list.view().contains(b)) by { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_map); };
-        let ia = self.addr_list.view().index_of(a);
-        let ib = self.addr_list.view().index_of(b);
-        assert(self.view().len() == self.length && 0 <= ia < self.length && 0 <= ib < self.length
-            && self.addr_list.view().spec_index(ia) == a && self.addr_list.view().spec_index(ib) == b) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
-        assert(self.view().spec_index(ia) == self.perms.view().spec_index(a).value().view() && self.view().spec_index(ib) == self.perms.view().spec_index(b).value().view()
-            && self.map().spec_index(a) == self.perms.view().spec_index(a).value().view() && self.map().spec_index(b) == self.perms.view().spec_index(b).value().view()) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); };
-        assert(ia == ib) by { reveal(LinkedList::value_list_unique); };
-    }
+    { reveal(LinkedList::wf_map); }
 
     /// Point instance of `wf_map` at `addr`: map membership agrees with `dom()` and the mapped value is the node's value.
     pub proof fn wf_map_at(&self, addr: usize)
@@ -126,16 +116,24 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view(),
     { reveal(LinkedList::wf_map); }
 
+    /// Every node token is initialized at its own address, and the tokens are exactly the nodes of `addr_list`.
     #[verifier::opaque]
     pub open spec fn wf_perms(&self) -> bool {
         &&& forall|addr: usize|
             #![trigger self.perms.view().spec_index(addr).is_init()]
             #![trigger self.perms.view().spec_index(addr).addr()]
             #![trigger self.perms.view().dom().contains(addr)]
-            self.perms.view().dom().contains(addr) ==> self.perms.view().spec_index(addr).is_init() && self.perms.view().spec_index(addr).addr() == addr
-        &&& forall|addr: usize| #![trigger self.perms.view().dom().contains(addr)] #![trigger self.addr_list.view().contains(addr)] self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
+            self.perms.view().dom().contains(addr)
+                ==>
+                self.perms.view().spec_index(addr).is_init()
+                && self.perms.view().spec_index(addr).addr() == addr
+        &&& forall|addr: usize|
+            #![trigger self.perms.view().dom().contains(addr)]
+            #![trigger self.addr_list.view().contains(addr)]
+            self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
     }
 
+    /// `value_list` has `length` entries, each the value of the node at the same position of `addr_list`.
     #[verifier::opaque]
     pub open spec fn wf_value_list(&self) -> bool {
         &&& self.len() == self.length
@@ -143,57 +141,92 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         &&& forall|i: int|
             #![trigger self.value_list.view().spec_index(i)]
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()]
-            0 <= i < self.length ==> self.value_list.view().spec_index(i) == self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()
+            0 <= i < self.length
+                ==>
+                self.value_list.view().spec_index(i) == self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()
     }
 
+    /// No value appears at two positions of the list.
     #[verifier::opaque]
     pub open spec fn value_list_unique(&self) -> bool {
         &&& forall|i: int, j: int|
             #![trigger self.value_list.view().spec_index(i), self.value_list.view().spec_index(j)]
-            0 <= i < self.length && 0 <= j < self.length && i != j ==> self.value_list.view().spec_index(i) != self.value_list.view().spec_index(j)
+            0 <= i < self.length
+                && 0 <= j < self.length
+                && i != j
+                ==>
+                self.value_list.view().spec_index(i) != self.value_list.view().spec_index(j)
     }
 
+    /// `addr_list` has `length` distinct node addresses.
     #[verifier::opaque]
     pub open spec fn wf_addr_list(&self) -> bool {
         &&& self.addr_list.view().len() == self.length
         &&& self.addr_list.view().no_duplicates()
     }
 
+    /// `head` is the first node, which has no predecessor, and is absent exactly for an empty list.
     #[verifier::opaque]
     pub open spec fn wf_head(&self) -> bool {
         &&& self.length == 0 <==> self.head is None
-        &&& self.head is Some ==> self.addr_list.view().spec_index(0) == self.head.unwrap() && self.perms.view().spec_index(self.head.unwrap()).value().prev is None
+        &&& self.head is Some
+            ==>
+            self.addr_list.view().spec_index(0) == self.head.unwrap()
+            && self.perms.view().spec_index(self.head.unwrap()).value().prev is None
     }
 
+    /// `tail` is the last node, which has no successor, and is absent exactly for an empty list.
     #[verifier::opaque]
     pub open spec fn wf_tail(&self) -> bool {
         &&& self.length == 0 <==> self.tail is None
-        &&& self.tail is Some ==> self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap() && self.perms.view().spec_index(self.tail.unwrap()).value().next is None
+        &&& self.tail is Some
+            ==>
+            self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap()
+            && self.perms.view().spec_index(self.tail.unwrap()).value().next is None
     }
 
+    /// Every node after the first links back to its predecessor in `addr_list`.
     #[verifier::opaque]
     pub open spec fn wf_prev(&self) -> bool {
         &&& forall|i: int|
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev]
             1 <= i < self.length
-                ==> self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
+                ==>
+                self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some
+                && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
     }
 
+    /// Every node before the last links forward to its successor in `addr_list`.
     #[verifier::opaque]
     pub open spec fn wf_next(&self) -> bool {
         &&& forall|i: int|
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next]
             0 <= i < self.length - 1
-                ==> self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
+                ==>
+                self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some
+                && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
     }
 
+    /// `map` sends each node address to that node's value, and no two nodes share a value.
     #[verifier::opaque]
     pub open spec fn wf_map(&self) -> bool {
         &&& self.map().dom() == self.perms.view().dom()
-        &&& forall|addr: usize| #![trigger self.map().spec_index(addr)] #![trigger self.perms.view().spec_index(addr)] self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
-        &&& forall|i: usize, j: usize| #![trigger self.map().spec_index(i), self.map().spec_index(j)] self.map().dom().contains(i) && self.map().dom().contains(j) && i != j ==> self.map().spec_index(i) != self.map().spec_index(j)
+        &&& forall|addr: usize|
+            #![trigger self.map().spec_index(addr)]
+            #![trigger self.perms.view().spec_index(addr)]
+            self.map().dom().contains(addr)
+                ==>
+                self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
+        &&& forall|addr_i: usize, addr_j: usize|
+            #![trigger self.map().spec_index(addr_i), self.map().spec_index(addr_j)]
+            self.map().dom().contains(addr_i)
+                && self.map().dom().contains(addr_j)
+                && addr_i != addr_j
+                ==>
+                self.map().spec_index(addr_i) != self.map().spec_index(addr_j)
     }
 
+    /// The list is well formed: every leaf above holds.
     pub open spec fn wf(&self) -> bool {
         &&& self.wf_perms()
         &&& self.wf_addr_list()

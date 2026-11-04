@@ -146,7 +146,7 @@ pub fn install_staged_4k_iommu_table_page(
         page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
     };
     assert(!krnl.it_mp.spec_index(iommu_table_ptr).view().page_closure().contains(pg_ptr)) by {
-        if krnl.it_mp.spec_index(iommu_table_ptr).view().page_closure().contains(pg_ptr) { iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, iommu_table_ptr, pg_ptr); }
+        if krnl.it_mp.spec_index(iommu_table_ptr).view().page_closure().contains(pg_ptr) { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, iommu_table_ptr, pg_ptr); }
     };
     proof {
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);

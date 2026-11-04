@@ -96,7 +96,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             Self::hide_l4_entry_eof_transition_framing(pre, post, target_l4i),
         ensures
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -106,7 +106,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };

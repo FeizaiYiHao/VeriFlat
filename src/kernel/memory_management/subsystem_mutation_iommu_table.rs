@@ -416,7 +416,7 @@ pub fn iommu_table_map_remove_table_page(
         iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
         iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
         old(lctx).kernel_view_locking_state() is Acquire,
-        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_structure_scan_wf(scan),
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().structure_scan_wf(scan),
         scan.spec_table_page() is Some,
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),

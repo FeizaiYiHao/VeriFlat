@@ -474,7 +474,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     let ctn_ptr = cpu.owning_container();
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
     let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
-    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); }
+    proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); }
     let (count, found, Tracked(shard_perms)) = rebalance_lock_shards_until_nonempty(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr);
     if !found || count - 1 == cpu_id {
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
@@ -500,7 +500,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     }
     proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(sched_ptr), victim); krnl.sched_mp.spec_index(sched_ptr).shard(victim).queue.wf_implies_view_len_eq_len(); }
     let (_, thrd_ptr) = krnl.sched_mp.borrow_shard_typed(sched_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(shard_perms.tracked_borrow(victim))).queue.peek_head();
-    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, victim, thrd_ptr); }
+    proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, victim, thrd_ptr); }
     let res = krnl.wlock_scheduled_thread_unless_killed(thrd_ptr, Tracked(&mut *lctx));
     if res.is_none() {
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }

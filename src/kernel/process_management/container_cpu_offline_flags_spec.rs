@@ -4,38 +4,44 @@ use crate::*;
 verus! {
 /// Each container owns exactly the offline request table in the second 4K of its 2M page, tagged with its depth.
 #[verifier::opaque]
-pub open spec fn container_cpu_offline_flags_wf(container_map: ContainerLockedMap, flags_map: CpuOfflineFlagsUnLockedMap) -> bool {
-    &&& forall|c_ptr: RwLockContainerPtr| #![trigger container_map.dom().contains(c_ptr)] container_map.dom().contains(c_ptr) ==> {
-        &&& flags_map.dom().contains(cpu_offline_flags_ptr(c_ptr))
-        &&& flags_map.spec_index(cpu_offline_flags_ptr(c_ptr)).owning_container.view() == c_ptr
-        &&& flags_map.spec_index(cpu_offline_flags_ptr(c_ptr)).container_depth.view() == container_map.spec_index(c_ptr).view_rodata().view().depth
-    }
-    &&& forall|flags_ptr: RwLockCpuOfflineFlagsPtr| #![trigger flags_map.dom().contains(flags_ptr)] flags_map.dom().contains(flags_ptr) ==> {
-        let c_ptr = flags_map.spec_index(flags_ptr).owning_container.view();
-        &&& container_map.dom().contains(c_ptr)
-        &&& cpu_offline_flags_ptr(c_ptr) == flags_ptr
-    }
+pub open spec fn container_cpu_offline_flags_wf(ctn_mp: ContainerLockedMap, cpu_offline_mp: CpuOfflineFlagsUnLockedMap) -> bool {
+    // Container -> offline flags.
+    &&& forall|c: RwLockContainerPtr|
+        #![trigger ctn_mp.dom().contains(c)]
+        ctn_mp.dom().contains(c) ==> {
+            &&& cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(c))
+            &&& cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)).owning_container.view() == c
+            &&& cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)).container_depth.view() == ctn_mp.spec_index(c).view_rodata().view().depth
+        }
+    // Offline flags -> container.
+    &&& forall|flags_ptr: RwLockCpuOfflineFlagsPtr|
+        #![trigger cpu_offline_mp.dom().contains(flags_ptr)]
+        cpu_offline_mp.dom().contains(flags_ptr) ==> {
+            let ctn_ptr = cpu_offline_mp.spec_index(flags_ptr).owning_container.view();
+            &&& ctn_mp.dom().contains(ctn_ptr)
+            &&& cpu_offline_flags_ptr(ctn_ptr) == flags_ptr
+        }
 }
 
-pub proof fn container_cpu_offline_flags_wf_container_at(container_map: ContainerLockedMap, flags_map: CpuOfflineFlagsUnLockedMap, c_ptr: RwLockContainerPtr)
+pub proof fn container_cpu_offline_flags_wf_container_at(ctn_mp: ContainerLockedMap, cpu_offline_mp: CpuOfflineFlagsUnLockedMap, ctn_ptr: RwLockContainerPtr)
     requires
-        container_cpu_offline_flags_wf(container_map, flags_map),
+        container_cpu_offline_flags_wf(ctn_mp, cpu_offline_mp),
     ensures
-        container_map.dom().contains(c_ptr) ==> ({
-            &&& flags_map.dom().contains(cpu_offline_flags_ptr(c_ptr))
-            &&& flags_map.spec_index(cpu_offline_flags_ptr(c_ptr)).owning_container.view() == c_ptr
-            &&& flags_map.spec_index(cpu_offline_flags_ptr(c_ptr)).container_depth.view() == container_map.spec_index(c_ptr).view_rodata().view().depth
+        ctn_mp.dom().contains(ctn_ptr) ==> ({
+            &&& cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
+            &&& cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).owning_container.view() == ctn_ptr
+            &&& cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).container_depth.view() == ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth
         }),
 { reveal(container_cpu_offline_flags_wf); }
 
-pub proof fn container_cpu_offline_flags_wf_flags_at(container_map: ContainerLockedMap, flags_map: CpuOfflineFlagsUnLockedMap, flags_ptr: RwLockCpuOfflineFlagsPtr)
+pub proof fn container_cpu_offline_flags_wf_flags_at(ctn_mp: ContainerLockedMap, cpu_offline_mp: CpuOfflineFlagsUnLockedMap, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
-        container_cpu_offline_flags_wf(container_map, flags_map),
+        container_cpu_offline_flags_wf(ctn_mp, cpu_offline_mp),
     ensures
-        flags_map.dom().contains(flags_ptr) ==> ({
-            let c_ptr = flags_map.spec_index(flags_ptr).owning_container.view();
-            &&& container_map.dom().contains(c_ptr)
-            &&& cpu_offline_flags_ptr(c_ptr) == flags_ptr
+        cpu_offline_mp.dom().contains(flags_ptr) ==> ({
+            let ctn_ptr = cpu_offline_mp.spec_index(flags_ptr).owning_container.view();
+            &&& ctn_mp.dom().contains(ctn_ptr)
+            &&& cpu_offline_flags_ptr(ctn_ptr) == flags_ptr
         }),
 { reveal(container_cpu_offline_flags_wf); }
 }

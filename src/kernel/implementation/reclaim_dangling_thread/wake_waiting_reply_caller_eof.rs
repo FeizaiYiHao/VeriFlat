@@ -17,10 +17,10 @@ proof fn wake_waiting_reply_caller_eof_memory_management_inv(
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
-        assert(thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
-        assert(thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
+        assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+        assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_4k_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+        assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_2m_pages_wf); };
+        assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_1g_pages_wf); };
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
             container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); reveal(container_thread_wf); reveal(container_process_wf);
             lemma_thread_effective_quota_4k_fold_sum_eq_forall();

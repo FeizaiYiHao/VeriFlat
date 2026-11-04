@@ -251,7 +251,7 @@ fn new_process_lock_entry(
             };
         }
         assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
         };
     }
     let (endpoint_lock_perm_opt, source_pagetable_lock_perm) = new_process_lock_endpoint_and_source(

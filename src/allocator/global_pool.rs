@@ -15,6 +15,7 @@ impl<const SIZE: usize> LockOwnerIdTrait for GlobalPool<SIZE> {
 }
 
 impl<const SIZE: usize> LockInvTrait for GlobalPool<SIZE> {
+    /// Same as `wf`.
     open spec fn inv(&self) -> bool { self.wf() }
 }
 
@@ -40,9 +41,8 @@ impl<const SIZE: usize> LockIdTrait for GlobalPool<SIZE> {
 }
 
 impl<const SIZE: usize> GlobalPool<SIZE> {
-    pub open spec fn wf(&self) -> bool {
-        &&& self.linked_list.wf()
-    }
+    /// The page list is well formed.
+    pub open spec fn wf(&self) -> bool { self.linked_list.wf() }
 
     pub open spec fn view(&self) -> Seq<PagePtr> { self.linked_list.view() }
     pub open spec fn dom(&self) -> Set<PagePtr> { self.linked_list.dom() }

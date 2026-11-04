@@ -21,7 +21,7 @@ pub(super) proof fn pcid_allocator_lock_op_eof(pre: KernelK, post: KernelK, allc
 {
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(post.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
+    assert(post.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pcid_allc_mp, post.pcid_allc_mp, pre.pg_arr, post.pg_arr); };
     assert(post.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_pcid_allocator_wf); };
 }
@@ -49,7 +49,7 @@ pub(super) proof fn wlock_pcid_needflush_eof(pre: KernelK, post: KernelK, cpu_id
         post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id,
 {
     assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
     assert(post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id) by { reveal(cpu_hw_cr3_pcid_wf); };
 }
 
@@ -74,7 +74,7 @@ pub(super) proof fn wunlock_pcid_needflush_eof(pre: KernelK, post: KernelK, cpu_
         post.inv(),
 {
     assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
 }
 
 /// Closes `inv()` after `mark_pcid_needflush`: the write-held entry's flush flag is set; its lock state and holder are
@@ -101,6 +101,6 @@ pub(super) proof fn mark_pcid_needflush_eof(pre: KernelK, post: KernelK, lctx: L
         post.inv(),
 {
     assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
 }
 } // verus!

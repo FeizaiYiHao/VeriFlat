@@ -111,7 +111,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
@@ -133,7 +133,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
@@ -161,7 +161,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
             c.wf_l1_at(l3_entry.addr, target_l2i);
             c.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i);
@@ -232,7 +232,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
@@ -258,7 +258,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
             c.wf_l1_at(l3_entry.addr, target_l2i);
         }
@@ -300,7 +300,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
             window_stale_cpus: Map::empty(),
         };
         let c = WholePageTable { higher, lower: ret };
-        assert(c.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(c.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(c.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(c.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(c.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };

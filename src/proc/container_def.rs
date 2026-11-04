@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 use core::mem::offset_of;
 
-// Each container uses a 2 MiB pages
+/// Each container occupies one 2 MiB page.
 #[repr(C)]
 pub struct Container {
     // Set when the root process becomes zombie; independent of the lock's kill state.
@@ -11,7 +11,9 @@ pub struct Container {
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
 
-    pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed
+    /// The container's root process.
+    pub root_process: RwLockProcessPtr,
+    /// The pages whose owner is this container.
     pub owned_pages: Ghost<Set<PagePtr>>,
 }
 pub struct ContainerRO {
@@ -27,11 +29,17 @@ pub struct ContainerRO {
 
 /// Lock-free ghost state associated with a container's `LockCell`.
 pub struct ContainerGhost {
+    /// The ancestor containers, indexed by depth from the root container.
     pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
+    /// The descendant containers.
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
+    /// The processes of this container.
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
+    /// The threads of this container.
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
+    /// The threads of the descendant containers: every thread that has this container among its upper containers.
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
+    /// The endpoints of this container.
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     /// Set by a killer once the marked container is ready to retire; K-only, never projected.
     pub retire_ready: bool,
@@ -65,9 +73,8 @@ pub ghost struct ContainerU {
 }
 
 impl LockInvTrait for Container {
-    open spec fn inv(&self) -> bool {
-        &&& self.wf()
-    }
+    /// Same as `wf`.
+    open spec fn inv(&self) -> bool { self.wf() }
 }
 
 impl Container {
@@ -100,7 +107,8 @@ impl Container {
             owned_pages: Ghost(Set::empty()) }
     }
 
-    pub open spec fn wf(&self) -> bool { self.children.inv() }
+    /// The child list is well formed.
+    pub open spec fn wf(&self) -> bool { self.children.wf() }
 }
 
 impl LockMajorTrait for Container {

@@ -515,12 +515,12 @@ fn kill_container_move_cpu(
         let owner_set = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view().cpu_set;
         container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, cpu_i); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_i);
         container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-        cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_i);
+        cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_i);
         thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_i); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
         container_perms_wf_at(krnl.ctn_mp, owner_ptr);
         container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, owner_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
         cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, owner_set);
-        container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr);
+        container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr);
     }
     let owner_set = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().cpu_set;
@@ -743,10 +743,10 @@ fn kill_container_move_cpu_commit(
         container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, owner_ptr);
         cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, owner_set);
         container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, cpu_i); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, owner_ptr, cpu_i);
-        cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_i);
+        cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_i);
         thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_i);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr);
-        cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
+        cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
         assert(lctx.lock_entry_contains(krnl.cpu_arr.lock_id_by_index(cpu_i), KernelObjId::Cpu(cpu_i))) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(krnl.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);

@@ -41,7 +41,7 @@ impl PageTableHigher<PT_TYPE> {
         let l3_entry = self.get_entry_l3(l4i, l3i, &l4_entry).unwrap();
         proof {
             self.wf_l4_at(l4i);
-            pre.wf_l3_at(l4_entry.addr, l3i);
+            pre.l3_links_l2_wf_at(l4_entry.addr, l3i);
             pre.wf_l2_at(l3_entry.addr, l2i);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);
@@ -88,7 +88,7 @@ impl PageTableHigher<PT_TYPE> {
         let l3_entry = self.get_entry_l3(l4i, l3i, &l4_entry).unwrap();
         proof {
             self.wf_l4_at(l4i);
-            pre.wf_l3_at(l4_entry.addr, l3i);
+            pre.l3_links_l2_wf_at(l4_entry.addr, l3i);
             pre.wf_l2_at(l3_entry.addr, l2i);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);

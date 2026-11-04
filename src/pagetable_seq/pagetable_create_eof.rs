@@ -1083,7 +1083,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(PageTable::create_entry_l2_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); broadcast use PageTable::resolve_l3_addr_unique_at; };
+        assert(post.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); broadcast use PageTable::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `create_entry_l2`: `kernel_entries_wf`.

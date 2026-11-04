@@ -121,7 +121,7 @@ impl CpuTLB {
     pub open spec fn spec_index(&self, index: (CpuId, Pcid)) -> SingleTLB
         recommends
             index_valid(NUM_CPUS, index.0),
-            usize_in_range::<PCID_MAX>(index.1)
+            pcid_valid(index.1)
     {
         self.view().spec_index((index.0, index.1))
     }
@@ -130,9 +130,12 @@ impl CpuTLB {
     #[verifier::inline]
     pub open spec fn structure_cache(&self, index: (CpuId, Pcid)) -> PagingStructureCache { self.structure_caches.view().spec_index(index) }
 
+    /// One TLB and one structure cache per valid (cpu, pcid).
     #[verifier::opaque]
     pub open spec fn inv(&self) -> bool {
-        &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger self.view().dom().contains((cpu_id, pcid))] self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
+        &&& forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger self.view().dom().contains((cpu_id, pcid))]
+            self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
         &&& self.structure_caches.view().dom() == self.view().dom()
     }
 }

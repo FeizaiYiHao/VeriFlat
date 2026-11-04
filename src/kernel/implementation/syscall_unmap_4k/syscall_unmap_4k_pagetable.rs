@@ -127,14 +127,14 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         &&& pcid_valid(pcid)
         &&& pcid != KERNEL_DEFAULT_PCID
     }) by {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         process_perms_wf_at(krnl.prc_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
     };
     assert(old(steps).snapshot_k().pt_mp.dom().contains(pagetable)
         && pagetable == old(steps).snapshot_k().prc_mp.spec_index(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view().pagetable) by {
         process_cpu_wf_at(old(steps).snapshot_k().prc_mp, old(steps).snapshot_k().cpu_arr, cpu_id);
-        process_pagetable_match_process_at(old(steps).snapshot_k().prc_mp, old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+        process_pagetable_wf_process_at(old(steps).snapshot_k().prc_mp, old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
     proof {
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);

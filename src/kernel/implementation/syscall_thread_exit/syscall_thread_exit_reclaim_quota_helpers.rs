@@ -240,14 +240,14 @@ pub(super) fn thread_exit_reclaim_release_tables(
         process.state = Ghost(ProcessState::TablesEmptied);
     }
     proof {
-        process_thread_wf_at(progressed.prc_mp, progressed.thrd_mp, thrd_ptr);
+        process_thread_wf_thread_at(progressed.prc_mp, progressed.thrd_mp, thrd_ptr);
         assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, prc_ptr, thrd_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
         thread_exit_tables_emptied_eof(progressed, *krnl, prc_ptr, thrd_ptr, pagetable, entry_pt);
     }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
     }
-    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); }
+    proof { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     proof {
         let unlocked_k = *krnl;

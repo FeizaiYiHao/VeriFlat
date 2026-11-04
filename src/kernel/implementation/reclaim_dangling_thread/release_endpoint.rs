@@ -92,7 +92,7 @@ pub fn release_endpoint_last_reference(
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
-    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
+    proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
     proof { assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; }
     let Tracked(pool_lock_perm) = krnl.wlock_allocator_global_pool_4k(allc_ptr, Tracked(&mut *lctx));
@@ -104,11 +104,11 @@ pub fn release_endpoint_last_reference(
         thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr);
         container_perms_wf_map(krnl.ctn_mp);
-        assert(krnl.ctn_mp.dom().contains(endpoint_owner)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
+        assert(krnl.ctn_mp.dom().contains(endpoint_owner)) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).global_pool.view().view().contains(ep_ptr)) by {
-            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, ep_ptr); page_ptr_roundtrip();
+            allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, ep_ptr); page_ptr_roundtrip();
         };
         assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.view() == Seq::<RwLockThreadPtr>::empty()) by {
             let queue = krnl.ep_mp.spec_index(ep_ptr).view().queue.view();

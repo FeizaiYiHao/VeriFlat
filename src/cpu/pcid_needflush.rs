@@ -4,6 +4,8 @@ use crate::*;
 verus! {
 pub const PCID_NEEDFLUSH_MINOR_STRIDE: usize = 10000;
 
+/// The needflush cell of one (cpu, pcid) slot, named by `index`. A set `needflush` means that cpu's TLB and structure
+/// cache for that PCID may hold stale translations and must be flushed before the cpu runs that PCID again.
 /// `line_pad` makes the needflush lock cell exactly one 64-byte cache line (layout assert at the end of this file).
 pub struct PcidNeedFlush {
     pub needflush: bool,
@@ -39,9 +41,11 @@ impl PcidNeedFlush {
 }
 
 impl LockInvTrait for PcidNeedFlush {
+    /// The cell's slot is a valid (cpu, pcid).
     open spec fn inv(&self) -> bool {
         &&& index_valid(NUM_CPUS, self.index().0)
         &&& pcid_valid(self.index().1)
+        // The lock minor cpu * STRIDE + pcid is unique and fits in usize.
         &&& self.index().1 < PCID_NEEDFLUSH_MINOR_STRIDE
         &&& self.index().0 * PCID_NEEDFLUSH_MINOR_STRIDE + self.index().1 <= usize::MAX
     }

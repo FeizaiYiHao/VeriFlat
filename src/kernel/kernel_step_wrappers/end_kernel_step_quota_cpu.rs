@@ -458,9 +458,9 @@ impl KernelSteps {
             let process = pre_u.process_map[prc_ptr];
             let table = process.iommu_table->Some_0;
             let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
-            reveal(kernel_process_nonlock_fields_unchanged); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
+            reveal(kernel_process_nonlock_fields_unchanged); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
             assert_maps_equal!(mid_u.process_map, pre_u.process_map.insert(prc_ptr, ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }), p => {
-                if snap.prc_mp.dom().contains(p) { kernel_process_projection_at(&snap, p); kernel_process_projection_at(&mid, p); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, p); }
+                if snap.prc_mp.dom().contains(p) { kernel_process_projection_at(&snap, p); kernel_process_projection_at(&mid, p); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, p); }
             });
             assert_maps_equal!(mid_u.thread_map, pre_u.thread_map, t => { if snap.thrd_mp.dom().contains(t) { kernel_thread_projection_at(&snap, t); kernel_thread_projection_at(&mid, t); } });
             assert_maps_equal!(mid_u.endpoint_map, pre_u.endpoint_map, e => { if snap.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(&snap, e); kernel_endpoint_projection_at(&mid, e); } });

@@ -124,7 +124,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped(
     let pg_idx = page_ptr2page_index(pg_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
+        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
         page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
     }
     let ghost held_lctx = *lctx;
@@ -134,7 +134,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped(
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        assert(held_lctx.page_lock_map().dom().contains(pg_idx) && krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
+        assert(held_lctx.page_lock_map().dom().contains(pg_idx) && krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
         container_perms_wf_at(krnl.ctn_mp, owner); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner);
     }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
@@ -150,7 +150,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped(
         container_process_page_pagetable_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr, pg_idx, pagetable, va);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         assert(krnl.ctn_mp.dom().contains(origin) && krnl.ctn_mp.dom().contains(owner));
-        container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, origin);
+        container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, origin);
     }
     let ghost before = steps.view();
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx));
@@ -277,7 +277,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     let ghost iova = spec_index2va(indices);
     proof {
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
         page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
     }
     let ghost held_lctx = *lctx;
@@ -303,7 +303,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         page_iommu_table_wf_page_owner_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, pg_idx, iommu_table, iova);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         assert(krnl.ctn_mp.dom().contains(origin) && krnl.ctn_mp.dom().contains(owner));
-        container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, origin);
+        container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, origin);
     }
     let ghost before = steps.view();
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx));

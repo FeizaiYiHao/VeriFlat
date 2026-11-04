@@ -130,7 +130,7 @@ impl KernelK {
             pagetable_window_stale_cpus_only_when_locked(old(self).pt_mp, old(self).pt_lower.view())
                 ==> pagetable_window_stale_cpus_only_when_locked(final(self).pt_mp, final(self).pt_lower.view()),
             pagetable_lower_backup_wf(old(self).pt_mp, old(self).pt_lower.view()) ==> pagetable_lower_backup_wf(final(self).pt_mp, final(self).pt_lower.view()),
-            page_pagetable_wf(old(self).pt_mp, old(self).pt_lower.view(), old(self).pg_arr) ==> page_pagetable_wf(final(self).pt_mp, final(self).pt_lower.view(), final(self).pg_arr),
+            page_mappings_pagetable_wf(old(self).pt_mp, old(self).pt_lower.view(), old(self).pg_arr) ==> page_mappings_pagetable_wf(final(self).pt_mp, final(self).pt_lower.view(), final(self).pg_arr),
             typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pg_ptr, TypedLockMode::Write),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
@@ -322,7 +322,7 @@ impl KernelK {
             update is Set ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write) || lctx.pagetable_window_lock_map().dom().contains((root, update->Set_window)),
             update is Set ==> (whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
                 ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
-                || tlb_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
+                || cpu_tlb_wf(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is RemoveCpu ==> ({
@@ -334,12 +334,12 @@ impl KernelK {
                     || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                     || (old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
                 || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root))
-            }) || tlb_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
+            }) || cpu_tlb_wf(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is Set ==> (whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
                 ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
-                || structure_cache_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
+                || structure_cache_wf(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is RemoveCpu ==> ({
@@ -350,7 +350,7 @@ impl KernelK {
                 ||| old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
                 ||| dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != root
                 ||| single_structure_cache_subset_of_present_pagetable(old(self).cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root))
-            }) || structure_cache_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
+            }) || structure_cache_wf(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
         ensures

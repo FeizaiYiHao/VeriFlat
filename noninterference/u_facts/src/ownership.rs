@@ -230,7 +230,7 @@ pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
     reveal(kernel_k_to_kernel_u);
     assert(kernel_u_container_tree_wf(kernel_k_to_kernel_u(*krnl))) by {
         reveal(kernel_u_container_tree_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
-        reveal(container_root_wf); reveal(container_children_parent_wf); reveal(container_children_depth_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf);
+        reveal(container_root_wf); reveal(container_children_parent_wf); reveal(container_uppertree_seq_parent_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf);
     };
     assert(kernel_u_process_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_process_ownership_wf); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
     assert(kernel_u_thread_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
@@ -256,7 +256,7 @@ pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
         };
     };
     assert(kernel_u_object_page_owner_wf(kernel_k_to_kernel_u(*krnl))) by {
-        reveal(kernel_u_object_page_owner_wf); reveal(container_page_owner_wf); reveal(thread_pages_wf); reveal(endpoint_pages_wf); reveal(page_object_owner_wf);
+        reveal(kernel_u_object_page_owner_wf); reveal(container_owned_pages_wf); reveal(thread_pages_wf); reveal(endpoint_pages_wf); reveal(page_object_owner_wf);
         reveal(container_thread_wf); reveal(container_endpoint_wf); page_ptr_roundtrip(); page_ptr_valid_imply_page_index_valid();
     };
     assert(kernel_u_thread_caller_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_thread_caller_wf); reveal(thread_caller_callee_wf); };

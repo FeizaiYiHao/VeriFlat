@@ -14,6 +14,7 @@ impl<const SIZE: usize> LockOwnerIdTrait for AllocatorCache<SIZE> {
 }
 
 impl<const SIZE: usize> LockInvTrait for AllocatorCache<SIZE> {
+    /// Same as `wf`.
     open spec fn inv(&self) -> bool { self.wf() }
 }
 
@@ -29,6 +30,7 @@ impl<const SIZE: usize> LockMajorTrait for AllocatorCache<SIZE> {
 }
 
 impl<const SIZE: usize> AllocatorCache<SIZE> {
+    /// The page list is well formed and its length stays between the watermarks.
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()
         &&& self.watermark_wf()

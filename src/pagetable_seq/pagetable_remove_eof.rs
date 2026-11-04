@@ -48,7 +48,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     {
         assert(post.wf_l4()) by { reveal(PageTable::wf_l4); };
         assert(post.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(post.wf_l2()) by { broadcast use PageTable::l2_entry_addr_unique_at; reveal(PageTable::wf_l2); };
+        assert(post.wf_l2()) by { broadcast use PageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(PageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(PageTable::wf_l1); };
         assert(post.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
         assert(post.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
@@ -88,7 +88,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
-        assert(post.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); broadcast use PageTable::resolve_l3_addr_unique_at; broadcast use PageTable::resolve_l2_addr_unique_at; };
+        assert(post.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); broadcast use PageTable::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; broadcast use PageTable::disjoint_l2_implies_resolve_l2_addr_unique_at; };
     }
 
     /// EOF closure of `remove_l2_entry`: 2M abstract-mapping leaf.
@@ -330,7 +330,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        assert(post.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); broadcast use PageTable::resolve_l3_addr_unique_at; };
+        assert(post.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); broadcast use PageTable::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 }
 } // verus!

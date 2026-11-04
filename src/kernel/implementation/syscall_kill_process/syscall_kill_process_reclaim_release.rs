@@ -181,7 +181,7 @@ pub(crate) fn kill_reclaim_flush(
             &&& pcid_valid(pcid)
             &&& pcid != KERNEL_DEFAULT_PCID
         }) by {
-            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, target);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, target);
             krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
         };
     }
@@ -349,7 +349,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
     }) by {
         cpu_current_pcid_pagetable_match_at(krnl.cpu_arr, krnl.dflt_pt.view(), krnl.prc_mp, krnl.pt_mp, c, pcid, pagetable);
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), c); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, c);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(c).view().view().view().current_process.unwrap());
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(c).view().view().view().current_process.unwrap());
     };
     krnl.wunlock_pcid_needflush(c, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
     proof {
@@ -366,7 +366,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
             assert(flush_k.pt_mp.dom().contains(cpu.current_pagetable->Some_0)) by {
                 cpu_array_wf_at(flush_k.cpu_arr, flush_k.dflt_pt.view(), c); process_cpu_wf_at(flush_k.prc_mp, flush_k.cpu_arr, c);
-                process_pagetable_match_process_at(flush_k.prc_mp, flush_k.pt_mp, cpu.current_process.unwrap());
+                process_pagetable_wf_process_at(flush_k.prc_mp, flush_k.pt_mp, cpu.current_process.unwrap());
             };
         }
     }
@@ -466,9 +466,9 @@ pub(crate) fn kill_reclaim_held_leaves(
     if same {
         let ghost entry_thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
         proof {
-            assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
-            assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
-            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
+            assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
+            assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
         }
         let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
         let mut direct = 0usize;
@@ -593,7 +593,7 @@ pub(crate) fn kill_reclaim_held_leaves(
             found = pagetable_map_next_held_leaf_from(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, cursor, Tracked(&*lctx), Tracked(pagetable_perm));
         }
     }
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
+    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); }
 }
 
 /// Remove every 4K leaf of the target's write-locked IOMMU table, which lost its DID when the target's functions were
@@ -657,8 +657,8 @@ pub(crate) fn kill_reclaim_iommu_leaves(
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
-        assert(same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
-        assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
+        assert(same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
+        assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
     }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
@@ -764,7 +764,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { index_path_successor_implies_path_le_drops_only_predecessor(next, cursor); iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+        proof { index_path_successor_implies_path_le_drops_only_predecessor(next, cursor); iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target); }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm)).next_mapped_4k_from(cursor);
     }
     proof { assert(krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); broadcast use iova_4k_valid_index_roundtrip; }; }
@@ -784,6 +784,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 entry_thread.owning_container, scope);
         }
     }
-    proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+    proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target); }
 }
 } // verus!

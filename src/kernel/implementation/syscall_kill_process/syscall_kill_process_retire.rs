@@ -150,10 +150,10 @@ pub(crate) fn kill_retire_hold_tables(
 {
     proof {
         process_perms_wf_at(krnl.prc_mp, target);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
-        process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target);
-        pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
-        if let Some(it) = iommu_table { iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it); }
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
+        process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
+        pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
+        if let Some(it) = iommu_table { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it); }
     }
     let mut held: ArrayVec<PageIndex, 5> = ArrayVec::new();
     held.push(page_ptr2page_index(target));
@@ -583,11 +583,11 @@ pub(crate) fn kill_retire_commit(
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         if let Some(it) = iommu_table { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), it); }
-        pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
-        if let Some(it) = iommu_table { iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
-        process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target);
-        pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
-        if let Some(it) = iommu_table { iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it); }
+        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
+        if let Some(it) = iommu_table { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
+        process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
+        pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
+        if let Some(it) = iommu_table { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it); }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
     }
@@ -693,8 +693,8 @@ pub(crate) fn kill_retire_unlink_process(
         assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr); };
         assert(root != target) by { process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target); };
         assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom()) && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by {
-            krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_dom_at(root, tree, krnl.prc_mp, target);
-            container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr, target); process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_depth_wf_at(root, tree, krnl.prc_mp, target);
+            krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_implies_ancestors_in_dom(root, tree, krnl.prc_mp, target);
+            container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr, target); process_root_wf_at(root, tree, krnl.prc_mp, target); process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, target);
         };
         assert(krnl.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
             && krnl.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target) by { process_linkedlist_wf_at(root, tree, krnl.prc_mp, target); };

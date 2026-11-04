@@ -7,10 +7,12 @@ pub mod pages_process_spec;
 pub mod pages_thread_spec;
 pub mod pages_scheduler_spec;
 pub mod pages_pcid_allocator_spec;
-pub mod pages_owned_spec;
+pub mod pages_thread_staged_spec;
 pub mod pages_endpoint_spec;
 pub mod pages_pagetable_spec;
+pub mod pages_allocator_spec;
 pub mod container_allocator_pages_spec;
+pub mod allocator_free_pages_spec;
 pub mod container_allocator_process_thread_spec;
 
 pub mod page_mapping_spec;
@@ -28,10 +30,12 @@ pub mod subsystem_mutation_iommu_table;
 pub use pages_thread_spec::*;
 pub use pages_scheduler_spec::*;
 pub use pages_pcid_allocator_spec::*;
-pub use pages_owned_spec::*;
+pub use pages_thread_staged_spec::*;
 pub use pages_endpoint_spec::*;
 pub use pages_pagetable_spec::*;
+pub use pages_allocator_spec::*;
 pub use container_allocator_pages_spec::*;
+pub use allocator_free_pages_spec::*;
 pub use container_allocator_process_thread_spec::*;
 
 pub use page_mapping_spec::*;

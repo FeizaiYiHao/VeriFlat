@@ -52,7 +52,7 @@ pub(crate) broadcast proof fn kill_container_retire_eof_subtree_empty(pre: Kerne
         assert(pre.ctn_mp.spec_index(x).view_rodata().view().depth == d + 1);
         assert(pre.ctn_mp.spec_index(x).view_ghost().uppertree_seq.view()[d as int] == ctn_ptr);
         container_root_wf_at(pre.rt_ctn, pre.ctn_mp, x);
-        assert(pre.ctn_mp.spec_index(x).view_rodata().view().parent == Some(ctn_ptr)) by { reveal(container_children_depth_wf); };
+        assert(pre.ctn_mp.spec_index(x).view_rodata().view().parent == Some(ctn_ptr)) by { reveal(container_uppertree_seq_parent_wf); };
         assert(pre.ctn_mp.spec_index(ctn_ptr).view().children.view().contains(x)) by { reveal(container_children_parent_wf); };
     }
 }
@@ -109,7 +109,7 @@ pub(crate) broadcast proof fn kill_container_retire_eof_no_mapping(pre: KernelK,
 {
     let (table, va) = m;
     assert(m == (table, va));
-    container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, i);
+    container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, i);
     assert(!pre.pg_arr.spec_index(i).view().view().mappings().contains((table, va))) by {
         reveal(container_process_page_pagetable_wf); reveal(container_process_wf); broadcast use kill_container_retire_eof_subtree_empty;
     };
@@ -150,8 +150,8 @@ proof fn kill_container_retire_eof_no_process_page_at(pre: KernelK, ctn_ptr: RwL
 {
     let state = pre.pg_arr.spec_index(i).view().view().state;
     if page_state_is_process_kernel_page(state) {
-        process_kernel_pages_owner_wf_at(pre.pg_arr, pre.prc_mp, pre.pt_mp, pre.it_mp, i);
-        reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        process_object_pages_owner_wf_at(pre.prc_mp, pre.pt_mp, pre.it_mp, pre.pg_arr, i);
+        reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(container_process_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
         if state->Allocated4k_state is AsPageTableRoot {
             assert(state->Allocated4k_state->AsPageTableRoot_table_type == PT_TYPE || state->Allocated4k_state->AsPageTableRoot_table_type == IOMMU_TYPE);
         } else if state->Allocated4k_state is PageTable {
@@ -177,7 +177,7 @@ proof fn kill_container_retire_eof_no_free_4k_page_at(pre: KernelK, ctn_ptr: RwL
     let page = pre.pg_arr.spec_index(i).view().view();
     if page.state is Free4k {
         lemma_container_allocator_quota_eq_total_free_without_users(pre, ctn_ptr);
-        container_allocator_free_4k_page_wf_at(pre.allc_4k_mp, pre.pg_arr, i);
+        allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, i);
         let a = page.state->Free4k_allocator_ptr.view();
         assert(pre.allc_4k_mp.dom().contains(a) && pre.allc_4k_mp.spec_index(a).owning_container == ctn_ptr);
         assert(a == pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k) by { reveal(container_allocator_wf); };
@@ -210,7 +210,7 @@ proof fn kill_container_retire_eof_no_free_2m_page_at(pre: KernelK, ctn_ptr: RwL
     let page = pre.pg_arr.spec_index(i).view().view();
     if page.state is Free2m {
         lemma_container_allocator_quota_eq_total_free_without_users(pre, ctn_ptr);
-        container_allocator_free_2m_page_wf_at(pre.allc_2m_mp, pre.pg_arr, i);
+        allocator_free_2m_pages_wf_at(pre.allc_2m_mp, pre.pg_arr, i);
         let a = page.state->Free2m_allocator_ptr.view();
         assert(pre.allc_2m_mp.dom().contains(a) && pre.allc_2m_mp.spec_index(a).owning_container == ctn_ptr);
         assert(a == pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m) by { reveal(container_allocator_wf); };
@@ -249,11 +249,11 @@ proof fn kill_container_retire_eof_no_free_1g_page_at(pre: KernelK, ctn_ptr: RwL
             let cpu = page.state->Free1g_state->PreCpuCache_cpu_id;
             assert(index_valid(NUM_CPUS, cpu) && pre.allc_1g_mp.dom().contains(a) && pre.allc_1g_mp.spec_index(a).owning_container == ctn_ptr
                 && pre.allc_1g_mp.spec_index(a).cpu_caches.spec_index(cpu).view().view().view().contains(ptr)) by {
-                reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf);
+                reveal(allocator_free_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf);
             };
         } else {
             assert(pre.allc_1g_mp.dom().contains(a) && pre.allc_1g_mp.spec_index(a).owning_container == ctn_ptr && pre.allc_1g_mp.spec_index(a).global_pool.view().view().contains(ptr)) by {
-                reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf);
+                reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf);
             };
         }
         assert(a == pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g) by { reveal(container_allocator_wf); };
@@ -302,8 +302,8 @@ proof fn kill_container_retire_eof_owned_head_2m_at(pre: KernelK, ctn_ptr: RwLoc
 {
     let state = pre.pg_arr.spec_index(i).view().view().state;
     kill_container_retire_eof_no_free_page_at(pre, ctn_ptr, i); kill_container_retire_eof_no_mapped_page_at(pre, ctn_ptr, i);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, i); page_index_roundtrip();
-    if state is Owned2m { container_thread_wf_at(pre.ctn_mp, pre.thrd_mp, state->Owned2m_thread_ptr); }
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, i); page_index_roundtrip();
+    if state is Owned2m { container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, state->Owned2m_thread_ptr); }
     assert(state is Allocated2m);
     assert(state->Allocated2m_state is AsContainer || state->Allocated2m_state is AsPcidAllocator);
 }
@@ -328,18 +328,18 @@ proof fn kill_container_retire_eof_owned_page_at(pre: KernelK, ctn_ptr: RwLockCo
     let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let state = pre.pg_arr.spec_index(i).view().view().state;
     page_index_roundtrip();
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, i);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, i);
     kill_container_retire_eof_no_free_page_at(pre, ctn_ptr, i); kill_container_retire_eof_no_mapped_page_at(pre, ctn_ptr, i);
     kill_container_retire_eof_no_process_page_at(pre, ctn_ptr, i);
     if state is Owned4k || state is Owned2m || state is Owned1g {
         let t = if state is Owned4k { state->Owned4k_thread_ptr } else if state is Owned2m { state->Owned2m_thread_ptr } else { state->Owned1g_thread_ptr };
-        container_thread_wf_at(pre.ctn_mp, pre.thrd_mp, t);
+        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, t);
     }
     if state is Merged2m {
         let h = spec_page_index_truncate_2m(i);
         assert(h <= i < h + 512 && h % 512 == 0) by (nonlinear_arith) requires h == (i / 512usize * 512usize) as usize, i < NUM_PAGES {};
         assert(page_state_2m_related(pre.pg_arr.spec_index(h).view().view().state) && !(pre.pg_arr.spec_index(h).view().view().state is Merged2m)) by { reveal(hugepage_2m_wf); };
-        hugepage_2m_wf_tail_at(pre.pg_arr, h, i);
+        hugepage_2m_wf_tail_forward_at(pre.pg_arr, h, i);
         kill_container_retire_eof_owned_head_2m_at(pre, ctn_ptr, parent_ptr, owner_ptr, h);
     } else if state is Merged1g {
         let h = spec_page_index_truncate_1g(i);
@@ -425,12 +425,12 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
     let pages_4k = kill_container_retire_pages_4k(ro);
     let heads = kill_container_retire_heads(ctn_ptr, ro);
     page_ptr_roundtrip(); page_index_roundtrip();
-    container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
+    container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr); container_pcid_allocator_wf_container_at(pre.ctn_mp, pre.pcid_allc_mp, ctn_ptr);
     scheduler_pages_wf_at(pre.sched_mp, pre.pg_arr, ro.scheduler); cpu_set_pages_wf_at(pre.cpu_set_mp, pre.pg_arr, ro.cpu_set);
-    allocator_4k_pages_wf_at(pre.pg_arr, pre.allc_4k_mp, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(pre.pg_arr, pre.allc_2m_mp, ro.allocator_ptr_2m);
-    allocator_1g_pages_wf_at(pre.pg_arr, pre.allc_1g_mp, ro.allocator_ptr_1g); pcid_allocator_pages_wf_at(pre.pg_arr, pre.pcid_allc_mp, ro.pcid_allocator);
-    container_pages_backward_at(pre.pg_arr, pre.ctn_mp, ctn_ptr);
+    allocator_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(pre.allc_2m_mp, pre.pg_arr, ro.allocator_ptr_2m);
+    allocator_1g_pages_wf_at(pre.allc_1g_mp, pre.pg_arr, ro.allocator_ptr_1g); pcid_allocator_pages_wf_at(pre.pcid_allc_mp, pre.pg_arr, ro.pcid_allocator);
+    container_pages_wf_container_at(pre.ctn_mp, pre.pg_arr, ctn_ptr);
     assert(pages_4k[0] == page_ptr2page_index(ro.scheduler) && pages_4k[1] == page_ptr2page_index(ro.cpu_set) && pages_4k[2] == page_ptr2page_index(ro.allocator_ptr_4k)
         && pages_4k[3] == page_ptr2page_index(ro.allocator_ptr_2m) && pages_4k[4] == page_ptr2page_index(ro.allocator_ptr_1g));
     assert(heads[0] == page_ptr2page_index(ctn_ptr) && heads[1] == page_ptr2page_index(ro.pcid_allocator));
@@ -440,16 +440,16 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
     let c3 = pre.pg_arr.spec_index(pages_4k[3]).view().view().owning_container;
     let c4 = pre.pg_arr.spec_index(pages_4k[4]).view().view().owning_container;
     let c6 = pre.pg_arr.spec_index(heads[1]).view().view().owning_container;
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pages_4k[0]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[0]); container_scheduler_wf_at(pre.ctn_mp, pre.sched_mp, c0);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pages_4k[1]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[1]); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, c1);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pages_4k[2]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[2]);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pages_4k[0]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[0]); container_scheduler_wf_container_at(pre.ctn_mp, pre.sched_mp, c0);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pages_4k[1]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[1]); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, c1);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pages_4k[2]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[2]);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c2);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pages_4k[3]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[3]);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pages_4k[3]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[3]);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c3);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, pages_4k[4]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[4]);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, pages_4k[4]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, pages_4k[4]);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c4);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, heads[0]);
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thrd_mp, heads[1]); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, heads[1]);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, heads[0]);
+    page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, heads[1]); container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, heads[1]);
     container_pcid_allocator_wf_container_at(pre.ctn_mp, pre.pcid_allc_mp, c6);
     page_array_wf_at(pre.pg_arr, pages_4k[0]); page_array_wf_at(pre.pg_arr, pages_4k[1]); page_array_wf_at(pre.pg_arr, pages_4k[2]); page_array_wf_at(pre.pg_arr, pages_4k[3]);
     page_array_wf_at(pre.pg_arr, pages_4k[4]); page_array_wf_at(pre.pg_arr, heads[0]); page_array_wf_at(pre.pg_arr, heads[1]);
@@ -475,7 +475,7 @@ broadcast proof fn kill_container_retire_eof_tail_page(page_array: PageLockedArr
 {
     if page_2m_tail_indices(h).contains(i) {
         assert(index_valid(NUM_PAGES, i) && spec_page_index_merge_2m_valid(h, i));
-        hugepage_2m_wf_tail_at(page_array, h, i); page_array_wf_at(page_array, i);
+        hugepage_2m_wf_tail_forward_at(page_array, h, i); page_array_wf_at(page_array, i);
     }
 }
 

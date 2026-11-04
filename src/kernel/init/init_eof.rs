@@ -39,14 +39,14 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     assert(pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view())) by {
-        reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::wf_l3); reveal(PageTableHigher::wf_l4);
+        reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::wf_l4);
     };
     assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_hidden_l1_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
-    assert(pagetable_table_stale_cpus_only_when_write_held(krnl.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(krnl.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_lower_backup_wf(krnl.pt_mp, krnl.pt_lower.view()));
-    assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
+    assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
     assert(cpu_hw_cr3_pcid_wf(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(PageTable::table_pages_wf); };
@@ -99,9 +99,9 @@ proof fn boot_memory_management_inv_eof_allocator_pages(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp),
+        allocator_pages_wf(krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, krnl.pg_arr),
 {
-    assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); reveal(boot_page_array_ready); };
+    assert(allocator_pages_wf(krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, krnl.pg_arr)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); reveal(boot_page_array_ready); };
 }
 
 proof fn boot_memory_management_inv_eof_allocator_free_pages(
@@ -132,10 +132,12 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        krnl.allocator_free_pages_wf(),
+        allocator_free_page_ptrs_wf(krnl.allc_4k_mp),
+        allocator_free_page_ptrs_wf(krnl.allc_2m_mp),
+        allocator_free_page_ptrs_wf(krnl.allc_1g_mp),
 {
     assert(boot_free_4k_pool_wf(page_array, layout, free_4k_pool) && boot_free_2m_pool_wf(page_array, layout, free_2m_pool) && boot_free_1g_pool_wf(page_array, layout, free_1g_pool)) by { reveal(boot_page_array_ready); };
-    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_free_page_ptrs_wf(krnl.allc_4k_mp) && allocator_free_page_ptrs_wf(krnl.allc_2m_mp) && allocator_free_page_ptrs_wf(krnl.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };
 }
 
 proof fn boot_memory_management_inv_eof_free_4k(
@@ -166,9 +168,9 @@ proof fn boot_memory_management_inv_eof_free_4k(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr),
+        allocator_free_4k_pages_wf(krnl.allc_4k_mp, krnl.pg_arr),
 {
-    assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(boot_page_array_ready); };
+    assert(allocator_free_4k_pages_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(boot_page_array_ready); };
 }
 
 proof fn boot_memory_management_inv_eof_free_2m(
@@ -199,9 +201,9 @@ proof fn boot_memory_management_inv_eof_free_2m(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr),
+        allocator_free_2m_pages_wf(krnl.allc_2m_mp, krnl.pg_arr),
 {
-    assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(boot_page_array_ready); };
+    assert(allocator_free_2m_pages_wf(krnl.allc_2m_mp, krnl.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(boot_page_array_ready); };
 }
 
 proof fn boot_memory_management_inv_eof_free_1g(
@@ -232,9 +234,9 @@ proof fn boot_memory_management_inv_eof_free_1g(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr),
+        allocator_free_1g_pages_wf(krnl.allc_1g_mp, krnl.pg_arr),
 {
-    assert(container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr)) by { reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(boot_page_array_ready); };
+    assert(allocator_free_1g_pages_wf(krnl.allc_1g_mp, krnl.pg_arr)) by { reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(boot_page_array_ready); };
 }
 
 proof fn boot_memory_management_inv_eof_object_pages(
@@ -265,13 +267,13 @@ proof fn boot_memory_management_inv_eof_object_pages(
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
-        container_pages_wf(krnl.pg_arr, krnl.ctn_mp),
-        process_pages_wf(krnl.pg_arr, krnl.prc_mp),
+        container_pages_wf(krnl.ctn_mp, krnl.pg_arr),
+        process_pages_wf(krnl.prc_mp, krnl.pg_arr),
         pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         thread_pages_wf(krnl.thrd_mp, krnl.pg_arr),
         scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr),
         cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr),
-        pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp),
+        pcid_allocator_pages_wf(krnl.pcid_allc_mp, krnl.pg_arr),
         thread_staged_pages_wf(krnl.thrd_mp, krnl.pg_arr),
         endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr),
 {
@@ -343,15 +345,15 @@ proof fn boot_memory_management_inv_eof_mappings(
     ensures
         hugepage_2m_wf(krnl.pg_arr),
         hugepage_1g_wf(krnl.pg_arr),
-        page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
+        page_mappings_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr),
         page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr),
 {
     assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-    assert(page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by {
+    assert(page_mappings_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by {
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
-        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); page_ptr_valid_imply_page_index_valid();
+        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); page_ptr_valid_imply_page_index_valid();
         broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq;
     };
     assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
@@ -418,12 +420,12 @@ pub(super) proof fn boot_memory_management_inv_eof(
     );
     prove_boot_container_page_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages);
     prove_boot_iommu_table_pages_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
-    assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
-    assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(pagetable_no_1g_leaf_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(process_pagetable_wf(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_wf); };
+    assert(process_iommu_table_wf(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_wf); };
+    assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(krnl.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr)) by { reveal(process_emptied_tables_wf); };
-    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(krnl.pt_mp, krnl.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(krnl.pt_mp, krnl.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     prove_boot_process_kernel_pages_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_page_object_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_container_process_allocator_quota_4k_wf(krnl, layout);
@@ -466,21 +468,21 @@ pub(super) proof fn boot_process_management_inv_eof(
     assert(container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)) by {
         reveal(container_root_wf);
         reveal(container_children_parent_wf);
-        reveal(containers_linkedlist_wf);
-        reveal(container_children_depth_wf);
+        reveal(container_linkedlist_wf);
+        reveal(container_uppertree_seq_parent_wf);
         reveal(container_subtree_set_wf);
         reveal(container_uppertree_seq_wf);
-        reveal(container_subtree_set_exclusive);
+        reveal(container_subtree_uppertree_agree_wf);
     };
     assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by {
         reveal(process_root_wf);
         reveal(process_children_parent_wf);
         reveal(process_linkedlist_wf);
-        reveal(process_children_depth_wf);
+        reveal(process_uppertree_seq_parent_wf);
         reveal(process_subtree_set_wf);
         reveal(process_uppertree_seq_wf);
-        reveal(process_subtree_set_exclusive);
+        reveal(process_subtree_uppertree_agree_wf);
         reveal(per_container_process_tree_wf);
     };
     assert(process_kill_mark_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(process_kill_mark_wf); };
@@ -542,14 +544,14 @@ pub(super) proof fn boot_kernel_inv_eof(
 {
     assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+    assert(iommu_tlb_wf(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf); };
     assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes);
+        reveal(cpu_dirty_map_process_in_cpu_container);
         reveal(cpu_dirty_map_proc_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+        reveal(cpu_dirty_map_covers_nonempty_tlb);
+        reveal(cpu_dirty_map_pagetable_pcid_match);
     };
-    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
-    assert(structure_cache_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
+    assert(cpu_tlb_wf(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_tlb_wf); };
+    assert(structure_cache_wf(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(structure_cache_wf); };
 }
 }

@@ -134,7 +134,7 @@ verus! {
     /// A TLB keeps only held leaves of its CPU's dirty table, and a leaf the table no longer shows only while the CPU is
     /// listed stale for it. Inactive, marked PCIDs remain exempt until their next activation flush.
     #[verifier::opaque]
-    pub open spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
+    pub open spec fn cpu_tlb_wf(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
         &&& forall|cpu_id:CpuId, pcid:Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
@@ -152,10 +152,10 @@ verus! {
     /// backed by it present.
     pub proof fn tlb_wf_pagetable_entries_present_at(k: KernelK, pagetable: RwLockPageTableRoot)
         requires
-            tlb_wf_spec(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush),
+            cpu_tlb_wf(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush),
             k.pt_mp.dom().contains(pagetable),
             whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ensures pagetable_tlb_entries_present(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, pagetable, whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable)),
-    { reveal(tlb_wf_spec); }
+    { reveal(cpu_tlb_wf); }
 }

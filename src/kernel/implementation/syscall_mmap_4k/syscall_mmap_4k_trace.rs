@@ -350,7 +350,7 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     let addr = post.process_map.spec_index(prc_ptr).pagetable->Some_0.mapping_4k.spec_index(va).addr;
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].iommu_table->Some_0.mapping_4k[v]]
         pre.process_map.dom().contains(p) && pre.process_map[p].iommu_table is Some && pre.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
-        ==> pre.process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr) by { reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_match); reveal(page_iommu_table_wf); };
+        ==> pre.process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr) by { reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_wf); reveal(page_iommu_table_wf); };
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 

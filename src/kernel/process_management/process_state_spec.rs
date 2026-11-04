@@ -2,40 +2,46 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// A process outside its holder's critical section is running or a zombie, and only a marked process is being killed.
+/// A process outside its holder's critical section is running or a zombie, and a process in state Killing is marked.
 #[verifier::opaque]
-pub open spec fn process_state_lock_wf(process_map: ProcessLockedMap) -> bool {
-    forall|p_ptr: RwLockProcessPtr|
-        #![trigger process_map.spec_index(p_ptr)]
-        process_map.dom().contains(p_ptr) ==> {
-            &&& !process_map.spec_index(p_ptr).wlocked() ==> process_map.spec_index(p_ptr).view().state.view() is Running || process_map.spec_index(p_ptr).view().state.view() is Zombie
-            &&& process_map.spec_index(p_ptr).view().state.view() is Killing ==> process_map.spec_index(p_ptr).being_killed()
+pub open spec fn process_state_lock_wf(prc_mp: ProcessLockedMap) -> bool {
+    forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.spec_index(p)]
+        prc_mp.dom().contains(p) ==> {
+            let state = prc_mp.spec_index(p).view().state.view();
+            &&& !prc_mp.spec_index(p).wlocked() ==> state is Running || state is Zombie
+            &&& state is Killing ==> prc_mp.spec_index(p).being_killed()
         }
 }
 
-pub proof fn process_state_lock_wf_at(process_map: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+pub proof fn process_state_lock_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
     requires
-        process_state_lock_wf(process_map),
+        process_state_lock_wf(prc_mp),
     ensures
-        process_map.dom().contains(p_ptr) && !process_map.spec_index(p_ptr).wlocked() ==> process_map.spec_index(p_ptr).view().state.view() is Running || process_map.spec_index(p_ptr).view().state.view() is Zombie,
-        process_map.dom().contains(p_ptr) && process_map.spec_index(p_ptr).view().state.view() is Killing ==> process_map.spec_index(p_ptr).being_killed(),
+        prc_mp.dom().contains(prc_ptr) && !prc_mp.spec_index(prc_ptr).wlocked()
+            ==> prc_mp.spec_index(prc_ptr).view().state.view() is Running || prc_mp.spec_index(prc_ptr).view().state.view() is Zombie,
+        prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).view().state.view() is Killing ==> prc_mp.spec_index(prc_ptr).being_killed(),
 { reveal(process_state_lock_wf); }
 
-/// Every thread left in a process whose tables were emptied is the exiting thread, marked exited after its tables were released.
+/// Every thread still owned by a TablesEmptied process is in the thread map and exited.
 // Proof dependencies (confirmed): process_thread_wf.
 #[verifier::opaque]
-pub open spec fn process_emptied_threads_wf(process_map: ProcessLockedMap, thread_map: ThreadLockedMap) -> bool {
-    forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr|
-        #![trigger process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)]
-        process_map.dom().contains(p_ptr) && process_map.spec_index(p_ptr).view().state.view() is TablesEmptied && process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
-            ==> thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view_ghost().exited
+pub open spec fn process_emptied_threads_wf(prc_mp: ProcessLockedMap, thrd_mp: ThreadLockedMap) -> bool {
+    forall|p: RwLockProcessPtr, t: RwLockThreadPtr|
+        #![trigger prc_mp.spec_index(p).view().owned_threads.view().contains(t)]
+        prc_mp.dom().contains(p)
+            && prc_mp.spec_index(p).view().state.view() is TablesEmptied
+            && prc_mp.spec_index(p).view().owned_threads.view().contains(t)
+            ==>
+            thrd_mp.dom().contains(t)
+            && thrd_mp.spec_index(t).view_ghost().exited
 }
 
-pub proof fn process_emptied_threads_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr)
+pub proof fn process_emptied_threads_wf_at(prc_mp: ProcessLockedMap, thrd_mp: ThreadLockedMap, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
     requires
-        process_emptied_threads_wf(process_map, thread_map),
+        process_emptied_threads_wf(prc_mp, thrd_mp),
     ensures
-        process_map.dom().contains(p_ptr) && process_map.spec_index(p_ptr).view().state.view() is TablesEmptied && process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
-            ==> thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view_ghost().exited,
+        prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied && prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr)
+            ==> thrd_mp.dom().contains(thrd_ptr) && thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
 { reveal(process_emptied_threads_wf); }
 }

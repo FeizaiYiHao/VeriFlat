@@ -206,7 +206,7 @@ pub(crate) fn kill_mark_child(
                 process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
                 per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
                 process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, target); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, prc_ptr);
-                assert(uppers.contains(target)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
+                assert(uppers.contains(target)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
                 assert(uppers.contains(prc_ptr)) by { process_subtree_set_wf_at(root, tree, krnl.prc_mp, prc_ptr, target); };
             };
         } else {

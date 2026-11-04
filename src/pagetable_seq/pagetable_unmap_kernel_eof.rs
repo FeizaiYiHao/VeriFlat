@@ -208,8 +208,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 post.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (target_l4i, target_l3i, target_l2i) != (l4i, l3i, l2i)
                 ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)) by {
                 post.resolve_l2_unchanged(&pre);
-                broadcast use PageTable::resolve_l2_addr_unique_at;
-                broadcast use PageTable::resolve_l2_target_exists;
+                broadcast use PageTable::disjoint_l2_implies_resolve_l2_addr_unique_at;
+                broadcast use PageTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
             };
             reveal(PageTable::wf_mapping_4k);
         };

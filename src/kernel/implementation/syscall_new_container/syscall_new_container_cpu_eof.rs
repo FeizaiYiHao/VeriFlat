@@ -39,6 +39,6 @@ pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, 
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
     };
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+    assert(post.inv()) by { reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_covers_nonempty_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
 }
 }

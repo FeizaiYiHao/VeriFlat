@@ -59,7 +59,7 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
     broadcast use spec_index2va_2m_valid, Set::lemma_map_by_contains;
     if write_held { kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     else { kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
-    process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
+    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range;

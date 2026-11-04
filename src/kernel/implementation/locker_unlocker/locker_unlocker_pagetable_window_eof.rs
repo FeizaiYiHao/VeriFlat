@@ -90,18 +90,18 @@ proof fn lock_pagetable_window_eof_page_tables(pre: KernelK, post: KernelK, root
         pre.pt_mp.dom().contains(root),
         lock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i, thread_id, lock_token),
     ensures
-        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
     reveal(lock_pagetable_window_eof_transition_framing);
-    assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         pre.default_pagetable_wf_at(root); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
     };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_match);
+        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
 }
 
@@ -114,11 +114,11 @@ proof fn lock_pagetable_window_eof_tlb_caches(pre: KernelK, post: KernelK, root:
         pre.pt_mp.dom().contains(root),
         lock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i, thread_id, lock_token),
     ensures
-        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
-        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(lock_pagetable_window_eof_transition_framing);
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
@@ -182,15 +182,15 @@ pub(super) proof fn lock_pagetable_window_eof(pre: KernelK, post: KernelK, root:
     };
     assert(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)) by {
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).higher.wf_l4_at(l4i); whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).wf_l3_at(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).higher.wf_l4_at(l4i); whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).l3_links_l2_wf_at(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).spec_resolve_mapping_l4(l4i)->0.addr, l3i);
     };
     assert(!(pre.pt_mp.spec_index(root).locking_thread() is Write) ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)) by {
         pagetable_hidden_l1_only_when_locked_at(pre.pt_mp, pre.pt_lower.view(), root);
     };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
-    assert(pagetable_table_stale_cpus_only_when_write_held(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
-    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     lock_pagetable_window_eof_page_tables(pre, post, root, l4i, l3i, l2i, thread_id, lock_token);
     lock_pagetable_window_eof_tlb_caches(pre, post, root, l4i, l3i, l2i, thread_id, lock_token);
@@ -210,18 +210,18 @@ proof fn unlock_pagetable_window_eof_page_tables(pre: KernelK, post: KernelK, ro
         pre.pt_mp.dom().contains(root),
         unlock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i),
     ensures
-        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
     reveal(unlock_pagetable_window_eof_transition_framing);
-    assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         pre.default_pagetable_wf_at(root); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
     };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_match);
+        pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
 }
 
@@ -272,16 +272,16 @@ pub(super) proof fn unlock_pagetable_window_eof(pre: KernelK, post: KernelK, roo
     assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); };
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by {
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root); pre.default_pagetable_wf_at(root); reveal(pagetable_hidden_leaves_only_when_locked);
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, PageTableHigher::resolve_l3_addr_unique_at;
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at;
     };
     assert(pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
-    assert(pagetable_table_stale_cpus_only_when_write_held(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
-    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     unlock_pagetable_window_eof_page_tables(pre, post, root, l4i, l3i, l2i);
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
     assert(post.memory_management_inv()) by {
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);

@@ -328,7 +328,7 @@ pub(super) fn schedule_lock_current_and_shard(
         }
         current_thread_lock_perm = res;
     }
-    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container); }
+    proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container); }
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -448,8 +448,8 @@ pub(super) fn schedule_lock_queue_head(
             &&& (current_thread is Some ==> !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap()))
         }) by {
             scheduler_perms_wf_map(krnl.sched_mp);
-            scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
-            container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list);
+            scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
+            container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list);
         };
     }
     let shard = krnl.sched_mp.borrow_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(scheduler_lock_perm));
@@ -457,9 +457,9 @@ pub(super) fn schedule_lock_queue_head(
     let (_, next_thread) = shard.queue.peek_head();
     assert(krnl.thrd_mp.dom().contains(next_thread) && krnl.thrd_mp.spec_index(next_thread).view().state == (ThreadState::SCHEDULED { cpu_id })
         && krnl.thrd_mp.spec_index(next_thread).view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container) by {
-        container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread);
+        container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread);
     };
-    assert(krnl.prc_mp.dom().contains(krnl.thrd_mp.spec_index(next_thread).view().owning_proc)) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, next_thread); };
+    assert(krnl.prc_mp.dom().contains(krnl.thrd_mp.spec_index(next_thread).view().owning_proc)) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, next_thread); };
     let res = krnl.wlock_scheduled_thread_unless_killed(next_thread, Tracked(&mut *lctx));
     if res.is_none() { return None; }
     Some((next_thread, res.unwrap()))

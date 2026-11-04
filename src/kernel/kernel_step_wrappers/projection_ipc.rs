@@ -27,8 +27,8 @@ proof fn kernel_thread_dequeued_implies_u_container_map(before: &KernelK, entry:
 /// A process map with unchanged nonlock fields and lock states projects to the same process map.
 proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &KernelK, after: &KernelK, lctx: &LocalContext)
     requires
-        process_pagetable_match(after.prc_mp, after.pt_mp),
-        process_iommu_table_match(after.prc_mp, after.it_mp),
+        process_pagetable_wf(after.prc_mp, after.pt_mp),
+        process_iommu_table_wf(after.prc_mp, after.it_mp),
         typed_lock_maps_aligned(after, lctx),
         kernel_cpu_process_thread_nonlock_fields_unchanged(before, entry),
         *after == (KernelK { thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, ..*entry }),
@@ -47,7 +47,7 @@ proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &
     assert_maps_equal!(post.process_map, pre.process_map, p => {
         if after.prc_mp.dom().contains(p) { kernel_process_projection_at(after, p); } if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -251,8 +251,8 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(
 
 pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &KernelK, lctx: &LocalContext)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         post.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
@@ -273,7 +273,7 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
 {
     hide(Map::filter_keys);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
@@ -285,8 +285,8 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
 #[verifier::spinoff_prover]
 pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &KernelK, post: &KernelK, lctx: &LocalContext, source: RwLockProcessPtr, target: RwLockProcessPtr)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         post.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
         post.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
@@ -344,7 +344,7 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
         }), ..processes[target]
     });
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
     assert_maps_equal!(after.process_map, locked_processes, p => {
         if post.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); }
     });
@@ -355,8 +355,8 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     caller: RwLockThreadPtr, peer: RwLockThreadPtr, endpoint: RwLockEndpointPtr, tables: Option<(RwLockProcessPtr, RwLockProcessPtr)>,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         typed_lock_maps_aligned(post, lctx),
         index_valid(NUM_CPUS, cpu),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
@@ -524,7 +524,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
     ep_ptr: Option<RwLockEndpointPtr>, write_locked: bool, container: Option<RwLockContainerPtr>, pagetable: bool, cpu_set_unlocked: Option<KernelK>,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         typed_lock_maps_aligned(post, lctx),
         index_valid(NUM_CPUS, cpu_id),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, sched_mp: post.sched_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pcid_allc_mp: post.pcid_allc_mp, cpu_set_mp: post.cpu_set_mp, ..*pre }),
@@ -674,8 +674,8 @@ pub(super) proof fn kernel_ipc_block_fields_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_ipc_block_fields(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
@@ -853,8 +853,8 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_process_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid),
     ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
 {
@@ -864,7 +864,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_process_map(
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -927,7 +927,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
     if let Some((bdf, sender, receiver)) = pci_transfer {
         let old_did = match pre.prc_mp.spec_index(sender).view().iommu_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
         if pre.prc_mp.dom().contains(sender) {
-            kernel_process_user_projection_at(pre, sender); kernel_process_user_projection_at(post, sender); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, sender);
+            kernel_process_user_projection_at(pre, sender); kernel_process_user_projection_at(post, sender); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, sender);
         }
         if pre.prc_mp.dom().contains(receiver) { kernel_process_user_projection_at(pre, receiver); }
         pre.irt.view().user_view_eq_owners_and_attached();
@@ -1030,8 +1030,8 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
 proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
     pre: &KernelK, post: &KernelK, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
         pci_transfer is None ==> kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
         pci_transfer is None ==> kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
@@ -1106,8 +1106,8 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
 proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     pre: &KernelK, post: &KernelK, bdf: PciBdf, sender: RwLockProcessPtr, receiver: RwLockProcessPtr, )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
         post.it_mp.dom() == pre.it_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
@@ -1173,7 +1173,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
         .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, sender);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, sender);
         reveal(kernel_pagetable_nonlock_fields_unchanged);
     });
 }

@@ -96,7 +96,7 @@ impl PageTable<PT_TYPE> {
             &&& self.l4_table.view().spec_index(self.cr3).is_init()
             &&& self.l4_table.view().spec_index(self.cr3).value().wf()
         }) by { reveal(PageTable::wf_l4); };
-        proof { self.kernel_l4_end_valid(); }
+        proof { self.kernel_entries_wf_l4_end_valid_at(); }
         let tracked source_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
         page_map_copy_kernel_entry_range(self.cr3, Tracked(source_perm), target_ptr, Tracked(&mut *target_perm), self.kernel_l4_end);
         proof { self.copy_kernel_entries_to_unpublished_root_eof(target_perm.value()); }

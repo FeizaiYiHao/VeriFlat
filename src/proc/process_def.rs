@@ -4,7 +4,18 @@ verus! {
 use crate::*;
 
 /// K-only lifecycle of a process; not part of U.
-pub ghost enum ProcessState { Creating, Running, Killing, TablesEmptied, Zombie }
+pub ghost enum ProcessState {
+    /// Being created; it has no thread yet.
+    Creating,
+    /// Has at least one thread.
+    Running,
+    /// Marked by a killer.
+    Killing,
+    /// Its page table and IOMMU table are empty and unlocked.
+    TablesEmptied,
+    /// Has no thread and no quota left.
+    Zombie,
+}
 
 pub struct Process {
     // Independent of the lock's kill state. Resource identifiers are historical when zombie.
@@ -25,7 +36,9 @@ pub struct Process {
 }
 
 pub struct ProcessGhost {
+    /// The ancestor processes, indexed by depth from the container's root process.
     pub uppertree_seq: Ghost<Seq<RwLockProcessPtr>>,
+    /// The descendant processes.
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
     // Reverse index of the root table's owner slots; serialized by the root-table lock, not this process's lock.
     pub owned_pci_functions: Ghost<Set<PciBdf>>,
@@ -74,6 +87,7 @@ impl UserViewHasKillState for ProcessU {
 }
 
 impl LockInvTrait for Process {
+    /// Same as `wf`.
     open spec fn inv(&self) -> bool { self.wf() }
 }
 impl Process {
@@ -131,12 +145,16 @@ impl Process {
         Self { zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None, quota_4k: 0, quota_2m: 0, quota_1g: 0, parent_linkedlist_node, children, owned_threads }
     }
 
+    /// The child and thread lists are well formed, and the lifecycle state agrees with the threads, quota, and `zombie`.
     pub open spec fn wf(&self) -> bool {
+        // A process never uses the kernel PCID.
         &&& self.pcid != KERNEL_DEFAULT_PCID
-        &&& self.children.inv()
+        &&& self.children.wf()
         &&& self.owned_threads.wf()
         &&& self.pagetable_iommu_table_different()
+        // A running process has at least one thread.
         &&& self.state.view() is Running ==> self.owned_threads.view().len() > 0
+        // `zombie` mirrors the ghost Zombie state.
         &&& self.zombie <==> self.state.view() is Zombie
         // A zombie has no thread and no quota left.
         &&& self.zombie ==> {

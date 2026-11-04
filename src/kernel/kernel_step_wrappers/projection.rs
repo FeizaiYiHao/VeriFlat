@@ -28,8 +28,8 @@ pub proof fn kernel_thread_write_held_section_implies_u_eq(pre: &KernelK, post: 
 /// Unchanged non-lock fields and user-visible lock modes leave the complete projection unchanged.
 pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &KernelK, post: &KernelK)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         post.irt.view().owners() == pre.irt.view().owners(),
@@ -97,8 +97,8 @@ pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &
 /// `zombie`, if any, which the projection hides, leave the complete projection unchanged.
 pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &KernelK, post: &KernelK, zombie: Option<RwLockProcessPtr>)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         zombie is Some ==> post.prc_mp.dom().contains(zombie->Some_0),
         zombie is Some ==> post.prc_mp.spec_index(zombie->Some_0).view().zombie,
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
@@ -224,8 +224,8 @@ pub(super) proof fn kernel_lock_states_unchanged_implies_u_container_map(pre: &K
 /// process `zombie`, if any, leave the projected process map unchanged.
 proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre: &KernelK, post: &KernelK, zombie: Option<RwLockProcessPtr>)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         zombie is Some ==> post.prc_mp.dom().contains(zombie->Some_0),
         zombie is Some ==> post.prc_mp.spec_index(zombie->Some_0).view().zombie,
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
@@ -258,8 +258,8 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(before.process_map, after.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
-        if zombie is Some { process_pagetable_match_process_at(post.prc_mp, post.pt_mp, zombie->Some_0); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, zombie->Some_0); }
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p);
+        if zombie is Some { process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, zombie->Some_0); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, zombie->Some_0); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
         reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
@@ -453,8 +453,8 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
 /// The context-switch fields leave the process map projection unchanged.
 proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
     ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
 {
@@ -464,7 +464,7 @@ proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post:
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -545,8 +545,8 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, process: RwLockProcessPtr, pagetable: RwLockPageTableRoot, thread: RwLockThreadPtr, lock: bool,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         typed_lock_maps_aligned(post, lctx),
         pre.prc_mp.dom().contains(process),
         !pre.prc_mp.spec_index(process).view().zombie,
@@ -888,7 +888,7 @@ proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, 
 /// Publishing a container root projects to the process map with only the new write-locked root `process` added.
 proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK, after: &KernelK, child: RwLockContainerPtr, process: RwLockProcessPtr, process_quota: usize)
     requires
-        process_pagetable_match(before.prc_mp, before.pt_mp),
+        process_pagetable_wf(before.prc_mp, before.pt_mp),
         !before.prc_mp.dom().contains(process),
         after.it_mp == before.it_mp,
         after.prc_mp.dom() == before.prc_mp.dom().insert(process),
@@ -938,7 +938,7 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     }), p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); process_pagetable_match_process_at(before.prc_mp, before.pt_mp, p); }
+        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); process_pagetable_wf_process_at(before.prc_mp, before.pt_mp, p); }
     });
 }
 
@@ -1059,7 +1059,7 @@ proof fn kernel_container_root_published_implies_u_container_map(
     }).insert(child, post.container_map[child]), c => {
         if before.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c);
-            container_scheduler_wf_at(before.ctn_mp, before.sched_mp, c); container_allocator_wf_at(before.ctn_mp, before.allc_4k_mp, before.allc_2m_mp, before.allc_1g_mp, c);
+            container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, c); container_allocator_wf_at(before.ctn_mp, before.allc_4k_mp, before.allc_2m_mp, before.allc_1g_mp, c);
             reveal(container_pcid_allocator_wf); reveal(container_cpu_set_wf);
         }
     });

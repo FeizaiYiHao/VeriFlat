@@ -137,15 +137,15 @@ proof fn create_thread_from_staged_page_eof_process_emptied_tables_wf(pre: Kerne
 /// user roots resolvable.
 proof fn create_thread_from_staged_page_eof_hidden_roots(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
     requires
-        pagetable_hidden_roots_only_when_write_held_or_emptied(pre.pt_mp, pre.prc_mp),
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        pagetable_hidden_roots_only_when_write_locked_or_emptied(pre.pt_mp, pre.prc_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         pre.prc_mp.spec_index(prc_ptr).view().state.view() is Creating || pre.prc_mp.spec_index(prc_ptr).view().state.view() is Running,
         post.pt_mp == pre.pt_mp,
         post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr),
         post.prc_mp.spec_index(prc_ptr).view().state.view() == ProcessState::Running,
     ensures
-        pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
-{ reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); }
+        pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp),
+{ reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); }
 
 proof fn create_thread_from_staged_page_eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
@@ -266,11 +266,11 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
         scheduler_perms_wf(post.sched_mp),
         process_thread_wf(post.prc_mp, post.thrd_mp),
         container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp),
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
     ensures
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
-    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); page_ptr_roundtrip(); page_index_roundtrip();
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); page_ptr_roundtrip(); page_index_roundtrip();
 }
 
 proof fn create_thread_from_staged_page_eof_memory_management_inv(
@@ -311,43 +311,43 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
 {
     reveal(create_thread_from_staged_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
-    assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
-        allocator_2m_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_2m_mp, post.allc_2m_mp);
-        allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
+    assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
+        allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
+        allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
+        allocator_1g_pages_wf_preserved_for_page_state_eq(pre.allc_1g_mp, post.allc_1g_mp, pre.pg_arr, post.pg_arr);
     };
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
-    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     create_thread_from_staged_page_eof_page_object_owner_wf(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr);
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
-    assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx); };
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by {
         page_iommu_table_wf_preserved_for_nonmapped_page_change(pre.ctn_mp, pre.prc_mp, pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr, pg_idx);
         reveal(page_iommu_table_wf);
     };
-    assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
-    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
+    assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { container_pages_wf_preserved_for_page_state_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
+    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_pages_wf_preserved_for_page_state_eq(pre.prc_mp, post.prc_mp, pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); page_ptr_roundtrip(); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-    assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
-    assert(thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
+    assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pcid_allc_mp, post.pcid_allc_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_4k_pages_wf); };
+    assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_2m_pages_wf); };
+    assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_1g_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
-    assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
-    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
+    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { create_thread_from_staged_page_eof_process_emptied_tables_wf(pre, post, pg_ptr, prc_ptr); };
-    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { create_thread_from_staged_page_eof_hidden_roots(pre, post, prc_ptr); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { create_thread_from_staged_page_eof_hidden_roots(pre, post, prc_ptr); };
     create_thread_from_staged_page_eof_allocator_quota_wf(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr);
     create_thread_from_staged_page_eof_container_kill_retire_wf(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr);
-    assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, pg_idx); };
-    assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, pg_idx); };
-    assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
+    assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, pg_idx); };
+    assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, pg_idx); };
+    assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
 }
 
 proof fn create_thread_from_staged_page_eof_endpoint_ref_counter_wf(
@@ -640,9 +640,9 @@ pub(super) proof fn create_thread_from_staged_page_eof_inv(
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(container_cpu_wf);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(container_cpu_wf);
     };
 }
 

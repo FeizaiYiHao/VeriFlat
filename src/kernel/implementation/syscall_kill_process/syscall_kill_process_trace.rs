@@ -701,7 +701,7 @@ pub(crate) proof fn kill_reassign_step_from_k(
         let t = iommu_table->Some_0;
         let anchor = pci_bdf_of_did(d);
         assert(vtd_domain_id_valid(d) && pre.iommu_tlb.view().dom().contains(d) && pci_bdf_valid(anchor.0, anchor.1, anchor.2) && pre.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == target && pre.irt.view().spec_index_iommu_root(anchor.0, anchor.1, anchor.2) is Some) by {
-            reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
+            reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv);
         };
     }
     let old_u = kernel_k_to_kernel_u(*pre);
@@ -1037,7 +1037,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|cpu: CpuId| #![trigger post.cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> post.cpu_arr.spec_index(cpu).value.locking_thread() == pre.cpu_arr.spec_index(cpu).value.locking_thread(),
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         post.pt_mp.dom() == pre.pt_mp.dom(),
         forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)] pre.pt_mp.dom().contains(pt) ==> {
             &&& post.pt_mp.spec_index(pt).locking_thread() == pre.pt_mp.spec_index(pt).locking_thread()
@@ -1130,7 +1130,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
             && entry.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
             &&& steps[before.len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
-            &&& process_pagetable_match(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
+            &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
             &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
             &&& typed_lock_maps_aligned(&hidden[k].1, &lctx)
             &&& held_cpus_unchanged(entry.cpu_arr, hidden[k].1.cpu_arr, &lctx) && held_containers_unchanged(entry.ctn_mp, hidden[k].1.ctn_mp, &lctx)
@@ -1148,7 +1148,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
         if let Some(t) = iommu_table { h.1.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
         kill_step_pre_from_k(&h.1, &lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
         kill_reclaim_pre_from_k(&h.1, &lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table);
-        process_pagetable_match_process_at(h.1.prc_mp, h.1.pt_mp, target);
+        process_pagetable_wf_process_at(h.1.prc_mp, h.1.pt_mp, target);
         hide_user_l4_entries_hide_step_from_k(&h.1, &h.2, pagetable, h.0);
         kill_table_hidden_step_from_u(kernel_k_to_kernel_u(h.1), kernel_k_to_kernel_u(h.2), cpu_id, target, h.0);
         reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);

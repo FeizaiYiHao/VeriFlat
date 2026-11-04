@@ -7,6 +7,7 @@ pub struct Endpoint {
     pub queue: LinkedList<RwLockThreadPtr, 233>,
     pub queue_state: EndpointState,
     pub rf_counter: usize,
+    /// The (thread, descriptor index) pairs that hold this endpoint.
     pub owning_threads: Ghost<Set<(RwLockThreadPtr, EndpointIdx)>>,
     pub owning_container: RwLockContainerPtr,
 }
@@ -21,9 +22,11 @@ pub ghost struct EndpointU {
 }
 
 impl LockInvTrait for Endpoint {
+    /// The waiter queue is well formed, and the reference counter counts the descriptors that hold the endpoint.
     open spec fn inv(&self) -> bool {
         &&& self.queue.wf()
         &&& self.rf_counter == self.owning_threads.view().len()
+        // A live endpoint is held by at least one descriptor.
         &&& self.rf_counter != 0
     }
 }

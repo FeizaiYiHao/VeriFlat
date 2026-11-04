@@ -53,10 +53,14 @@ pub struct LockCell<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     pub(crate) lock: I,
     pub(crate) value: T,
     pub(super) read_only_value: ROT,
+    /// Proof-only state of the locked object (`view_ghost`).
     ghost_value: Ghost<GhostT>,
 
+    /// Kill mark, or the owner of the current dynamic write acquisition; only these reach the runtime word.
     control: Ghost<LockControl>,
+    /// The lock object has been initialized.
     is_init: Ghost<bool>,
+    /// Current holders: the writer's thread and lock id, or the lock id of each reader thread.
     locking_thread: Ghost<RwLockState>,
 }
 
@@ -191,9 +195,11 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS
 }
 
 impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
+    /// The locked object satisfies its own invariant in every lock state, and the lock is initialized.
     pub open spec fn inv(&self) -> bool {
         &&& self.view().inv()
         &&& self.is_init()
+        // a read-held lock has at least one reader
         &&& self.locking_thread() is Read ==> !self.locking_thread()->Read_reader_map.dom().is_empty()
     }
 }
@@ -202,7 +208,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS
     #[verifier::external_body]
     pub fn borrow<'a,>(&self, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
-            self.is_init() == true,
+            self.is_init(),
             lp.view().state() is WriteLock ==> self.write_lock_perm_match(lp.view()),
             lp.view().state() is ReadLock ==> self.read_lock_perm_match(lp.view()),
         ensures

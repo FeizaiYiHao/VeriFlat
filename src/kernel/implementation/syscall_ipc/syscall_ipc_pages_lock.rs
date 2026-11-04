@@ -1094,14 +1094,14 @@ fn ipc_pages_lock_tables_attempt(
     );
     proof {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
     }
     let ghost lock_pre_lctx = *lctx;
     let (source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows)) =
         ipc_pages_lock_tables_and_windows(krnl, cpu_id, source_range, target_range, source_pagetable, target_pagetable, Tracked(&mut *lctx), true);
     proof {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread); process_perms_wf_at(krnl.prc_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread); process_perms_wf_at(krnl.prc_mp, target_process);
         process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, target_process, target_thread);
     }
     (true, source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows), Ghost(lock_pre_lctx))
@@ -1386,8 +1386,8 @@ pub(super) fn ipc_pages_lock_tables(
         ipc_pages_trace_lock_step(&*steps, lock_before, start, pre, kernel_k_to_kernel_u(lock_pre_k), kernel_k_to_kernel_u(locked_k), cpu_id, channel_index, waiting_state,
             range, tables);
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
     }
     (fill, source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows))
@@ -1509,7 +1509,7 @@ pub(super) fn ipc_pages_release_tables_and_progress(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(ret.view()) }),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        process_pagetable_match(ret.view().prc_mp, ret.view().pt_mp),
+        process_pagetable_wf(ret.view().prc_mp, ret.view().pt_mp),
         ret.view() == (KernelK { pt_mp: ret.view().pt_mp, pt_lower: ret.view().pt_lower, thrd_mp: ret.view().thrd_mp, ..*old(krnl) }),
         ret.view().pt_mp.dom() == old(krnl).pt_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger ret.view().pt_mp.spec_index(p)]

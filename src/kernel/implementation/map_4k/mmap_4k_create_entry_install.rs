@@ -250,7 +250,7 @@ use super::mmap_4k_create_entry_install_eof::*;
         };
         assert(!whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr)) by {
             if whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr) {
-                pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable_ptr, pg_ptr);
+                pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable_ptr, pg_ptr);
             }
         };
         proof {
@@ -262,7 +262,7 @@ use super::mmap_4k_create_entry_install_eof::*;
                 let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr, window_va);
                 spec_va_4k_index_roundtrip_at(window_va.va, indices.0, indices.1, indices.2, 0usize);
-                c.higher.wf_l4_at(indices.0); c.wf_l3_at(c.spec_resolve_mapping_l4(indices.0)->0.addr, indices.1); c.wf_l2_at(c.window_l2_page(indices.0, indices.1), indices.2);
+                c.higher.wf_l4_at(indices.0); c.l3_links_l2_wf_at(c.spec_resolve_mapping_l4(indices.0)->0.addr, indices.1); c.wf_l2_at(c.window_l2_page(indices.0, indices.1), indices.2);
             }
         }
 

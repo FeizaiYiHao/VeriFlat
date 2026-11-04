@@ -247,6 +247,8 @@ impl IommuRootTable {
         self.owners().spec_index(bus as int).spec_index(device as int).spec_index(function as int)
     }
 
+    /// The root and context tables sit at `table_base` in hardware format: every bus's root entry points at its context
+    /// table, and every context entry is all zero or a present 4-level entry with translation type 0.
     #[verifier::opaque]
     pub closed spec fn wf(&self) -> bool {
         &&& self.root_entries.wf()
@@ -254,6 +256,7 @@ impl IommuRootTable {
         &&& self.owner_slots.wf()
         &&& self.table_base.view() % VTD_TABLE_SIZE == 0
         &&& self.table_base.view() <= usize::MAX - IOMMU_ROOT_TABLE_STATIC_SIZE
+        // Root entry `bus` is present and points at that bus's context table.
         &&& forall|bus: usize|
             #![trigger self.root_entries.spec_index(bus)]
             bus < PCI_BUS_COUNT ==> {
@@ -267,6 +270,7 @@ impl IommuRootTable {
             #![trigger self.context_entries.spec_index(slot)]
             slot < PCI_BDF_COUNT ==> {
                 let context = self.context_entries.spec_index(slot);
+                // A not-present context entry is all zero.
                 &&& !context.present() ==> context.lower == 0 && context.upper == 0
                 &&& context.present() ==> {
                     &&& context.lower == (context.address() | 1)
@@ -279,12 +283,12 @@ impl IommuRootTable {
     }
 
     /// A present context entry carries both a root and a valid domain ID.
-    pub proof fn context_wf_at(&self, bus: usize, device: usize, function: usize)
+    pub proof fn wf_context_entry_at(&self, bus: usize, device: usize, function: usize)
         requires
             self.wf(),
             pci_bdf_valid(bus, device, function),
         ensures
-            self.spec_index_iommu_did(bus, device, function) is Some == self.spec_index_iommu_root(bus, device, function) is Some,
+            (self.spec_index_iommu_did(bus, device, function) is Some) == (self.spec_index_iommu_root(bus, device, function) is Some),
             self.spec_index_iommu_did(bus, device, function) is Some ==> vtd_domain_id_valid(self.spec_index_iommu_did(bus, device, function)->0),
     {
         reveal(IommuRootTable::wf);
@@ -297,7 +301,7 @@ impl IommuRootTable {
     }
 
     /// The context-entry array of `wf` has one entry per B/D/F.
-    proof fn wf_len_at(&self)
+    proof fn wf_implies_context_entries_wf(&self)
         requires self.wf()
         ensures self.context_entries.wf()
     { reveal(IommuRootTable::wf); }
@@ -395,7 +399,7 @@ impl IommuRootTable {
             ret == self.spec_index_iommu_did(bus, device, function),
             ret is Some ==> vtd_domain_id_valid(ret->0),
     {
-        proof { assert(self.context_entries.wf()) by { self.wf_len_at(); }; }
+        proof { assert(self.context_entries.wf()) by { self.wf_implies_context_entries_wf(); }; }
         let context = self.context_entries.get(Self::pci_bdf_slot(bus, device, function));
         proof {
             let upper = context.upper;
@@ -614,7 +618,7 @@ impl IommuRootTable {
             forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
     {
-        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_len_at(); }; }
+        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_implies_context_entries_wf(); }; }
         let mut bus: usize = 0;
         let mut device: usize = 0;
         let mut function: usize = 0;
@@ -704,7 +708,7 @@ impl IommuRootTable {
                 bus = bus + 1;
             }
         }
-        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_len_at(); }; }
+        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_implies_context_entries_wf(); }; }
     }
 }
 
@@ -713,6 +717,7 @@ impl IommuRootTable {
 pub type IommuRootTableLock = TokenLock<IommuRootTable, (), (), NO_KILL_STATE>;
 
 impl LockInvTrait for IommuRootTable {
+    /// Same as `wf`.
     open spec fn inv(&self) -> bool { self.wf() }
 }
 

@@ -365,9 +365,9 @@ fn ipc_pages_check_source_owners(
 {
     proof {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
         va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
@@ -381,11 +381,11 @@ fn ipc_pages_check_source_owners(
     );
     proof {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
-        container_uppertree_seq_in_dom(old(krnl).rt_ctn, old(krnl).ctn_mp, target_container); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
+        container_uppertree_seq_wf_implies_ancestors_in_dom(old(krnl).rt_ctn, old(krnl).ctn_mp, target_container); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
     }
     owners
 }
@@ -696,7 +696,7 @@ pub(super) fn ipc_pages_check_tables(
     let ghost mut found: Option<(L4Index, L3Index, L2Index, L1Index)> = None;
     proof {
         assert(krnl.ctn_mp.dom().contains(source_container) && krnl.ctn_mp.dom().contains(target_container)) by {
-            container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
+            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, source_thread); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         };
     }
     let result = if !source_user {

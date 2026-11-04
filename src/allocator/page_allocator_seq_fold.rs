@@ -20,8 +20,8 @@ pub proof fn lemma_cache_len_fold_congruence<const SIZE: usize>(s1: Seq<LockCell
         forall|i: int| #![trigger s1.spec_index(i), s2.spec_index(i)]
             0 <= i < s1.len() ==> s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
-        s1.fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() })
-            == s2.fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }),
+        s1.fold_left(0int, |sum: int, cache_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cache_lock.view().linked_list.len() })
+            == s2.fold_left(0int, |sum: int, cache_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cache_lock.view().linked_list.len() }),
     decreases s1.len(),
 {
     if s1.len() != 0 {

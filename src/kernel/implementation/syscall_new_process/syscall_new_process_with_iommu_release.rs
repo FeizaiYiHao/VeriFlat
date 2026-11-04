@@ -121,7 +121,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         final(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view() == old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view(),
 {
     hide(Seq::no_duplicates);
-    proof { assert(old(krnl).prc_mp.spec_index(parent_ptr).view().iommu_table != Some(iommu_table_ptr)) by { reveal(process_iommu_table_match); }; }
+    proof { assert(old(krnl).prc_mp.spec_index(parent_ptr).view().iommu_table != Some(iommu_table_ptr)) by { reveal(process_iommu_table_wf); }; }
     krnl.wunlock_page(page_ptr2page_index(iommu_l4_pg_ptr), Tracked(&mut *lctx), Tracked(iommu_l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(iommu_table_pg_ptr), Tracked(&mut *lctx), Tracked(iommu_table_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(l4_pg_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));

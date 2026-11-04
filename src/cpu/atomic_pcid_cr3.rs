@@ -18,10 +18,12 @@ pub struct AtomicPcidCr3 {
 impl AtomicPcidCr3 {
     pub closed spec fn view(&self) -> (PageTableRoot, Pcid) { (self.atomic.view() & MEM_MASK as usize, self.atomic.view() & 0xfffusize) }
     pub closed spec fn owner_cpu(&self) -> CpuId { self.atomic.owner_cpu() }
+    /// The word holds a valid cr3 and a valid PCID.
     pub closed spec fn inv(&self) -> bool {
         &&& page_ptr_valid(self.view().0)
         &&& pcid_valid(self.view().1)
-        &&& self.atomic.view() & !(MEM_MASK as usize | 0xfffusize) == 0
+        // No bits are set outside the cr3 address and PCID fields.
+        &&& (self.atomic.view() & !(MEM_MASK as usize | 0xfffusize)) == 0
     }
 
     /// Boot only, once per cpu: publish `(cr3, pcid)` as the hardware cr3/pcid word of cpu `cpu_id`.

@@ -160,7 +160,7 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
                 Mmap4kPhase::Read, whole_pagetable(entered_k.pt_mp, entered_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range, Mmap4kPhase::Read);
         };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         broadcast use spec_va_2m_valid_index_roundtrip;
     }

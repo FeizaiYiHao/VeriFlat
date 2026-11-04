@@ -37,7 +37,7 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, p
         let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
         assert(cpu.current_thread is Some ==> pre.thrd_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by {
             cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
-            if cpu.current_thread is Some { process_thread_wf_at(pre.prc_mp, pre.thrd_mp, cpu.current_thread.unwrap()); }
+            if cpu.current_thread is Some { process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, cpu.current_thread.unwrap()); }
         };
         assert(pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().no_duplicates()) by { scheduler_perms_wf_at(pre.sched_mp, sched_ptr); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
         reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
@@ -83,7 +83,7 @@ proof fn scheduler_context_switch_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id
 {
     reveal(scheduler_context_switch_eof_transition_framing);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_thread_wf); };
     assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }
 
@@ -318,7 +318,7 @@ proof fn scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre: KernelK, post: Kernel
 {
     hide(Seq::contains);
     reveal(scheduler_context_switch_eof_transition_framing);
-    reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf);
+    reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf);
 }
 
 pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
@@ -340,10 +340,10 @@ pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: Kern
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
-        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+        thread_staged_4k_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp);
         container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
         container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
@@ -422,14 +422,14 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
         })) by { reveal(scheduler_shards_of); };
     scheduler_context_switch_eof_process_management_inv(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-        reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf);
+        reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
+        reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(next_thread).view().owning_proc);
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(cpu_tlb_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(next_thread).view().owning_proc);
     };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(structure_cache_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(next_thread).view().owning_proc);
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, pre.thrd_mp.spec_index(next_thread).view().owning_proc);
     };
 }
 }

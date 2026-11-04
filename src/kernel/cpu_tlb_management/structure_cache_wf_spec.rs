@@ -43,7 +43,7 @@ verus! {
 
     /// No usable paging-structure cache names table page `page`: under every non-default PCID that is current or not
     /// marked for flush, no CPU keeps an L4, L3, or L2 entry pointing at it. Inactive, marked PCIDs are flushed before
-    /// their next activation, as in `structure_cache_wf_spec`.
+    /// their next activation, as in `structure_cache_wf`.
     pub open spec fn table_page_unreferenced_by_structure_caches(cpu_tlb: CpuTLB, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, page: PageMapPtr) -> bool {
         forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger cpu_tlb.structure_cache((cpu_id, pcid))]
@@ -58,9 +58,9 @@ verus! {
 
     /// A CPU keeps paging-structure entries under a PCID only for its dirty table: each is an entry the table holds, and
     /// one the table no longer resolves only while the CPU is listed stale for it. Inactive, marked PCIDs remain exempt
-    /// until their next activation flush, as in `tlb_wf_spec`.
+    /// until their next activation flush, as in `cpu_tlb_wf`.
     #[verifier::opaque]
-    pub open spec fn structure_cache_wf_spec(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
+    pub open spec fn structure_cache_wf(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
         forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger cpu_tlb.structure_cache((cpu_id, pcid))]
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
@@ -74,8 +74,8 @@ verus! {
             }
     }
 
-    pub proof fn structure_cache_wf_spec_at(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)
-        requires structure_cache_wf_spec(cpu_tlb, pagetable_map, pt_lower, cpu_array, needflush),
+    pub proof fn structure_cache_wf_at(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)
+        requires structure_cache_wf(cpu_tlb, pagetable_map, pt_lower, cpu_array, needflush),
         ensures
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
             && (!needflush.spec_index(cpu_id, pcid).view().needflush || cpu_array.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
@@ -86,7 +86,7 @@ verus! {
                 &&& single_structure_cache_subset_of_whole_pagetable(cpu_tlb.structure_cache((cpu_id, pcid)), table)
                 &&& single_structure_cache_present_or_stale(cpu_tlb.structure_cache((cpu_id, pcid)), table, cpu_id)
             },
-    { reveal(structure_cache_wf_spec); }
+    { reveal(structure_cache_wf); }
 
     /// A page of a table whose user roots all fail to resolve and which lists no CPU stale is named by no usable
     /// paging-structure cache: a cached entry is held by the cache's dirty table, so naming `page` it is that table, whose
@@ -126,16 +126,16 @@ verus! {
         let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
         let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
         let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
-        structure_cache_wf_spec_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
+        structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
         if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
             pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
             assert(dirty_table.page_closure().contains(page) ==> dirty_ptr == table) by {
                 if dirty_table.page_closure().contains(page) {
-                    pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page);
-                    pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, table, page);
+                    pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page);
+                    pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, table, page);
                 }
             };
-            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2);
+            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
         }
     }
 
@@ -169,14 +169,14 @@ verus! {
         let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
         let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
         let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
-        structure_cache_wf_spec_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
+        structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
         if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
             pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
             assert(!dirty_table.page_closure().contains(page)) by {
-                iommu_table_pages_wf_closure_entry_at(k.it_mp, k.pg_arr, iommu_table, page);
-                if dirty_table.page_closure().contains(page) { pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page); }
+                iommu_table_pages_wf_closure_page_at(k.it_mp, k.pg_arr, iommu_table, page);
+                if dirty_table.page_closure().contains(page) { pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page); }
             };
-            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2);
+            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
         }
     }
 }

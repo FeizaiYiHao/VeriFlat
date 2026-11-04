@@ -1,43 +1,54 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
+/// Processes and page tables name each other.
 #[verifier::opaque]
-pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap) -> bool {
-    &&& forall|proc_ptr:RwLockProcessPtr|
-        #![trigger process_map.spec_index(proc_ptr).view()]
-        process_map.dom().contains(proc_ptr)
-            ==> pagetable_map.dom().contains(process_map.spec_index(proc_ptr).view().pagetable)
-            && process_map.spec_index(proc_ptr).view_rodata().view().pagetable == process_map.spec_index(proc_ptr).view().pagetable
-            && process_map.spec_index(proc_ptr).view_rodata().view().pcid == process_map.spec_index(proc_ptr).view().pcid
-            && process_map.spec_index(proc_ptr).view_rodata().view().cr3 == pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().cr3
-            && pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
-            && pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_value() == process_map.spec_index(proc_ptr).view().pcid
-    &&& forall|pt_ptr:RwLockPageTableRoot|
-        #![trigger pagetable_map.spec_index(pt_ptr).view().proc_ptr]
-        pagetable_map.dom().contains(pt_ptr) ==> process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr) && process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
+pub open spec fn process_pagetable_wf(prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap) -> bool {
+    // Process -> page table; the read-only `pagetable`, `pcid`, and `cr3` copies match.
+    &&& forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.spec_index(p).view()]
+        prc_mp.dom().contains(p) ==> {
+            let process = prc_mp.spec_index(p);
+            let table = pt_mp.spec_index(process.view().pagetable).view();
+            &&& pt_mp.dom().contains(process.view().pagetable)
+            &&& process.view_rodata().view().pagetable == process.view().pagetable
+            &&& process.view_rodata().view().pcid == process.view().pcid
+            &&& process.view_rodata().view().cr3 == table.cr3
+            &&& table.proc_ptr == p
+            &&& table.pcid_value() == process.view().pcid
+        }
+    // Page table -> process.
+    &&& forall|pt: RwLockPageTableRoot|
+        #![trigger pt_mp.spec_index(pt).view().proc_ptr]
+        pt_mp.dom().contains(pt)
+            ==>
+            prc_mp.dom().contains(pt_mp.spec_index(pt).view().proc_ptr)
+            && prc_mp.spec_index(pt_mp.spec_index(pt).view().proc_ptr).view().pagetable == pt
 }
 
-pub proof fn process_pagetable_match_process_at(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, proc_ptr: RwLockProcessPtr)
+pub proof fn process_pagetable_wf_process_at(prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, prc_ptr: RwLockProcessPtr)
     requires
-        process_pagetable_match(process_map, pagetable_map),
+        process_pagetable_wf(prc_mp, pt_mp),
     ensures
-        process_map.dom().contains(proc_ptr) ==> ({
-            &&& pagetable_map.dom().contains(process_map.spec_index(proc_ptr).view().pagetable)
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().pagetable == process_map.spec_index(proc_ptr).view().pagetable
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().pcid == process_map.spec_index(proc_ptr).view().pcid
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().cr3 == pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().cr3
-            &&& pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
-            &&& pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_value() == process_map.spec_index(proc_ptr).view().pcid
+        prc_mp.dom().contains(prc_ptr) ==> ({
+            let process = prc_mp.spec_index(prc_ptr);
+            let table = pt_mp.spec_index(process.view().pagetable).view();
+            &&& pt_mp.dom().contains(process.view().pagetable)
+            &&& process.view_rodata().view().pagetable == process.view().pagetable
+            &&& process.view_rodata().view().pcid == process.view().pcid
+            &&& process.view_rodata().view().cr3 == table.cr3
+            &&& table.proc_ptr == prc_ptr
+            &&& table.pcid_value() == process.view().pcid
         }),
-{ reveal(process_pagetable_match); }
+{ reveal(process_pagetable_wf); }
 
-pub proof fn process_pagetable_match_pagetable_at(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, pt_ptr: RwLockPageTableRoot)
+pub proof fn process_pagetable_wf_pagetable_at(prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, pt_ptr: RwLockPageTableRoot)
     requires
-        process_pagetable_match(process_map, pagetable_map),
+        process_pagetable_wf(prc_mp, pt_mp),
     ensures
-        pagetable_map.dom().contains(pt_ptr) ==> ({
-            &&& process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr)
-            &&& process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
+        pt_mp.dom().contains(pt_ptr) ==> ({
+            &&& prc_mp.dom().contains(pt_mp.spec_index(pt_ptr).view().proc_ptr)
+            &&& prc_mp.spec_index(pt_mp.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
         }),
-{ reveal(process_pagetable_match); }
+{ reveal(process_pagetable_wf); }
 }

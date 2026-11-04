@@ -68,7 +68,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
     }) by {
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process->Some_0); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread->Some_0);
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process->Some_0); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread->Some_0);
     };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let prc_ptr = cpu.current_process().unwrap();
@@ -137,7 +137,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             let root = krnl.ctn_mp.spec_index(process_ro.owning_container).view().root_process;
             process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container);
             process_root_wf_at(root, tree, krnl.prc_mp, child_ptr); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, prc_ptr);
-            assert(krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(prc_ptr)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
+            assert(krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(prc_ptr)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
         };
     }
     let child_res = krnl.try_wlock_process_and_mark_kill(child_ptr, prc_ptr, thrd_ptr, Ghost(killer_info), Tracked(&mut *lctx));

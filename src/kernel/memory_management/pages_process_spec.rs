@@ -2,32 +2,41 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    pub open spec fn process_pages_forward_wf(page_array: PageLockedArray, process_map: ProcessLockedMap) -> bool {
-        forall|pg_idx:PageIndex|
-            #![trigger page_array.spec_index(pg_idx).view().view().state]
-            #![trigger process_map.dom().contains(page_index2page_ptr(pg_idx))]
-            index_valid(NUM_PAGES, pg_idx) ==> { page_array.spec_index(pg_idx).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess} ==> process_map.dom().contains(page_index2page_ptr(pg_idx)) }
-    }
+/// Page -> process: a page in state AsProcess holds a process.
+pub open spec fn process_pages_forward_wf(prc_mp: ProcessLockedMap, pg_arr: PageLockedArray) -> bool {
+    forall|p_i: PageIndex|
+        #![trigger pg_arr.spec_index(p_i).view().view().state]
+        #![trigger prc_mp.dom().contains(page_index2page_ptr(p_i))]
+        index_valid(NUM_PAGES, p_i)
+            && (pg_arr.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess })
+            ==>
+            prc_mp.dom().contains(page_index2page_ptr(p_i))
+}
 
-    pub open spec fn process_pages_backward_wf(page_array: PageLockedArray, process_map: ProcessLockedMap) -> bool {
-        forall|c_ptr:RwLockContainerPtr|
-            #![trigger page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state]
-            #![trigger process_map.dom().contains(c_ptr)]
-            process_map.dom().contains(c_ptr) ==> page_ptr_valid(c_ptr) && { page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess} }
-    }
+/// Process -> page: every process sits on a valid page in state AsProcess.
+pub open spec fn process_pages_backward_wf(prc_mp: ProcessLockedMap, pg_arr: PageLockedArray) -> bool {
+    forall|p: RwLockProcessPtr|
+        #![trigger pg_arr.spec_index(page_ptr2page_index(p)).view().view().state]
+        #![trigger prc_mp.dom().contains(p)]
+        prc_mp.dom().contains(p)
+            ==>
+            page_ptr_valid(p)
+            && (pg_arr.spec_index(page_ptr2page_index(p)).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess })
+}
 
-    #[verifier::opaque]
-    pub open spec fn process_pages_wf(page_array: PageLockedArray, process_map: ProcessLockedMap) -> bool {
-        &&& process_pages_forward_wf(page_array, process_map)
-        &&& process_pages_backward_wf(page_array, process_map)
-    }
+/// Processes and AsProcess pages agree in both directions.
+#[verifier::opaque]
+pub open spec fn process_pages_wf(prc_mp: ProcessLockedMap, pg_arr: PageLockedArray) -> bool {
+    &&& process_pages_forward_wf(prc_mp, pg_arr)
+    &&& process_pages_backward_wf(prc_mp, pg_arr)
+}
 
-    pub proof fn process_pages_wf_process_entry_at(page_array: PageLockedArray, process_map: ProcessLockedMap, proc_ptr: RwLockProcessPtr)
-        requires
-            process_pages_wf(page_array, process_map),
-            process_map.dom().contains(proc_ptr),
-        ensures
-            page_ptr_valid(proc_ptr),
-            page_array.spec_index(page_ptr2page_index(proc_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess }),
-    { reveal(process_pages_wf); }
+pub proof fn process_pages_wf_process_at(prc_mp: ProcessLockedMap, pg_arr: PageLockedArray, prc_ptr: RwLockProcessPtr)
+    requires
+        process_pages_wf(prc_mp, pg_arr),
+        prc_mp.dom().contains(prc_ptr),
+    ensures
+        page_ptr_valid(prc_ptr),
+        pg_arr.spec_index(page_ptr2page_index(prc_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess }),
+{ reveal(process_pages_wf); }
 }

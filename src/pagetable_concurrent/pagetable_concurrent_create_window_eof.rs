@@ -53,7 +53,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 
     /// EOF closure of `create_entry_l2`: every L2 entry that resolved before still resolves, since only the empty entry `target_l2i`
@@ -70,7 +70,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 }
 } // verus!

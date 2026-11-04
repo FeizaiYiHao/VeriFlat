@@ -165,25 +165,25 @@ pub fn create_thread_from_staged_page_merged(
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
         container_perms_wf_map(krnl.ctn_mp);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
-        assert(krnl.sched_mp.spec_index(sched_ptr).owning_container == ctn_ptr) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); };
+        assert(krnl.sched_mp.spec_index(sched_ptr).owning_container == ctn_ptr) by { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); };
         assert(krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); };
-        assert(krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == krnl.prc_mp.spec_index(prc_ptr).view().pagetable) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
+        assert(krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == krnl.prc_mp.spec_index(prc_ptr).view().pagetable) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
         assert(!krnl.thrd_mp.dom().contains(pg_ptr)) by { thread_pages_wf_page_at(krnl.thrd_mp, krnl.pg_arr, pg_ptr); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {
-            uppers.to_set_ensures(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
+            uppers.to_set_ensures(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         };
         assert({
             &&& krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() < usize::MAX
             &&& !krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(pg_ptr)
         }) by {
             let threads = krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view();
-            process_thread_wf_owned_threads_dom_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr);
+            process_thread_wf_implies_owned_threads_in_map(krnl.prc_mp, krnl.thrd_mp, prc_ptr);
             lemma_kernel_object_ptr_seq_len_bounded(&*krnl, threads);
         };
         assert({
             &&& !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(pg_ptr)
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.length != usize::MAX
-        }) by { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, pg_ptr); scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id); };
+        }) by { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, pg_ptr); scheduler_queue_len_bounded(&*krnl, sched_ptr, cpu_id); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         page_array_wf_at(krnl.pg_arr, pg_idx);
     }

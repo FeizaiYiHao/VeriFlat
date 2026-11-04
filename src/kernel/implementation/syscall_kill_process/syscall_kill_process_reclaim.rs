@@ -129,7 +129,7 @@ pub(crate) fn kill_reassign_functions(
 {
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target); }
     let iommu_table = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).iommu_table
@@ -220,7 +220,7 @@ fn kill_reassign_owned_functions(
 {
     hide(LockedMap::lock_id_by_key);
     let ghost before_steps = steps.view();
-    proof { process_perms_wf_at(before.prc_mp, target); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, target); }
+    proof { process_perms_wf_at(before.prc_mp, target); process_iommu_table_wf_process_at(before.prc_mp, before.it_mp, target); }
     match iommu_table {
         Some(it) => {
             let Tracked(iommu_perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
@@ -437,7 +437,7 @@ pub(crate) fn kill_reclaim_live(
     proof { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
     let thread_container = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_perm)).owning_container;
     proof {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
         assert(target_container == thread_container <==> scope is Subtree);
     }
@@ -541,14 +541,14 @@ pub(crate) fn kill_reclaim_lock_table(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     proof {
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
-        krnl.default_pagetable_wf_at(pagetable); pagetable_no_1g_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
+        krnl.default_pagetable_wf_at(pagetable); pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     }
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     proof { assert(krnl.prc_mp.spec_index(target).view().state.view() is Killing) by { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }; }
     let iommu_perm = match iommu_table {
         Some(it) => {
-            proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+            proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target); }
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
             Tracked(Some(perm))
         },
@@ -572,9 +572,9 @@ pub(crate) fn kill_reclaim_lock_table(
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         if let Some(t) = iommu_table {
             iommu_table_perms_wf_at(krnl.it_mp, t);
-            assert(krnl.it_mp.spec_index(t).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(t).view().kernel_entries_wf_l4_end_at(); };
+            assert(krnl.it_mp.spec_index(t).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(t).view().kernel_entries_wf_iommu_l4_end_at(); };
             assert(krnl.it_mp.spec_index(t).view().did is None) by {
-                iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, t); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+                iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, t); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
                 process_pci_function_ownership_wf_at(krnl.irt.view(), krnl.prc_mp, pci_bdf_of_did(krnl.it_mp.spec_index(t).view().did->Some_0), target);
             };
         }

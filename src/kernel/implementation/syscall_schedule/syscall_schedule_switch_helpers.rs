@@ -49,7 +49,7 @@ pub(super) fn schedule_switch_read_target(
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf()
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.len()
             &&& krnl.sched_mp.spec_index(sched_ptr).owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
-        }) by { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list); };
+        }) by { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list); };
         thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, next_thread);
     }
     let thread = krnl.thrd_mp.borrow_typed(next_thread, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(next_lock_perm));
@@ -60,20 +60,20 @@ pub(super) fn schedule_switch_read_target(
         &&& krnl.prc_mp.spec_index(next_process).is_init()
         &&& krnl.prc_mp.view().spec_index(next_process).is_init()
         &&& krnl.prc_mp.view().spec_index(next_process).addr() == next_process
-    }) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, next_thread); process_perms_wf_at(krnl.prc_mp, next_process); };
+    }) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, next_thread); process_perms_wf_at(krnl.prc_mp, next_process); };
     let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
     let next_pagetable = process.pagetable;
     let cr3 = process.cr3;
     let pcid = process.pcid;
     let depth = process.depth;
     assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
         krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
     };
     let shard = krnl.sched_mp.borrow_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(scheduler_lock_perm));
     let (next_node, _) = shard.queue.peek_head();
     assert(next_node == krnl.thrd_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()) by {
-        container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, next_thread);
+        container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, next_thread); container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, next_thread);
         reveal(LinkedList::value_list_unique);
         krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf_and_equal_values_implies_equal_addrs(next_node, krnl.thrd_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr());
     };
@@ -231,12 +231,12 @@ pub(super) fn schedule_switch_commit(
         }) by { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); reveal(LinkedList::wf_value_list); };
         thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, next_thread);
         if current_thread is Some { thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }
-        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
+        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); };
         assert({
             &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
-        assert(krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); };
+        assert(krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); };
     }
     let ghost pre = *krnl;
     krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid,

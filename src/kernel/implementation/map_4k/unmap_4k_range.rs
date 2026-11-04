@@ -163,7 +163,7 @@ fn clear_4k_range_present(
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.thrd_mp.spec_index(thrd_ptr).inv() && !thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr))) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); };
     assert(krnl.prc_mp.dom().contains(prc_ptr) && !krnl.prc_mp.spec_index(prc_ptr).view().zombie && krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
-        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
+        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); };
     proof { va_range_2m_windows_contains_window_of_first_n_pages(*range, range.len as int); }
     let start = range.start;
     let mut i = 0usize;
@@ -282,7 +282,7 @@ fn clear_4k_range_present(
             assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); };
             assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0) by { spec_v2l4index_monotonic(start, va); };
             assert(lctx.thread_lock_map().dom().subset_of(krnl.thrd_mp.dom())) by { krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id()); };
-            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
             assert(checked_table.mapping_4k().dom().contains(range.view().spec_index(i as int)));
             assert(checked_table.higher.spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some) by {
                 spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
@@ -439,12 +439,12 @@ pub fn unmap_4k_range(
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
     proof {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
     proof {
-        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
     }
     let ghost flushed_snap = steps.snapshot_k();
@@ -459,7 +459,7 @@ pub fn unmap_4k_range(
             *range);
     }
     assert(krnl.thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };
-    assert(krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container); };
+    assert(krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container); };
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     let start = range.start;
@@ -583,7 +583,7 @@ pub fn unmap_4k_range(
     }
     let ghost refund_before = steps.view();
     let ghost refund_progress = krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view();
-    proof { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); }
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); }
     refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };

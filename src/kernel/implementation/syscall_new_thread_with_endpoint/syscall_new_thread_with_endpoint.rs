@@ -85,7 +85,7 @@ verus! {
                 &&& krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Running
                 &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().container_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth
                 &&& krnl.thrd_mp.spec_index(current_thrd_ptr).view().process_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().depth
-            }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr); };
+            }) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr); };
             let thread_res = krnl.wlock_current_running_thread_unless_killed(current_thrd_ptr, Tracked(&mut *lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -125,7 +125,7 @@ verus! {
             proof { new_thread_result_from_k(&*old(krnl), cpu_id, Some(ep_idx), RetValueType::Success); }
             let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(ep_ptr, Tracked(&mut *lctx));
 
-            assert(krnl.sched_mp.dom().contains(sched_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); };
+            assert(krnl.sched_mp.dom().contains(sched_ptr)) by { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); };
             let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
 
             proof {

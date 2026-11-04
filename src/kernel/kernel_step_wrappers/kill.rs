@@ -259,7 +259,7 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
     }), c => {
         if before.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c);
-            if c != ctn_ptr { container_scheduler_wf_at(before.ctn_mp, before.sched_mp, c); container_scheduler_wf_at(before.ctn_mp, before.sched_mp, ctn_ptr); }
+            if c != ctn_ptr { container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, c); container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, ctn_ptr); }
         }
     });
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { state: ThreadState::KILLED, error_code: None, ..pre.thread_map[thrd_ptr] }), t => {

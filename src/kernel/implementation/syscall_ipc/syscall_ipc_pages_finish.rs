@@ -115,11 +115,11 @@ pub(super) fn ipc_finish_pages_transit(
     let peer_last_cpu = peer_thread_ref.last_cpu;
     let caller_ctn_ptr = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
     let wake_cpu = if peer_ctn_ptr == caller_ctn_ptr { cpu_id } else { peer_last_cpu };
-    proof { container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
+    proof { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr); container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
     let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_ctn_ptr).borrow().scheduler;
-    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
+    proof { container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
     let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_sched_ptr, wake_cpu, Tracked(&mut *lctx));
-    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
+    proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
     let ghost old_peer_thread_lock_id = krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr);
     let ghost locked_k = *krnl;
     assert(krnl.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_sched_ptr, wake_cpu); };

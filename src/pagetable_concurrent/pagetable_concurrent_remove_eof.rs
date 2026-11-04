@@ -65,7 +65,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l1(),
             post.disjoint_l2(),
             post.user_only(),
@@ -89,7 +89,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.page_closure() =~= pre.page_closure().remove(target_l1_p)) by { reveal(WholePageTable::table_pages_wf); };
     }
 
-    /// EOF closure of `remove_l2_entry` for `wf_l3`.
+    /// EOF closure of `remove_l2_entry` for `l3_links_l2_wf`.
     proof fn remove_l2_entry_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
@@ -98,10 +98,10 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.l1_rev_map.dom().contains(target_l1_p),
             Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
     {
         reveal(WholePageTable::remove_l2_entry_eof_transition_framing);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 
     /// EOF closure of `remove_l2_entry` for `wf_l1`.
@@ -210,7 +210,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_l2(),
     {
         reveal(WholePageTable::remove_l2_entry_eof_transition_framing);
-        assert(post.wf_l2()) by { broadcast use WholePageTable::l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l2()) by { broadcast use WholePageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
     }
 
     /// EOF closure of `remove_l2_entry`: the 4K and 2M abstract-mapping leaves.
@@ -231,8 +231,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_2m(),
     {
         reveal(WholePageTable::remove_l2_entry_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at, WholePageTable::resolve_l2_addr_unique_at; };
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, WholePageTable::disjoint_l2_implies_resolve_l2_addr_unique_at; };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `remove_l2_entry`: `tables_reachable_wf`.
@@ -252,7 +252,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::remove_l2_entry_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `remove_l2_entry`: `hidden_l1_tables_in_locked_windows`. The cleared entry owns no L1 page.
@@ -362,7 +362,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
         ensures
             post.va_addr_valid(),
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -372,7 +372,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l2_p),
     {
         reveal(WholePageTable::remove_l3_entry_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); reveal(PageTableHigher::disjoint_l3); };
+        assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::disjoint_l3); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
@@ -485,7 +485,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_window_locks(),
     {
         reveal(WholePageTable::remove_l3_entry_eof_transition_framing);
-        reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4); reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4); reveal(WholePageTable::l3_links_l2_wf);
         spec_index2va_injective();
         broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
         reveal(WholePageTable::wf_window_locks);

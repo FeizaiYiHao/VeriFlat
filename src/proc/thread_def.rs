@@ -299,9 +299,21 @@ impl Thread {
         &&& self.direct_free_quota_pending_4k.view() == 0
         &&& self.direct_free_quota_pending_2m.view() == 0
         &&& self.direct_free_quota_pending_1g.view() == 0
-        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_4k.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_4k.view().len() ==> self.indirect_free_quota_pending_4k.view().spec_index(i) == 0
-        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_2m.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_2m.view().len() ==> self.indirect_free_quota_pending_2m.view().spec_index(i) == 0
-        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_1g.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_1g.view().len() ==> self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
+        &&& forall|i: int|
+            #![trigger self.indirect_free_quota_pending_4k.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_4k.view().len()
+                ==>
+                self.indirect_free_quota_pending_4k.view().spec_index(i) == 0
+        &&& forall|i: int|
+            #![trigger self.indirect_free_quota_pending_2m.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_2m.view().len()
+                ==>
+                self.indirect_free_quota_pending_2m.view().spec_index(i) == 0
+        &&& forall|i: int|
+            #![trigger self.indirect_free_quota_pending_1g.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_1g.view().len()
+                ==>
+                self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
     }
 
     /// Construct a fresh Thread for retype operations.
@@ -929,37 +941,50 @@ pub open spec fn thread_is_dangling(thread_lock: ThreadRwLock) -> bool {
 /// Free-quota pending counters must be zero unless the thread is write-locked.
 /// Syscalls accumulate pending frees only under wlock; flushed before wunlock.
 #[verifier::opaque]
-pub open spec fn thread_free_quota_pending_empty_unless_wlocked(thread_map: ThreadLockedMap) -> bool {
-    forall|t_ptr: RwLockThreadPtr|
-        #![trigger thread_map.spec_index(t_ptr).locking_thread()]
-        thread_map.dom().contains(t_ptr) ==> !(thread_map.spec_index(t_ptr).locking_thread() is Write) ==> thread_map.spec_index(t_ptr).view().free_quota_pending_clean()
+pub open spec fn thread_free_quota_pending_empty_unless_wlocked(thrd_mp: ThreadLockedMap) -> bool {
+    forall|t: RwLockThreadPtr|
+        #![trigger thrd_mp.spec_index(t).locking_thread()]
+        thrd_mp.dom().contains(t)
+            ==>
+            !(thrd_mp.spec_index(t).locking_thread() is Write)
+            ==>
+            thrd_mp.spec_index(t).view().free_quota_pending_clean()
 }
 
 impl LockInvTrait for Thread {
+    /// The thread's state agrees with its saved registers, its queue nodes, its blocking endpoint, its callee, and its quota.
     open spec fn inv(&self) -> bool {
         &&& self.endpoint_descriptors.wf()
         &&& self.ipc_payload.wf()
         &&& self.error_code is Some ==> self.state is SCHEDULED
+        // A running thread has no saved registers; a scheduled, waiting, or in-transit thread has them saved.
         &&& self.state is RUNNING ==> self.trap_frame.is_none()
         &&& self.state is SCHEDULED ==> self.trap_frame.is_some()
+        &&& (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_TRANSIT) ==> self.trap_frame.is_some()
         &&& self.state is SCHEDULED ==> index_valid(NUM_CPUS, self.state->SCHEDULED_cpu_id)
         &&& index_valid(NUM_CPUS, self.last_cpu)
-        &&& (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_TRANSIT) ==> self.trap_frame.is_some()
-        &&& self.state.is_endpoint_waiting() == self.blocking_endpoint_ptr is Some
-        &&& self.state.is_endpoint_waiting() == self.blocking_endpoint_index is Some
+        // A thread waiting on an endpoint names it through a valid descriptor.
+        &&& self.state.is_endpoint_waiting() == (self.blocking_endpoint_ptr is Some)
+        &&& self.state.is_endpoint_waiting() == (self.blocking_endpoint_index is Some)
         &&& self.state.is_endpoint_waiting() ==> edp_idx_valid(self.blocking_endpoint_index.unwrap())
         &&& self.state.is_endpoint_waiting() ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()) is Some
         &&& self.state.is_endpoint_waiting() ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()
+        // The endpoint-queue node is linked exactly while the thread waits on an endpoint, and the scheduler node exactly
+        // while the thread is scheduled.
         &&& self.state.is_endpoint_waiting() == !self.endpoint_linkedlist_node.is_init()
-        &&& self.state is SCHEDULED == !self.scheduler_linkedlist_node.is_init()
+        &&& (self.state is SCHEDULED) == !self.scheduler_linkedlist_node.is_init()
+        // A thread has a callee exactly while it waits for that callee's reply.
         &&& self.state.is_reply_waiting() == (self.callee is Some)
+        // A dangling thread has no quota and is off its process's thread list.
         &&& self.state is DANGLING ==> self.quota_4k == 0 && self.quota_2m == 0 && self.quota_1g == 0 && self.proc_linkedlist_node.is_init()
+        // A thread waiting for a call serves no caller.
         &&& self.state is RECEIVING_CALL ==> self.caller is None
+        // One entry per ancestor container; the pending-free seqs are indexed the same way.
         &&& self.upper_container_seq.view().len() == self.container_depth
         &&& self.upper_container_seq.view().len() == self.indirect_free_quota_pending_4k.view().len()
         &&& self.upper_container_seq.view().len() == self.indirect_free_quota_pending_2m.view().len()
         &&& self.upper_container_seq.view().len() == self.indirect_free_quota_pending_1g.view().len()
-        &&& self.quota_within_bound()
+        &&& self.quota_covers_temp_alloc()
     }
 }
 
@@ -970,7 +995,8 @@ impl Thread {
         &&& self.temp_alloc_cache_1g.view().len() == 0
     }
 
-    pub open spec fn quota_within_bound(&self) -> bool {
+    /// Each size's quota covers the pages held in that size's temporary allocation cache.
+    pub open spec fn quota_covers_temp_alloc(&self) -> bool {
         &&& self.quota_4k >= self.temp_alloc_cache_4k.view().len()
         &&& self.quota_2m >= self.temp_alloc_cache_2m.view().len()
         &&& self.quota_1g >= self.temp_alloc_cache_1g.view().len()
@@ -989,11 +1015,16 @@ pub open spec fn thread_effective_quota_1g(thread_lock: ThreadRwLock) -> int {
     thread_lock.view().quota_1g as int - thread_lock.view().temp_alloc_cache_1g.view().len() as int
 }
 
+/// Temporary allocation caches must be empty unless the thread is write-locked.
 #[verifier::opaque]
-pub open spec fn thread_temp_alloc_empty_unless_wlocked(thread_map: ThreadLockedMap) -> bool {
-    forall|t_ptr: RwLockThreadPtr|
-        #![trigger thread_map.spec_index(t_ptr).locking_thread()]
-        thread_map.dom().contains(t_ptr) ==> !(thread_map.spec_index(t_ptr).locking_thread() is Write) ==> thread_map.spec_index(t_ptr).view().temp_alloc_clean()
+pub open spec fn thread_temp_alloc_empty_unless_wlocked(thrd_mp: ThreadLockedMap) -> bool {
+    forall|t: RwLockThreadPtr|
+        #![trigger thrd_mp.spec_index(t).locking_thread()]
+        thrd_mp.dom().contains(t)
+            ==>
+            !(thrd_mp.spec_index(t).locking_thread() is Write)
+            ==>
+            thrd_mp.spec_index(t).view().temp_alloc_clean()
 }
 
 #[derive(Clone, Copy)]

@@ -51,7 +51,7 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
     let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
     cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
     container_perms_wf_at(krnl.ctn_mp, cpu.owning_container); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-    if cpu.current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread.unwrap()); }
+    if cpu.current_thread is Some { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread.unwrap()); }
     if cpu.current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap()); }
 }
 

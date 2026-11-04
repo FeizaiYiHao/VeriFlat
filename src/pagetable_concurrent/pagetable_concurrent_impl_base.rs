@@ -306,7 +306,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
-            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
             page_ptr_valid_imply_mem_valid(page_map_ptr);
         }

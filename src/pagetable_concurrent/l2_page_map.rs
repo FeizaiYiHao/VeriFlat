@@ -5,7 +5,7 @@ use vstd::simple_pptr::*;
 use core::sync::atomic::*;
 use super::l2_entry_lock_t::l2_entry_store_release;
 
-/// PDE bit 9 (AVL) is the 2M-window spin lock. Hardware walks ignore it and `usize2page_entry` drops it, so a
+/// L2 entry bit 9 (AVL) is the 2M-window spin lock. Hardware walks ignore it and `usize2page_entry` drops it, so a
 /// locked word decodes to the same entry.
 pub const L2_ENTRY_LOCK_MASK: usize = 0x200;
 
@@ -17,8 +17,8 @@ pub open spec fn l2_word_hw_equiv(a: usize, b: usize) -> bool { usize2page_entry
 ///
 /// `entry` is the decoded word and `locking_thread` the holder of the lock bit; the TCB word primitives keep both in
 /// step with `word`. `l1` owns the L1 page of a non-huge entry: the page it links, or, once `hide_l1_page` cleared the
-/// present bit, the page that waits in the locked window for `unlink_hidden_l1_page`. Only the TCB primitives of
-/// `l2_entry_lock_t` see `word`: it changes only through `l2_entry_lock`, `l2_entry_unlock` and
+/// present bit, the page it still owns, under the write-locked window, until `unlink_hidden_l1_page`. Only the TCB
+/// primitives of `l2_entry_lock_t` see `word`: it changes only through `l2_entry_lock`, `l2_entry_unlock` and
 /// `l2_entry_store_release`, and `l1` moves only through `l2_entry_take_l1*` and `l2_entry_put_l1*`.
 #[repr(C)]
 pub struct L2EntryLock {
@@ -96,6 +96,7 @@ impl L2PageMap {
     pub closed spec fn addr(&self) -> PageMapPtr { self.addr.view() }
     pub closed spec fn entry_lock(&self, i: L2Index) -> L2EntryLock { self.ar.view().spec_index(i as int) }
 
+    /// Every entry satisfies its `inv`.
     pub open spec fn wf(&self) -> bool { forall|i: L2Index| #![trigger self.entry_lock(i)] pei_valid(i) ==> self.entry_lock(i).inv() }
 
     pub fn borrow_entry_lock(&self, i: L2Index) -> (r: &L2EntryLock)

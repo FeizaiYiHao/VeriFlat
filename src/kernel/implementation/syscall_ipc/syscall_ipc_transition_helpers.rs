@@ -239,7 +239,7 @@ pub(super) fn ipc_schedule_peer_on_shard(
         final(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean() == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
 {
     let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_sched_ptr, wake_cpu, Tracked(&mut *lctx));
-    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
+    proof { container_thread_scheduler_wf_shard_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
     let ghost old_peer_thread_lock_id = krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr);
     assert(krnl.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_sched_ptr, wake_cpu); };
     let (_, Tracked(endpoint_node_perm)) = ipc_dequeue_endpoint_waiter(&mut krnl.ep_mp, Tracked(&*lctx), ep_ptr, peer_thrd_ptr, Tracked(endpoint_lock_perm));

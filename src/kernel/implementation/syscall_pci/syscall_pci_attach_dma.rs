@@ -79,7 +79,7 @@ pub fn syscall_pci_attach_dma(
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
     proof { assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 0) by {
-        thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+        thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
     }; }
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
     let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus, device, function);
@@ -113,7 +113,7 @@ pub fn syscall_pci_attach_dma(
     let iommu_table_ptr = iommu_table.unwrap();
     proof {
         assert(old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), prc_ptr); };
-        assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); };
+        assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); };
     }
     let Tracked(iommu_table_lock_perm) = krnl.wlock_iommu_table(iommu_table_ptr, Tracked(lctx));
     proof {

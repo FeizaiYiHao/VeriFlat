@@ -102,9 +102,9 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
         }),
 {
     proof {
-        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr);
-        cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, cpu_offline_flags_ptr(ctn_ptr));
+        cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, cpu_offline_flags_ptr(ctn_ptr));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -298,14 +298,14 @@ pub(crate) fn kill_container_retire_lock_object_pages(
 {
     let ghost ro = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     proof {
-        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
+        container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr);
         page_array_wf_map(krnl.pg_arr); page_ptr_roundtrip();
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
-        allocator_4k_pages_wf_at(krnl.pg_arr, krnl.allc_4k_mp, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.pg_arr, krnl.allc_2m_mp, ro.allocator_ptr_2m);
-        allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, ro.allocator_ptr_1g); pcid_allocator_pages_wf_at(krnl.pg_arr, krnl.pcid_allc_mp, ro.pcid_allocator);
+        allocator_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, ro.allocator_ptr_2m);
+        allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, ro.allocator_ptr_1g); pcid_allocator_pages_wf_at(krnl.pcid_allc_mp, krnl.pg_arr, ro.pcid_allocator);
         hugepage_2m_wf_head_at(krnl.pg_arr, page_ptr2page_index(ro.pcid_allocator)); hugepage_2m_wf_head_at(krnl.pg_arr, page_ptr2page_index(ctn_ptr));
     }
     let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
@@ -412,7 +412,7 @@ pub(crate) fn kill_container_retire_lock_shards(
         }),
 {
     proof {
-        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -496,7 +496,7 @@ pub(crate) fn kill_container_retire_lock_shards(
         let Tracked(perm) = krnl.wlock_scheduler_shard(sched, c, Tracked(&mut *lctx));
         proof {
             shard_perms.tracked_insert(c, perm);
-            container_without_threads_shard_empty_at(*old(krnl), ctn_ptr, c);
+            container_owns_no_thread_implies_shard_empty(*old(krnl), ctn_ptr, c);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -1165,10 +1165,10 @@ pub(crate) fn kill_container_retire_lock_tails(krnl: &mut KernelK, Tracked(lctx)
     proof {
         let (lo, hi) = if h0 < h1 { (h0, h1) } else { (h1, h0) };
         assert(lo + 512 <= hi) by (nonlinear_arith) requires lo % 512 == 0, hi % 512 == 0, lo < hi {};
-        hugepage_2m_wf_tail_at(krnl.pg_arr, h0, pages_4k[0]); hugepage_2m_wf_tail_at(krnl.pg_arr, h0, pages_4k[1]); hugepage_2m_wf_tail_at(krnl.pg_arr, h0, pages_4k[2]);
-        hugepage_2m_wf_tail_at(krnl.pg_arr, h0, pages_4k[3]); hugepage_2m_wf_tail_at(krnl.pg_arr, h0, pages_4k[4]); hugepage_2m_wf_tail_at(krnl.pg_arr, h0, h1);
-        hugepage_2m_wf_tail_at(krnl.pg_arr, h1, pages_4k[0]); hugepage_2m_wf_tail_at(krnl.pg_arr, h1, pages_4k[1]); hugepage_2m_wf_tail_at(krnl.pg_arr, h1, pages_4k[2]);
-        hugepage_2m_wf_tail_at(krnl.pg_arr, h1, pages_4k[3]); hugepage_2m_wf_tail_at(krnl.pg_arr, h1, pages_4k[4]); hugepage_2m_wf_tail_at(krnl.pg_arr, h1, h0);
+        hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, pages_4k[0]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, pages_4k[1]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, pages_4k[2]);
+        hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, pages_4k[3]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, pages_4k[4]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h0, h1);
+        hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, pages_4k[0]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, pages_4k[1]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, pages_4k[2]);
+        hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, pages_4k[3]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, pages_4k[4]); hugepage_2m_wf_tail_forward_at(krnl.pg_arr, h1, h0);
         assert(held.disjoint(page_2m_tail_indices(h0)) && held.disjoint(page_2m_tail_indices(h1)));
         assert(page_2m_tail_indices(h0).disjoint(page_2m_tail_indices(h1)));
     }

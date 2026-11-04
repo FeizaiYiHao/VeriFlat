@@ -22,12 +22,13 @@ impl<T> UnLockedMap<usize, T> {
 
     pub closed spec fn view(&self) -> Map<usize, PointsTo<T>> { self.map.view() }
     pub open spec fn dom(&self) -> Set<usize> { self.view().dom() }
+    /// Every token is initialized and sits at its key's address.
     pub open spec fn perms_wf(&self) -> bool {
-        &&& forall|k: usize|
-            #![trigger self.view().dom().contains(k)]
-            self.view().dom().contains(k) ==> {
-                &&& self.view().spec_index(k).is_init()
-                &&& self.view().spec_index(k).addr() == k
+        &&& forall|key: usize|
+            #![trigger self.view().dom().contains(key)]
+            self.view().dom().contains(key) ==> {
+                &&& self.view().spec_index(key).is_init()
+                &&& self.view().spec_index(key).addr() == key
             }
     }
     pub open spec fn spec_index(&self, key: usize) -> T

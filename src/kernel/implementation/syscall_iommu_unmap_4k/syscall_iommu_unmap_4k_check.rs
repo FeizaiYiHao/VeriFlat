@@ -141,7 +141,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
     proof { process_perms_wf_map(krnl.prc_mp); }
     let iommu_table_opt = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_perm)).iommu_table;
-    proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
+    proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); }
     if iommu_table_opt.is_none() {
         iommu_unmap_4k_unlock_thread_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(cpu_perm), Tracked(container_perm),
             Tracked(process_perm), Tracked(thread_perm));

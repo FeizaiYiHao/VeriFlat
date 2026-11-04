@@ -764,7 +764,7 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     hide(Seq::contains);
     proof {
         assert(krnl.pcid_allc_mp.perms_wf() && krnl.ctn_mp.perms_wf() && krnl.cpu_offline_mp.perms_wf()) by {
-            pcid_allocator_perms_wf_map(krnl.pcid_allc_mp); container_perms_wf_map(krnl.ctn_mp); cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr);
+            pcid_allocator_perms_wf_map(krnl.pcid_allc_mp); container_perms_wf_map(krnl.ctn_mp); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr);
         };
     }
     let child_pcid_allocator_lock_perm = pcid_allocator_map_insert_new_2m(&mut krnl.pcid_allc_mp, child_pcid_allc_ptr, pcid_allocator_value, Tracked(pcid_allocator_perm), Tracked(&mut *lctx));
@@ -800,7 +800,7 @@ pub(super) fn link_new_container_into_tree(
     requires
         container_perms_wf(base_containers),
         container_tree_wf(root_container, base_containers),
-        container_pages_wf(base_pages, base_containers),
+        container_pages_wf(base_containers, base_pages),
         base_containers.dom().contains(parent_ctn_ptr),
         !base_containers.dom().contains(child_ctn_ptr),
         base_containers.spec_index(parent_ctn_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,

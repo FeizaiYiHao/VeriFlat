@@ -22,8 +22,8 @@ pub proof fn kernel_container_nonlock_fields_and_locks_unchanged_implies_u_conta
 /// Unchanged process and table nonlock fields and lock owners project to an unchanged process map.
 pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process_map(pre: &KernelK, post: &KernelK)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
         kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
@@ -42,7 +42,7 @@ pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -318,7 +318,7 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post
 /// mappings are equal.
 pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, lctx: &LocalContext, table: RwLockPageTableRoot)
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         post.prc_mp == pre.prc_mp,
         post.it_mp == pre.it_mp,
         post.pt_mp.unchanged_except(&pre.pt_mp, table),
@@ -343,7 +343,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
 {
     pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_match);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
@@ -507,7 +507,7 @@ pub proof fn kernel_container_lock_mode_changed_implies_u_container_map(
 /// Only the lock modes of `prc_ptr` and, with `pagetable`, of its pagetable changing, to `mode`, project to that process-map update.
 pub proof fn kernel_process_lock_mode_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, mode: LockStateU, pagetable: bool)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         post.it_mp == pre.it_mp,
         post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr),
         post.prc_mp.spec_index(prc_ptr).lock_state_u() == mode,
@@ -540,7 +540,7 @@ pub proof fn kernel_process_lock_mode_changed_implies_u_process_map(pre: &Kernel
         ..old_u.process_map[prc_ptr]
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(process_pagetable_match);
+        reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(process_pagetable_wf);
     });
 }
 

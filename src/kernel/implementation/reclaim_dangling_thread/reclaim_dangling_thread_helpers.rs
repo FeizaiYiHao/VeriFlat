@@ -81,16 +81,16 @@ pub(super) fn reclaim_dangling_thread_commit(
     let ghost ctn_ptr = krnl.thrd_mp.spec_index(dangling_ptr).view().owning_container;
     let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
     proof {
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, dangling_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, dangling_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {
-            uppers.to_set_ensures(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
+            uppers.to_set_ensures(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         };
         thread_perms_wf_map(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
-        assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(dangling_ptr)) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, dangling_ptr); };
+        assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(dangling_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, dangling_ptr); };
         lctx.enter_kernel_view_release();
     }
     let Tracked(proc_node_perm) = {

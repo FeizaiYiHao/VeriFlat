@@ -10,8 +10,8 @@ pub proof fn kernel_zombie_process_retired_implies_u_step(
     pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().zombie,

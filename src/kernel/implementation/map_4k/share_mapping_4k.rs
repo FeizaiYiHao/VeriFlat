@@ -87,14 +87,14 @@ pub proof fn share_mapping_4k_range_owner_compatible_own_container(krnl: &Kernel
         pagetable_lower_wf(krnl.pt_mp, krnl.pt_lower.view()),
         mapped_4k_page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr),
-        container_subtree_set_exclusive(krnl.rt_ctn, krnl.ctn_mp),
+        container_subtree_uppertree_agree_wf(krnl.rt_ctn, krnl.ctn_mp),
         krnl.pt_mp.dom().contains(source_pagetable),
         krnl.ctn_mp.dom().contains(ctn_ptr),
         krnl.prc_mp.spec_index(krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr).view_rodata().view().owning_container == ctn_ptr,
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_range.view().spec_index(j)),
     ensures
         share_mapping_4k_range_owner_compatible(krnl, source_pagetable, ctn_ptr, source_range),
-{ pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_subtree_set_exclusive); page_ptr_valid_imply_page_index_valid(); }
+{ pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_subtree_uppertree_agree_wf); page_ptr_valid_imply_page_index_valid(); }
 
 /// Target map after copying the first `upper` source-range mappings to the
 /// corresponding target-range addresses.
@@ -369,18 +369,18 @@ fn share_one_mapping_4k(
     krnl.set_thread_syscall_progress(progress_thread, Ghost(share_4k_progress_after_leaf(krnl.thrd_mp.spec_index(progress_thread).view().syscall_progress.view())), Tracked(&*lctx),
         Tracked(if progress_thread == source_thread { source_thread_lock_perm } else { target_thread_lock_perm }));
     proof {
-        assert(!old(krnl).prc_mp.spec_index(target_process).view().zombie) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, target_thread); };
+        assert(!old(krnl).prc_mp.spec_index(target_process).view().zombie) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, target_thread); };
         assert(!krnl.prc_mp.spec_index(target_process).view().zombie
-            && krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); };
+            && krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable) by { process_pagetable_wf_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); };
         assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, target_process, target_pagetable, target_va)) by {
-            reveal(kernel_process_4k_mapping_changed); process_pagetable_match_pagetable_at(old(krnl).prc_mp, old(krnl).pt_mp, target_pagetable);
+            reveal(kernel_process_4k_mapping_changed); process_pagetable_wf_pagetable_at(old(krnl).prc_mp, old(krnl).pt_mp, target_pagetable);
         };
         let ghost source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
         assert({
             &&& krnl.prc_mp.dom().contains(source_process)
             &&& !krnl.prc_mp.spec_index(source_process).view().zombie
             &&& krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable
-        }) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread); };
+        }) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); };
         let ghost leaf_k = *krnl;
         krnl.kernel_step_boundary_process_4k_mapping_changed_windowed(&mut *lctx, &mut *steps, target_process, target_pagetable, target_va, source_process, source_pagetable, target_thread,
             source_thread);
@@ -395,8 +395,8 @@ fn share_one_mapping_4k(
             &&& ((krnl.thrd_mp.spec_index(target_thread).view().owning_proc == target_process && krnl.thrd_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable
                 && !krnl.thrd_mp.spec_index(target_thread).view_ghost().exited)
                 || (typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write) && !krnl.prc_mp.spec_index(target_process).view().zombie && !(krnl.prc_mp.spec_index(target_process).view().state.view() is TablesEmptied)))
-        }) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target_process); };
-        assert(krnl.ctn_mp.spec_index(target_container).view_rodata() == old(krnl).ctn_mp.spec_index(target_container).view_rodata()) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, target_thread); };
+        }) by { process_pagetable_wf_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target_process); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target_process); };
+        assert(krnl.ctn_mp.spec_index(target_container).view_rodata() == old(krnl).ctn_mp.spec_index(target_container).view_rodata()) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, target_thread); };
         assert(krnl.thrd_mp.lock_id_by_key(target_thread) == old(krnl).thrd_mp.lock_id_by_key(target_thread)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), &*krnl, old(lctx), &*lctx, target_thread); };
         assert(share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)) by { reveal(share_4k_objects_k); };
     }
@@ -580,9 +580,9 @@ pub fn share_mapping_4k_source_owner_precheck(
     proof {
         assert({
             &&& mapped_4k_page_pagetable_wf(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr)
-            &&& container_page_owner_wf(old(krnl).ctn_mp, old(krnl).pg_arr)
+            &&& container_owned_pages_wf(old(krnl).ctn_mp, old(krnl).pg_arr)
             &&& old(krnl).ctn_mp.dom().contains(target_container)
-        }) by { container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); };
+        }) by { container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); };
     }
     let mut i: usize = 0;
     let mut all_compatible = true;
@@ -657,7 +657,7 @@ pub fn share_mapping_4k_source_owner_precheck(
                 ||| whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
             },
             mapped_4k_page_pagetable_wf(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr),
-            container_page_owner_wf(old(krnl).ctn_mp, old(krnl).pg_arr),
+            container_owned_pages_wf(old(krnl).ctn_mp, old(krnl).pg_arr),
             old(krnl).ctn_mp.dom().contains(target_container),
             krnl.ctn_mp.dom().contains(target_container),
             krnl.ctn_mp.spec_index(target_container).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq,
@@ -716,7 +716,7 @@ pub fn share_mapping_4k_source_owner_precheck(
                 reveal(share_mapping_4k_leaf_owner_compatible); page_ptr_valid_imply_page_index_valid();
                 mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
                 mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
-                container_page_owner_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, pg_idx); container_page_owner_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, pg_idx);
+                container_owned_pages_wf_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, pg_idx); container_owned_pages_wf_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, pg_idx);
             };
             if !page_compatible { incompatible = i as int; }
         }
@@ -1214,7 +1214,7 @@ pub fn share_mapping_4k_build_and_share(
             }) by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
                 page_ptr_valid_imply_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
-                container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page);
+                container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page);
                 container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thrd_mp, quota_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, quota_thread);
             };
         }

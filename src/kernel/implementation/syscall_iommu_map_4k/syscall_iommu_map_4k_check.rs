@@ -345,13 +345,13 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     let Tracked(process_lock_perm) = locked.process_lock_perm;
     let Tracked(thread_lock_perm) = locked.thread_lock_perm;
     let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
-    proof { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); process_perms_wf_map(krnl.prc_mp); }
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); process_perms_wf_map(krnl.prc_mp); }
     let thread = krnl.thrd_mp.borrow_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
     let pagetable_ptr = thread.proc_pagetable_ptr;
     let quota_4k = thread.quota_4k;
     proof {
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
-        process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, prc_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr);
+        process_iommu_table_wf_process_at(old(krnl).prc_mp, old(krnl).it_mp, prc_ptr);
     }
     let iommu_table = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).iommu_table;
     if iommu_table.is_none() || quota_4k < 3 * range {

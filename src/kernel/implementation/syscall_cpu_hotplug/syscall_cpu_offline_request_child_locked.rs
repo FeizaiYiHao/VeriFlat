@@ -110,7 +110,7 @@ pub(super) fn cpu_offline_request_child_locked(
             container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr);
             container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn);
         };
-        assert(page_ptr_2m_valid(child_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, child_ptr); };
+        assert(page_ptr_2m_valid(child_ptr)) by { container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, child_ptr); };
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).owning_container.view() == child_ptr

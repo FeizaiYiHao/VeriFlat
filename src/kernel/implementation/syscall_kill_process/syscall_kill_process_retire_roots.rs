@@ -95,19 +95,19 @@ pub(crate) fn kill_retire_hold_roots(
     proof {
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, target);
         let pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        assert(page_ptr_valid(target) && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target); };
-        pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
+        assert(page_ptr_valid(target) && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target); };
+        pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
         assert(pt.page_closure().contains(pt.cr3())) by { reveal(PageTableHigher::wf_l4); };
-        pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, pt.cr3());
+        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, pt.cr3());
         if let Some(it) = iommu_table {
             let it_view = krnl.it_mp.spec_index(it).view();
             iommu_table_perms_wf_at(krnl.it_mp, it);
-            iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it);
+            iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it);
             assert(it_view.page_closure().contains(it_view.cr3)) by { reveal(PageTable::wf_l4); };
-            iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, it, it_view.cr3);
+            iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, it_view.cr3);
         }
     }
     let mut pages: ArrayVec<PageIndex, 5> = ArrayVec::new();
@@ -128,7 +128,7 @@ pub(crate) fn kill_retire_hold_roots(
     proof {
         assert(lctx.page_lock_map().dom() =~= pages.view().to_set()) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert(index_valid(NUM_PAGES, pages.view()[0]) && lctx.page_lock_map().dom().contains(pages.view()[0])
-            && krnl.pg_arr.spec_index(pages.view()[0]).view().view().owning_container == ctn_ptr) by { page_ptr_roundtrip(); process_kernel_pages_owner_wf_at(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp, pages.view()[0]); };
+            && krnl.pg_arr.spec_index(pages.view()[0]).view().view().owning_container == ctn_ptr) by { page_ptr_roundtrip(); process_object_pages_owner_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, krnl.pg_arr, pages.view()[0]); };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

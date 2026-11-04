@@ -71,12 +71,12 @@ pub proof fn kernel_page_owner_changed_implies_u_container_map(before: &KernelK,
     container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, source); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, target);
     let x = ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] };
     let y = ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] };
-    assert(b.container_map[source] == x) by { kernel_container_projection_at(before, source); kernel_container_projection_at(after, source); container_scheduler_wf_at(before.ctn_mp, before.sched_mp, source); };
-    assert(b.container_map[target] == y) by { kernel_container_projection_at(before, target); kernel_container_projection_at(after, target); container_scheduler_wf_at(before.ctn_mp, before.sched_mp, target); };
+    assert(b.container_map[source] == x) by { kernel_container_projection_at(before, source); kernel_container_projection_at(after, source); container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, source); };
+    assert(b.container_map[target] == y) by { kernel_container_projection_at(before, target); kernel_container_projection_at(after, target); container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, target); };
     assert_maps_equal!(b.container_map, a.container_map.insert(source, x).insert(target, y), c => {
         if before.ctn_mp.dom().contains(c) && c != source && c != target {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c);
-            container_scheduler_wf_at(before.ctn_mp, before.sched_mp, c); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, c);
+            container_scheduler_wf_container_at(before.ctn_mp, before.sched_mp, c); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, c);
         }
     });
 }
@@ -107,8 +107,8 @@ pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, 
 /// state, every other process and table lock owner unchanged, projects to that process-map update.
 pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, process: RwLockProcessPtr, pagetable: RwLockPageTableRoot, lock: bool)
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
         pre.prc_mp.dom().contains(process),
         !pre.prc_mp.spec_index(process).view().zombie,
         pre.prc_mp.spec_index(process).view().pagetable == pagetable,
@@ -159,8 +159,8 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
     kernel_process_projection_at(pre, process);
     assert_maps_equal!(b.process_map, a.process_map.insert(process, new_process_u), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process);
-        process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, process);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, process);
+        process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, process);
     });
 }
 } // verus!

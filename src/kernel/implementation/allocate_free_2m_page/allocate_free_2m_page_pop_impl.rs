@@ -110,9 +110,9 @@ verus! {
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
             if let Some(cpu_id) = source {
-                assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { container_allocator_free_2m_page_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, cpu_id, pg_ptr); };
+                assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { allocator_free_2m_pages_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, cpu_id, pg_ptr); };
             } else {
-                assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, pg_ptr); };
+                assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, pg_ptr); };
             }
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
@@ -136,7 +136,7 @@ verus! {
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             assert(page.owning_container == ctn_ptr && node_addr == page.free_list_node_storage.addr()) by {
-                container_allocator_free_2m_page_wf_at(old(krnl).allc_2m_mp, old(krnl).pg_arr, pg_idx);
+                allocator_free_2m_pages_wf_at(old(krnl).allc_2m_mp, old(krnl).pg_arr, pg_idx);
                 container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, ctn_ptr);
                 if let Some(cpu_id) = source {
                     old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, page.free_list_node_storage.addr());
@@ -157,7 +157,7 @@ verus! {
         }
         assert(old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view().contains(pg_ptr) == false) by {
             if old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view().contains(pg_ptr) {
-                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == PageState::Owned2m { thread_ptr: thrd_ptr }) by { thread_staged_pages_2m_wf_at(old(krnl).thrd_mp, old(krnl).pg_arr, thrd_ptr, pg_ptr); };
+                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == PageState::Owned2m { thread_ptr: thrd_ptr }) by { thread_staged_2m_pages_wf_at(old(krnl).thrd_mp, old(krnl).pg_arr, thrd_ptr, pg_ptr); };
             }
         };
         proof {

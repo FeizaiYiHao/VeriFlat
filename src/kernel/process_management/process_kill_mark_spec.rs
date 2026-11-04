@@ -2,48 +2,53 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// A marked process and its parent stay write-held by the thread that holds its killer's process, so a process a walker
-/// write-holds carries no foreign mark on any process it killed and no foreign mark on any of its children. A marked
-/// container root has no parent: its container carries the same mark and stays write-held by that thread instead.
+/// A marked process and its parent stay write-held by the thread that holds its killer's process. A marked container
+/// root has no parent: its container carries the same mark and stays write-held by that thread instead.
 // Proof dependencies (confirmed): container_process_wf, per_container_process_tree_wf, process_children_parent_wf.
 #[verifier::opaque]
-pub open spec fn process_kill_mark_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap) -> bool {
-    forall|d: RwLockProcessPtr|
-        #![trigger process_map.spec_index(d).killer_info()]
-        process_map.dom().contains(d) && process_map.spec_index(d).killer_info() is Some ==> {
-            let killer_process = process_map.spec_index(d).killer_info()->Some_0.process;
-            let killer_tid = process_map.spec_index(killer_process).locking_thread()->Write_thread_id;
-            let ro = process_map.spec_index(d).view_rodata().view();
-            &&& process_map.dom().contains(killer_process)
-            &&& process_map.spec_index(killer_process).locking_thread() is Write
-            &&& process_map.spec_index(d).wlocked_by_thread(killer_tid)
-            &&& ro.parent is Some ==> process_map.dom().contains(ro.parent->Some_0) && process_map.spec_index(ro.parent->Some_0).wlocked_by_thread(killer_tid)
+pub open spec fn process_kill_mark_wf(ctn_mp: ContainerLockedMap, prc_mp: ProcessLockedMap) -> bool {
+    forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.spec_index(p).killer_info()]
+        prc_mp.dom().contains(p) && prc_mp.spec_index(p).killer_info() is Some ==> {
+            let killer_process = prc_mp.spec_index(p).killer_info()->Some_0.process;
+            let killer_tid = prc_mp.spec_index(killer_process).locking_thread()->Write_thread_id;
+            let ro = prc_mp.spec_index(p).view_rodata().view();
+            &&& prc_mp.dom().contains(killer_process)
+            &&& prc_mp.spec_index(killer_process).locking_thread() is Write
+            &&& prc_mp.spec_index(p).wlocked_by_thread(killer_tid)
+            &&& ro.parent is Some ==> {
+                &&& prc_mp.dom().contains(ro.parent->Some_0)
+                &&& prc_mp.spec_index(ro.parent->Some_0).wlocked_by_thread(killer_tid)
+            }
             &&& ro.parent is None ==> {
-                &&& container_map.dom().contains(ro.owning_container)
-                &&& container_map.spec_index(ro.owning_container).view().root_process == d
-                &&& container_map.spec_index(ro.owning_container).killer_info() == process_map.spec_index(d).killer_info()
-                &&& container_map.spec_index(ro.owning_container).wlocked_by_thread(killer_tid)
+                &&& ctn_mp.dom().contains(ro.owning_container)
+                &&& ctn_mp.spec_index(ro.owning_container).view().root_process == p
+                &&& ctn_mp.spec_index(ro.owning_container).killer_info() == prc_mp.spec_index(p).killer_info()
+                &&& ctn_mp.spec_index(ro.owning_container).wlocked_by_thread(killer_tid)
             }
         }
 }
 
-pub proof fn process_kill_mark_wf_at(container_map: ContainerLockedMap, process_map: ProcessLockedMap, d: RwLockProcessPtr)
+pub proof fn process_kill_mark_wf_at(ctn_mp: ContainerLockedMap, prc_mp: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
     requires
-        process_kill_mark_wf(container_map, process_map),
+        process_kill_mark_wf(ctn_mp, prc_mp),
     ensures
-        process_map.dom().contains(d) && process_map.spec_index(d).killer_info() is Some ==> ({
-            let killer_process = process_map.spec_index(d).killer_info()->Some_0.process;
-            let killer_tid = process_map.spec_index(killer_process).locking_thread()->Write_thread_id;
-            let ro = process_map.spec_index(d).view_rodata().view();
-            &&& process_map.dom().contains(killer_process)
-            &&& process_map.spec_index(killer_process).locking_thread() is Write
-            &&& process_map.spec_index(d).wlocked_by_thread(killer_tid)
-            &&& ro.parent is Some ==> process_map.dom().contains(ro.parent->Some_0) && process_map.spec_index(ro.parent->Some_0).wlocked_by_thread(killer_tid)
+        prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).killer_info() is Some ==> ({
+            let killer_process = prc_mp.spec_index(prc_ptr).killer_info()->Some_0.process;
+            let killer_tid = prc_mp.spec_index(killer_process).locking_thread()->Write_thread_id;
+            let ro = prc_mp.spec_index(prc_ptr).view_rodata().view();
+            &&& prc_mp.dom().contains(killer_process)
+            &&& prc_mp.spec_index(killer_process).locking_thread() is Write
+            &&& prc_mp.spec_index(prc_ptr).wlocked_by_thread(killer_tid)
+            &&& ro.parent is Some ==> {
+                &&& prc_mp.dom().contains(ro.parent->Some_0)
+                &&& prc_mp.spec_index(ro.parent->Some_0).wlocked_by_thread(killer_tid)
+            }
             &&& ro.parent is None ==> {
-                &&& container_map.dom().contains(ro.owning_container)
-                &&& container_map.spec_index(ro.owning_container).view().root_process == d
-                &&& container_map.spec_index(ro.owning_container).killer_info() == process_map.spec_index(d).killer_info()
-                &&& container_map.spec_index(ro.owning_container).wlocked_by_thread(killer_tid)
+                &&& ctn_mp.dom().contains(ro.owning_container)
+                &&& ctn_mp.spec_index(ro.owning_container).view().root_process == prc_ptr
+                &&& ctn_mp.spec_index(ro.owning_container).killer_info() == prc_mp.spec_index(prc_ptr).killer_info()
+                &&& ctn_mp.spec_index(ro.owning_container).wlocked_by_thread(killer_tid)
             }
         }),
 { reveal(process_kill_mark_wf); }

@@ -156,8 +156,8 @@ verus! {
         proof {
             thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, ep_ptr, caller_ptr);
-            container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, caller_ptr);
-            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
+            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, caller_ptr);
+            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); };
         }
         let callee = krnl.thrd_mp.borrow_typed(callee_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&callee_lock_perm));
         let next_process = callee.owning_proc;
@@ -167,14 +167,14 @@ verus! {
             &&& krnl.prc_mp.spec_index(next_process).is_init()
             &&& krnl.prc_mp.view().spec_index(next_process).is_init()
             &&& krnl.prc_mp.view().spec_index(next_process).addr() == next_process
-        }) by { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, callee_ptr); process_perms_wf_at(krnl.prc_mp, next_process); };
+        }) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, callee_ptr); process_perms_wf_at(krnl.prc_mp, next_process); };
         let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
         let next_pagetable = process.pagetable;
         let cr3 = process.cr3;
         let pcid = process.pcid;
         let depth = process.depth;
         assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by {
-            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
             krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
         };
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
@@ -369,7 +369,7 @@ verus! {
         proof {
             thread_perms_wf_at(krnl.thrd_mp, caller_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, ep_ptr, callee_ptr);
-            container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr);
+            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr);
         }
         let caller = krnl.thrd_mp.borrow_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
         let ret = match caller.ipc_payload { IPCPayLoad::Usize { value } => RetValueType::SuccessUsize { value }, _ => RetValueType::Success, };

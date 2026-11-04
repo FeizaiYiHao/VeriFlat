@@ -125,6 +125,7 @@ impl LocalContext {
     /// The cpu whose kernel-call permission this context holds; `Some` only inside a kernel step of the own cpu.
     pub closed spec fn kernel_call_perm(&self) -> Option<CpuId> { match self.kernel_call_perm { Some(perm) => Some(perm.cpu_id()), None => None } }
 
+    /// Type invariant: a held kernel-call permission is the one of this context's own cpu.
     #[verifier::type_invariant]
     pub open spec fn kernel_call_perm_wf(&self) -> bool { self.kernel_call_perm() is Some ==> self.kernel_call_perm() == Some(self.cpu_id()) }
 

@@ -199,7 +199,7 @@ pub fn reclaim_detached_iommu_4k_page(
         final(steps).snapshot_k().it_mp.spec_index(iommu_table) == old(krnl).it_mp.spec_index(iommu_table),
         final(krnl).thrd_mp.unchanged_except(&final(steps).snapshot_k().thrd_mp, thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == final(steps).snapshot_k().thrd_mp.spec_index(thrd_ptr).locking_thread(),
-        process_iommu_table_match(final(steps).snapshot_k().prc_mp, final(steps).snapshot_k().it_mp),
+        process_iommu_table_wf(final(steps).snapshot_k().prc_mp, final(steps).snapshot_k().it_mp),
 {
     let iova = index2va(indices);
     proof {

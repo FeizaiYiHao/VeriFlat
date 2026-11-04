@@ -59,6 +59,7 @@ impl OfflineFlag {
 }
 
 impl LockInvTrait for OfflineFlag {
+    /// The cell's slot is a valid cpu.
     open spec fn inv(&self) -> bool { index_valid(NUM_CPUS, self.index().1) }
 }
 
@@ -79,12 +80,15 @@ impl LockMajorTrait for OfflineFlag {
 }
 
 impl CpuOfflineFlags {
+    /// Every cell is well formed and ordered at the table's container depth.
     pub open spec fn inv(&self) -> bool {
         &&& self.flags.inv()
-        &&& forall|cpu_id: CpuId| #![trigger self.flags.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
-            &&& self.flags.spec_index(cpu_id).view().inv()
-            &&& self.flags.spec_index(cpu_id).view().view().container_depth.view() == self.container_depth.view()
-        }
+        &&& forall|cpu_id: CpuId|
+            #![trigger self.flags.spec_index(cpu_id)]
+            index_valid(NUM_CPUS, cpu_id) ==> {
+                &&& self.flags.spec_index(cpu_id).view().inv()
+                &&& self.flags.spec_index(cpu_id).view().view().container_depth.view() == self.container_depth.view()
+            }
     }
 
     pub fn new_empty(Ghost(owning_container): Ghost<RwLockContainerPtr>, Ghost(depth): Ghost<usize>, Ghost(flags_ptr): Ghost<RwLockCpuOfflineFlagsPtr>) -> (ret: Self)

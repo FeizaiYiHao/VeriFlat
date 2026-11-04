@@ -12,10 +12,13 @@ pub struct TokenLock<T, ROT, GhostT, const HAS_KILL_STATE: bool> {
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> TokenLock<T, ROT, GhostT, HAS_KILL_STATE> where LockCell<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
     /// The lock object the token covers.
-    pub closed spec fn lock(&self) -> LockCell<T, ROT, GhostT, HAS_KILL_STATE> { self.perm@.value() }
+    pub closed spec fn lock(&self) -> LockCell<T, ROT, GhostT, HAS_KILL_STATE> { self.perm.view().value() }
 
-    /// The token covers an initialized lock at the held address.
-    pub closed spec fn wf(&self) -> bool { self.perm@.is_init() && self.perm@.addr() == LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec() }
+    /// The token covers an initialized lock at the lock type's `TokenCellBase` address.
+    pub closed spec fn wf(&self) -> bool {
+        &&& self.perm.view().is_init()
+        &&& self.perm.view().addr() == LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec()
+    }
 
     pub open spec fn is_init(&self) -> bool { self.wf() && self.lock().is_init() }
     pub open spec fn view(&self) -> T { self.lock().view() }
@@ -32,11 +35,11 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> TokenLock<T, ROT, GhostT, HAS_K
     /// Takes the lock at the lock type's `TokenCellBase` address through its points-to token.
     pub fn from_token(perm: Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE>>) -> (ret: Self)
         requires
-            perm@.is_init(),
-            perm@.addr() == LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(),
+            perm.view().is_init(),
+            perm.view().addr() == LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(),
         ensures
             ret.wf(),
-            ret.lock() == perm@.value(),
+            ret.lock() == perm.view().value(),
     {
         Self { perm }
     }

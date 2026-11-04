@@ -168,8 +168,8 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
         }),
 {
     let prc_ptr = entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-    process_thread_wf_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-    process_pagetable_match_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+    process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+    process_pagetable_wf_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(krnl, thrd_ptr); kernel_thread_projection_at(entry, thrd_ptr);
     kernel_process_projection_at(krnl, prc_ptr); kernel_process_projection_at(entry, prc_ptr);
@@ -324,8 +324,8 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         unmapped < range.len,
         range.view().contains(va),
         pre.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        process_pagetable_match(pre.prc_mp, pre.pt_mp),
-        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_pagetable_wf(pre.prc_mp, pre.pt_mp),
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
         pre.pt_mp.dom().contains(pagetable),
         *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, thrd_mp: post.thrd_mp, ..*pre }),
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),

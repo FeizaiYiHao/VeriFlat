@@ -97,14 +97,14 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_allocators(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+    ensures allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
-    assert(allocator_4k_pages_wf(post.pg_arr, post.allc_4k_mp)) by { reveal(allocator_4k_pages_wf); };
-    assert(allocator_2m_pages_wf(post.pg_arr, post.allc_2m_mp)) by { reveal(allocator_2m_pages_wf); };
-    assert(allocator_1g_pages_wf(post.pg_arr, post.allc_1g_mp)) by { reveal(allocator_1g_pages_wf); };
+    assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_4k_pages_wf); };
+    assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_2m_pages_wf); };
+    assert(allocator_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(allocator_1g_pages_wf); };
 }
 
 /// Retiring the container keeps every page that a container names in the state that names it.
@@ -115,12 +115,12 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_containers(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures container_pages_wf(post.pg_arr, post.ctn_mp),
+    ensures container_pages_wf(post.ctn_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
-    assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
+    assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
 }
 
 /// Retiring the container keeps every page that a scheduler, a cpu set, or a PCID allocator names in the state that
@@ -135,14 +135,14 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_retired(
     ensures
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
-        pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
+        pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-    assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
+    assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { reveal(pcid_allocator_pages_wf); };
 }
 
 /// Retiring the container keeps every page that a process or a page table names in the state that names it.
@@ -154,17 +154,17 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_processes(
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
     ensures
-        process_pages_wf(post.pg_arr, post.prc_mp),
+        process_pages_wf(post.prc_mp, post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
-        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
-    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
+    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { reveal(process_pages_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_kernel_pages_owner_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); };
 }
 
 /// Retiring the container keeps every page that a thread or an endpoint names, or that a thread stages, in the state
@@ -185,7 +185,7 @@ pub(crate) proof fn kill_container_retire_eof_page_objects_threads(
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
-    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); };
+    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf); };
 }
 
 /// Retiring the container keeps every 2M and 1G page group whole: its 2M heads turn free with their tails still merged
@@ -215,7 +215,7 @@ pub(crate) proof fn kill_container_retire_eof_mappings_pagetable(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+    ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
@@ -255,14 +255,14 @@ pub(crate) proof fn kill_container_retire_eof_page_owners(
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
     ensures
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
+        container_owned_pages_wf(post.ctn_mp, post.pg_arr),
+        page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); broadcast use kill_container_retire_eof_no_endpoint; };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); broadcast use kill_container_retire_eof_no_endpoint; };
 }
 
 /// Retiring the container keeps every retire-ready container empty and its allocators drained: `owner_ptr`, whose
@@ -293,7 +293,9 @@ pub(crate) proof fn kill_container_retire_eof_allocators(
         allocator_perms_wf(post.allc_4k_mp),
         allocator_perms_wf(post.allc_2m_mp),
         allocator_perms_wf(post.allc_1g_mp),
-        post.allocator_free_pages_wf(),
+        allocator_free_page_ptrs_wf(post.allc_4k_mp),
+        allocator_free_page_ptrs_wf(post.allc_2m_mp),
+        allocator_free_page_ptrs_wf(post.allc_1g_mp),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
@@ -320,7 +322,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_4k_pages(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+    ensures allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
@@ -328,9 +330,9 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_4k_pages(
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
-    assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };
+    assert(allocator_global_pool_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_cpu_cache_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); };
 }
 
 /// Retiring the container keeps every free 2M page on the free list of its allocator in that allocator's pools:
@@ -342,7 +344,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_2m_pages(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
+    ensures allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
@@ -350,9 +352,9 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_2m_pages(
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
-    assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); };
+    assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); };
 }
 
 /// Retiring the container keeps every free 1G page on the free list of its allocator in that allocator's pools.
@@ -363,7 +365,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_1g_pages(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
+    ensures allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
@@ -371,8 +373,8 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_1g_pages(
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
-    assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by {
-        reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf);
+    assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by {
+        reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf);
         reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf);
     };
 }

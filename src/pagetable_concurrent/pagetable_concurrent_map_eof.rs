@@ -79,17 +79,17 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.va_addr_valid(),
     { reveal(WholePageTable::map_4k_page_eof_transition_framing); }
 
-    /// EOF closure of `map_4k_page`: `wf_l3`.
+    /// EOF closure of `map_4k_page`: `l3_links_l2_wf`.
     proof fn map_4k_page_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr,
         target_entry: MapEntry)
         requires
-            pre.wf_l3(),
+            pre.l3_links_l2_wf(),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
-            post.wf_l3(),
+            post.l3_links_l2_wf(),
     {
         reveal(WholePageTable::map_4k_page_eof_transition_framing);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
     }
 
 
@@ -138,7 +138,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         target_entry: MapEntry)
         requires
             pre.higher.wf_l4(),
-            pre.wf_l3(),
+            pre.l3_links_l2_wf(),
             pre.higher.disjoint_l4(),
             pre.higher.disjoint_l3(),
             pre.wf_l2(),
@@ -157,7 +157,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i)
                     ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
     {
-        broadcast use WholePageTable::resolve_l2_addr_unique_at;
+        broadcast use WholePageTable::disjoint_l2_implies_resolve_l2_addr_unique_at;
         reveal(WholePageTable::map_4k_page_eof_transition_framing);
     }
 
@@ -166,7 +166,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         target_entry: MapEntry)
         requires
             pre.higher.wf_l4(),
-            pre.wf_l3(),
+            pre.l3_links_l2_wf(),
             pre.higher.disjoint_l4(),
             pre.higher.disjoint_l3(),
             pre.wf_l2(),
@@ -194,7 +194,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         target_entry: MapEntry)
         requires
             pre.higher.wf_l4(),
-            pre.wf_l3(),
+            pre.l3_links_l2_wf(),
             pre.higher.disjoint_l4(),
             pre.higher.disjoint_l3(),
             pre.wf_l2(),

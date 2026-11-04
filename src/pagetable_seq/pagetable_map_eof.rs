@@ -244,7 +244,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_l2(l4i, l3i, l2i)) by { post.resolve_l2_unchanged(&pre); };
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_l2(l4i,l3i,l2i)]
                 post.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && post.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && !((target_l4i,target_l3i,target_l2i,) =~= (l4i, l3i, l2i))
-                ==> post.spec_resolve_mapping_l2(l4i,l3i,l2i)->0.addr != target_l1_p) by { broadcast use PageTable::resolve_l2_addr_unique_at; };
+                ==> post.spec_resolve_mapping_l2(l4i,l3i,l2i)->0.addr != target_l1_p) by { broadcast use PageTable::disjoint_l2_implies_resolve_l2_addr_unique_at; };
         };
     }
 

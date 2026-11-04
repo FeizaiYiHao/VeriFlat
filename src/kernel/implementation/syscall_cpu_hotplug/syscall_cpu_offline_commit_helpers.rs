@@ -404,7 +404,7 @@ pub(super) fn cpu_offline_commit_take_cpu_off(
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
     let ghost before = *krnl;
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); krnl.dflt_pt.view().table_pages_wf_cr3_at(); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_wf_implies_view_inv(); krnl.dflt_pt.view().table_pages_wf_cr3_at(); };
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
     if let Some(prev) = current_thread {
         let ghost old_prev_lock_id = krnl.thrd_mp.lock_id_by_key(prev);
@@ -440,7 +440,7 @@ pub(super) fn cpu_offline_commit_take_cpu_off(
         };
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by { reveal(cpu_went_off_eof_transition_framing); };
-        if current_thread is Some { process_thread_wf_at(before.prc_mp, before.thrd_mp, current_thread.unwrap()); }
+        if current_thread is Some { process_thread_wf_thread_at(before.prc_mp, before.thrd_mp, current_thread.unwrap()); }
     }
     cpu_offline_commit_unlock_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr,
         current_process, current_thread, process_lock_perm, thread_lock_perm, Tracked(cpu_lock_perm), Tracked(flag_lock_perm), Tracked(cpu_set_lock_perm),

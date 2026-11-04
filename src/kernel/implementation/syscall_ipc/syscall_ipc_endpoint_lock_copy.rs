@@ -151,7 +151,7 @@ pub(super) fn ipc_endpoint_lock_and_copy(
 {
     proof {
         assert(krnl.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) by { reveal(LockedArray::typed_lock_map_aligned); };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
+        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
     }
     let receiver_lock_perm = Tracked(if receiver_thrd_ptr == current_thrd_ptr { current_thread_lock_perm } else { peer_thread_lock_perm });
     let Tracked(payload_endpoint_lock_perm) = krnl.wlock_endpoint(payload_ep_ptr, Tracked(&mut *lctx));
@@ -159,7 +159,7 @@ pub(super) fn ipc_endpoint_lock_and_copy(
     let payload_endpoint_ref = krnl.ep_mp.borrow_typed(payload_ep_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&payload_endpoint_lock_perm));
     let endpoint_owner = payload_endpoint_ref.owning_container;
     let receiver_container = krnl.thrd_mp.borrow_typed(receiver_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), receiver_lock_perm).owning_container;
-    proof { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, payload_ep_ptr); }
+    proof { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, payload_ep_ptr); }
     let owner_compatible = if endpoint_owner == receiver_container { true } else { container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, endpoint_owner, receiver_container) };
     let result = if owner_compatible {
         ipc_copy_endpoint_reference(krnl, receiver_thrd_ptr, target_ep_idx, payload_ep_ptr, Tracked(&*lctx), receiver_lock_perm, Tracked(&payload_endpoint_lock_perm));

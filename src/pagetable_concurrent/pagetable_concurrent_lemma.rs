@@ -30,10 +30,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.wf_l4(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
         ensures
-            self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.kernel_present
-                ==> !self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.ps,
-            self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.present || self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).perm.kernel_present
-                ==> self.l3_tables.view().dom().contains(self.l4_table.view().spec_index(self.cr3).value().spec_index(l4i).addr),
+            self.l4_entry(l4i).perm.present || self.l4_entry(l4i).perm.kernel_present ==> !self.l4_entry(l4i).perm.ps,
+            self.l4_entry(l4i).perm.present || self.l4_entry(l4i).perm.kernel_present ==> self.l3_tables.view().dom().contains(self.l4_entry(l4i).addr),
     { reveal(PageTableHigher::wf_l4); }
 
     pub proof fn wf_l3_at(&self, p: PageMapPtr)
@@ -51,15 +49,14 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         ensures page_ptr_valid(self.cr3)
     { reveal(PageTableHigher::table_pages_wf); }
 
-    pub proof fn tables_reachable_wf_at(&self, p: PageMapPtr)
+    pub proof fn table_pages_wf_l3_at(&self, p: PageMapPtr)
         requires
-            self.tables_reachable_wf(),
+            self.table_pages_wf(),
             self.l3_tables.view().dom().contains(p),
         ensures
-            self.kernel_l4_end <= self.l3_rev_map.view().spec_index(p) && pei_valid(self.l3_rev_map.view().spec_index(p)),
-            self.spec_held_l4(self.l3_rev_map.view().spec_index(p)) is Some,
-            self.spec_held_l4(self.l3_rev_map.view().spec_index(p))->0.addr == p,
-    { reveal(PageTableHigher::tables_reachable_wf); }
+            page_ptr_valid(p),
+            !self.l4_table.view().dom().contains(p),
+    { reveal(PageTableHigher::table_pages_wf); }
 
     pub proof fn wf_mapping_1g_at(&self, l4i: L4Index, l3i: L3Index)
         requires
@@ -75,12 +72,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present,
     { reveal(PageTableHigher::wf_mapping_1g); }
 
-    pub proof fn kernel_l4_end_valid(&self)
+    pub proof fn kernel_entries_wf_l4_end_valid_at(&self)
         requires self.kernel_entries_wf()
         ensures pei_valid(self.kernel_l4_end)
     { reveal(PageTableHigher::kernel_entries_wf); }
 
-    pub proof fn kernel_entries_wf_l4_end_at(&self)
+    pub proof fn kernel_entries_wf_iommu_l4_end_at(&self)
         requires self.kernel_entries_wf()
         ensures TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
     { reveal(PageTableHigher::kernel_entries_wf); }
@@ -90,14 +87,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         ensures
             pei_valid(self.kernel_l4_end),
             self.kernel_entries.view().len() == self.kernel_l4_end as nat,
-    { reveal(PageTableHigher::kernel_entries_wf); }
-
-    pub proof fn kernel_entries_wf_at(&self, i: usize)
-        requires
-            self.kernel_entries_wf(),
-            0 <= i < self.kernel_l4_end,
-        ensures
-            self.kernel_entries.view().spec_index(i as int) == self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
     { reveal(PageTableHigher::kernel_entries_wf); }
 
     /// A resolving user root entry is held as the same entry.
@@ -135,14 +124,16 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(l3j),
         ensures
             #![trigger self.spec_held_l3(l4i, l3i), self.spec_held_l3(l4j, l3j)]
-            (l4i, l3i) != (l4j, l3j) && self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4j, l3j) is Some ==> self.spec_held_l3(l4i, l3i)->0.addr != self.spec_held_l3(l4j, l3j)->0.addr,
+            (l4i, l3i) != (l4j, l3j) && self.spec_held_l3(l4i, l3i) is Some && self.spec_held_l3(l4j, l3j) is Some
+                ==> self.spec_held_l3(l4i, l3i)->0.addr != self.spec_held_l3(l4j, l3j)->0.addr,
     {
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
         reveal(PageTableHigher::disjoint_l3);
     }
 
-    pub broadcast proof fn resolve_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
+    /// Distinct resolving L3 paths name distinct L2 pages.
+    pub broadcast proof fn disjoint_l4_l3_implies_resolve_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
         requires
             self.wf_l4(),
             self.disjoint_l4(),
@@ -153,7 +144,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(l3j),
         ensures
             #![trigger self.spec_resolve_mapping_l3(l4i, l3i), self.spec_resolve_mapping_l3(l4j, l3j)]
-            (l4i, l3i) != (l4j, l3j) && self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4j, l3j) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i)->0.addr != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr,
+            (l4i, l3i) != (l4j, l3j) && self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4j, l3j) is Some
+                ==> self.spec_resolve_mapping_l3(l4i, l3i)->0.addr != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr,
     {
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
@@ -162,45 +154,62 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 }
 
 impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
-    pub proof fn wf_l3_at(&self, p: PageMapPtr, i: L3Index)
+    pub proof fn l3_links_l2_wf_at(&self, p: PageMapPtr, l3i: L3Index)
         requires
-            self.wf_l3(),
+            self.l3_links_l2_wf(),
             self.higher.l3_tables.view().dom().contains(p),
-            pei_valid(i),
+            pei_valid(l3i),
         ensures
-            (self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.present || self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.kernel_present)
-                && !self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps ==> self.lower.l2_perms.dom().contains(self.higher.l3_tables.view().spec_index(p).value().spec_index(i).addr),
-    { reveal(WholePageTable::wf_l3); }
+            (self.higher.l3_entry(p, l3i).perm.present || self.higher.l3_entry(p, l3i).perm.kernel_present) && !self.higher.l3_entry(p, l3i).perm.ps
+                ==> self.lower.l2_perms.dom().contains(self.higher.l3_entry(p, l3i).addr),
+    { reveal(WholePageTable::l3_links_l2_wf); }
 
-    pub proof fn wf_l2_at(&self, p: PageMapPtr, i: L2Index)
+    pub proof fn wf_l2_at(&self, p: PageMapPtr, l2i: L2Index)
         requires
             self.wf_l2(),
             self.lower.l2_perms.dom().contains(p),
-            pei_valid(i),
+            pei_valid(l2i),
         ensures
             self.lower.l2_perms.spec_index(p).addr() == p,
             self.lower.l2_perms.spec_index(p).is_init(),
             self.lower.l2_page(p).addr() == p,
             self.lower.l2_page(p).wf(),
-            self.lower.l2_page(p).entry_lock(i).inv(),
-            self.lower.l2_entry(p, i).perm.ps && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present,
-            self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps ==> self.lower.l2_page(p).entry_lock(i).l1() is Some,
-            self.lower.l2_page(p).entry_lock(i).l1() is Some ==> !self.lower.l2_entry(p, i).perm.ps,
-            self.lower.l2_page(p).entry_lock(i).l1() is Some && !self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present,
-            self.lower.l2_page(p).entry_lock(i).l1() is Some
-                ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr),
+            self.lower.l2_page(p).entry_lock(l2i).inv(),
+            self.lower.l2_entry(p, l2i).perm.ps && self.lower.l2_entry(p, l2i).perm.present ==> self.lower.l2_entry(p, l2i).perm.kernel_present,
+            self.lower.l2_entry(p, l2i).perm.present && !self.lower.l2_entry(p, l2i).perm.ps ==> self.lower.l2_page(p).entry_lock(l2i).l1() is Some,
+            self.lower.l2_page(p).entry_lock(l2i).l1() is Some ==> !self.lower.l2_entry(p, l2i).perm.ps,
+            self.lower.l2_page(p).entry_lock(l2i).l1() is Some && !self.lower.l2_entry(p, l2i).perm.present ==> self.lower.l2_entry(p, l2i).perm.kernel_present,
+            self.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                ==> self.lower.l1_perm(p, l2i).addr() == self.lower.l2_entry(p, l2i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, l2i).addr),
     { reveal(WholePageTable::wf_l2); }
 
-    pub proof fn wf_l1_at(&self, p: PageMapPtr, i: L2Index)
+    pub proof fn wf_l1_at(&self, p: PageMapPtr, l2i: L2Index)
         requires
             self.wf_l1(),
             self.lower.l2_perms.dom().contains(p),
-            pei_valid(i),
-            self.lower.l2_page(p).entry_lock(i).l1() is Some,
+            pei_valid(l2i),
+            self.lower.l2_page(p).entry_lock(l2i).l1() is Some,
         ensures
-            self.lower.l1_perm(p, i).is_init(),
-            self.lower.l1_page(p, i).wf(),
+            self.lower.l1_perm(p, l2i).is_init(),
+            self.lower.l1_page(p, l2i).wf(),
     { reveal(WholePageTable::wf_l1); }
+
+    pub proof fn table_pages_wf_l2_at(&self, p: PageMapPtr)
+        requires
+            self.table_pages_wf(),
+            self.lower.l2_perms.dom().contains(p),
+        ensures
+            !self.higher.l4_table.view().dom().contains(p),
+    { reveal(WholePageTable::table_pages_wf); }
+
+    pub proof fn table_pages_wf_l1_at(&self, p: PageMapPtr)
+        requires
+            self.table_pages_wf(),
+            self.lower.l1_rev_map.dom().contains(p),
+        ensures
+            page_ptr_valid(p),
+            !self.higher.l4_table.view().dom().contains(p),
+    { reveal(WholePageTable::table_pages_wf); }
 
     pub proof fn tables_reachable_wf_l2_at(&self, p: PageMapPtr)
         requires
@@ -271,23 +280,24 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             },
     { reveal(WholePageTable::wf_window_locks); }
 
-    pub proof fn wf_window_locks_slot_at(&self, p: PageMapPtr, i: L2Index)
+    pub proof fn wf_window_locks_l2_entry_at(&self, p: PageMapPtr, l2i: L2Index)
         requires
             self.wf_window_locks(),
             self.lower.l2_perms.dom().contains(p),
-            pei_valid(i),
+            pei_valid(l2i),
         ensures
             if self.spec_resolve_mapping_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1) is Some {
-                self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) })
+                self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, l2i, 0)) })
             } else {
-                self.lower.l2_owner(p, i) is None
+                self.lower.l2_owner(p, l2i) is None
             },
     { reveal(WholePageTable::wf_window_locks); }
 
-    pub broadcast proof fn resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
+    /// Distinct resolving L2 paths name distinct L1 pages.
+    pub broadcast proof fn disjoint_l2_implies_resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
         requires
             self.higher.wf_l4(),
-            self.wf_l3(),
+            self.l3_links_l2_wf(),
             self.higher.disjoint_l4(),
             self.higher.disjoint_l3(),
             self.wf_l2(),
@@ -304,7 +314,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr != self.spec_resolve_mapping_l2(l4j, l3j, l2j)->0.addr,
     {
         reveal(PageTableHigher::wf_l4);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
         reveal(PageTableHigher::disjoint_l4);
         reveal(PageTableHigher::disjoint_l3);
         reveal(WholePageTable::wf_l2);
@@ -315,7 +325,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub broadcast proof fn spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
             self.higher.wf_l4(),
-            self.wf_l3(),
+            self.l3_links_l2_wf(),
             self.wf_l2(),
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
@@ -327,7 +337,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.spec_held_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {
         self.higher.wf_l4_at(l4i);
-        self.wf_l3_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+        self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
         self.wf_l2_at(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i);
     }
 
@@ -335,7 +345,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub broadcast proof fn spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
         requires
             self.higher.wf_l4(),
-            self.wf_l3(),
+            self.l3_links_l2_wf(),
             self.wf_l2(),
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
@@ -361,7 +371,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.spec_held_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
     {}
 
-    pub broadcast proof fn l2_entry_addr_unique_at(&self, pi: PageMapPtr, l2i: L2Index, pj: PageMapPtr, l2j: L2Index)
+    /// Distinct L2 entries that own L1 pages name distinct L1 pages.
+    pub broadcast proof fn disjoint_l2_implies_l2_entry_addr_unique_at(&self, pi: PageMapPtr, l2i: L2Index, pj: PageMapPtr, l2j: L2Index)
         requires
             self.disjoint_l2(),
             self.lower.l2_perms.dom().contains(pi),
@@ -374,10 +385,11 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 ==> self.lower.l2_entry(pi, l2i).addr != self.lower.l2_entry(pj, l2j).addr,
     { reveal(WholePageTable::disjoint_l2); }
 
-    pub broadcast proof fn resolve_l2_target_exists(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    /// A resolving L2 entry links an L1 page of the L1 reverse map.
+    pub broadcast proof fn wf_l2_implies_resolve_l2_target_in_l1_rev_map_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
             self.higher.wf_l4(),
-            self.wf_l3(),
+            self.l3_links_l2_wf(),
             self.wf_l2(),
             self.kernel_l4_end() <= l4i && pei_valid(l4i),
             pei_valid(l3i),
@@ -387,7 +399,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some ==> self.lower.l1_rev_map.dom().contains(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr),
     {
         reveal(PageTableHigher::wf_l4);
-        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::l3_links_l2_wf);
         reveal(WholePageTable::wf_l2);
     }
 
@@ -404,7 +416,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 self.kernel_l4_end() <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
                     pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
-    {
-    }
+    {}
 }
 } // verus!

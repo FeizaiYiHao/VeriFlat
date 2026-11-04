@@ -24,7 +24,7 @@ pub(super) proof fn ipc_share_pages_source_owners_in_target_uppertree(
         share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),
 {
     thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thrd_mp, peer_thread);
-    process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, source_thread);
+    process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread);
     container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, target_container, source_container);
     reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_subtree_set_wf);
 }

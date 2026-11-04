@@ -398,11 +398,11 @@ pub(crate) fn kill_container_retire_root_commit(
         krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         if let Some(it) = iommu_table { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), it); }
-        pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
-        if let Some(it) = iommu_table { iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
-        process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target);
-        pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
-        if let Some(it) = iommu_table { iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it); }
+        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
+        if let Some(it) = iommu_table { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
+        process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
+        pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
+        if let Some(it) = iommu_table { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it); }
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         kill_retire_pages_held_and_owned(entry, target, old(lctx).page_lock_map().dom(), allc_ptr, cpu_id);
     }
