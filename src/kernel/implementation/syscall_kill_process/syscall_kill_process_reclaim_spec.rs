@@ -9,23 +9,23 @@ verus! {
 /// of `scope`, it write-holds exactly the target's page table `pagetable` with `pagetable_perm` and the target's IOMMU
 /// table `iommu_table`, if any, with `iommu_perm`.
 pub open spec fn kill_reclaim_state(
-    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
     stage: KillStage, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, pagetable: RwLockPageTableRoot,
     iommu_table: Option<RwLockPageTableRoot>, pagetable_perm: LockPerm, iommu_perm: Option<LockPerm>,
 ) -> bool {
     let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
     let target = k.prc_mp.spec_index(chain[chain.len() - 1]);
     &&& 0 < chain.len()
-    &&& kill_chain_state(k, lctx, cpu_id, scope, process_ptr, thread_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
+    &&& kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) <==> c == cpu_id
     &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.current_thread == Some(thread_ptr)
-    &&& typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write)
-    &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) <==> t == thread_ptr
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
+    &&& typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write)
+    &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) <==> t == thrd_ptr
+    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write)
     &&& lctx.page_lock_map().dom().is_empty()
     &&& lctx.pcid_needflush_lock_map().dom().is_empty()
     &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
@@ -128,89 +128,89 @@ pub(crate) open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post:
     }
 }
 
-/// The write-held allocator `allocator_ptr` regains `returned` quota; nothing else in its map changes.
-pub(crate) open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
-    let allocator = pre_allocators.spec_index(allocator_ptr);
+/// The write-held allocator `allc_ptr` regains `returned` quota; nothing else in its map changes.
+pub(crate) open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allc_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
+    let allocator = pre_allocators.spec_index(allc_ptr);
     &&& post_allocators.perms_wf()
-    &&& post_allocators.unchanged_except(&pre_allocators, allocator_ptr)
-    &&& post_allocators.spec_index(allocator_ptr).quota.view() == (AllocatorQuota { value: (allocator.quota.view().value + returned) as usize, ..allocator.quota.view() })
-    &&& post_allocators.spec_index(allocator_ptr).quota.is_init()
-    &&& post_allocators.spec_index(allocator_ptr).quota.view_rodata() == allocator.quota.view_rodata()
-    &&& post_allocators.spec_index(allocator_ptr).quota.view_ghost() == allocator.quota.view_ghost()
-    &&& post_allocators.spec_index(allocator_ptr).quota.locking_thread() == allocator.quota.locking_thread()
-    &&& post_allocators.spec_index(allocator_ptr).quota.being_killed() == allocator.quota.being_killed()
-    &&& post_allocators.spec_index(allocator_ptr) == (PageAllocator { quota: post_allocators.spec_index(allocator_ptr).quota, ..allocator })
+    &&& post_allocators.unchanged_except(&pre_allocators, allc_ptr)
+    &&& post_allocators.spec_index(allc_ptr).quota.view() == (AllocatorQuota { value: (allocator.quota.view().value + returned) as usize, ..allocator.quota.view() })
+    &&& post_allocators.spec_index(allc_ptr).quota.is_init()
+    &&& post_allocators.spec_index(allc_ptr).quota.view_rodata() == allocator.quota.view_rodata()
+    &&& post_allocators.spec_index(allc_ptr).quota.view_ghost() == allocator.quota.view_ghost()
+    &&& post_allocators.spec_index(allc_ptr).quota.locking_thread() == allocator.quota.locking_thread()
+    &&& post_allocators.spec_index(allc_ptr).quota.being_killed() == allocator.quota.being_killed()
+    &&& post_allocators.spec_index(allc_ptr) == (PageAllocator { quota: post_allocators.spec_index(allc_ptr).quota, ..allocator })
 }
 
-/// Returning the whole `size` quota of the target `process_ptr` to the write-held `size` allocator `allocator_ptr` of its
+/// Returning the whole `size` quota of the target `prc_ptr` to the write-held `size` allocator `allc_ptr` of its
 /// container, which has room for it: the target drops its `size` quota, which the allocator regains. Lock owners, lock
 /// ids, and every other object stay.
 #[verifier::opaque]
-pub(crate) open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
-    let process = pre.prc_mp.spec_index(process_ptr);
+pub(crate) open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
+    let process = pre.prc_mp.spec_index(prc_ptr);
     let returned = match size { PageSize::SZ4k => process.view().quota_4k, PageSize::SZ2m => process.view().quota_2m, PageSize::SZ1g => process.view().quota_1g };
     &&& post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..pre })
     &&& !(size is SZ4k) ==> post.allc_4k_mp == pre.allc_4k_mp
     &&& !(size is SZ2m) ==> post.allc_2m_mp == pre.allc_2m_mp
     &&& !(size is SZ1g) ==> post.allc_1g_mp == pre.allc_1g_mp
-    &&& size is SZ4k ==> kill_quota_eof_allocator_returned(pre.allc_4k_mp, post.allc_4k_mp, allocator_ptr, returned as int)
-    &&& size is SZ2m ==> kill_quota_eof_allocator_returned(pre.allc_2m_mp, post.allc_2m_mp, allocator_ptr, returned as int)
-    &&& size is SZ1g ==> kill_quota_eof_allocator_returned(pre.allc_1g_mp, post.allc_1g_mp, allocator_ptr, returned as int)
+    &&& size is SZ4k ==> kill_quota_eof_allocator_returned(pre.allc_4k_mp, post.allc_4k_mp, allc_ptr, returned as int)
+    &&& size is SZ2m ==> kill_quota_eof_allocator_returned(pre.allc_2m_mp, post.allc_2m_mp, allc_ptr, returned as int)
+    &&& size is SZ1g ==> kill_quota_eof_allocator_returned(pre.allc_1g_mp, post.allc_1g_mp, allc_ptr, returned as int)
     &&& post.prc_mp.perms_wf()
-    &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
-    &&& post.prc_mp.spec_index(process_ptr).is_init()
-    &&& post.prc_mp.spec_index(process_ptr).view() == match size {
+    &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
+    &&& post.prc_mp.spec_index(prc_ptr).is_init()
+    &&& post.prc_mp.spec_index(prc_ptr).view() == match size {
         PageSize::SZ4k => Process { quota_4k: 0, ..process.view() },
         PageSize::SZ2m => Process { quota_2m: 0, ..process.view() },
         PageSize::SZ1g => Process { quota_1g: 0, ..process.view() },
     }
-    &&& post.prc_mp.spec_index(process_ptr).view_rodata() == process.view_rodata()
-    &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
-    &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
-    &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
-    &&& post.prc_mp.spec_index(process_ptr).killer_info() == process.killer_info()
+    &&& post.prc_mp.spec_index(prc_ptr).view_rodata() == process.view_rodata()
+    &&& post.prc_mp.spec_index(prc_ptr).view_ghost() == process.view_ghost()
+    &&& post.prc_mp.spec_index(prc_ptr).locking_thread() == process.locking_thread()
+    &&& post.prc_mp.spec_index(prc_ptr).being_killed() == process.being_killed()
+    &&& post.prc_mp.spec_index(prc_ptr).killer_info() == process.killer_info()
 }
 
-/// Marking the reclaimed target `process_ptr`, whose tables map nothing and which owns no thread, as having emptied its
+/// Marking the reclaimed target `prc_ptr`, whose tables map nothing and which owns no thread, as having emptied its
 /// tables while it and its tables are still write-held. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub(crate) open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr) -> bool {
-    let process = pre.prc_mp.spec_index(process_ptr);
+pub(crate) open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr) -> bool {
+    let process = pre.prc_mp.spec_index(prc_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.perms_wf()
-    &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
-    &&& post.prc_mp.spec_index(process_ptr).is_init()
-    &&& post.prc_mp.spec_index(process_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), ..process.view() })
-    &&& post.prc_mp.spec_index(process_ptr).view_rodata() == process.view_rodata()
-    &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
-    &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
-    &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
-    &&& post.prc_mp.spec_index(process_ptr).killer_info() == process.killer_info()
+    &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
+    &&& post.prc_mp.spec_index(prc_ptr).is_init()
+    &&& post.prc_mp.spec_index(prc_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), ..process.view() })
+    &&& post.prc_mp.spec_index(prc_ptr).view_rodata() == process.view_rodata()
+    &&& post.prc_mp.spec_index(prc_ptr).view_ghost() == process.view_ghost()
+    &&& post.prc_mp.spec_index(prc_ptr).locking_thread() == process.locking_thread()
+    &&& post.prc_mp.spec_index(prc_ptr).being_killed() == process.being_killed()
+    &&& post.prc_mp.spec_index(prc_ptr).killer_info() == process.killer_info()
 }
 
-/// Making the reclaimed target `process_ptr` a zombie: it keeps every field but becomes a zombie, and the write-held PCID
-/// allocator `pcid_allocator_ptr` of its container releases its PCID. Lock owners, lock ids, and every other object stay.
+/// Making the reclaimed target `prc_ptr` a zombie: it keeps every field but becomes a zombie, and the write-held PCID
+/// allocator `pcid_allc_ptr` of its container releases its PCID. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub(crate) open spec fn kill_zombify_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr) -> bool {
-    let process = pre.prc_mp.spec_index(process_ptr);
+pub(crate) open spec fn kill_zombify_eof_transition_framing(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr) -> bool {
+    let process = pre.prc_mp.spec_index(prc_ptr);
     let pcid = process.view().pcid;
-    let pre_allocator = pre.pcid_allc_mp.spec_index(pcid_allocator_ptr);
-    let post_allocator = post.pcid_allc_mp.spec_index(pcid_allocator_ptr);
+    let pre_allocator = pre.pcid_allc_mp.spec_index(pcid_allc_ptr);
+    let post_allocator = post.pcid_allc_mp.spec_index(pcid_allc_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.perms_wf()
-    &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
-    &&& post.prc_mp.spec_index(process_ptr).is_init()
-    &&& post.prc_mp.spec_index(process_ptr).view() == (Process { zombie: true, state: Ghost(ProcessState::Zombie), ..process.view() })
-    &&& post.prc_mp.spec_index(process_ptr).view_rodata() == process.view_rodata()
-    &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
-    &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
-    &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
-    &&& post.prc_mp.spec_index(process_ptr).killer_info() == process.killer_info()
+    &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
+    &&& post.prc_mp.spec_index(prc_ptr).is_init()
+    &&& post.prc_mp.spec_index(prc_ptr).view() == (Process { zombie: true, state: Ghost(ProcessState::Zombie), ..process.view() })
+    &&& post.prc_mp.spec_index(prc_ptr).view_rodata() == process.view_rodata()
+    &&& post.prc_mp.spec_index(prc_ptr).view_ghost() == process.view_ghost()
+    &&& post.prc_mp.spec_index(prc_ptr).locking_thread() == process.locking_thread()
+    &&& post.prc_mp.spec_index(prc_ptr).being_killed() == process.being_killed()
+    &&& post.prc_mp.spec_index(prc_ptr).killer_info() == process.killer_info()
     &&& post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom()
-    &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, pcid_allocator_ptr)
-    &&& post_allocator.view().release_ensures(&pre_allocator.view(), process_ptr, pcid)
+    &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, pcid_allc_ptr)
+    &&& post_allocator.view().release_ensures(&pre_allocator.view(), prc_ptr, pcid)
     &&& post_allocator.locking_thread() == pre_allocator.locking_thread()
     &&& post_allocator.being_killed() == pre_allocator.being_killed()
 }

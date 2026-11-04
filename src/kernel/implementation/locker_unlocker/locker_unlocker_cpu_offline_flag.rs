@@ -44,7 +44,7 @@ impl KernelK {
                     &&& cpu.state is Running
                     &&& cpu.container_depth < depth
                     &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p) && cpu.current_process != Some(p) ==> old(self).prc_mp.spec_index(p).being_killed()
-                    &&& forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) && cpu.current_thread != Some(t) ==> old(self).thr_mp.spec_index(t).being_killed()
+                    &&& forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) && cpu.current_thread != Some(t) ==> old(self).thrd_mp.spec_index(t).being_killed()
                     &&& forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && c != cpu.owning_container ==> old(self).ctn_mp.spec_index(c).being_killed()
                     &&& forall|s: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(s)] old(lctx).cpu_set_lock_map().dom().contains(s) ==> old(self).cpu_set_mp.spec_index(s).being_killed()
                     &&& typed_lock_map_2d_ids_lt(old(lctx).cpu_offline_flag_lock_map(), old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))
@@ -82,10 +82,10 @@ impl KernelK {
             assert(old(lctx).lock_id_acyclic(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))) by {
                 let cpu_i = old(lctx).cpu_id();
                 let cpu = old(self).cpu_arr.spec_index(cpu_i).view().view().view();
-                thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_i); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, cpu_i);
+                thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, cpu_i); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, cpu_i);
                 container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, cpu_i);
                 if index_valid(NUM_CPUS, cpu_i) && cpu.state is Running {
-                    thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
+                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                 }
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);

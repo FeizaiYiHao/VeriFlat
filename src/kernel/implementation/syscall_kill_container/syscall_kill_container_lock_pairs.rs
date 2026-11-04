@@ -2,10 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Write-hold the 4K and then the 2M global pools of the marked container `container_ptr`'s allocators `a4` and `a2`
+/// Write-hold the 4K and then the 2M global pools of the marked container `ctn_ptr`'s allocators `a4` and `a2`
 /// and of the killer's container `owner_ptr`'s allocators `o4` and `o2`, each pair in container order.
 pub(crate) fn kill_container_wlock_pool_pairs(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
     o4: RwLockPageAllocatorPtr, a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(pools_4k): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
 )
@@ -16,14 +16,14 @@ pub(crate) fn kill_container_wlock_pool_pairs(
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
-        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
-        container_ptr != owner_ptr,
+        ctn_ptr != owner_ptr,
         old(krnl).allc_4k_mp.dom().contains(a4) && old(krnl).allc_4k_mp.dom().contains(o4) && old(krnl).allc_2m_mp.dom().contains(a2) && old(krnl).allc_2m_mp.dom().contains(o2),
-        old(krnl).allc_4k_mp.spec_index(a4).owning_container == container_ptr && old(krnl).allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
-        old(krnl).allc_2m_mp.spec_index(a2).owning_container == container_ptr && old(krnl).allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
+        old(krnl).allc_4k_mp.spec_index(a4).owning_container == ctn_ptr && old(krnl).allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
+        old(krnl).allc_2m_mp.spec_index(a2).owning_container == ctn_ptr && old(krnl).allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
         old(pools_4k).dom().is_empty() && old(pools_2m).dom().is_empty(),
     ensures
         final(krnl).inv(),
@@ -84,7 +84,7 @@ pub(crate) fn kill_container_wlock_pool_pairs(
         final(pools_2m)[o2].state() is WriteLock && final(pools_2m)[o2].thread_id() == final(lctx).thread_id(),
         final(pools_2m)[o2].lock_id() == final(krnl).allc_2m_mp.spec_index(o2).global_pool.locking_thread()->Write_lock_id,
 {
-    if container_ptr < owner_ptr {
+    if ctn_ptr < owner_ptr {
         let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(a4, Tracked(&mut *lctx));
         proof { pools_4k.tracked_insert(a4, perm); }
         let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(o4, Tracked(&mut *lctx));
@@ -112,10 +112,10 @@ pub(crate) fn kill_container_wlock_pool_pairs(
     }
 }
 
-/// Write-hold the 4K and then the 2M quotas of the marked container `container_ptr`'s allocators `a4` and `a2` and of
+/// Write-hold the 4K and then the 2M quotas of the marked container `ctn_ptr`'s allocators `a4` and `a2` and of
 /// the killer's container `owner_ptr`'s allocators `o4` and `o2`, each pair in container order.
 pub(crate) fn kill_container_wlock_quota_pairs(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
     o4: RwLockPageAllocatorPtr, a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(quotas_4k): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(quotas_2m): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
 )
@@ -127,10 +127,10 @@ pub(crate) fn kill_container_wlock_quota_pairs(
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty() && old(lctx).allocator_quota_2m_lock_map().dom().is_empty() && old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
-        container_ptr != owner_ptr,
+        ctn_ptr != owner_ptr,
         old(krnl).allc_4k_mp.dom().contains(a4) && old(krnl).allc_4k_mp.dom().contains(o4) && old(krnl).allc_2m_mp.dom().contains(a2) && old(krnl).allc_2m_mp.dom().contains(o2),
-        old(krnl).allc_4k_mp.spec_index(a4).owning_container == container_ptr && old(krnl).allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
-        old(krnl).allc_2m_mp.spec_index(a2).owning_container == container_ptr && old(krnl).allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
+        old(krnl).allc_4k_mp.spec_index(a4).owning_container == ctn_ptr && old(krnl).allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
+        old(krnl).allc_2m_mp.spec_index(a2).owning_container == ctn_ptr && old(krnl).allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
         old(quotas_4k).dom().is_empty() && old(quotas_2m).dom().is_empty(),
     ensures
         final(krnl).inv(),
@@ -193,7 +193,7 @@ pub(crate) fn kill_container_wlock_quota_pairs(
         final(quotas_2m)[o2].state() is WriteLock && final(quotas_2m)[o2].thread_id() == final(lctx).thread_id(),
         final(quotas_2m)[o2].lock_id() == final(krnl).allc_2m_mp.spec_index(o2).quota.locking_thread()->Write_lock_id,
 {
-    if container_ptr < owner_ptr {
+    if ctn_ptr < owner_ptr {
         let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(a4, Tracked(&mut *lctx));
         proof { quotas_4k.tracked_insert(a4, perm); }
         let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(o4, Tracked(&mut *lctx));

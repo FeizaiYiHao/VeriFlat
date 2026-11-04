@@ -203,8 +203,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 self.remove_l3_entry(Tracked(&mut *lower), l4i, l3i, l3_p, l2_p, cpu_tlb, cpu_arr, needflush, Tracked(&mut *lctx)).1
             },
             StructureScan::L3 { l4i, l3_p } => {
-                let (page_ptr, page_map_perm) = self.remove_l4_entry(Tracked(&*lower), l4i, l3_p, Tracked(&mut *lctx));
-                page_map_to_page_perm(page_ptr, page_map_perm, cpu_tlb, cpu_arr, needflush)
+                let (pg_ptr, page_map_perm) = self.remove_l4_entry(Tracked(&*lower), l4i, l3_p, Tracked(&mut *lctx));
+                page_map_to_page_perm(pg_ptr, page_map_perm, cpu_tlb, cpu_arr, needflush)
             },
             _ => vstd::pervasive::unreached(),
         }

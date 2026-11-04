@@ -45,51 +45,51 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let Tracked(container_perm) = locked.container_lock_perm;
     let Tracked(process_perm) = locked.process_lock_perm;
     let Tracked(thread_perm) = locked.thread_lock_perm;
-    let (container_ptr, process_ptr, thread_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
+    let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
     let iova_range = VaRange4K::new(iova, range);
     let ghost r = iommu_unmap_4k_iova_range(iova, range);
     proof {
         assert(iova_range == r) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
-    iommu_unmap_4k_hide_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, &iova_range, Tracked(&iommu_table_perm),
+    iommu_unmap_4k_hide_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, &iova_range, Tracked(&iommu_table_perm),
         Tracked(&thread_perm));
     let ghost flush_pre = *krnl;
     proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     flush_iommu_tlb_for_table(krnl, iommu_table, Tracked(&*lctx), Tracked(&iommu_table_perm));
     let ghost flush_mid = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: r, unmapped: range, flushed: true })), Tracked(&*lctx), Tracked(&thread_perm));
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: r, unmapped: range, flushed: true })), Tracked(&*lctx), Tracked(&thread_perm));
     proof {
         let flush_post = *krnl;
         let before = steps.view();
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        iommu_unmap_4k_flush_step_from_k(&flush_pre, &flush_mid, &flush_post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, r);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
+        iommu_unmap_4k_flush_step_from_k(&flush_pre, &flush_mid, &flush_post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, r);
         iommu_unmap_4k_trace_range_steps(before, steps.view(), cpu_id, r);
     }
-    proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); }
+    proof { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
-    iommu_unmap_4k_reclaim_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, &iova_range, &mut indirect, &mut direct,
+    iommu_unmap_4k_reclaim_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, &iova_range, &mut indirect, &mut direct,
         Tracked(&iommu_table_perm), Tracked(&thread_perm));
     let ghost refund_before = steps.view();
     let ghost refund_k = *krnl;
     let ghost refund_lctx = *lctx;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm));
-    proof { iommu_unmap_4k_trace_refund_steps(refund_before, steps.view(), &refund_k, &refund_lctx, cpu_id, thread_ptr, r); }
+    refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm));
+    proof { iommu_unmap_4k_trace_refund_steps(refund_before, steps.view(), &refund_k, &refund_lctx, cpu_id, thrd_ptr, r); }
     let ghost exit_start = *krnl;
     let ghost exit_before = steps.view();
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     krnl.wunlock_iommu_table(iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_perm));
-    krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
-    krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-    krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
+    krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
+    krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_perm));
+    krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         let exit_k = *krnl;
-        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
-        iommu_unmap_4k_exit_step_from_k(&exit_start, &exit_k, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table);
+        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
+        iommu_unmap_4k_exit_step_from_k(&exit_start, &exit_k, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table);
         iommu_unmap_4k_trace_exit_step(exit_before, steps.view(), kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, iova, range);
     }
     RetValueType::Success

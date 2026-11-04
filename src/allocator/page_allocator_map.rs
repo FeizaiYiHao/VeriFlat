@@ -7,34 +7,34 @@ verus! {
 /// that physical page as a `PageAllocator`. Keep the raw retype private; callers
 /// use `retype_page_to_allocator_and_insert`.
 #[verifier::external_body]
-fn retype_4k_page_perm_to_allocator<const SIZE: usize>(page_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<PageAllocator<SIZE>>>)
+fn retype_4k_page_perm_to_allocator<const SIZE: usize>(pg_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<PageAllocator<SIZE>>>)
     requires
         page_perm.is_init(),
-        page_perm.addr() == page_ptr,
+        page_perm.addr() == pg_ptr,
         allocator.inv(),
     ensures
         ret.view().is_init(),
-        ret.view().addr() == page_ptr,
+        ret.view().addr() == pg_ptr,
         ret.view().value() == allocator,
 {
-    unsafe { (page_ptr as *mut PageAllocator<SIZE>).write(allocator); }
+    unsafe { (pg_ptr as *mut PageAllocator<SIZE>).write(allocator); }
     Tracked::assume_new()
 }
 
 impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
-    pub fn retype_page_to_allocator_and_insert(&mut self, page_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn retype_page_to_allocator_and_insert(&mut self, pg_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
-            !old(self).dom().contains(page_ptr),
+            !old(self).dom().contains(pg_ptr),
             page_perm.is_init(),
-            page_perm.addr() == page_ptr,
+            page_perm.addr() == pg_ptr,
             allocator.inv(),
             lctx.kernel_view_locking_state() is Acquire,
         ensures
             final(self).perms_wf(),
-            final(self).dom() =~= old(self).dom().insert(page_ptr),
-            final(self).dom().contains(page_ptr),
-            final(self).spec_index(page_ptr) == allocator,
+            final(self).dom() =~= old(self).dom().insert(pg_ptr),
+            final(self).dom().contains(pg_ptr),
+            final(self).spec_index(pg_ptr) == allocator,
             forall|ptr: RwLockPageAllocatorPtr|
                 #![trigger final(self).spec_index(ptr)]
                 #![trigger old(self).spec_index(ptr)]
@@ -45,8 +45,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
                     &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
                 },
     {
-        let Tracked(allocator_perm) = retype_4k_page_perm_to_allocator(page_ptr, allocator, Tracked(page_perm));
-        self.insert_with_perm(page_ptr, Tracked(allocator_perm));
+        let Tracked(allocator_perm) = retype_4k_page_perm_to_allocator(pg_ptr, allocator, Tracked(page_perm));
+        self.insert_with_perm(pg_ptr, Tracked(allocator_perm));
     }
 
     #[verifier::opaque]

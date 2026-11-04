@@ -83,14 +83,14 @@ pub open spec fn kill_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, chil
 #[verifier::opaque]
 pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
-    let child_ptr = old_u.process_map[process_ptr].children[child_index as int];
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
+    let child_ptr = old_u.process_map[prc_ptr].children[child_index as int];
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] }) .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            lock_state: LockStateU::WriteLocked, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..old_u.thread_map[thread_ptr]
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[prc_ptr] }) .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
+            lock_state: LockStateU::WriteLocked, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..old_u.thread_map[thrd_ptr]
         }),
         ..old_u
     })
@@ -159,15 +159,15 @@ pub open spec fn kill_process_absorb_thread(target: ProcessU, victim_ptr: RwLock
 /// and the dangling thread keeps its descriptors, its caller, and its callee.
 #[verifier::opaque]
 pub open spec fn kill_process_dangling_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let victim_ptr = target.owned_threads[0];
     let victim = old_u.thread_map[victim_ptr];
     &&& kill_process_thread_step_pre(old_u, cpu_id)
     &&& victim.state is WAITING_REPLY
     &&& victim.lock_state is Unlocked
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
+        process_map: old_u.process_map.insert(prc_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::DANGLING, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..victim }),
         ..old_u
     })
@@ -177,13 +177,13 @@ pub open spec fn kill_process_dangling_step(old_u: KernelU, new_u: KernelU, cpu_
 /// it.
 #[verifier::opaque]
 pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let victim_ptr = old_u.process_map[process_ptr].owned_threads[0];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let victim_ptr = old_u.process_map[prc_ptr].owned_threads[0];
     let victim = old_u.thread_map[victim_ptr];
     &&& kill_process_thread_step_pre(old_u, cpu_id)
     &&& !victim.state.is_reply_waiting()
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Thread { thread: victim_ptr })),
+        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Thread { thread: victim_ptr })),
         ..old_u
     })
 }
@@ -222,14 +222,14 @@ pub open spec fn kill_process_dequeue_scheduled_step(old_u: KernelU, new_u: Kern
 pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let victim = old_u.thread_map[victim_ptr];
-    let endpoint_ptr = victim.blocking_endpoint_ptr->Some_0;
-    let endpoint = old_u.endpoint_map[endpoint_ptr];
+    let ep_ptr = victim.blocking_endpoint_ptr->Some_0;
+    let endpoint = old_u.endpoint_map[ep_ptr];
     &&& kill_process_victim_step_pre(old_u, cpu_id)
     &&& victim.state.is_endpoint_waiting()
     &&& victim.blocking_endpoint_ptr is Some
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& new_u == (KernelU {
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.remove_value(victim_ptr), ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.remove_value(victim_ptr), ..endpoint }),
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, blocking_endpoint_ptr: None, ..victim }),
         ..old_u
     })
@@ -256,15 +256,15 @@ pub open spec fn kill_process_cpu_to_idle_step(old_u: KernelU, new_u: KernelU, c
 /// The killed victim leaves the target, which absorbs its quota, and the kill walks the target again.
 #[verifier::opaque]
 pub open spec fn kill_process_unlink_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let victim = old_u.thread_map[victim_ptr];
     &&& kill_process_victim_step_pre(old_u, cpu_id)
     &&& victim.state is KILLED
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
-        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Walk)),
+        process_map: old_u.process_map.insert(prc_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
+        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Walk)),
         ..old_u
     })
 }
@@ -276,24 +276,24 @@ pub open spec fn kill_process_empty_target_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& target.owned_threads.len() == 0
 }
 
-/// `process_ptr` owns the PCI function at `bus`/`device`/`function` of `table`, so the kill reassigns it.
-pub open spec fn kill_process_reassigns(table: IommuRootTableU, process_ptr: RwLockProcessPtr, bus: int, device: int, function: int) -> bool {
-    table.owners[bus][device][function] == process_ptr
+/// `prc_ptr` owns the PCI function at `bus`/`device`/`function` of `table`, so the kill reassigns it.
+pub open spec fn kill_process_reassigns(table: IommuRootTableU, prc_ptr: RwLockProcessPtr, bus: int, device: int, function: int) -> bool {
+    table.owners[bus][device][function] == prc_ptr
 }
 
 /// The empty target hands every PCI function it owns, detached, to the killer's process; its IOMMU table, if any, loses its
 /// DID, and the only IOTLB domain that changes is the emptied candidate domain of an attached function the target owned.
 #[verifier::opaque]
 pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
+    let prc_ptr = kill_target(old_u, cpu_id);
     let owner = old_u.cpu_array[cpu_id as int].current_process->Some_0;
     let table = old_u.iommu_root_table;
-    let target = old_u.process_map[process_ptr];
+    let target = old_u.process_map[prc_ptr];
     &&& kill_stage(old_u, cpu_id) is Walk
     &&& kill_process_empty_target_pre(old_u, cpu_id)
     &&& forall|bus: usize, device: usize, function: usize| #![trigger new_u.iommu_root_table.owners[bus as int][device as int][function as int]]
         #![trigger new_u.iommu_root_table.attached[bus as int][device as int][function as int]] pci_bdf_valid(bus, device, function) ==> {
-        let reassigned = kill_process_reassigns(table, process_ptr, bus as int, device as int, function as int);
+        let reassigned = kill_process_reassigns(table, prc_ptr, bus as int, device as int, function as int);
         &&& new_u.iommu_root_table.owners[bus as int][device as int][function as int] == if reassigned { owner } else { table.owners[bus as int][device as int][function as int] }
         &&& new_u.iommu_root_table.attached[bus as int][device as int][function as int] == (table.attached[bus as int][device as int][function as int] && !reassigned)
     }
@@ -301,12 +301,12 @@ pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: Ker
     &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] new_u.iommu_tlb[did] != old_u.iommu_tlb[did] ==> {
         let anchor = pci_bdf_of_did(did);
         &&& pci_bdf_valid(anchor.0, anchor.1, anchor.2)
-        &&& kill_process_reassigns(table, process_ptr, anchor.0 as int, anchor.1 as int, anchor.2 as int)
+        &&& kill_process_reassigns(table, prc_ptr, anchor.0 as int, anchor.1 as int, anchor.2 as int)
         &&& table.attached[anchor.0 as int][anchor.1 as int][anchor.2 as int]
         &&& new_u.iommu_tlb[did].is_empty()
     }
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             owned_pci_functions: Set::empty(), iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..target
         }).insert(owner, ProcessU { owned_pci_functions: old_u.process_map[owner].owned_pci_functions.union(target.owned_pci_functions), ..old_u.process_map[owner] }),
         iommu_root_table: new_u.iommu_root_table,
@@ -318,20 +318,20 @@ pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: Ker
 /// The empty live target owning no PCI function write-locks its page table and IOMMU table to reclaim them.
 #[verifier::opaque]
 pub open spec fn kill_process_lock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     &&& kill_stage(old_u, cpu_id) is Walk
     &&& kill_process_empty_target_pre(old_u, cpu_id)
     &&& !target.zombie
     &&& target.owned_pci_functions.is_empty()
     &&& target.pagetable is Some
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..target.pagetable->Some_0 }),
             iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
             ..target
         }),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Reclaim { flushed: false })),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Reclaim { flushed: false })),
         ..old_u
     })
 }
@@ -358,10 +358,10 @@ pub open spec fn kill_process_table_key_dropped(o: PageTableU, n: PageTableU, va
 /// and every key with that index is dropped.
 #[verifier::opaque]
 pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let o = target.pagetable->Some_0;
-    let n = new_u.process_map[process_ptr].pagetable->Some_0;
+    let n = new_u.process_map[prc_ptr].pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })
     &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
     &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
@@ -370,7 +370,7 @@ pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, 
     &&& forall|a: VAddr, b: VAddr| #![trigger kill_process_table_key_dropped(o, n, a), spec_v2l4index(b)]
         kill_process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU {
                 mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
                 pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
@@ -410,17 +410,17 @@ pub open spec fn kill_process_flushed_step(old_u: KernelU, new_u: KernelU, cpu_i
 /// entry; the kernel chooses the IOVA.
 #[verifier::opaque]
 pub open spec fn kill_process_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let iommu_table = target.iommu_table->Some_0;
-    let kept = new_u.process_map[process_ptr].iommu_table->Some_0.mapping_4k.dom();
+    let kept = new_u.process_map[prc_ptr].iommu_table->Some_0.mapping_4k.dom();
     let removed = iommu_table.mapping_4k.dom().difference(kept);
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true })
     &&& target.iommu_table is Some
     &&& kept.subset_of(iommu_table.mapping_4k.dom())
     &&& removed.len() == 1
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..target }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..target }),
         ..old_u
     })
 }
@@ -438,8 +438,8 @@ pub open spec fn kill_process_quota_stage_before(size: PageSize) -> KillStage {
 /// moves to its container.
 #[verifier::opaque]
 pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let container = old_u.container_map[target.owning_container];
     let size = kill_stage(new_u, cpu_id)->Quota_returned;
     &&& old_u.container_map.dom().contains(target.owning_container)
@@ -451,12 +451,12 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
             PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + target.quota_2m) as usize, ..container },
             PageSize::SZ1g => ContainerU { quota_1g: (container.quota_1g + target.quota_1g) as usize, ..container },
         }),
-        process_map: old_u.process_map.insert(process_ptr, match size {
+        process_map: old_u.process_map.insert(prc_ptr, match size {
             PageSize::SZ4k => ProcessU { quota_4k: 0, ..target },
             PageSize::SZ2m => ProcessU { quota_2m: 0, ..target },
             PageSize::SZ1g => ProcessU { quota_1g: 0, ..target },
         }),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Quota { returned: size })),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Quota { returned: size })),
         ..old_u
     })
 }
@@ -465,18 +465,18 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
 /// left, readies the target to become a zombie.
 #[verifier::opaque]
 pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Quota { returned: PageSize::SZ1g })
     &&& kill_process_user_4k_unmapped(old_u, target.pagetable->Some_0)
     &&& target.iommu_table is Some ==> kill_process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..target.pagetable->Some_0 }),
             iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }), None => None },
             ..target
         }),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Zombie)),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Zombie)),
         ..old_u
     })
 }
@@ -485,16 +485,16 @@ pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, 
 /// starts retiring it.
 #[verifier::opaque]
 pub open spec fn kill_process_zombify_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let container = old_u.container_map[target.owning_container];
     &&& kill_stage(old_u, cpu_id) is Zombie
     &&& !target.zombie
     &&& old_u.container_map.dom().contains(target.owning_container)
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, ContainerU { free_pcids: container.free_pcids.insert(target.pcid), ..container }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..target }),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Retire)),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..target }),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Retire)),
         ..old_u
     })
 }
@@ -515,8 +515,8 @@ pub open spec fn kill_process_zombie_retire_step(old_u: KernelU, new_u: KernelU,
 /// and the kill walks the parent again.
 #[verifier::opaque]
 pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[prc_ptr];
     let parent_ptr = target.parent->Some_0;
     let container = old_u.container_map[target.owning_container];
     let quota_4k = new_u.container_map[target.owning_container].quota_4k;
@@ -528,11 +528,11 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& old_u.container_map.dom().contains(target.owning_container)
     &&& container.quota_4k < quota_4k
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(target.owning_container, ContainerU { owned_processes: container.owned_processes.remove(process_ptr), quota_4k, ..container }),
-        process_map: Map::new(old_u.process_map.dom().remove(process_ptr), |p: RwLockProcessPtr| {
+        container_map: old_u.container_map.insert(target.owning_container, ContainerU { owned_processes: container.owned_processes.remove(prc_ptr), quota_4k, ..container }),
+        process_map: Map::new(old_u.process_map.dom().remove(prc_ptr), |p: RwLockProcessPtr| {
             let process = old_u.process_map[p];
             if target.uppertree_seq.contains(p) {
-                ProcessU { children: if p == parent_ptr { process.children.remove_value(process_ptr) } else { process.children }, subtree_set: process.subtree_set.remove(process_ptr), ..process }
+                ProcessU { children: if p == parent_ptr { process.children.remove_value(prc_ptr) } else { process.children }, subtree_set: process.subtree_set.remove(prc_ptr), ..process }
             } else { process }
         }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, parent_ptr, KillStage::Walk)),
@@ -585,29 +585,29 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
 #[verifier::opaque]
 pub open spec fn kill_process_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map[process_ptr].lock_state is WriteLocked
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.thread_map[thread_ptr].lock_state is WriteLocked
-    &&& old_u.thread_map[thread_ptr].syscall_progress == kill_progress(process_ptr, KillStage::Walk)
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map[prc_ptr].lock_state is WriteLocked
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
+    &&& old_u.thread_map[thrd_ptr].syscall_progress == kill_progress(prc_ptr, KillStage::Walk)
 }
 
 /// Finishing clears the kill's progress and unlocks the killer's thread, process, and cpu, which leaves its kernel step.
 #[verifier::opaque]
 pub open spec fn kill_process_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[process_ptr] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thread_ptr] }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[prc_ptr] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thrd_ptr] }),
         ..old_u
     })
 }

@@ -25,7 +25,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
     ensures
         ({
             let a = kernel_k_to_kernel_u(pre);
-            let process_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
+            let prc_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
             let table = pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()).spec_index(root);
             let hidden = PageTableU {
                 mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
@@ -34,17 +34,17 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
                 pagetable_window_locks: table.pagetable_window_locks.remove_keys(table.pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == l4i)),
                 ..table
             };
-            &&& a.process_map.dom().contains(process_ptr)
-            &&& a.process_map[process_ptr].pagetable == if a.process_map[process_ptr].zombie { None } else { Some(table) }
+            &&& a.process_map.dom().contains(prc_ptr)
+            &&& a.process_map[prc_ptr].pagetable == if a.process_map[prc_ptr].zombie { None } else { Some(table) }
             &&& kernel_k_to_kernel_u(post) == (KernelU {
-                process_map: a.process_map.insert(process_ptr, ProcessU { pagetable: if a.process_map[process_ptr].zombie { None } else { Some(hidden) }, ..a.process_map[process_ptr] }),
+                process_map: a.process_map.insert(prc_ptr, ProcessU { pagetable: if a.process_map[prc_ptr].zombie { None } else { Some(hidden) }, ..a.process_map[prc_ptr] }),
                 ..a
             })
         }),
 {
     let a = kernel_k_to_kernel_u(pre);
     let b = kernel_k_to_kernel_u(post);
-    let process_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
+    let prc_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
     let table = pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()).spec_index(root);
     let hidden = PageTableU {
         mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
@@ -58,14 +58,14 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
     kernel_cpu_array_unchanged_implies_u_cpu_array(&pre, &post); kernel_container_maps_unchanged_implies_u_container_map(&pre, &post);
     kernel_thread_map_unchanged_implies_u_thread_map(&pre, &post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(&pre, &post);
     process_pagetable_match_pagetable_at(pre.prc_mp, pre.pt_mp, root);
-    kernel_process_projection_at(&pre, process_ptr);
+    kernel_process_projection_at(&pre, prc_ptr);
     assert(post_table == hidden) by {
         assert(post_table.mapping_4k =~= hidden.mapping_4k);
         assert(post_table.mapping_2m =~= hidden.mapping_2m);
         assert(post_table.mapping_1g =~= hidden.mapping_1g);
         assert(post_table.pagetable_window_locks =~= hidden.pagetable_window_locks);
     };
-    assert_maps_equal!(b.process_map, a.process_map.insert(process_ptr, ProcessU { pagetable: if a.process_map[process_ptr].zombie { None } else { Some(hidden) }, ..a.process_map[process_ptr] }), p => {
+    assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, ProcessU { pagetable: if a.process_map[prc_ptr].zombie { None } else { Some(hidden) }, ..a.process_map[prc_ptr] }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(&pre, p); kernel_process_projection_at(&post, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); }
     });
 }

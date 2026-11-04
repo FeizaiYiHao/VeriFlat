@@ -101,15 +101,15 @@ verus! {
                     killed: krnl.prc_mp.spec_index(ptr).being_killed(),
                 }
             }),
-            thread_map: Map::new(krnl.thr_mp.dom(), |ptr: RwLockThreadPtr| {
-                let t = krnl.thr_mp.spec_index(ptr).view();
+            thread_map: Map::new(krnl.thrd_mp.dom(), |ptr: RwLockThreadPtr| {
+                let t = krnl.thrd_mp.spec_index(ptr).view();
                 ThreadU {
-                    lock_state: krnl.thr_mp.spec_index(ptr).lock_state_u(),
+                    lock_state: krnl.thrd_mp.spec_index(ptr).lock_state_u(),
                     state: t.state, caller: t.caller, callee: t.callee, owning_container: t.owning_container, owning_proc: t.owning_proc, last_cpu: t.last_cpu,
                     quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g, endpoint_descriptors: t.endpoint_descriptors.view(),
                     blocking_endpoint_ptr: t.blocking_endpoint_ptr, ipc_payload: t.ipc_payload, error_code: t.error_code,
                     trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None },
-                    syscall_progress: t.syscall_progress.view(), killed: krnl.thr_mp.spec_index(ptr).being_killed(),
+                    syscall_progress: t.syscall_progress.view(), killed: krnl.thrd_mp.spec_index(ptr).being_killed(),
                 }
             }),
         }

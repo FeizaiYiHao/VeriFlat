@@ -11,14 +11,14 @@ pub(super) proof fn cpu_offline_check_result_from_k(krnl: &KernelK, cpu_id: CpuI
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let c = cpu.view().view();
-            let process_ptr = c.current_process->Some_0;
-            let thread_ptr = c.current_thread->Some_0;
+            let prc_ptr = c.current_process->Some_0;
+            let thrd_ptr = c.current_thread->Some_0;
             let requested = krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c.owning_container)).flags.spec_index(cpu_id).view().view().requested;
-            let dead = c.current_process is Some && (krnl.prc_mp.spec_index(process_ptr).being_killed() || krnl.thr_mp.spec_index(thread_ptr).being_killed());
+            let dead = c.current_process is Some && (krnl.prc_mp.spec_index(prc_ptr).being_killed() || krnl.thrd_mp.spec_index(thrd_ptr).being_killed());
             let set_killed = krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(c.owning_container).view_rodata().view().cpu_set).being_killed();
             &&& !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
-            &&& !cpu.being_killed() && requested && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(process_ptr)
-            &&& !cpu.being_killed() && requested && c.current_process is Some && !krnl.prc_mp.spec_index(process_ptr).being_killed() ==> krnl.thr_mp.dom().contains(thread_ptr)
+            &&& !cpu.being_killed() && requested && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(prc_ptr)
+            &&& !cpu.being_killed() && requested && c.current_process is Some && !krnl.prc_mp.spec_index(prc_ptr).being_killed() ==> krnl.thrd_mp.dom().contains(thrd_ptr)
             &&& (ret is Continue) == (cpu.being_killed() || !requested || set_killed || dead)
         },
     ensures
@@ -29,7 +29,7 @@ pub(super) proof fn cpu_offline_check_result_from_k(krnl: &KernelK, cpu_id: CpuI
     reveal(cpu_offline_requests_of);
     if krnl.ctn_mp.dom().contains(c.owning_container) { kernel_container_projection_at(krnl, c.owning_container); }
     if krnl.prc_mp.dom().contains(c.current_process->Some_0) { kernel_process_projection_at(krnl, c.current_process->Some_0); }
-    if krnl.thr_mp.dom().contains(c.current_thread->Some_0) { kernel_thread_projection_at(krnl, c.current_thread->Some_0); }
+    if krnl.thrd_mp.dom().contains(c.current_thread->Some_0) { kernel_thread_projection_at(krnl, c.current_thread->Some_0); }
 }
 
 /// The entry state's K facts on the unlocked, live, non-Off cpu `cpu_id` with a set request bit give the hold step's

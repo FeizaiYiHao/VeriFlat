@@ -84,22 +84,22 @@ pub proof fn kernel_page_owner_changed_implies_u_container_map(before: &KernelK,
 /// Replacing thread `thread`'s syscall progress, every other thread unchanged, projects to that thread-map update.
 pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, post: &KernelK, thread: RwLockThreadPtr)
     requires
-        pre.thr_mp.dom().contains(thread),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread),
-        post.thr_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress, ..pre.thr_mp.spec_index(thread).view() }),
-        post.thr_mp.spec_index(thread).locking_thread() == pre.thr_mp.spec_index(thread).locking_thread(),
-        post.thr_mp.spec_index(thread).being_killed() == pre.thr_mp.spec_index(thread).being_killed(),
+        pre.thrd_mp.dom().contains(thread),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
+        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, ..pre.thrd_mp.spec_index(thread).view() }),
+        post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),
+        post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            kernel_k_to_kernel_u(*post).thread_map == a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] })
+            kernel_k_to_kernel_u(*post).thread_map == a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] })
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
+    assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
     });
 }
 

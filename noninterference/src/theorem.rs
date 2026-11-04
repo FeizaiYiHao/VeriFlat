@@ -101,18 +101,18 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
             cpu_offline_request_child_step_pre(old_u, cpu_id, target) && cpu_offline_request_child_step(old_u, new_u, cpu_id, target),
         StepLabel::CpuOnlineChild { target } => cpu_online_child_step_pre(old_u, cpu_id, target) && cpu_online_child_step(old_u, new_u, cpu_id, target),
         StepLabel::PciAttach { bus, device, function } => pci_attach_dma_step_pre(old_u, cpu_id, bus, device, function) && pci_attach_dma_step(old_u, new_u, cpu_id, bus, device, function),
-        StepLabel::NewThreadEnter { regs, endpoint_index } =>
-            new_thread_enter_step_pre(old_u, cpu_id, endpoint_index) && new_thread_enter_step(old_u, new_u, cpu_id, regs, endpoint_index),
+        StepLabel::NewThreadEnter { regs, endpoint_index: ep_idx } =>
+            new_thread_enter_step_pre(old_u, cpu_id, ep_idx) && new_thread_enter_step(old_u, new_u, cpu_id, regs, ep_idx),
         StepLabel::NewThreadFinish => new_thread_finish_step_pre(old_u, cpu_id) && new_thread_finish_step(old_u, new_u, cpu_id),
         StepLabel::NewEndpointEnter { slot } => new_endpoint_enter_step_pre(old_u, cpu_id, slot) && new_endpoint_enter_step(old_u, new_u, cpu_id, slot),
         StepLabel::NewEndpointFinish => new_endpoint_finish_step_pre(old_u, cpu_id) && new_endpoint_finish_step(old_u, new_u, cpu_id),
-        StepLabel::NewProcessEnter { range, regs, endpoint_index, with_iommu } => new_process_enter_step_pre(old_u, cpu_id, range, endpoint_index, with_iommu)
-            && new_process_enter_step(old_u, new_u, cpu_id, range, regs, endpoint_index, with_iommu),
+        StepLabel::NewProcessEnter { range, regs, endpoint_index: ep_idx, with_iommu } => new_process_enter_step_pre(old_u, cpu_id, range, ep_idx, with_iommu)
+            && new_process_enter_step(old_u, new_u, cpu_id, range, regs, ep_idx, with_iommu),
         StepLabel::NewProcessPublish => new_process_publish_step_pre(old_u, cpu_id) && new_process_publish_step(old_u, new_u, cpu_id),
         StepLabel::NewProcessFinish => new_process_finish_step_pre(old_u, cpu_id) && new_process_finish_step(old_u, new_u, cpu_id),
-        StepLabel::NewContainerEnter { range, funding, process_quota, transfer_cpu, regs, endpoint_index } =>
-            new_container_enter_step_pre(old_u, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index)
-            && new_container_enter_step(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index),
+        StepLabel::NewContainerEnter { range, funding, process_quota, transfer_cpu, regs, endpoint_index: ep_idx } =>
+            new_container_enter_step_pre(old_u, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
+            && new_container_enter_step(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
         StepLabel::NewContainerPublish => new_container_publish_step_pre(old_u, cpu_id) && new_container_publish_step(old_u, new_u, cpu_id),
         StepLabel::NewContainerFinish => new_container_finish_step_pre(old_u, cpu_id) && new_container_finish_step(old_u, new_u, cpu_id),
         StepLabel::Share4kDirectory => share_4k_directory_step_pre(old_u, cpu_id) && share_4k_directory_step(old_u, new_u, cpu_id),
@@ -310,19 +310,19 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::CpuOfflineRequestChild { target } => { cpu_offline_request_child_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_child_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::CpuOnlineChild { target } => { cpu_online_child_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_online_child_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::PciAttach { bus, device, function } => { pci_attach_dma_step_lr(old_u, new_u, cpu_id, bus, device, function, x, y); pci_attach_dma_step_iso(old_u, new_u, cpu_id, bus, device, function, x, y); },
-            StepLabel::NewThreadEnter { regs, endpoint_index } => { new_thread_enter_step_lr(old_u, new_u, cpu_id, regs, endpoint_index, x, y); new_thread_enter_step_iso(old_u, new_u, cpu_id, regs, endpoint_index, x, y); },
+            StepLabel::NewThreadEnter { regs, endpoint_index: ep_idx } => { new_thread_enter_step_lr(old_u, new_u, cpu_id, regs, ep_idx, x, y); new_thread_enter_step_iso(old_u, new_u, cpu_id, regs, ep_idx, x, y); },
             StepLabel::NewThreadFinish => { new_thread_finish_step_lr(old_u, new_u, cpu_id, x, y); new_thread_finish_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::NewEndpointEnter { slot } => { new_endpoint_enter_step_lr(old_u, new_u, cpu_id, slot, x, y); new_endpoint_enter_step_iso(old_u, new_u, cpu_id, slot, x, y); },
             StepLabel::NewEndpointFinish => { new_endpoint_finish_step_lr(old_u, new_u, cpu_id, x, y); new_endpoint_finish_step_iso(old_u, new_u, cpu_id, x, y); },
-            StepLabel::NewProcessEnter { range, regs, endpoint_index, with_iommu } => {
-                new_process_enter_step_lr(old_u, new_u, cpu_id, range, regs, endpoint_index, with_iommu, x, y);
-                new_process_enter_step_iso(old_u, new_u, cpu_id, range, regs, endpoint_index, with_iommu, x, y);
+            StepLabel::NewProcessEnter { range, regs, endpoint_index: ep_idx, with_iommu } => {
+                new_process_enter_step_lr(old_u, new_u, cpu_id, range, regs, ep_idx, with_iommu, x, y);
+                new_process_enter_step_iso(old_u, new_u, cpu_id, range, regs, ep_idx, with_iommu, x, y);
             },
             StepLabel::NewProcessPublish => { new_process_publish_step_lr(old_u, new_u, cpu_id, x, y); new_process_publish_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::NewProcessFinish => { new_process_finish_step_lr(old_u, new_u, cpu_id, x, y); new_process_finish_step_iso(old_u, new_u, cpu_id, x, y); },
-            StepLabel::NewContainerEnter { range, funding, process_quota, transfer_cpu, regs, endpoint_index } => {
-                new_container_enter_step_lr(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index, x, y);
-                new_container_enter_step_iso(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index, x, y);
+            StepLabel::NewContainerEnter { range, funding, process_quota, transfer_cpu, regs, endpoint_index: ep_idx } => {
+                new_container_enter_step_lr(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx, x, y);
+                new_container_enter_step_iso(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx, x, y);
             },
             StepLabel::NewContainerPublish => { new_container_publish_step_lr(old_u, new_u, cpu_id, x, y); new_container_publish_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::NewContainerFinish => { new_container_finish_step_lr(old_u, new_u, cpu_id, x, y); new_container_finish_step_iso(old_u, new_u, cpu_id, x, y); },

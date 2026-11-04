@@ -16,24 +16,24 @@ pub open spec fn rebalance_pull_syscall_result(pre: KernelU, cpu_id: CpuId) -> R
     } else { RebalanceResult::Nothing }
 }
 
-/// Moves the head of shard `victim` of `scheduler_ptr` to the tail of the empty shard `cpu_id` and retargets
+/// Moves the head of shard `victim` of `sched_ptr` to the tail of the empty shard `cpu_id` and retargets
 /// that thread's scheduled state; every other object is unchanged.
 #[verifier::opaque]
-pub(super) open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    let before = pre.thr_mp.spec_index(thread_ptr);
-    let after = post.thr_mp.spec_index(thread_ptr);
-    let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);
-    let scheduler_after = post.sched_mp.spec_index(scheduler_ptr);
+pub(super) open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, victim: CpuId, thrd_ptr: RwLockThreadPtr) -> bool {
+    let before = pre.thrd_mp.spec_index(thrd_ptr);
+    let after = post.thrd_mp.spec_index(thrd_ptr);
+    let scheduler_before = pre.sched_mp.spec_index(sched_ptr);
+    let scheduler_after = post.sched_mp.spec_index(sched_ptr);
     let node = before.view().scheduler_linkedlist_node.addr();
-    &&& post == (KernelK { thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..pre })
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
+    &&& post == (KernelK { thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, ..pre })
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
     &&& after.is_init() == before.is_init()
     &&& after.view_rodata() == before.view_rodata()
     &&& after.view_ghost() == before.view_ghost()
     &&& after.being_killed() == before.being_killed()
     &&& after.locking_thread() == before.locking_thread()
     &&& after.view() == (Thread { state: ThreadState::SCHEDULED { cpu_id }, ..before.view() })
-    &&& post.sched_mp.unchanged_except(&pre.sched_mp, scheduler_ptr)
+    &&& post.sched_mp.unchanged_except(&pre.sched_mp, sched_ptr)
     &&& scheduler_after.owning_container == scheduler_before.owning_container
     &&& forall|c: CpuId| #![trigger scheduler_after.shards.spec_index(c)]
         index_valid(NUM_CPUS, c) && c != victim && c != cpu_id ==> scheduler_after.shards.spec_index(c) == scheduler_before.shards.spec_index(c)
@@ -49,8 +49,8 @@ pub(super) open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post
     &&& scheduler_after.shard(victim).queue.view() == scheduler_before.shard(victim).queue.view().skip(1)
     &&& scheduler_after.shard(victim).queue.map() == scheduler_before.shard(victim).queue.map().remove(node)
     &&& scheduler_after.shard(victim).queue.dom() == scheduler_before.shard(victim).queue.dom().remove(node)
-    &&& scheduler_after.shard(cpu_id).queue.view() == scheduler_before.shard(cpu_id).queue.view().push(thread_ptr)
-    &&& scheduler_after.shard(cpu_id).queue.map() == scheduler_before.shard(cpu_id).queue.map().insert(node, thread_ptr)
+    &&& scheduler_after.shard(cpu_id).queue.view() == scheduler_before.shard(cpu_id).queue.view().push(thrd_ptr)
+    &&& scheduler_after.shard(cpu_id).queue.map() == scheduler_before.shard(cpu_id).queue.map().insert(node, thrd_ptr)
     &&& scheduler_after.shard(cpu_id).queue.dom() == scheduler_before.shard(cpu_id).queue.dom().insert(node)
 }
 

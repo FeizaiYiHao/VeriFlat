@@ -4,7 +4,7 @@ use crate::*;
 use super::syscall_kill_container_spec::kill_container_progress;
 
 verus! {
-/// The killer `thread_ptr` of process `process_ptr`, running on `cpu_id` in its container `owner_ptr`, walks `chain`,
+/// The killer `thrd_ptr` of process `prc_ptr`, running on `cpu_id` in its container `owner_ptr`, walks `chain`,
 /// the containers it marked with `killer_info` from a child of its container down to the target, and works on the
 /// target, or on its own container once the chain is empty, at stage `Walk`. It write-holds its cpu, inside its kernel
 /// step, its process, itself, and its container with `cpu_perm`, `process_perm`, `thread_perm`, and `owner_perm`, every
@@ -12,21 +12,21 @@ verus! {
 /// at its depth below its own container; every chain container is the child of the one before it, lies below the
 /// killer's container, and, except the target, still owns processes.
 pub open spec fn kill_container_walk_state(
-    k: KernelK, lctx: LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
     chain: Seq<RwLockContainerPtr>, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, owner_perm: LockPerm, chain_perms: Map<RwLockContainerPtr, LockPerm>,
 ) -> bool {
     let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
-    let process = k.prc_mp.spec_index(process_ptr);
-    let thread = k.thr_mp.spec_index(thread_ptr);
+    let process = k.prc_mp.spec_index(prc_ptr);
+    let thread = k.thrd_mp.spec_index(thrd_ptr);
     let owner = k.ctn_mp.spec_index(owner_ptr);
     let base = owner.view_rodata().view().depth + 1;
     &&& cpu_id == lctx.cpu_id()
-    &&& killer_held_context(k, lctx, process_ptr, thread_ptr, lctx.container_lock_map().dom())
-    &&& lctx.thread_lock_map().dom() =~= set![thread_ptr]
-    &&& lctx.process_lock_map().dom() =~= set![process_ptr]
+    &&& killer_held_context(k, lctx, prc_ptr, thrd_ptr, lctx.container_lock_map().dom())
+    &&& lctx.thread_lock_map().dom() =~= set![thrd_ptr]
+    &&& lctx.process_lock_map().dom() =~= set![prc_ptr]
     &&& lctx.cpu_set_lock_map().dom().is_empty()
-    &&& k.prc_mp.dom().contains(process_ptr)
-    &&& k.thr_mp.dom().contains(thread_ptr)
+    &&& k.prc_mp.dom().contains(prc_ptr)
+    &&& k.thrd_mp.dom().contains(thrd_ptr)
     &&& k.cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
     &&& k.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None
     &&& cpu.owning_container == owner_ptr
@@ -37,12 +37,12 @@ pub open spec fn kill_container_walk_state(
     &&& process.view().state.view() is Running
     &&& !thread.being_killed()
     &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.view().owning_proc == process_ptr
+    &&& thread.view().owning_proc == prc_ptr
     &&& thread.view().temp_alloc_clean()
     &&& thread.view().free_quota_pending_clean()
     &&& thread.view().syscall_progress.view() == kill_container_progress(if chain.len() == 0 { owner_ptr } else { chain[chain.len() - 1] }, ContainerKillStage::Walk)
     &&& !thread.view_ghost().exited
-    &&& killer_info.process == process_ptr
+    &&& killer_info.process == prc_ptr
     &&& k.ctn_mp.dom().contains(owner_ptr)
     &&& !owner.being_killed()
     &&& owner.view_rodata().view().depth == cpu.container_depth

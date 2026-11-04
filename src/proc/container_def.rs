@@ -71,7 +71,7 @@ impl LockInvTrait for Container {
 }
 
 impl Container {
-    pub fn new_boot_root(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
+    pub fn new_boot_root(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
         ensures
             ret.inv(),
             !ret.zombie,
@@ -81,12 +81,12 @@ impl Container {
             ret.root_process == root_process,
             ret.owned_pages == owned_pages,
     {
-        let mut ret = Self::new_staged(container_ptr, root_process, 0);
+        let mut ret = Self::new_staged(ctn_ptr, root_process, 0);
         ret.owned_pages = owned_pages;
         ret
     }
 
-    pub fn new_staged(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
+    pub fn new_staged(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
             !ret.zombie,
@@ -96,7 +96,7 @@ impl Container {
             ret.root_process == root_process,
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
-        Self { zombie: false, parent_linkedlist_node: ExternalNode::new(container_ptr), children: LinkedList::new(Some(depth), Some(container_ptr)), root_process,
+        Self { zombie: false, parent_linkedlist_node: ExternalNode::new(ctn_ptr), children: LinkedList::new(Some(depth), Some(ctn_ptr)), root_process,
             owned_pages: Ghost(Set::empty()) }
     }
 

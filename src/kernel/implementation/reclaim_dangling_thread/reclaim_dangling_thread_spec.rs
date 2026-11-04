@@ -4,24 +4,24 @@ use crate::*;
 verus! {
 /// The killed dangling thread `dangling_ptr`, which no process or other thread refers to and which holds no quota, leaves the thread
 /// map and the thread sets of its container and that container's ancestors, and its page returns through its free-list
-/// node at `cache_node_addr` to shard `cpu_id` of the 4K allocator `allocator_ptr` of its owner `owner`, whose quota
+/// node at `cache_node_addr` to shard `cpu_id` of the 4K allocator `allc_ptr` of its owner `owner`, whose quota
 /// grows by one.
 #[verifier::opaque]
 pub open spec fn reclaim_dangling_thread_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, dangling_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, cache_node_addr: usize,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, dangling_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cache_node_addr: usize,
 ) -> bool {
-    let page_index = page_ptr2page_index(dangling_ptr);
-    let dangling = pre.thr_mp.spec_index(dangling_ptr).view();
-    let pre_page = pre.pg_arr.spec_index(page_index).view();
-    let post_page = post.pg_arr.spec_index(page_index).view();
-    let free_state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    let pre_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
-    let post_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
+    let pg_idx = page_ptr2page_index(dangling_ptr);
+    let dangling = pre.thrd_mp.spec_index(dangling_ptr).view();
+    let pre_page = pre.pg_arr.spec_index(pg_idx).view();
+    let post_page = post.pg_arr.spec_index(pg_idx).view();
+    let free_state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    let pre_allocator = pre.allc_4k_mp.spec_index(allc_ptr);
+    let post_allocator = post.allc_4k_mp.spec_index(allc_ptr);
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
-    let container_ptr = dangling.owning_container;
-    let uppers = pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
-    &&& post == (KernelK { ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
+    let ctn_ptr = dangling.owning_container;
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    &&& post == (KernelK { ctn_mp: post.ctn_mp, thrd_mp: post.thrd_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> {
@@ -33,20 +33,20 @@ pub open spec fn reclaim_dangling_thread_eof_transition_framing(
             &&& after.killer_info() == before.killer_info()
             &&& after.control() == before.control()
             &&& after.view_ghost() == (ContainerGhost {
-                owned_threads: if c == container_ptr { Ghost(before.view_ghost().owned_threads.view().remove(dangling_ptr)) } else { before.view_ghost().owned_threads },
+                owned_threads: if c == ctn_ptr { Ghost(before.view_ghost().owned_threads.view().remove(dangling_ptr)) } else { before.view_ghost().owned_threads },
                 owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(before.view_ghost().owned_indirect_threads.view().remove(dangling_ptr)) }
                     else { before.view_ghost().owned_indirect_threads },
                 ..before.view_ghost()
             })
         }
-    &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(dangling_ptr)
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_2m]
-        post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m
-    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom().remove(dangling_ptr)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)] post.thrd_mp.dom().contains(t) ==> post.thrd_mp.spec_index(t) == pre.thrd_mp.spec_index(t)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t).view().temp_alloc_cache_2m]
+        post.thrd_mp.dom().contains(t) ==> post.thrd_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_2m
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
-            &&& post.pg_arr.spec_index(i).view().view().state == if i == page_index { free_state } else { pre.pg_arr.spec_index(i).view().view().state }
+            &&& post.pg_arr.spec_index(i).view().view().state == if i == pg_idx { free_state } else { pre.pg_arr.spec_index(i).view().view().state }
             &&& post.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(i).view().view().owning_container
             &&& post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings()
         }
@@ -58,7 +58,7 @@ pub open spec fn reclaim_dangling_thread_eof_transition_framing(
     &&& post_page.view().free_list_node_storage.addr() == cache_node_addr
     &&& post_page.view() == (Page { state: free_state, free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator_ptr)
+    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allc_ptr)
     &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + 1
     &&& post_cache.view().view() == pre_cache.view().view().insert(0, dangling_ptr)
     &&& post_cache.view().map() == pre_cache.view().map().insert(cache_node_addr, dangling_ptr)

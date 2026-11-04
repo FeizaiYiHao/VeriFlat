@@ -24,15 +24,15 @@ pub open spec fn cpu_offline_request_pending(pre: KernelU, cpu_id: CpuId, target
 #[verifier::opaque]
 pub open spec fn cpu_offline_request_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let container = old_u.container_map[container_ptr];
+    let ctn_ptr = cpu.owning_container;
+    let container = old_u.container_map[ctn_ptr];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& container.cpu_set_lock is Unlocked
     &&& index_valid(NUM_CPUS, target)
-    &&& old_u.cpu_array[target as int].owning_container == container_ptr
+    &&& old_u.cpu_array[target as int].owning_container == ctn_ptr
     &&& !(old_u.cpu_array[target as int].state is Off)
     &&& !container.cpu_offline_requests[target as int]
 }
@@ -73,15 +73,15 @@ pub open spec fn cpu_online_syscall_result(pre: KernelU, cpu_id: CpuId, target: 
 #[verifier::opaque]
 pub open spec fn cpu_online_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
+    let ctn_ptr = cpu.owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map[container_ptr].cpu_set_lock is Unlocked
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map[ctn_ptr].cpu_set_lock is Unlocked
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.cpu_array[target as int].lock_state is Unlocked
-    &&& old_u.cpu_array[target as int].owning_container == container_ptr
+    &&& old_u.cpu_array[target as int].owning_container == ctn_ptr
     &&& old_u.cpu_array[target as int].state is Off
 }
 
@@ -131,8 +131,8 @@ pub open spec fn cpu_offline_request_child_pending(pre: KernelU, target: CpuId) 
 #[verifier::opaque]
 pub open spec fn cpu_offline_request_child_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = old_u.cpu_array[target as int].owning_container;
-    let container = old_u.container_map[container_ptr];
+    let ctn_ptr = old_u.cpu_array[target as int].owning_container;
+    let container = old_u.container_map[ctn_ptr];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
@@ -141,7 +141,7 @@ pub open spec fn cpu_offline_request_child_step_pre(old_u: KernelU, cpu_id: CpuI
     &&& !old_u.container_map[cpu.owning_container].killed
     &&& !old_u.container_map[cpu.owning_container].zombie
     &&& index_valid(NUM_CPUS, target)
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& container.parent == Some(cpu.owning_container)
     &&& container.cpu_set_lock is Unlocked
     &&& !(old_u.cpu_array[target as int].state is Off)
@@ -189,7 +189,7 @@ pub open spec fn cpu_online_child_syscall_result(pre: KernelU, cpu_id: CpuId, ch
 #[verifier::opaque]
 pub open spec fn cpu_online_child_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = old_u.cpu_array[target as int].owning_container;
+    let ctn_ptr = old_u.cpu_array[target as int].owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
@@ -198,9 +198,9 @@ pub open spec fn cpu_online_child_step_pre(old_u: KernelU, cpu_id: CpuId, target
     &&& !old_u.container_map[cpu.owning_container].killed
     &&& !old_u.container_map[cpu.owning_container].zombie
     &&& index_valid(NUM_CPUS, target)
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map[container_ptr].parent == Some(cpu.owning_container)
-    &&& old_u.container_map[container_ptr].cpu_set_lock is Unlocked
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map[ctn_ptr].parent == Some(cpu.owning_container)
+    &&& old_u.container_map[ctn_ptr].cpu_set_lock is Unlocked
     &&& old_u.cpu_array[target as int].lock_state is Unlocked
     &&& old_u.cpu_array[target as int].state is Off
 }

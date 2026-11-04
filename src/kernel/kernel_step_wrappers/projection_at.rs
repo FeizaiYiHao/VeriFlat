@@ -16,7 +16,7 @@ pub proof fn kernel_u_domains_projection(krnl: &KernelK)
         kernel_k_to_kernel_u(*krnl).cpu_array.len() == NUM_CPUS,
         kernel_k_to_kernel_u(*krnl).container_map.dom() == krnl.ctn_mp.dom(),
         kernel_k_to_kernel_u(*krnl).process_map.dom() == krnl.prc_mp.dom(),
-        kernel_k_to_kernel_u(*krnl).thread_map.dom() == krnl.thr_mp.dom(),
+        kernel_k_to_kernel_u(*krnl).thread_map.dom() == krnl.thrd_mp.dom(),
         kernel_k_to_kernel_u(*krnl).endpoint_map.dom() == krnl.ep_mp.dom(),
         kernel_k_to_kernel_u(*krnl).iommu_root_table == krnl.irt.view().user_view(),
         kernel_k_to_kernel_u(*krnl).cpu_tlb == krnl.cpu_tlb.view(),
@@ -106,11 +106,11 @@ pub proof fn kernel_iommu_root_table_projection_at(krnl: &KernelK, bus: usize, d
 
 /// One thread entry of the user projection, without unfolding the other projected maps.
 pub proof fn kernel_thread_projection_at(krnl: &KernelK, ptr: RwLockThreadPtr)
-    requires krnl.thr_mp.dom().contains(ptr),
+    requires krnl.thrd_mp.dom().contains(ptr),
     ensures
         kernel_k_to_kernel_u(*krnl).thread_map.dom().contains(ptr),
         ({
-            let thread = krnl.thr_mp.spec_index(ptr);
+            let thread = krnl.thrd_mp.spec_index(ptr);
             let t = thread.view();
             kernel_k_to_kernel_u(*krnl).thread_map[ptr] == (ThreadU {
                 lock_state: thread.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee,
@@ -157,27 +157,27 @@ pub proof fn kernel_write_held_context_projection(krnl: &KernelK, lctx: &LocalCo
         endpoint matches Some(e) ==> kernel_k_to_kernel_u(*krnl).endpoint_map.dom().contains(e) && kernel_k_to_kernel_u(*krnl).endpoint_map[e].lock_state is WriteLocked,
         kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process),
         kernel_k_to_kernel_u(*krnl).thread_map.dom().contains(thread),
-        kernel_k_to_kernel_u(*krnl).thread_map[thread].owning_container == krnl.thr_mp.spec_index(thread).view().owning_container,
-        kernel_k_to_kernel_u(*krnl).thread_map[thread].owning_proc == krnl.thr_mp.spec_index(thread).view().owning_proc,
-        kernel_k_to_kernel_u(*krnl).thread_map[thread].syscall_progress == krnl.thr_mp.spec_index(thread).view().syscall_progress.view(),
+        kernel_k_to_kernel_u(*krnl).thread_map[thread].owning_container == krnl.thrd_mp.spec_index(thread).view().owning_container,
+        kernel_k_to_kernel_u(*krnl).thread_map[thread].owning_proc == krnl.thrd_mp.spec_index(thread).view().owning_proc,
+        kernel_k_to_kernel_u(*krnl).thread_map[thread].syscall_progress == krnl.thrd_mp.spec_index(thread).view().syscall_progress.view(),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu as int].current_thread == krnl.cpu_arr.spec_index(cpu).view().view().view().current_thread,
         kernel_k_to_kernel_u(*krnl).process_map[process].pcid == krnl.prc_mp.spec_index(process).view_rodata().view().pcid,
         !krnl.prc_mp.spec_index(process).view().zombie && typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process).view().pagetable, TypedLockMode::Write) ==> {
             &&& kernel_k_to_kernel_u(*krnl).process_map[process].pagetable is Some
             &&& kernel_k_to_kernel_u(*krnl).process_map[process].pagetable->Some_0.lock_state is WriteLocked
         },
-        typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.thr_mp.spec_index(thread).view().owning_container, TypedLockMode::Write) ==> {
-            &&& kernel_k_to_kernel_u(*krnl).container_map.dom().contains(krnl.thr_mp.spec_index(thread).view().owning_container)
-            &&& kernel_k_to_kernel_u(*krnl).container_map[krnl.thr_mp.spec_index(thread).view().owning_container].lock_state is WriteLocked
+        typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.thrd_mp.spec_index(thread).view().owning_container, TypedLockMode::Write) ==> {
+            &&& kernel_k_to_kernel_u(*krnl).container_map.dom().contains(krnl.thrd_mp.spec_index(thread).view().owning_container)
+            &&& kernel_k_to_kernel_u(*krnl).container_map[krnl.thrd_mp.spec_index(thread).view().owning_container].lock_state is WriteLocked
         },
         ({
-            let container = krnl.thr_mp.spec_index(thread).view().owning_container;
+            let container = krnl.thrd_mp.spec_index(thread).view().owning_container;
             typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write)
                 && typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), krnl.ctn_mp.spec_index(container).view_rodata().view().cpu_set, TypedLockMode::Write)
                 ==> kernel_k_to_kernel_u(*krnl).container_map[container].cpu_set_lock is WriteLocked
         }),
         ({
-            let owner = krnl.thr_mp.spec_index(thread).view().owning_proc;
+            let owner = krnl.thrd_mp.spec_index(thread).view().owning_proc;
             krnl.prc_mp.dom().contains(owner) && !krnl.prc_mp.spec_index(owner).view().zombie
                 && typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(owner).view().pagetable, TypedLockMode::Write) ==> {
                 &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(owner)
@@ -194,15 +194,15 @@ pub proof fn kernel_write_held_context_projection(krnl: &KernelK, lctx: &LocalCo
 {
     reveal(kernel_k_to_kernel_u); reveal(LockedArray::typed_lock_map_aligned);
     if typed_lock_map_contains_mode(lctx.process_lock_map(), process, TypedLockMode::Write) { krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process); }
-    krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread);
+    krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread);
     if let Some(e) = endpoint { krnl.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), e); }
     let pagetable = krnl.prc_mp.spec_index(process).view().pagetable;
-    let container = krnl.thr_mp.spec_index(thread).view().owning_container;
+    let container = krnl.thrd_mp.spec_index(thread).view().owning_container;
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
     if typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write) { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); }
     let cpu_set = krnl.ctn_mp.spec_index(container).view_rodata().view().cpu_set;
     if typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), cpu_set, TypedLockMode::Write) { krnl.cpu_set_mp.typed_lock_map_aligned_write_at(lctx.cpu_set_lock_map(), lctx.thread_id(), cpu_set); }
-    let owner_table = krnl.prc_mp.spec_index(krnl.thr_mp.spec_index(thread).view().owning_proc).view().pagetable;
+    let owner_table = krnl.prc_mp.spec_index(krnl.thrd_mp.spec_index(thread).view().owning_proc).view().pagetable;
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), owner_table, TypedLockMode::Write) { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), owner_table); }
     if let Some(t) = krnl.prc_mp.spec_index(process).view().iommu_table {
         if typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write) { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
@@ -210,17 +210,17 @@ pub proof fn kernel_write_held_context_projection(krnl: &KernelK, lctx: &LocalCo
 }
 
 /// Expose concrete entries of the user projection without unfolding every projected map at the caller.
-pub proof fn kernel_cpu_thread_projection_at(krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, endpoint_ptr: Option<RwLockEndpointPtr>)
+pub proof fn kernel_cpu_thread_projection_at(krnl: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ep_ptr: Option<RwLockEndpointPtr>)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        krnl.prc_mp.dom().contains(process_ptr),
-        krnl.thr_mp.dom().contains(thread_ptr),
-        endpoint_ptr is Some ==> krnl.ep_mp.dom().contains(endpoint_ptr->Some_0),
+        krnl.prc_mp.dom().contains(prc_ptr),
+        krnl.thrd_mp.dom().contains(thrd_ptr),
+        ep_ptr is Some ==> krnl.ep_mp.dom().contains(ep_ptr->Some_0),
     ensures
         kernel_k_to_kernel_u(*krnl).cpu_array.len() == NUM_CPUS,
         kernel_k_to_kernel_u(*krnl).container_map.dom() == krnl.ctn_mp.dom(),
         kernel_k_to_kernel_u(*krnl).process_map.dom() == krnl.prc_mp.dom(),
-        kernel_k_to_kernel_u(*krnl).thread_map.dom() == krnl.thr_mp.dom(),
+        kernel_k_to_kernel_u(*krnl).thread_map.dom() == krnl.thrd_mp.dom(),
         kernel_k_to_kernel_u(*krnl).endpoint_map.dom() == krnl.ep_mp.dom(),
         ({
             let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
@@ -231,12 +231,12 @@ pub proof fn kernel_cpu_thread_projection_at(krnl: &KernelK, cpu_id: CpuId, proc
                 op: krnl.cpu_op.view().view()[cpu_id as int],
             })
         }),
-        kernel_k_to_kernel_u(*krnl).process_map.spec_index(process_ptr).lock_state == krnl.prc_mp.spec_index(process_ptr).lock_state_u(),
-        kernel_k_to_kernel_u(*krnl).process_map.spec_index(process_ptr).killed == krnl.prc_mp.spec_index(process_ptr).being_killed(),
+        kernel_k_to_kernel_u(*krnl).process_map.spec_index(prc_ptr).lock_state == krnl.prc_mp.spec_index(prc_ptr).lock_state_u(),
+        kernel_k_to_kernel_u(*krnl).process_map.spec_index(prc_ptr).killed == krnl.prc_mp.spec_index(prc_ptr).being_killed(),
         ({
-            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let t = thread.view();
-            kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr) == (ThreadU {
+            kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr) == (ThreadU {
                 lock_state: thread.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee,
                 owning_container: t.owning_container, owning_proc: t.owning_proc, last_cpu: t.last_cpu,
                 quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g,
@@ -246,15 +246,15 @@ pub proof fn kernel_cpu_thread_projection_at(krnl: &KernelK, cpu_id: CpuId, proc
                 syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
             })
         }),
-        endpoint_ptr is Some ==> {
-            let e = krnl.ep_mp.spec_index(endpoint_ptr->Some_0);
-            kernel_k_to_kernel_u(*krnl).endpoint_map.spec_index(endpoint_ptr->Some_0) == (EndpointU {
+        ep_ptr is Some ==> {
+            let e = krnl.ep_mp.spec_index(ep_ptr->Some_0);
+            kernel_k_to_kernel_u(*krnl).endpoint_map.spec_index(ep_ptr->Some_0) == (EndpointU {
                 lock_state: e.lock_state_u(), queue: e.view().queue.view(), queue_state: e.view().queue_state,
                 owning_threads: e.view().owning_threads.view(), owning_container: e.view().owning_container, killed: e.being_killed(),
             })
         },
         ({
-            let c = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
+            let c = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
             krnl.ctn_mp.dom().contains(c)
                 ==> kernel_k_to_kernel_u(*krnl).container_map[c].free_pcids == PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
         }),
@@ -403,14 +403,14 @@ pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalCont
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some,
         typed_lock_map_contains_mode(lctx.thread_lock_map(), krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0, TypedLockMode::Write),
-        krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
+        krnl.thrd_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
         ({
             let caller = krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-            krnl.thr_mp.spec_index(caller).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
-                ==> krnl.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == caller
+            krnl.thrd_mp.spec_index(caller).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+                ==> krnl.thrd_mp.spec_index(peer).view().state is IPC_TRANSIT && krnl.thrd_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == caller
         }),
-        krnl.thr_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).source_thread),
-        krnl.thr_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).quota_thread),
+        krnl.thrd_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).source_thread),
+        krnl.thrd_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).quota_thread),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), share_4k_objects_k(*krnl, cpu_id).source_thread, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), share_4k_objects_k(*krnl, cpu_id).quota_thread, TypedLockMode::Write),
         krnl.ctn_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).target_container),
@@ -422,7 +422,7 @@ pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalCont
             let target = krnl.prc_mp.spec_index(objects.target);
             &&& share_4k_locked(u, cpu_id)
             &&& u.cpu_array[cpu_id as int].current_thread == Some(caller)
-            &&& u.thread_map[caller].syscall_progress == krnl.thr_mp.spec_index(caller).view().syscall_progress.view()
+            &&& u.thread_map[caller].syscall_progress == krnl.thrd_mp.spec_index(caller).view().syscall_progress.view()
             &&& share_4k_objects(u, cpu_id) == objects
             &&& u.container_map.dom().contains(objects.target_container)
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), objects.target_container, TypedLockMode::Write) ==> u.container_map[objects.target_container].lock_state is WriteLocked
@@ -431,7 +431,7 @@ pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalCont
                 &&& u.container_map[objects.transfer_source->Some_0].lock_state is WriteLocked
             }
             &&& u.thread_map.dom().contains(objects.source_thread)
-            &&& u.thread_map[objects.source_thread].owning_proc == krnl.thr_mp.spec_index(objects.source_thread).view().owning_proc
+            &&& u.thread_map[objects.source_thread].owning_proc == krnl.thrd_mp.spec_index(objects.source_thread).view().owning_proc
             &&& u.container_map[objects.target_container].parent == krnl.ctn_mp.spec_index(objects.target_container).view_rodata().view().parent
             &&& krnl.prc_mp.dom().contains(objects.target) ==> u.process_map[objects.target].owning_container == target.view_rodata().view().owning_container
             &&& krnl.prc_mp.dom().contains(objects.target) && !target.view().zombie && typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target.view().pagetable, TypedLockMode::Write) ==> {
@@ -443,9 +443,9 @@ pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalCont
 {
     reveal(kernel_k_to_kernel_u); reveal(LockedArray::typed_lock_map_aligned); reveal(share_4k_objects_k);
     let caller = krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-    krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), caller);
-    krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), share_4k_objects_k(*krnl, cpu_id).source_thread);
-    krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), share_4k_objects_k(*krnl, cpu_id).quota_thread);
+    krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), caller);
+    krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), share_4k_objects_k(*krnl, cpu_id).source_thread);
+    krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), share_4k_objects_k(*krnl, cpu_id).quota_thread);
     let pagetable = krnl.prc_mp.spec_index(share_4k_objects_k(*krnl, cpu_id).target).view().pagetable;
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
     let container = share_4k_objects_k(*krnl, cpu_id).target_container;

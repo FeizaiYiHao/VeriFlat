@@ -21,28 +21,28 @@ pub open spec fn schedule_syscall_result(pre: KernelU, cpu_id: CpuId) -> Schedul
 /// Switches the CPU to the head of its scheduler shard, optionally requeues the
 /// previous thread there, and updates the affected PCID publication and TLB state.
 #[verifier::opaque]
-pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
     let new_cpu = cpu_after.view().view();
     let previous = old_cpu.current_thread;
-    let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
+    let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
     let pcid = target.pcid;
     let dirty = cpu_before.view().tlb_dirty_bitmap().spec_index(pcid);
     let flush = pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
         || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable));
-    let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);
-    let scheduler_after = post.sched_mp.spec_index(scheduler_ptr);
+    let scheduler_before = pre.sched_mp.spec_index(sched_ptr);
+    let scheduler_after = post.sched_mp.spec_index(sched_ptr);
     let shard_before = scheduler_before.shards.spec_index(cpu_id).view();
     let shard_after = scheduler_after.shards.spec_index(cpu_id).view();
     let queue_before = shard_before.view().queue;
     let queue_after = shard_after.view().queue;
-    let next_node = pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr();
+    let next_node = pre.thrd_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr();
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, sched_mp: post.sched_mp, thrd_mp: post.thrd_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
@@ -60,12 +60,12 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     &&& cpu_after.view().wf()
     &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(ptr)] #![trigger post.thr_mp.spec_index(ptr)] pre.thr_mp.dom().contains(ptr) ==> {
-        let before = pre.thr_mp.spec_index(ptr);
-        let after = post.thr_mp.spec_index(ptr);
-        &&& post.thr_mp.view().spec_index(ptr).is_init() == pre.thr_mp.view().spec_index(ptr).is_init()
-        &&& post.thr_mp.view().spec_index(ptr).addr() == pre.thr_mp.view().spec_index(ptr).addr()
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(ptr)] #![trigger post.thrd_mp.spec_index(ptr)] pre.thrd_mp.dom().contains(ptr) ==> {
+        let before = pre.thrd_mp.spec_index(ptr);
+        let after = post.thrd_mp.spec_index(ptr);
+        &&& post.thrd_mp.view().spec_index(ptr).is_init() == pre.thrd_mp.view().spec_index(ptr).is_init()
+        &&& post.thrd_mp.view().spec_index(ptr).addr() == pre.thrd_mp.view().spec_index(ptr).addr()
         &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
         &&& after.view().endpoint_descriptors == before.view().endpoint_descriptors
         &&& (ptr != next_thread && previous != Some(ptr) ==> after == before)
@@ -86,7 +86,7 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
             &&& (previous == Some(ptr) ==> after.view().trap_frame.is_some() && *after.view().trap_frame.get_some_0() == entry_regs)
         })
     })
-    &&& post.sched_mp.unchanged_except(&pre.sched_mp, scheduler_ptr)
+    &&& post.sched_mp.unchanged_except(&pre.sched_mp, sched_ptr)
     &&& scheduler_after.owning_container == scheduler_before.owning_container
     &&& scheduler_after.shards.entries_unchanged_except(&scheduler_before.shards, cpu_id)
     &&& shard_after.is_init() == shard_before.is_init()
@@ -97,11 +97,11 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     &&& queue_after.view() == match previous { Some(prev) => queue_before.view().skip(1).push(prev), None => queue_before.view().skip(1) }
     &&& queue_after.length as int == queue_before.length as int - 1 + if previous is Some { 1int } else { 0int }
     &&& queue_after.map() == match previous {
-        Some(prev) => queue_before.map().remove(next_node).insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev),
+        Some(prev) => queue_before.map().remove(next_node).insert(pre.thrd_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev),
         None => queue_before.map().remove(next_node),
     }
     &&& queue_after.dom() == match previous {
-        Some(prev) => queue_before.dom().remove(next_node).insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr()),
+        Some(prev) => queue_before.dom().remove(next_node).insert(pre.thrd_mp.spec_index(prev).view().scheduler_linkedlist_node.addr()),
         None => queue_before.dom().remove(next_node),
     }
     &&& needflush_after.view().index() == needflush_before.view().index()

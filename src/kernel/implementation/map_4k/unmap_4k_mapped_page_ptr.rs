@@ -35,7 +35,7 @@ pub(super) fn unmap_iommu_4k_mapped_page_ptr(
 /// Reads the page that the 4K leaf `va` maps in the read- or write-locked page table `pagetable`.
 pub(super) fn unmap_4k_mapped_page_ptr(
     krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, indices: (L4Index, L3Index, L2Index, L1Index), Tracked(lctx): Tracked<&LocalContext>, pagetable_perm: Tracked<&LockPerm>,
-) -> (page_ptr: PagePtr)
+) -> (pg_ptr: PagePtr)
     requires
         krnl.inv(),
         typed_lock_maps_aligned(krnl, lctx),
@@ -50,8 +50,8 @@ pub(super) fn unmap_4k_mapped_page_ptr(
         pagetable_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
         pagetable_perm.view().state() is ReadLock ==> krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
     ensures
-        page_ptr == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr,
-        page_ptr_valid(page_ptr),
+        pg_ptr == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr,
+        page_ptr_valid(pg_ptr),
 {
     proof {
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);

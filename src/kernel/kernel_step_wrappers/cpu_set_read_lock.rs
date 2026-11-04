@@ -3,30 +3,30 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 use crate::*;
 
 verus! {
-/// Changing only the lock mode of the cpu set of the container `container_ptr`, with its mark kept, changes only that
+/// Changing only the lock mode of the cpu set of the container `ctn_ptr`, with its mark kept, changes only that
 /// container's cpu-set lock mode in the projection.
-pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, after: &KernelK, container_ptr: RwLockContainerPtr)
+pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, after: &KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         container_cpu_set_wf(after.ctn_mp, after.cpu_set_mp),
         *after == (KernelK { cpu_set_mp: after.cpu_set_mp, ..*before }),
-        before.ctn_mp.dom().contains(container_ptr),
-        after.cpu_set_mp.unchanged_except(&before.cpu_set_mp, before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
-        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
-            == before.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
+        before.ctn_mp.dom().contains(ctn_ptr),
+        after.cpu_set_mp.unchanged_except(&before.cpu_set_mp, before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
+        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
+            == before.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
     ensures
-        kernel_k_to_kernel_u(*before).container_map.dom().contains(container_ptr),
+        kernel_k_to_kernel_u(*before).container_map.dom().contains(ctn_ptr),
         ({
             let pre = kernel_k_to_kernel_u(*before);
-            let cpu_set_lock = after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).lock_state_u();
-            kernel_k_to_kernel_u(*after) == (KernelU { container_map: pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..pre.container_map[container_ptr] }), ..pre })
+            let cpu_set_lock = after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
+            kernel_k_to_kernel_u(*after) == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre.container_map[ctn_ptr] }), ..pre })
         }),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    let cpu_set_lock = after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).lock_state_u();
-    container_cpu_set_wf_container_at(after.ctn_mp, after.cpu_set_mp, container_ptr);
-    assert_maps_equal!(post.container_map, pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..pre.container_map[container_ptr] }), c => {
+    let cpu_set_lock = after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
+    container_cpu_set_wf_container_at(after.ctn_mp, after.cpu_set_mp, ctn_ptr);
+    assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre.container_map[ctn_ptr] }), c => {
         if before.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); container_cpu_set_wf_container_at(after.ctn_mp, after.cpu_set_mp, c);
         }
@@ -36,12 +36,12 @@ pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, a
 }
 
 impl KernelK {
-    /// Records the section that read-locked the cpu set of the container `container_ptr`, or kept this thread's read hold
+    /// Records the section that read-locked the cpu set of the container `ctn_ptr`, or kept this thread's read hold
     /// on it, and otherwise changed only cpu state, TLBs, needflush flags, and page-table ghost state that keeps every
     /// table's lock mode and mappings: the recorded step read-locks that cpu set in the projection and, at most, clears
     /// one TLB entry for `pcid`.
     pub proof fn kernel_step_boundary_cpu_tlb_updated_cpu_set_rlocked(
-        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, flushed: bool, container_ptr: RwLockContainerPtr,
+        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, flushed: bool, ctn_ptr: RwLockContainerPtr,
     )
         requires
             *old(self) == (KernelK {
@@ -67,23 +67,23 @@ impl KernelK {
                 old(steps).snapshot_k().cpu_tlb.view().insert((cpu_id, pcid), old(self).cpu_tlb.spec_index((cpu_id, pcid)))
             } else { old(steps).snapshot_k().cpu_tlb.view() },
             flushed ==> cpu_tlb_within_may_cache(*old(self), cpu_id, pcid, old(self).cpu_tlb.spec_index((cpu_id, pcid)), old(self).cpu_tlb.structure_cache((cpu_id, pcid))),
-            old(self).ctn_mp.dom().contains(container_ptr),
-            old(self).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
-            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
-                == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
-            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
+            old(self).ctn_mp.dom().contains(ctn_ptr),
+            old(self).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
+            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
+                == old(steps).snapshot_k().cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
+            old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
                 let old_u = final(steps).view()[j].old_u;
-                let locked = KernelU { container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[container_ptr] }), ..old_u };
+                let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
                 final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, final(steps).view()[j].new_u, pcid)
             },
-            old(steps).snapshot_u().container_map.dom().contains(container_ptr),
+            old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
             kernel_k_to_kernel_u(*old(self)) == (KernelU {
                 cpu_tlb: old(self).cpu_tlb.view(),
-                container_map: old(steps).snapshot_u().container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old(steps).snapshot_u().container_map[container_ptr] }),
+                container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old(steps).snapshot_u().container_map[ctn_ptr] }),
                 ..old(steps).snapshot_u()
             }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
@@ -107,10 +107,10 @@ impl KernelK {
         let snap = steps.snapshot_k();
         let mid = KernelK { cpu_set_mp: self.cpu_set_mp, ..snap };
         let locked = KernelU {
-            container_map: steps.snapshot_u().container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..steps.snapshot_u().container_map[container_ptr] }),
+            container_map: steps.snapshot_u().container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..steps.snapshot_u().container_map[ctn_ptr] }),
             ..steps.snapshot_u()
         };
-        kernel_cpu_set_lock_mode_changed_implies_u_step(&snap, &mid, container_ptr);
+        kernel_cpu_set_lock_mode_changed_implies_u_step(&snap, &mid, ctn_ptr);
         assert(kernel_k_to_kernel_u(*self) == (KernelU { cpu_tlb: self.cpu_tlb.view(), ..locked })) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
             kernel_cpu_tlb_updated_implies_u_step(&mid, &*self);

@@ -668,7 +668,7 @@ impl CpuLockedArray {
 
     /// Select a thread on this running or idle CPU without changing containers.
     pub fn switch_to_thread(
-        &mut self, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cr3: PageTableRoot,
+        &mut self, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cr3: PageTableRoot,
         pcid: Pcid, process_depth: usize, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Ghost(k): Ghost<KernelK>,
         needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
     )
@@ -727,7 +727,7 @@ impl CpuLockedArray {
                     && final(tlb).structure_cache((other_cpu, other_pcid)) == old(tlb).structure_cache((other_cpu, other_pcid)),
             {
                 let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
+                let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != prc_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
                 let table = whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable_ptr);
                 &&& (!flush ==> *final(tlb) == *old(tlb))
                 &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() }
@@ -752,26 +752,26 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
-            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Running, current_process: Some(process_ptr), current_thread: Some(thread_ptr),
+            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Running, current_process: Some(prc_ptr), current_thread: Some(thrd_ptr),
                 current_pagetable: Some(pagetable_ptr), current_cr3: cr3, current_pcid: pcid, process_depth, tlb_dirty_bitmap: final(self).spec_index(cpu_id).view().view().view().tlb_dirty_bitmap,
                 ..old(self).spec_index(cpu_id).view().view().view() }),
-            final(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap() == old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr })),
+            final(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap() == old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: prc_ptr, pagetable_ptr })),
             final(self).spec_index(cpu_id).view().view().kernel_call_perm() == old(self).spec_index(cpu_id).view().view().kernel_call_perm(),
     {
         let pending = needflush.borrow_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm).needflush;
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
         let dirty = cpu.tlb_dirty_bitmap.index(pcid);
         let flush = pending || match dirty {
-            Some(entry) => entry.process_ptr != process_ptr || entry.pagetable_ptr != pagetable_ptr,
+            Some(entry) => entry.process_ptr != prc_ptr || entry.pagetable_ptr != pagetable_ptr,
             None => false,
         };
         cpu.cr3_pcid.write(cpu_id, cr3, pcid, flush, tlb, Ghost(k), Ghost(Some(pagetable_ptr)), Tracked(&mut *lctx));
         cpu.state = CpuState::Running;
-        cpu.current_process = Some(process_ptr);
-        cpu.current_thread = Some(thread_ptr);
+        cpu.current_process = Some(prc_ptr);
+        cpu.current_thread = Some(thrd_ptr);
         cpu.current_pagetable = Some(pagetable_ptr);
         cpu.process_depth = process_depth;
-        cpu.tlb_dirty_bitmap.update(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr }));
+        cpu.tlb_dirty_bitmap.update(pcid, Some(ProcessPageTablePair { process_ptr: prc_ptr, pagetable_ptr }));
         hw_cr3_pcid[cpu_id].store(cpu_id, cr3, pcid, Tracked(&*lctx));
         let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm);
         entry.set(false);

@@ -77,7 +77,7 @@ impl LockInvTrait for Process {
     open spec fn inv(&self) -> bool { self.wf() }
 }
 impl Process {
-    pub fn new_boot_root(process_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, root_thread: RwLockThreadPtr,
+    pub fn new_boot_root(prc_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, root_thread: RwLockThreadPtr,
         thread_node_addr: usize, thread_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>) -> (ret: Self)
         requires
             pagetable != iommu_table,
@@ -99,14 +99,14 @@ impl Process {
             ret.owned_threads.view() =~= seq![root_thread],
             ret.owned_threads.map() =~= Map::<usize, RwLockThreadPtr>::empty().insert(thread_node_addr, root_thread),
     {
-        let mut ret = Self::new_fresh(process_ptr, 1, pagetable, 0, 0);
+        let mut ret = Self::new_fresh(prc_ptr, 1, pagetable, 0, 0);
         ret.iommu_table = Some(iommu_table);
         ret.owned_threads.push_tail(thread_node_addr, thread_node_perm);
         ret.state = Ghost(ProcessState::Running);
         ret
     }
 
-    pub fn new_fresh(process_ptr: RwLockProcessPtr, pcid: Pcid, pagetable: RwLockPageTableRoot, container_depth: usize, depth: usize) -> (ret: Self)
+    pub fn new_fresh(prc_ptr: RwLockProcessPtr, pcid: Pcid, pagetable: RwLockPageTableRoot, container_depth: usize, depth: usize) -> (ret: Self)
         requires
             pcid != KERNEL_DEFAULT_PCID,
         ensures
@@ -125,7 +125,7 @@ impl Process {
             ret.owned_threads.map() == Map::<usize, RwLockThreadPtr>::empty(),
             ret.owned_threads.length == 0,
     {
-        let parent_linkedlist_node = ExternalNode::new(process_ptr);
+        let parent_linkedlist_node = ExternalNode::new(prc_ptr);
         let children = LinkedList::new(Some(container_depth), Some(depth));
         let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
         Self { zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None, quota_4k: 0, quota_2m: 0, quota_1g: 0, parent_linkedlist_node, children, owned_threads }
@@ -150,26 +150,26 @@ impl Process {
         &&& self.iommu_table is Some ==> self.iommu_table.unwrap() != self.pagetable
     }
 
-    pub fn add_owned_thread(&mut self, thread_ptr: RwLockThreadPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    pub fn add_owned_thread(&mut self, thrd_ptr: RwLockThreadPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
             old(self).state.view() is Creating || old(self).state.view() is Running,
             node_perm.is_init(),
             node_perm.addr() == node_addr,
-            !old(self).owned_threads.view().contains(thread_ptr),
+            !old(self).owned_threads.view().contains(thrd_ptr),
             old(self).owned_threads.view().len() < usize::MAX,
         ensures
             final(self).inv(),
             *final(self) == (Process { owned_threads: final(self).owned_threads, state: Ghost(ProcessState::Running), ..*old(self) }),
-            final(self).owned_threads.view() == old(self).owned_threads.view().push(thread_ptr),
+            final(self).owned_threads.view() == old(self).owned_threads.view().push(thrd_ptr),
             final(self).owned_threads.dom() == old(self).owned_threads.dom().insert(node_addr),
-            final(self).owned_threads.map() == old(self).owned_threads.map().insert(node_addr, thread_ptr),
+            final(self).owned_threads.map() == old(self).owned_threads.map().insert(node_addr, thrd_ptr),
             final(self).owned_threads.length == old(self).owned_threads.length + 1,
             !old(self).owned_threads.dom().contains(node_addr),
             !old(self).owned_threads.map().dom().contains(node_addr),
     {
         let mut node_perm = node_perm;
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
         proof { assert(self.owned_threads.length != usize::MAX) by { self.owned_threads.wf_implies_view_len_eq_len(); }; }
         self.owned_threads.push_tail(node_addr, node_perm);
         self.state = Ghost(ProcessState::Running);

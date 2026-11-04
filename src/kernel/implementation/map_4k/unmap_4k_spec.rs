@@ -4,12 +4,12 @@ use crate::*;
 verus! {
 /// The cpu and its running thread are write-locked, and the pagetable of the thread's process is locked in either mode.
 pub open spec fn unmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = u.thread_map.spec_index(thrd_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
     &&& u.cpu_array[cpu_id as int].current_thread is Some
-    &&& u.thread_map.dom().contains(thread_ptr)
+    &&& u.thread_map.dom().contains(thrd_ptr)
     &&& thread.lock_state is WriteLocked
     &&& u.process_map.dom().contains(thread.owning_proc)
     &&& u.process_map.spec_index(thread.owning_proc).pagetable is Some
@@ -42,13 +42,13 @@ pub open spec fn unmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId, va: VAddr
 /// A leaf step removes `va` from the process's user mapping and advances unmap progress.
 #[verifier::opaque]
 pub open spec fn unmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
     let progress = thread.syscall_progress->Some_0;
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.remove(va), ..pagetable }), ..process }),
         ..old_u
     })
@@ -58,8 +58,8 @@ pub open spec fn unmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
 /// user mapping, keeps every other entry, and advances unmap progress.
 #[verifier::opaque]
 pub open spec fn unmap_4k_leaf_trace_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
     let progress = thread.syscall_progress->Some_0;
@@ -69,7 +69,7 @@ pub open spec fn unmap_4k_leaf_trace_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& removed.subset_of(progress->Unmap4k_range.view().to_set())
     &&& removed.len() == 1
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.restrict(kept), ..pagetable }), ..process }),
         ..old_u
     })
@@ -105,13 +105,13 @@ pub open spec fn unmap_4k_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id:
 /// container, which no writer holds afterwards.
 #[verifier::opaque]
 pub open spec fn unmap_4k_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let progress = thread.syscall_progress->Some_0;
     let cpu_set_lock = new_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
     &&& !(cpu_set_lock is WriteLocked)
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     })

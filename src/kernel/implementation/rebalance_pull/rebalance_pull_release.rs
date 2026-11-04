@@ -5,22 +5,22 @@ use super::rebalance_pull_trace::*;
 use super::rebalance_pull::rebalance_unlock_shard_prefix;
 
 verus! {
-/// With `cpu_id`, shards `0..count` of `scheduler_ptr`, and shard `cpu_id` when `local_lock_perm` is present write-held
+/// With `cpu_id`, shards `0..count` of `sched_ptr`, and shard `cpu_id` when `local_lock_perm` is present write-held
 /// since the entry snapshot and nothing moved: releases them all and finishes the call without recording a step.
 pub(super) fn rebalance_pull_release_unpulled(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr,
     count: usize, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>, local_lock_perm: Option<Tracked<LockPerm>>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 )
     requires
         old(krnl).inv(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thrd_mp: old(krnl).thrd_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state),
-        forall|t: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(t)] old(steps).snapshot_k().thr_mp.dom().contains(t) ==> old(krnl).thr_mp.spec_index(t) == old(steps).snapshot_k().thr_mp.spec_index(t),
-        old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
-        scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
+        forall|t: RwLockThreadPtr| #![trigger old(krnl).thrd_mp.spec_index(t)] old(steps).snapshot_k().thrd_mp.dom().contains(t) ==> old(krnl).thrd_mp.spec_index(t) == old(steps).snapshot_k().thrd_mp.spec_index(t),
+        old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, sched_ptr),
+        scheduler_shards_of(old(krnl).sched_mp.spec_index(sched_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(sched_ptr)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
@@ -43,7 +43,7 @@ pub(super) fn rebalance_pull_release_unpulled(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        forall|k: (RwLockSchedulerPtr, CpuId)| #![trigger old(lctx).scheduler_lock_map().dom().contains(k)] old(lctx).scheduler_lock_map().dom().contains(k) <==> (k.0 == scheduler_ptr && (k.1 < count || k.1 == cpu_id)),
+        forall|k: (RwLockSchedulerPtr, CpuId)| #![trigger old(lctx).scheduler_lock_map().dom().contains(k)] old(lctx).scheduler_lock_map().dom().contains(k) <==> (k.0 == sched_ptr && (k.1 < count || k.1 == cpu_id)),
         0 < count <= NUM_CPUS,
         local_lock_perm is None ==> cpu_id < count,
         local_lock_perm is Some ==> count <= cpu_id,
@@ -51,15 +51,15 @@ pub(super) fn rebalance_pull_release_unpulled(
             &&& shard_perms.dom().contains(i)
             &&& shard_perms.spec_index(i).state() is WriteLock
             &&& shard_perms.spec_index(i).thread_id() == old(lctx).thread_id()
-            &&& shard_perms.spec_index(i).lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).shards.spec_index(i).view().locking_thread()->Write_lock_id
-            &&& typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (scheduler_ptr, i), TypedLockMode::Write)
+            &&& shard_perms.spec_index(i).lock_id() == old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(i).view().locking_thread()->Write_lock_id
+            &&& typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, i), TypedLockMode::Write)
         },
         local_lock_perm is Some ==> {
             let perm = local_lock_perm.unwrap().view();
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id
-            &&& typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write)
+            &&& perm.lock_id() == old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id
+            &&& typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, cpu_id), TypedLockMode::Write)
         },
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.state() is WriteLock,
@@ -80,8 +80,8 @@ pub(super) fn rebalance_pull_release_unpulled(
         rebalance_pull_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, false),
 {
-    if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
-    rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
+    if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
+    rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), sched_ptr, count, Tracked(shard_perms));
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
     proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
     release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));

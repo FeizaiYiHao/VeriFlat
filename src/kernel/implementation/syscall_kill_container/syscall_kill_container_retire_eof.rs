@@ -10,25 +10,25 @@ use super::syscall_kill_container_retire_eof_tree::*;
 use super::syscall_kill_container_retire_eof_pages::*;
 
 verus! {
-/// Retiring the childless marked container `container_ptr` from `pre` to `post`: it leaves the container map, its parent
+/// Retiring the childless marked container `ctn_ptr` from `pre` to `post`: it leaves the container map, its parent
 /// `parent_ptr`'s children, and every ancestor's subtree; its scheduler, cpu set, offline request table, PCID
 /// allocator, and allocators leave their maps; its five 4K object pages join the 4K global pool and its container and
 /// PCID allocator 2M pages the 2M global pool of `owner_ptr`, which owns them, their tails, and every page the
 /// container owned. Quotas and every other object keep their values.
 #[verifier::opaque]
 pub(crate) open spec fn kill_container_retire_eof_transition_framing(
-    pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
+    pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
 ) -> bool {
-    let target = pre.ctn_mp.spec_index(container_ptr);
+    let target = pre.ctn_mp.spec_index(ctn_ptr);
     let ro = target.view_rodata().view();
     let owner_ro = pre.ctn_mp.spec_index(owner_ptr).view_rodata().view();
     let pages_4k = kill_container_retire_pages_4k(ro);
-    let heads = kill_container_retire_heads(container_ptr, ro);
+    let heads = kill_container_retire_heads(ctn_ptr, ro);
     let tails = kill_container_retire_tails(heads);
     &&& post == (KernelK { ctn_mp: post.ctn_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp, pcid_allc_mp: post.pcid_allc_mp, cpu_offline_mp: post.cpu_offline_mp,
         allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, pg_arr: post.pg_arr, ..pre })
     &&& post.ctn_mp.perms_wf()
-    &&& post.ctn_mp.dom() == pre.ctn_mp.dom().remove(container_ptr)
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom().remove(ctn_ptr)
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] post.ctn_mp.dom().contains(c) ==> {
         let old_c = pre.ctn_mp.spec_index(c);
         let new_c = post.ctn_mp.spec_index(c);
@@ -43,9 +43,9 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
         &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
         &&& new_c.view_ghost() == (ContainerGhost { subtree_set: new_c.view_ghost().subtree_set, ..old_c.view_ghost() })
         &&& new_c.view_ghost().subtree_set.view()
-            == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(container_ptr) } else { old_c.view_ghost().subtree_set.view() }
+            == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
     }
-    &&& post.ctn_mp.spec_index(parent_ptr).view().children.view() == pre.ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(container_ptr)
+    &&& post.ctn_mp.spec_index(parent_ptr).view().children.view() == pre.ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(ctn_ptr)
     &&& post.ctn_mp.spec_index(parent_ptr).view().children.map() == pre.ctn_mp.spec_index(parent_ptr).view().children.map().remove(target.view().parent_linkedlist_node.addr())
     &&& post.sched_mp.perms_wf()
     &&& post.sched_mp.dom() == pre.sched_mp.dom().remove(ro.scheduler)
@@ -58,7 +58,7 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     &&& post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom().remove(ro.pcid_allocator)
     &&& forall|a: RwLockPcidAllocatorPtr| #![trigger post.pcid_allc_mp.spec_index(a)] post.pcid_allc_mp.dom().contains(a) ==> post.pcid_allc_mp.spec_index(a) == pre.pcid_allc_mp.spec_index(a)
     &&& post.cpu_offline_mp.perms_wf()
-    &&& post.cpu_offline_mp.dom() == pre.cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(container_ptr))
+    &&& post.cpu_offline_mp.dom() == pre.cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(ctn_ptr))
     &&& forall|f: RwLockCpuOfflineFlagsPtr| #![trigger post.cpu_offline_mp.spec_index(f)]
         post.cpu_offline_mp.dom().contains(f) ==> post.cpu_offline_mp.spec_index(f) == pre.cpu_offline_mp.spec_index(f)
     &&& post.allc_4k_mp.perms_wf()
@@ -144,37 +144,37 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     }
 }
 
-/// Retiring the marked childless container `container_ptr`, which owns no process, thread, cpu, or quota, has
+/// Retiring the marked childless container `ctn_ptr`, which owns no process, thread, cpu, or quota, has
 /// `owner_ptr` in its upper tree, and owns no page staged in a thread, keeps every kernel invariant.
-pub(crate) proof fn kill_container_retire_eof(pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
+pub(crate) proof fn kill_container_retire_eof(pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
-        kill_container_retire_eof_transition_framing(pre, post, container_ptr, parent_ptr, owner_ptr),
-        kill_container_retire_eof_target_empty(pre, container_ptr, parent_ptr, owner_ptr),
+        kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
+        kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
         post.ctn_mp.spec_index(parent_ptr).view().inv(),
         post.ctn_mp.spec_index(parent_ptr).view().children.view().no_duplicates(),
     ensures post.inv(),
 {
-    kill_container_retire_eof_container_perms(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_container_tree(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_container_objects(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_container_threads(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_container_processes(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_tlb(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects_allocators(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects_containers(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects_retired(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects_processes(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects_threads(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_hugepages(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_mappings_pagetable(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_mappings(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_owners(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_allocators(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_allocator_free_4k_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_allocator_free_2m_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_allocator_free_1g_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_allocator_quotas(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_container_perms(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_container_tree(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_container_objects(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_container_threads(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_container_processes(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_tlb(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_allocators(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_containers(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_retired(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_processes(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_threads(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_hugepages(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_mappings_pagetable(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_mappings(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_owners(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocators(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_4k_pages(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_2m_pages(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_1g_pages(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_quotas(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     reveal(kill_container_retire_eof_transition_framing); reveal(KernelK::default_pagetable_wf);
 }
 } // verus!

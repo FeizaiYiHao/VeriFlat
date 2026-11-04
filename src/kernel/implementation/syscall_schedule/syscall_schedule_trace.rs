@@ -10,17 +10,17 @@ pub(super) proof fn schedule_result_from_k(krnl: &KernelK, cpu_id: CpuId, ret: S
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let c = cpu.view().view();
-            let process_ptr = c.current_process->Some_0;
-            let thread_ptr = c.current_thread->Some_0;
+            let prc_ptr = c.current_process->Some_0;
+            let thrd_ptr = c.current_thread->Some_0;
             let queue = scheduler_shards_of(krnl.sched_mp.spec_index(krnl.ctn_mp.spec_index(c.owning_container).view_rodata().view().scheduler))[cpu_id as int];
-            let dead = c.current_process is Some && (krnl.prc_mp.spec_index(process_ptr).being_killed() || krnl.thr_mp.spec_index(thread_ptr).being_killed());
-            let empty = queue.len() == 0 || krnl.thr_mp.spec_index(queue[0]).being_killed();
-            &&& !cpu.being_killed() && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(process_ptr)
-            &&& !cpu.being_killed() && c.current_process is Some && !krnl.prc_mp.spec_index(process_ptr).being_killed() ==> krnl.thr_mp.dom().contains(thread_ptr)
-            &&& !cpu.being_killed() && !dead ==> krnl.ctn_mp.dom().contains(c.owning_container) && (queue.len() > 0 ==> krnl.thr_mp.dom().contains(queue[0]))
+            let dead = c.current_process is Some && (krnl.prc_mp.spec_index(prc_ptr).being_killed() || krnl.thrd_mp.spec_index(thrd_ptr).being_killed());
+            let empty = queue.len() == 0 || krnl.thrd_mp.spec_index(queue[0]).being_killed();
+            &&& !cpu.being_killed() && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(prc_ptr)
+            &&& !cpu.being_killed() && c.current_process is Some && !krnl.prc_mp.spec_index(prc_ptr).being_killed() ==> krnl.thrd_mp.dom().contains(thrd_ptr)
+            &&& !cpu.being_killed() && !dead ==> krnl.ctn_mp.dom().contains(c.owning_container) && (queue.len() > 0 ==> krnl.thrd_mp.dom().contains(queue[0]))
             &&& ret is Idle ==> cpu.being_killed() || (c.state is Idle && (dead || empty))
             &&& ret is Continue ==> !cpu.being_killed() && !(c.state is Idle) && (dead || empty)
-            &&& ret is Switched ==> !cpu.being_killed() && !dead && !empty && ret == (ScheduleResult::Switched { thread_ptr: queue[0], syscall_return: krnl.thr_mp.spec_index(queue[0]).view().error_code })
+            &&& ret is Switched ==> !cpu.being_killed() && !dead && !empty && ret == (ScheduleResult::Switched { thread_ptr: queue[0], syscall_return: krnl.thrd_mp.spec_index(queue[0]).view().error_code })
         },
     ensures
         schedule_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id) == ret,
@@ -30,8 +30,8 @@ pub(super) proof fn schedule_result_from_k(krnl: &KernelK, cpu_id: CpuId, ret: S
     kernel_cpu_projection_at(krnl, cpu_id);
     if krnl.ctn_mp.dom().contains(c.owning_container) { kernel_container_projection_at(krnl, c.owning_container); }
     if krnl.prc_mp.dom().contains(c.current_process->Some_0) { kernel_process_projection_at(krnl, c.current_process->Some_0); }
-    if krnl.thr_mp.dom().contains(c.current_thread->Some_0) { kernel_thread_projection_at(krnl, c.current_thread->Some_0); }
-    if queue.len() > 0 && krnl.thr_mp.dom().contains(queue[0]) { kernel_thread_projection_at(krnl, queue[0]); }
+    if krnl.thrd_mp.dom().contains(c.current_thread->Some_0) { kernel_thread_projection_at(krnl, c.current_thread->Some_0); }
+    if queue.len() > 0 && krnl.thrd_mp.dom().contains(queue[0]) { kernel_thread_projection_at(krnl, queue[0]); }
 }
 
 /// The context-switch wrapper's user-view facts are exactly the schedule step on `pre`/`post`.

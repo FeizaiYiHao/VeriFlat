@@ -6,13 +6,13 @@ use super::syscall_cpu_offline_check::OfflineCheckResult;
 use super::syscall_cpu_offline_check_locked_helpers::cpu_offline_check_recheck;
 
 verus! {
-/// With `cpu_id` write-held and not Off, owned by `container_ptr` and running `current_thread` of `current_process`, if
+/// With `cpu_id` write-held and not Off, owned by `ctn_ptr` and running `current_thread` of `current_process`, if
 /// any: reads the container's request bit for the cpu under its flag lock. A clear bit releases the cpu and continues
 /// without a step. A set bit holds the cpu across a boundary inside its kernel step, recording the hold step, and rechecks
 /// from the snapshot after it, which the result returns as the decision state.
 pub(super) fn cpu_offline_check_locked(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
-    Tracked(cpu_lock_perm): Tracked<LockPerm>, container_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
+    Tracked(cpu_lock_perm): Tracked<LockPerm>, ctn_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
 ) -> (ret: (OfflineCheckResult, Ghost<KernelK>))
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -60,7 +60,7 @@ pub(super) fn cpu_offline_check_locked(
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             &&& !(cpu.state is Off)
-            &&& cpu.owning_container == container_ptr
+            &&& cpu.owning_container == ctn_ptr
             &&& cpu.current_process == current_process
             &&& cpu.current_thread == current_thread
             &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
@@ -87,13 +87,13 @@ pub(super) fn cpu_offline_check_locked(
     let ghost start = steps.view().len() as int;
     proof {
         assert({
-            &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
-            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
-        }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); };
-        assert(page_ptr_2m_valid(container_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr); };
+            &&& krnl.ctn_mp.dom().contains(ctn_ptr)
+            &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+        }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); };
+        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr); };
     }
-    let flags_ptr = container_ptr + 4096;
+    let flags_ptr = ctn_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));
     let requested = krnl.cpu_offline_mp.read_flag(flags_ptr, cpu_id, Tracked(&flag_lock_perm));
     krnl.wunlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), Tracked(flag_lock_perm));
@@ -122,7 +122,7 @@ pub(super) fn cpu_offline_check_locked(
     }
     let ghost decision = *krnl;
     let ret = cpu_offline_check_recheck(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, Tracked(cpu_lock_perm), container_ptr, current_process, current_thread,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, Tracked(cpu_lock_perm), ctn_ptr, current_process, current_thread,
         Ghost(entry), Ghost(start),
     );
     (ret, Ghost(decision))

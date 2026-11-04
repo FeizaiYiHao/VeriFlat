@@ -45,10 +45,10 @@ pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry:
         index_valid(NUM_CPUS, cpu_id),
         krnl.cpu_arr.spec_index(cpu_id).view() == entry.cpu_arr.spec_index(cpu_id).view(),
         krnl.cpu_op.view().view()[cpu_id as int] == entry.cpu_op.view().view()[cpu_id as int],
-        entry.thr_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
-        krnl.thr_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
-        krnl.thr_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0)
-            == entry.thr_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
+        entry.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
+        krnl.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
+        krnl.thrd_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0)
+            == entry.thrd_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {
             &&& krnl.prc_mp.dom().contains(p)
             &&& entry.prc_mp.dom().contains(p)

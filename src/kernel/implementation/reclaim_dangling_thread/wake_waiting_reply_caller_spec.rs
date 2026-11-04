@@ -2,27 +2,27 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Schedules the caller `thread_ptr` serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited` and
+/// Schedules the caller `thrd_ptr` serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited` and
 /// drops the callee's caller link. Shared by exit and kill.
 #[verifier::opaque]
 pub open spec fn wake_waiting_reply_caller_eof_transition_framing(
-    pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 ) -> bool {
-    &&& post == (KernelK { thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..pre })
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& forall|key: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(key)] #![trigger post.thr_mp.spec_index(key)]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
-        pre.thr_mp.dom().contains(key) ==> {
-            let before = pre.thr_mp.spec_index(key);
-            let after = post.thr_mp.spec_index(key);
+    &&& post == (KernelK { thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, ..pre })
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|key: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(key)] #![trigger post.thrd_mp.spec_index(key)]
+        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_1g]
+        pre.thrd_mp.dom().contains(key) ==> {
+            let before = pre.thrd_mp.spec_index(key);
+            let after = post.thrd_mp.spec_index(key);
             &&& after.view().temp_alloc_cache_2m == before.view().temp_alloc_cache_2m
             &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
-            &&& !(key == thread_ptr || key == caller_ptr) ==> after == before
+            &&& !(key == thrd_ptr || key == caller_ptr) ==> after == before
         }
     &&& {
-        let before = pre.thr_mp.spec_index(thread_ptr);
-        let after = post.thr_mp.spec_index(thread_ptr);
+        let before = pre.thrd_mp.spec_index(thrd_ptr);
+        let after = post.thrd_mp.spec_index(thrd_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
@@ -32,8 +32,8 @@ pub open spec fn wake_waiting_reply_caller_eof_transition_framing(
         &&& after.view() == (Thread { caller: None, ..before.view() })
     }
     &&& {
-        let before = pre.thr_mp.spec_index(caller_ptr);
-        let after = post.thr_mp.spec_index(caller_ptr);
+        let before = pre.thrd_mp.spec_index(caller_ptr);
+        let after = post.thrd_mp.spec_index(caller_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
@@ -49,13 +49,13 @@ pub open spec fn wake_waiting_reply_caller_eof_transition_framing(
     }
     &&& post.sched_mp.dom() == pre.sched_mp.dom()
     &&& forall|key: RwLockSchedulerPtr| #![trigger pre.sched_mp.spec_index(key)] #![trigger post.sched_mp.spec_index(key)]
-        pre.sched_mp.dom().contains(key) && key != scheduler_ptr ==> post.sched_mp.spec_index(key) == pre.sched_mp.spec_index(key)
+        pre.sched_mp.dom().contains(key) && key != sched_ptr ==> post.sched_mp.spec_index(key) == pre.sched_mp.spec_index(key)
     &&& {
-        let before = pre.sched_mp.spec_index(scheduler_ptr);
-        let after = post.sched_mp.spec_index(scheduler_ptr);
+        let before = pre.sched_mp.spec_index(sched_ptr);
+        let after = post.sched_mp.spec_index(sched_ptr);
         let shard_before = before.shards.spec_index(cpu_id).view();
         let shard_after = after.shards.spec_index(cpu_id).view();
-        let node_addr = pre.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node.addr();
+        let node_addr = pre.thrd_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node.addr();
         &&& after.owning_container == before.owning_container
         &&& after.shards.entries_unchanged_except(&before.shards, cpu_id)
         &&& shard_after.is_init() == shard_before.is_init()

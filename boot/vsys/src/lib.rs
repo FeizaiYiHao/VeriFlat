@@ -242,14 +242,14 @@ pub unsafe fn sys_new_thread(ip: usize, sp: usize) -> isize {
     syscall2(NR_NEW_THREAD, ip, sp).rax
 }
 
-pub unsafe fn sys_new_thread_with_endpoint(endpoint_index: usize, ip: usize, sp: usize) -> isize {
-    syscall3(NR_NEW_THREAD_WITH_ENDPOINT, endpoint_index, ip, sp).rax
+pub unsafe fn sys_new_thread_with_endpoint(ep_idx: usize, ip: usize, sp: usize) -> isize {
+    syscall3(NR_NEW_THREAD_WITH_ENDPOINT, ep_idx, ip, sp).rax
 }
 
 /// Creates an empty receive endpoint of the caller's container at the caller's empty descriptor
-/// `endpoint_index`, funded by one 4K quota of the calling thread.
-pub unsafe fn sys_new_endpoint(endpoint_index: usize) -> isize {
-    syscall1(NR_NEW_ENDPOINT, endpoint_index).rax
+/// `ep_idx`, funded by one 4K quota of the calling thread.
+pub unsafe fn sys_new_endpoint(ep_idx: usize) -> isize {
+    syscall1(NR_NEW_ENDPOINT, ep_idx).rax
 }
 
 /// Kills the `child`-th child of the calling process and its whole subtree: every thread is
@@ -286,12 +286,12 @@ pub unsafe fn sys_new_process(va: usize, range: usize, ip: usize, sp: usize) -> 
     syscall4(NR_NEW_PROCESS, va, range, ip, sp).rax
 }
 
-pub unsafe fn sys_new_process_with_endpoint(va: usize, range: usize, endpoint_index: usize, ip: usize, sp: usize) -> isize {
-    syscall5(NR_NEW_PROCESS_WITH_ENDPOINT, va, range, endpoint_index, ip, sp).rax
+pub unsafe fn sys_new_process_with_endpoint(va: usize, range: usize, ep_idx: usize, ip: usize, sp: usize) -> isize {
+    syscall5(NR_NEW_PROCESS_WITH_ENDPOINT, va, range, ep_idx, ip, sp).rax
 }
 
-pub unsafe fn sys_new_process_with_iommu_and_endpoint(va: usize, range: usize, endpoint_index: usize, ip: usize, sp: usize) -> isize {
-    syscall5(NR_NEW_PROCESS_WITH_IOMMU_AND_ENDPOINT, va, range, endpoint_index, ip, sp).rax
+pub unsafe fn sys_new_process_with_iommu_and_endpoint(va: usize, range: usize, ep_idx: usize, ip: usize, sp: usize) -> isize {
+    syscall5(NR_NEW_PROCESS_WITH_IOMMU_AND_ENDPOINT, va, range, ep_idx, ip, sp).rax
 }
 
 /// Returns `(container, process, thread)` pointers on success.
@@ -300,84 +300,84 @@ pub unsafe fn sys_new_container(va: usize, range: usize, funding_page_count: usi
 }
 
 /// As `sys_new_container`; the root thread of the child holds, in descriptor 0, the caller's endpoint
-/// `endpoint_index`.
+/// `ep_idx`.
 pub unsafe fn sys_new_container_with_endpoint(
-    va: usize, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: usize, endpoint_index: usize, ip: usize, sp: usize,
+    va: usize, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: usize, ep_idx: usize, ip: usize, sp: usize,
 ) -> SysResult {
-    syscall8(NR_NEW_CONTAINER_WITH_ENDPOINT, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, ip, sp)
+    syscall8(NR_NEW_CONTAINER_WITH_ENDPOINT, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, ep_idx, ip, sp)
 }
 
-pub unsafe fn sys_send_empty(endpoint_index: usize) -> isize {
-    syscall1(NR_SEND_EMPTY, endpoint_index).rax
+pub unsafe fn sys_send_empty(ep_idx: usize) -> isize {
+    syscall1(NR_SEND_EMPTY, ep_idx).rax
 }
 
-pub unsafe fn sys_receive_empty(endpoint_index: usize) -> isize {
-    syscall1(NR_RECEIVE_EMPTY, endpoint_index).rax
+pub unsafe fn sys_receive_empty(ep_idx: usize) -> isize {
+    syscall1(NR_RECEIVE_EMPTY, ep_idx).rax
 }
 
-pub unsafe fn sys_send_empty_no_block(endpoint_index: usize) -> isize {
-    syscall1(NR_SEND_EMPTY_NO_BLOCK, endpoint_index).rax
+pub unsafe fn sys_send_empty_no_block(ep_idx: usize) -> isize {
+    syscall1(NR_SEND_EMPTY_NO_BLOCK, ep_idx).rax
 }
 
-pub unsafe fn sys_receive_empty_no_block(endpoint_index: usize) -> isize {
-    syscall1(NR_RECEIVE_EMPTY_NO_BLOCK, endpoint_index).rax
+pub unsafe fn sys_receive_empty_no_block(ep_idx: usize) -> isize {
+    syscall1(NR_RECEIVE_EMPTY_NO_BLOCK, ep_idx).rax
 }
 
-/// Calls the receive-call waiter at the head of `endpoint_index` and returns its reply.
-pub unsafe fn sys_call(endpoint_index: usize) -> isize {
-    syscall1(NR_CALL, endpoint_index).rax
+/// Calls the receive-call waiter at the head of `ep_idx` and returns its reply.
+pub unsafe fn sys_call(ep_idx: usize) -> isize {
+    syscall1(NR_CALL, ep_idx).rax
 }
 
 /// `sys_call` carrying `value`; the callee's `receive_call` or `reply_and_receive` returns it.
-pub unsafe fn sys_call_usize(endpoint_index: usize, value: usize) -> isize {
-    syscall2(NR_CALL_USIZE, endpoint_index, value).rax
+pub unsafe fn sys_call_usize(ep_idx: usize, value: usize) -> isize {
+    syscall2(NR_CALL_USIZE, ep_idx, value).rax
 }
 
-/// Waits for a call on `endpoint_index` and returns the caller's value, or 0 for a plain call.
-pub unsafe fn sys_receive_call(endpoint_index: usize) -> isize {
-    syscall1(NR_RECEIVE_CALL, endpoint_index).rax
+/// Waits for a call on `ep_idx` and returns the caller's value, or 0 for a plain call.
+pub unsafe fn sys_receive_call(ep_idx: usize) -> isize {
+    syscall1(NR_RECEIVE_CALL, ep_idx).rax
 }
 
-/// Replies to the recorded caller, then waits for the next call on `endpoint_index`.
-pub unsafe fn sys_reply_and_receive(endpoint_index: usize) -> isize {
-    syscall1(NR_REPLY_AND_RECEIVE, endpoint_index).rax
+/// Replies to the recorded caller, then waits for the next call on `ep_idx`.
+pub unsafe fn sys_reply_and_receive(ep_idx: usize) -> isize {
+    syscall1(NR_REPLY_AND_RECEIVE, ep_idx).rax
 }
 
 /// `sys_reply_and_receive` replying `value` to the caller.
-pub unsafe fn sys_reply_and_receive_usize(endpoint_index: usize, value: usize) -> isize {
-    syscall2(NR_REPLY_AND_RECEIVE_USIZE, endpoint_index, value).rax
+pub unsafe fn sys_reply_and_receive_usize(ep_idx: usize, value: usize) -> isize {
+    syscall2(NR_REPLY_AND_RECEIVE_USIZE, ep_idx, value).rax
 }
 
-pub unsafe fn sys_send_cpu(endpoint_index: usize, transfer_cpu_id: usize) -> isize {
-    syscall2(NR_SEND_CPU, endpoint_index, transfer_cpu_id).rax
+pub unsafe fn sys_send_cpu(ep_idx: usize, transfer_cpu_id: usize) -> isize {
+    syscall2(NR_SEND_CPU, ep_idx, transfer_cpu_id).rax
 }
 
-pub unsafe fn sys_receive_cpu(endpoint_index: usize) -> isize {
-    syscall1(NR_RECEIVE_CPU, endpoint_index).rax
+pub unsafe fn sys_receive_cpu(ep_idx: usize) -> isize {
+    syscall1(NR_RECEIVE_CPU, ep_idx).rax
 }
 
-pub unsafe fn sys_send_pci(endpoint_index: usize, bus: usize, dev: usize, fun: usize) -> isize {
-    syscall4(NR_SEND_PCI, endpoint_index, bus, dev, fun).rax
+pub unsafe fn sys_send_pci(ep_idx: usize, bus: usize, dev: usize, fun: usize) -> isize {
+    syscall4(NR_SEND_PCI, ep_idx, bus, dev, fun).rax
 }
 
-pub unsafe fn sys_receive_pci(endpoint_index: usize, bus: usize, dev: usize, fun: usize) -> isize {
-    syscall4(NR_RECEIVE_PCI, endpoint_index, bus, dev, fun).rax
+pub unsafe fn sys_receive_pci(ep_idx: usize, bus: usize, dev: usize, fun: usize) -> isize {
+    syscall4(NR_RECEIVE_PCI, ep_idx, bus, dev, fun).rax
 }
 
-pub unsafe fn sys_send_endpoint(endpoint_index: usize, source_endpoint_index: usize) -> isize {
-    syscall2(NR_SEND_ENDPOINT, endpoint_index, source_endpoint_index).rax
+pub unsafe fn sys_send_endpoint(ep_idx: usize, source_ep_idx: usize) -> isize {
+    syscall2(NR_SEND_ENDPOINT, ep_idx, source_ep_idx).rax
 }
 
-pub unsafe fn sys_receive_endpoint(endpoint_index: usize, target_endpoint_index: usize) -> isize {
-    syscall2(NR_RECEIVE_ENDPOINT, endpoint_index, target_endpoint_index).rax
+pub unsafe fn sys_receive_endpoint(ep_idx: usize, target_ep_idx: usize) -> isize {
+    syscall2(NR_RECEIVE_ENDPOINT, ep_idx, target_ep_idx).rax
 }
 
-pub unsafe fn sys_send_pages(endpoint_index: usize, va: usize, range: usize) -> isize {
-    syscall3(NR_SEND_PAGES, endpoint_index, va, range).rax
+pub unsafe fn sys_send_pages(ep_idx: usize, va: usize, range: usize) -> isize {
+    syscall3(NR_SEND_PAGES, ep_idx, va, range).rax
 }
 
-pub unsafe fn sys_receive_pages(endpoint_index: usize, va: usize, range: usize) -> isize {
-    syscall3(NR_RECEIVE_PAGES, endpoint_index, va, range).rax
+pub unsafe fn sys_receive_pages(ep_idx: usize, va: usize, range: usize) -> isize {
+    syscall3(NR_RECEIVE_PAGES, ep_idx, va, range).rax
 }
 
 pub unsafe fn sys_debug_dma_device() -> isize {

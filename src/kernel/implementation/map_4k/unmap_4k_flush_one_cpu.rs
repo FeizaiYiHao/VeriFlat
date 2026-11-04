@@ -7,14 +7,14 @@ use super::unmap_4k_trace::unmap_4k_tlb_flush_step_pre_from_k;
 verus! {
 /// Flushes `pcid` on cpu `cpu_id` under its needflush lock, drops `cpu_id` from the stale-CPU records of `pagetable` the
 /// thread may change, deletes those records after the last cpu, and records the TLB step, which also records this
-/// thread's read hold on the cpu set of its container `container_ptr` when the step's start predates it. The recorded
+/// thread's read hold on the cpu set of its container `ctn_ptr` when the step's start predates it. The recorded
 /// step keeps the `entry` projection of the non-dangling thread that `held` write-locks and of its process, and the locks
 /// `held` keeps on that process and container. Every such record lists exactly the cpus from `cpu_id` up on entry and from
 /// `cpu_id + 1` up on return; so does the table stale-CPU record of `pagetable` while the thread write-holds it, which
 /// `table_write_held` tells, and it lists no cpu otherwise.
-pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, cpu_id: usize, local_cpu: CpuId, thread_ptr: RwLockThreadPtr,
+pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, cpu_id: usize, local_cpu: CpuId, thrd_ptr: RwLockThreadPtr,
     table_write_held: bool, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, Tracked(table_perm): Tracked<&LockPerm>,
-    Ghost(entry): Ghost<KernelK>, Ghost(held): Ghost<LocalContext>, Ghost(container_ptr): Ghost<RwLockContainerPtr>)
+    Ghost(entry): Ghost<KernelK>, Ghost(held): Ghost<LocalContext>, Ghost(ctn_ptr): Ghost<RwLockContainerPtr>)
     requires
         *old(krnl) == (KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, cpu_set_mp: old(krnl).cpu_set_mp, ..old(steps).snapshot_k() }),
         old(krnl).pt_mp.dom() == old(steps).snapshot_k().pt_mp.dom(),
@@ -27,12 +27,12 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
                 == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
         },
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
-        container_ptr == entry.thr_mp.spec_index(thread_ptr).view().owning_container,
-        old(krnl).ctn_mp.dom().contains(container_ptr),
-        old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
-        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
-            == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
-        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
+        ctn_ptr == entry.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        old(krnl).ctn_mp.dom().contains(ctn_ptr),
+        old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
+        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
+            == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
+        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
         old(krnl).inv(),
         entry.inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -49,7 +49,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_pcid == pcid,
         old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
         old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
-        old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_thread == Some(thread_ptr),
+        old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_thread == Some(thrd_ptr),
         old(krnl).pt_mp.dom().contains(pagetable),
         old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
         old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
@@ -58,15 +58,15 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         pcid != KERNEL_DEFAULT_PCID,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        entry.thr_mp.dom().contains(thread_ptr),
-        !thread_is_dangling(entry.thr_mp.spec_index(thread_ptr)),
-        entry.prc_mp.dom().contains(entry.thr_mp.spec_index(thread_ptr).view().owning_proc),
-        entry.prc_mp.spec_index(entry.thr_mp.spec_index(thread_ptr).view().owning_proc).view().pagetable == pagetable,
+        entry.thrd_mp.dom().contains(thrd_ptr),
+        !thread_is_dangling(entry.thrd_mp.spec_index(thrd_ptr)),
+        entry.prc_mp.dom().contains(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc),
+        entry.prc_mp.spec_index(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view().pagetable == pagetable,
         entry.pt_mp.dom().contains(pagetable),
-        !entry.prc_mp.spec_index(entry.thr_mp.spec_index(thread_ptr).view().owning_proc).view().zombie,
+        !entry.prc_mp.spec_index(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view().zombie,
         held.pagetable_lock_map().dom().contains(pagetable),
-        typed_lock_map_contains_mode(held.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        held_threads_unchanged(entry.thr_mp, old(krnl).thr_mp, &held),
+        typed_lock_map_contains_mode(held.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        held_threads_unchanged(entry.thrd_mp, old(krnl).thrd_mp, &held),
         held_processes_unchanged(entry.prc_mp, old(krnl).prc_mp, &held),
         old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view() }),
         table_write_held == typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
@@ -96,21 +96,21 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
             let old_u = final(steps).view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(entry);
-            let process_ptr = entry.thr_mp.spec_index(thread_ptr).view().owning_proc;
-            let locked = KernelU { container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[container_ptr] }), ..old_u };
+            let prc_ptr = entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, final(steps).view()[j].new_u, pcid)
             &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
-            &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thread_ptr)
-            &&& old_u.thread_map.dom().contains(thread_ptr)
-            &&& old_u.thread_map[thread_ptr] == entry_u.thread_map[thread_ptr]
-            &&& old_u.process_map.dom().contains(process_ptr)
-            &&& typed_lock_map_contains_mode(held.process_lock_map(), process_ptr, TypedLockMode::Write) ==> old_u.process_map[process_ptr].lock_state == entry_u.process_map[process_ptr].lock_state
-            &&& old_u.process_map[process_ptr].pagetable is Some
-            &&& !(old_u.process_map[process_ptr].pagetable->Some_0.lock_state is Unlocked)
-            &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[process_ptr].pagetable == entry_u.process_map[process_ptr].pagetable
-            &&& old_u.process_map[process_ptr].pcid == entry_u.process_map[process_ptr].pcid
-            &&& old_u.container_map.dom().contains(container_ptr)
-            &&& typed_lock_map_contains_mode(held.container_lock_map(), container_ptr, TypedLockMode::Write) ==> old_u.container_map[container_ptr].lock_state is WriteLocked
+            &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)
+            &&& old_u.thread_map.dom().contains(thrd_ptr)
+            &&& old_u.thread_map[thrd_ptr] == entry_u.thread_map[thrd_ptr]
+            &&& old_u.process_map.dom().contains(prc_ptr)
+            &&& typed_lock_map_contains_mode(held.process_lock_map(), prc_ptr, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].lock_state == entry_u.process_map[prc_ptr].lock_state
+            &&& old_u.process_map[prc_ptr].pagetable is Some
+            &&& !(old_u.process_map[prc_ptr].pagetable->Some_0.lock_state is Unlocked)
+            &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
+            &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
+            &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& typed_lock_map_contains_mode(held.container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },
         final(krnl).inv(),
@@ -128,12 +128,12 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         final(krnl).cpu_arr.spec_index(local_cpu).view().killer_info() == old(krnl).cpu_arr.spec_index(local_cpu).view().killer_info(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_threads_unchanged(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx)),
+        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
-        final(krnl).ctn_mp.dom().contains(container_ptr),
-        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
+        final(krnl).ctn_mp.dom().contains(ctn_ptr),
+        final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata(),
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
         !table_write_held ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
@@ -174,8 +174,8 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         let flushed_lctx = *lctx;
         let snap_u = steps.snapshot_u();
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        krnl.kernel_step_boundary_cpu_tlb_updated_cpu_set_rlocked(&mut *lctx, &mut *steps, cpu_id, pcid, cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid), container_ptr);
-        unmap_4k_tlb_flush_step_pre_from_k(&flushed, &entry, &flushed_lctx, &held, local_cpu, thread_ptr, pagetable, snap_u, container_ptr);
+        krnl.kernel_step_boundary_cpu_tlb_updated_cpu_set_rlocked(&mut *lctx, &mut *steps, cpu_id, pcid, cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid), ctn_ptr);
+        unmap_4k_tlb_flush_step_pre_from_k(&flushed, &entry, &flushed_lctx, &held, local_cpu, thrd_ptr, pagetable, snap_u, ctn_ptr);
     }
 }
 

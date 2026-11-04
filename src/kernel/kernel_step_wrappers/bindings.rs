@@ -71,10 +71,10 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
-        forall|p: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(p)]
-            krnl.thr_mp.dom().contains(p) && steps.snapshot_k().thr_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().thr_mp.spec_index(p).locking_thread();
-                let after = krnl.thr_mp.spec_index(p).locking_thread();
+        forall|p: RwLockThreadPtr| #![trigger krnl.thrd_mp.spec_index(p)]
+            krnl.thrd_mp.dom().contains(p) && steps.snapshot_k().thrd_mp.dom().contains(p) ==> {
+                let before = steps.snapshot_k().thrd_mp.spec_index(p).locking_thread();
+                let after = krnl.thrd_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },

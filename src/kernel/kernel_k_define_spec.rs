@@ -34,7 +34,7 @@ verus! {
         pub pcid_allc_mp: PcidAllocatorLockedMap,
         pub cpu_set_mp: CpuSetLockedMap,
         pub prc_mp: ProcessLockedMap,
-        pub thr_mp: ThreadLockedMap,
+        pub thrd_mp: ThreadLockedMap,
         pub ep_mp: EndpointLockedMap,
         pub allc_4k_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>,
         pub allc_2m_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>,
@@ -72,7 +72,7 @@ verus! {
             &&& self.iommu_tlb.inv()
             &&& container_perms_wf(self.ctn_mp)
             &&& process_perms_wf(self.prc_mp)
-            &&& thread_perms_wf(self.thr_mp)
+            &&& thread_perms_wf(self.thrd_mp)
             &&& scheduler_perms_wf(self.sched_mp)
             &&& cpu_set_perms_wf(self.cpu_set_mp)
             &&& pcid_allocator_perms_wf(self.pcid_allc_mp)
@@ -94,11 +94,11 @@ verus! {
             &&& process_pages_wf(self.pg_arr, self.prc_mp)
             &&& pagetable_pages_wf(self.pt_mp, self.pt_lower.view(), self.pg_arr)
             &&& iommu_table_pages_wf(self.it_mp, self.pg_arr)
-            &&& thread_pages_wf(self.thr_mp, self.pg_arr)
+            &&& thread_pages_wf(self.thrd_mp, self.pg_arr)
             &&& scheduler_pages_wf(self.sched_mp, self.pg_arr)
             &&& cpu_set_pages_wf(self.cpu_set_mp, self.pg_arr)
             &&& pcid_allocator_pages_wf(self.pg_arr, self.pcid_allc_mp)
-            &&& thread_staged_pages_wf(self.thr_mp, self.pg_arr)
+            &&& thread_staged_pages_wf(self.thrd_mp, self.pg_arr)
             &&& endpoint_pages_wf(self.ep_mp, self.pg_arr)
             &&& process_pagetable_match(self.prc_mp, self.pt_mp)
             &&& process_iommu_table_match(self.prc_mp, self.it_mp)
@@ -107,9 +107,9 @@ verus! {
             &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp, self.pg_arr)
             &&& pagetable_hidden_roots_only_when_write_held_or_emptied(self.pt_mp, self.prc_mp)
             &&& process_kernel_pages_owner_wf(self.pg_arr, self.prc_mp, self.pt_mp, self.it_mp)
-            &&& page_object_owner_wf(self.pg_arr, self.ctn_mp, self.thr_mp)
+            &&& page_object_owner_wf(self.pg_arr, self.ctn_mp, self.thrd_mp)
             &&& self.allocator_free_pages_wf()
-            &&& container_process_allocator_quota_wf(self.ctn_mp, self.prc_mp, self.thr_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
+            &&& container_process_allocator_quota_wf(self.ctn_mp, self.prc_mp, self.thrd_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_allocator_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_kill_retire_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_allocator_free_4k_page_wf(self.allc_4k_mp, self.pg_arr)
@@ -128,22 +128,22 @@ verus! {
             &&& process_state_lock_wf(self.prc_mp)
             &&& container_endpoint_wf(self.ctn_mp, self.ep_mp)
             &&& container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)
-            &&& thread_endpoint_ref_counter_wf(self.thr_mp, self.ep_mp)
-            &&& thread_endpoint_queue_wf(self.thr_mp, self.ep_mp)
-            &&& thread_caller_callee_wf(self.thr_mp)
-            &&& container_thread_endpoint_wf(self.ctn_mp, self.thr_mp, self.ep_mp)
+            &&& thread_endpoint_ref_counter_wf(self.thrd_mp, self.ep_mp)
+            &&& thread_endpoint_queue_wf(self.thrd_mp, self.ep_mp)
+            &&& thread_caller_callee_wf(self.thrd_mp)
+            &&& container_thread_endpoint_wf(self.ctn_mp, self.thrd_mp, self.ep_mp)
             &&& container_scheduler_wf(self.ctn_mp, self.sched_mp)
             &&& container_cpu_set_wf(self.ctn_mp, self.cpu_set_mp)
             &&& container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)
             &&& container_pcid_allocator_wf(self.ctn_mp, self.pcid_allc_mp)
             &&& process_pcid_allocator_wf(self.ctn_mp, self.prc_mp, self.pcid_allc_mp)
-            &&& container_thread_scheduler_wf(self.ctn_mp, self.thr_mp, self.sched_mp)
-            &&& container_thread_wf(self.ctn_mp, self.thr_mp)
+            &&& container_thread_scheduler_wf(self.ctn_mp, self.thrd_mp, self.sched_mp)
+            &&& container_thread_wf(self.ctn_mp, self.thrd_mp)
             &&& process_cpu_wf(self.prc_mp, self.cpu_arr)
-            &&& process_thread_wf(self.prc_mp, self.thr_mp)
-            &&& process_emptied_threads_wf(self.prc_mp, self.thr_mp)
-            &&& thread_cpu_wf(self.thr_mp, self.cpu_arr)
-            &&& thread_dangling_chain_end_wf(self.thr_mp)
+            &&& process_thread_wf(self.prc_mp, self.thrd_mp)
+            &&& process_emptied_threads_wf(self.prc_mp, self.thrd_mp)
+            &&& thread_cpu_wf(self.thrd_mp, self.cpu_arr)
+            &&& thread_dangling_chain_end_wf(self.thrd_mp)
         }
         /// All spec functions under this are closed
         pub open spec fn inv(&self) -> bool {
@@ -306,26 +306,26 @@ verus! {
                     op == pre.cpu_op.view().view()[cpu_id as int]
                 }
             }
-        &&& forall|container_ptr: RwLockContainerPtr|
-            #![trigger lctx.container_lock_map().dom().contains(container_ptr)]
-            lctx.container_lock_map().dom().contains(container_ptr) ==> {
-                &&& post.ctn_mp.dom().contains(container_ptr)
-                &&& post.ctn_mp.lock_id_by_key(container_ptr) == pre.ctn_mp.lock_id_by_key(container_ptr)
-                &&& post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr)
+        &&& forall|ctn_ptr: RwLockContainerPtr|
+            #![trigger lctx.container_lock_map().dom().contains(ctn_ptr)]
+            lctx.container_lock_map().dom().contains(ctn_ptr) ==> {
+                &&& post.ctn_mp.dom().contains(ctn_ptr)
+                &&& post.ctn_mp.lock_id_by_key(ctn_ptr) == pre.ctn_mp.lock_id_by_key(ctn_ptr)
+                &&& post.ctn_mp.spec_index(ctn_ptr) == pre.ctn_mp.spec_index(ctn_ptr)
             }
-        &&& forall|process_ptr: RwLockProcessPtr|
-            #![trigger lctx.process_lock_map().dom().contains(process_ptr)]
-            lctx.process_lock_map().dom().contains(process_ptr) ==> {
-                &&& post.prc_mp.dom().contains(process_ptr)
-                &&& post.prc_mp.lock_id_by_key(process_ptr) == pre.prc_mp.lock_id_by_key(process_ptr)
-                &&& post.prc_mp.spec_index(process_ptr) == pre.prc_mp.spec_index(process_ptr)
+        &&& forall|prc_ptr: RwLockProcessPtr|
+            #![trigger lctx.process_lock_map().dom().contains(prc_ptr)]
+            lctx.process_lock_map().dom().contains(prc_ptr) ==> {
+                &&& post.prc_mp.dom().contains(prc_ptr)
+                &&& post.prc_mp.lock_id_by_key(prc_ptr) == pre.prc_mp.lock_id_by_key(prc_ptr)
+                &&& post.prc_mp.spec_index(prc_ptr) == pre.prc_mp.spec_index(prc_ptr)
             }
-        &&& forall|thread_ptr: RwLockThreadPtr|
-            #![trigger lctx.thread_lock_map().dom().contains(thread_ptr)]
-            lctx.thread_lock_map().dom().contains(thread_ptr) ==> {
-                &&& post.thr_mp.dom().contains(thread_ptr)
-                &&& post.thr_mp.lock_id_by_key(thread_ptr) == pre.thr_mp.lock_id_by_key(thread_ptr)
-                &&& post.thr_mp.spec_index(thread_ptr) == pre.thr_mp.spec_index(thread_ptr)
+        &&& forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger lctx.thread_lock_map().dom().contains(thrd_ptr)]
+            lctx.thread_lock_map().dom().contains(thrd_ptr) ==> {
+                &&& post.thrd_mp.dom().contains(thrd_ptr)
+                &&& post.thrd_mp.lock_id_by_key(thrd_ptr) == pre.thrd_mp.lock_id_by_key(thrd_ptr)
+                &&& post.thrd_mp.spec_index(thrd_ptr) == pre.thrd_mp.spec_index(thrd_ptr)
             }
         &&& forall|pagetable_ptr: RwLockPageTableRoot|
             #![trigger lctx.pagetable_lock_map().dom().contains(pagetable_ptr)]
@@ -351,7 +351,7 @@ verus! {
         // unchanged afterwards.
         &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, &lctx)
         &&& held_processes_unchanged(pre.prc_mp, post.prc_mp, &lctx)
-        &&& held_threads_unchanged(pre.thr_mp, post.thr_mp, &lctx)
+        &&& held_threads_unchanged(pre.thrd_mp, post.thrd_mp, &lctx)
         &&& held_endpoints_unchanged(pre.ep_mp, post.ep_mp, &lctx)
         &&& held_schedulers_unchanged(pre.sched_mp, post.sched_mp, &lctx)
         &&& held_pcid_allocators_unchanged(pre.pcid_allc_mp, post.pcid_allc_mp, &lctx)
@@ -399,7 +399,7 @@ verus! {
             let page = k.pg_arr.spec_index(held_page).view().view();
             if page_bound <= PAGETABLE_PAGE_MAJOR { page.orders_below_table_locks() } else { page.orders_below_allocator_locks() }
         }
-        &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thr_mp.spec_index(held_thread).view().state is SCHEDULED)
+        &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thrd_mp.spec_index(held_thread).view().state is SCHEDULED)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
@@ -421,7 +421,7 @@ verus! {
         &&& iommu_root_table_typed_lock_map_aligned(k.irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())
         &&& k.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
         &&& k.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())
-        &&& k.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())
+        &&& k.thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())
         &&& k.ep_mp.typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id())
         &&& k.sched_mp.typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id())
         &&& k.pcid_allc_mp.typed_lock_map_aligned(lctx.pcid_allocator_lock_map(), lctx.thread_id())
@@ -465,7 +465,7 @@ verus! {
         &&& typed_lock_map_contains_mode(lctx.process_lock_map(), killer_process, TypedLockMode::Write)
         &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), killer_thread, TypedLockMode::Write)
         &&& forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)] lctx.process_lock_map().dom().contains(p) && p != killer_process ==> k.prc_mp.spec_index(p).being_killed()
-        &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) && t != killer_thread ==> k.thr_mp.spec_index(t).being_killed()
+        &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) && t != killer_thread ==> k.thrd_mp.spec_index(t).being_killed()
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
         &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
         &&& lctx.container_lock_map().dom() =~= containers
@@ -488,9 +488,9 @@ verus! {
 
     /// A killer holding only its own thread among threads and the containers `containers` may lock any thread of a
     /// deeper container or of a deeper process of its container, whatever its state.
-    pub open spec fn killer_any_thread_lock_context(k: KernelK, lctx: LocalContext, thread_ptr: RwLockThreadPtr, containers: Set<RwLockContainerPtr>) -> bool {
+    pub open spec fn killer_any_thread_lock_context(k: KernelK, lctx: LocalContext, thrd_ptr: RwLockThreadPtr, containers: Set<RwLockContainerPtr>) -> bool {
         let cpu = k.cpu_arr.spec_index(lctx.cpu_id()).view().view().view();
-        let thread = k.thr_mp.spec_index(thread_ptr).view();
+        let thread = k.thrd_mp.spec_index(thrd_ptr).view();
         &&& killer_held_context(k, lctx, cpu.current_process->Some_0, cpu.current_thread->Some_0, containers)
         &&& lctx.thread_lock_map().dom() =~= set![cpu.current_thread->Some_0]
         &&& thread.container_depth > cpu.container_depth || (thread.container_depth == cpu.container_depth && thread.process_depth > cpu.process_depth)
@@ -507,8 +507,8 @@ verus! {
         &&& cpu.current_thread is Some
         &&& lctx.thread_lock_map().dom().contains(cpu.current_thread->Some_0)
         &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) ==> {
-            let state = k.thr_mp.spec_index(t).view().state;
-            &&& t == cpu.current_thread->Some_0 || state is KILLED || k.thr_mp.spec_index(t).being_killed()
+            let state = k.thrd_mp.spec_index(t).view().state;
+            &&& t == cpu.current_thread->Some_0 || state is KILLED || k.thrd_mp.spec_index(t).being_killed()
             &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT || state is SCHEDULED)
         }
         &&& lctx.page_lock_map().dom().is_empty()

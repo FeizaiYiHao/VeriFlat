@@ -13,13 +13,13 @@ use super::syscall_kill_container_spec::*;
 use super::syscall_kill_container_pages_spec::*;
 
 verus! {
-/// Move every free page of the marked container `container_ptr` to the killer's container `owner_ptr`: write-hold the
+/// Move every free page of the marked container `ctn_ptr` to the killer's container `owner_ptr`: write-hold the
 /// marked container's 4K and 2M allocator caches and both containers' 4K and 2M global pools and quotas, drain the caches
 /// into the marked container's pools, move each pooled page with one page of quota in its own step, and start retiring
 /// the container, which then holds no quota; the marked container's 1G allocator holds no page.
 pub(crate) fn kill_container_pages(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, Tracked(cpu_perm): Tracked<&LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
+    thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, Tracked(cpu_perm): Tracked<&LockPerm>,
     Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
@@ -31,13 +31,13 @@ pub(crate) fn kill_container_pages(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         ctx is Container,
-        kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
+        kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Pages),
-        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
-        old(krnl).ctn_mp.spec_index(container_ptr).view().children.view().len() == 0,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().children.view().len() == 0,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
@@ -48,11 +48,11 @@ pub(crate) fn kill_container_pages(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
-        kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
+        kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        killer_held_context(*final(krnl), *final(lctx), process_ptr, thread_ptr, final(lctx).container_lock_map().dom()),
-        final(krnl).thr_mp.spec_index(thread_ptr).view()
-            == (Thread { syscall_progress: Ghost(kill_container_progress(container_ptr, ContainerKillStage::Retire)), ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
+        killer_held_context(*final(krnl), *final(lctx), prc_ptr, thrd_ptr, final(lctx).container_lock_map().dom()),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view()
+            == (Thread { syscall_progress: Ghost(kill_container_progress(ctn_ptr, ContainerKillStage::Retire)), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -63,14 +63,14 @@ pub(crate) fn kill_container_pages(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(krnl).ctn_mp.spec_index(container_ptr).view_ghost().retire_ready,
+        final(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().retire_ready,
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
-        final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
-        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
-        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
-        final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
-        final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
+        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         forall|s: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(s)] old(lctx).cpu_set_lock_map().dom().contains(s)
@@ -82,23 +82,23 @@ pub(crate) fn kill_container_pages(
     let tracked mut pools_2m = Map::<RwLockPageAllocatorPtr, LockPerm>::tracked_empty();
     let tracked mut quotas_4k = Map::<RwLockPageAllocatorPtr, LockPerm>::tracked_empty();
     let tracked mut quotas_2m = Map::<RwLockPageAllocatorPtr, LockPerm>::tracked_empty();
-    let (a4, o4, a2, o2) = kill_container_pages_lock(krnl, Tracked(&mut *lctx), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, Tracked(cpu_perm), Tracked(process_perm),
+    let (a4, o4, a2, o2) = kill_container_pages_lock(krnl, Tracked(&mut *lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, Tracked(cpu_perm), Tracked(process_perm),
         Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&mut caches_4k), Tracked(&mut caches_2m), Tracked(&mut pools_4k), Tracked(&mut pools_2m),
         Tracked(&mut quotas_4k), Tracked(&mut quotas_2m));
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
         steps.rebase_snapshot_k_if_unchanged(&*krnl);
     }
-    kill_container_pages_drain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
+    kill_container_pages_drain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m));
-    kill_container_pages_move_4k(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
+    kill_container_pages_move_4k(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Ghost(start), Ghost(pre), Ghost(ctx));
-    kill_container_pages_move_2m(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
+    kill_container_pages_move_2m(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Ghost(start), Ghost(pre), Ghost(ctx));
-    kill_container_pages_retire_and_unlock(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2,
+    kill_container_pages_retire_and_unlock(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2,
         Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k),
         Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Ghost(start), Ghost(pre), Ghost(ctx));
 }

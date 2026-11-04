@@ -35,7 +35,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
         container_process_wf(pre.ctn_mp, pre.prc_mp),
         container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
-        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
@@ -44,7 +44,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
         post.pcid_allc_mp == pre.pcid_allc_mp,
         post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
-        post.thr_mp == pre.thr_mp,
+        post.thrd_mp == pre.thrd_mp,
         post.ep_mp == pre.ep_mp,
         post.allc_4k_mp == pre.allc_4k_mp,
         post.allc_2m_mp == pre.allc_2m_mp,
@@ -56,7 +56,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_container_invariant_fields_forall(); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
-    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_allocator_quota_2m_wf);
         reveal(container_process_allocator_quota_1g_wf);
@@ -77,7 +77,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
         post.pcid_allc_mp == pre.pcid_allc_mp,
         post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
-        post.thr_mp == pre.thr_mp,
+        post.thrd_mp == pre.thrd_mp,
         post.ep_mp == pre.ep_mp,
         post.rt_ctn == pre.rt_ctn,
         post.cpu_offline_mp == pre.cpu_offline_mp,
@@ -96,11 +96,11 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
-    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_thread_scheduler_wf); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_thread_scheduler_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
-    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
+    assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
     assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 

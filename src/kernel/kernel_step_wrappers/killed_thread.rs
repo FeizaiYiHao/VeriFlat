@@ -3,83 +3,83 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, ass
 use crate::*;
 
 verus! {
-/// Releasing descriptor `index` of the write-held killed thread `thread_ptr` projects to
-/// `kernel_u_killed_descriptor_dropped`, changes the projection, and changes no thread outside `thread_ptr`'s container.
-pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, index: EndpointIdx)
+/// Releasing descriptor `index` of the write-held killed thread `thrd_ptr` projects to
+/// `kernel_u_killed_descriptor_dropped`, changes the projection, and changes no thread outside `thrd_ptr`'s container.
+pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
-        *after == (KernelK { thr_mp: after.thr_mp, ep_mp: after.ep_mp, ..*before }),
-        before.thr_mp.dom().contains(thread_ptr),
-        before.thr_mp.spec_index(thread_ptr).view().state is KILLED,
-        before.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        before.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().len() == MAX_NUM_ENDPOINT_DESCRIPTORS,
-        before.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[index as int] == Some(endpoint_ptr),
-        after.thr_mp.unchanged_except(&before.thr_mp, thread_ptr),
-        after.thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: after.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..before.thr_mp.spec_index(thread_ptr).view() }),
-        after.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == before.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(index as int, None),
-        after.thr_mp.spec_index(thread_ptr).locking_thread() == before.thr_mp.spec_index(thread_ptr).locking_thread(),
-        after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
-        before.ep_mp.dom().contains(endpoint_ptr),
-        before.ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
-        before.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().len() > 1,
-        after.ep_mp.unchanged_except(&before.ep_mp, endpoint_ptr),
-        after.ep_mp.spec_index(endpoint_ptr).view().queue.view() == before.ep_mp.spec_index(endpoint_ptr).view().queue.view(),
-        after.ep_mp.spec_index(endpoint_ptr).view().queue_state == before.ep_mp.spec_index(endpoint_ptr).view().queue_state,
-        after.ep_mp.spec_index(endpoint_ptr).view().owning_container == before.ep_mp.spec_index(endpoint_ptr).view().owning_container,
-        after.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view() == before.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().remove((thread_ptr, index)),
-        after.ep_mp.spec_index(endpoint_ptr).locking_thread() == before.ep_mp.spec_index(endpoint_ptr).locking_thread(),
-        after.ep_mp.spec_index(endpoint_ptr).being_killed() == before.ep_mp.spec_index(endpoint_ptr).being_killed(),
+        *after == (KernelK { thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, ..*before }),
+        before.thrd_mp.dom().contains(thrd_ptr),
+        before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
+        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().len() == MAX_NUM_ENDPOINT_DESCRIPTORS,
+        before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[index as int] == Some(ep_ptr),
+        after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
+        after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { endpoint_descriptors: after.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
+        after.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view() == before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().update(index as int, None),
+        after.thrd_mp.spec_index(thrd_ptr).locking_thread() == before.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        after.thrd_mp.spec_index(thrd_ptr).being_killed() == before.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        before.ep_mp.dom().contains(ep_ptr),
+        before.ep_mp.spec_index(ep_ptr).locking_thread() is None,
+        before.ep_mp.spec_index(ep_ptr).view().owning_threads.view().len() > 1,
+        after.ep_mp.unchanged_except(&before.ep_mp, ep_ptr),
+        after.ep_mp.spec_index(ep_ptr).view().queue.view() == before.ep_mp.spec_index(ep_ptr).view().queue.view(),
+        after.ep_mp.spec_index(ep_ptr).view().queue_state == before.ep_mp.spec_index(ep_ptr).view().queue_state,
+        after.ep_mp.spec_index(ep_ptr).view().owning_container == before.ep_mp.spec_index(ep_ptr).view().owning_container,
+        after.ep_mp.spec_index(ep_ptr).view().owning_threads.view() == before.ep_mp.spec_index(ep_ptr).view().owning_threads.view().remove((thrd_ptr, index)),
+        after.ep_mp.spec_index(ep_ptr).locking_thread() == before.ep_mp.spec_index(ep_ptr).locking_thread(),
+        after.ep_mp.spec_index(ep_ptr).being_killed() == before.ep_mp.spec_index(ep_ptr).being_killed(),
     ensures
         kernel_u_killed_descriptor_dropped(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
-                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thrd_mp.spec_index(thrd_ptr).view().owning_container
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_descriptor_dropped_implies_u_step(before, after, thread_ptr, endpoint_ptr, index);
-    kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr); kernel_endpoint_projection_at(before, endpoint_ptr);
+    kernel_descriptor_dropped_implies_u_step(before, after, thrd_ptr, ep_ptr, index);
+    kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr); kernel_endpoint_projection_at(before, ep_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    let thread = pre.thread_map[thread_ptr];
-    assert_sets_equal!(pre.thread_map.dom().filter(|t: RwLockThreadPtr| post.thread_map[t] != pre.thread_map[t]), set![thread_ptr]);
-    assert_sets_equal!(Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| post.thread_map[thread_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]), set![index as int]);
+    let thread = pre.thread_map[thrd_ptr];
+    assert_sets_equal!(pre.thread_map.dom().filter(|t: RwLockThreadPtr| post.thread_map[t] != pre.thread_map[t]), set![thrd_ptr]);
+    assert_sets_equal!(Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| post.thread_map[thrd_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]), set![index as int]);
     reveal(kernel_u_killed_descriptor_dropped);
 }
 
-/// Waking `caller_ptr`, the unlocked caller of the write-held killed thread `thread_ptr` waiting for its reply in the same
+/// Waking `caller_ptr`, the unlocked caller of the write-held killed thread `thrd_ptr` waiting for its reply in the same
 /// container, projects to `kernel_u_killed_caller_woken`, changes the projection, and changes no thread outside that
 /// container.
-pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
+pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
     requires
         after.inv(),
-        before.thr_mp.dom().contains(thread_ptr),
-        before.thr_mp.dom().contains(caller_ptr),
-        before.thr_mp.spec_index(thread_ptr).view().state is KILLED,
-        before.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        before.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
-        before.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
-        before.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr),
-        before.thr_mp.spec_index(caller_ptr).locking_thread() is None,
-        before.thr_mp.spec_index(caller_ptr).view().owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container,
-        *after == (KernelK { thr_mp: after.thr_mp, sched_mp: after.sched_mp, ..*before }),
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
-            before.thr_mp.dom().contains(t) && t != thread_ptr && t != caller_ptr ==> after.thr_mp.spec_index(t) == before.thr_mp.spec_index(t),
-        after.thr_mp.spec_index(thread_ptr).view() == (Thread { caller: None, ..before.thr_mp.spec_index(thread_ptr).view() }),
-        after.thr_mp.spec_index(thread_ptr).locking_thread() == before.thr_mp.spec_index(thread_ptr).locking_thread(),
-        after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
-        after.thr_mp.spec_index(caller_ptr).view() == (Thread {
+        before.thrd_mp.dom().contains(thrd_ptr),
+        before.thrd_mp.dom().contains(caller_ptr),
+        before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
+        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).view().caller == Some(caller_ptr),
+        before.thrd_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        before.thrd_mp.spec_index(caller_ptr).view().callee == Some(thrd_ptr),
+        before.thrd_mp.spec_index(caller_ptr).locking_thread() is None,
+        before.thrd_mp.spec_index(caller_ptr).view().owning_container == before.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        *after == (KernelK { thrd_mp: after.thrd_mp, sched_mp: after.sched_mp, ..*before }),
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)]
+            before.thrd_mp.dom().contains(t) && t != thrd_ptr && t != caller_ptr ==> after.thrd_mp.spec_index(t) == before.thrd_mp.spec_index(t),
+        after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { caller: None, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
+        after.thrd_mp.spec_index(thrd_ptr).locking_thread() == before.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        after.thrd_mp.spec_index(thrd_ptr).being_killed() == before.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        after.thrd_mp.spec_index(caller_ptr).view() == (Thread {
             state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited),
-            scheduler_linkedlist_node: after.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node, ..before.thr_mp.spec_index(caller_ptr).view()
+            scheduler_linkedlist_node: after.thrd_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node, ..before.thrd_mp.spec_index(caller_ptr).view()
         }),
-        after.thr_mp.spec_index(caller_ptr).locking_thread() == before.thr_mp.spec_index(caller_ptr).locking_thread(),
-        after.thr_mp.spec_index(caller_ptr).being_killed() == before.thr_mp.spec_index(caller_ptr).being_killed(),
+        after.thrd_mp.spec_index(caller_ptr).locking_thread() == before.thrd_mp.spec_index(caller_ptr).locking_thread(),
+        after.thrd_mp.spec_index(caller_ptr).being_killed() == before.thrd_mp.spec_index(caller_ptr).being_killed(),
         after.sched_mp.dom() == before.sched_mp.dom(),
         forall|s: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(s)] before.sched_mp.dom().contains(s) ==>
-            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler {
+            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thrd_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler {
                 scheduler_shards_of(before.sched_mp.spec_index(s)).update(cpu_id as int, scheduler_shards_of(before.sched_mp.spec_index(s))[cpu_id as int].push(caller_ptr))
             } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
     ensures
@@ -88,55 +88,55 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
-                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thrd_mp.spec_index(thrd_ptr).view().owning_container
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_caller_woken_implies_u_step(before, after, cpu_id, thread_ptr, caller_ptr);
-    kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(before, caller_ptr); kernel_thread_projection_at(after, caller_ptr);
+    kernel_caller_woken_implies_u_step(before, after, cpu_id, thrd_ptr, caller_ptr);
+    kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(before, caller_ptr); kernel_thread_projection_at(after, caller_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_sets_equal!(pre.thread_map.dom().filter(|t: RwLockThreadPtr| pre.thread_map[t].state is WAITING_REPLY && post.thread_map[t].state is SCHEDULED), set![caller_ptr]);
     reveal(kernel_u_killed_caller_woken);
 }
 
-/// Taking over `caller_ptr`, the unlocked dangling thread of the killed caller of the write-held killed thread `thread_ptr`
+/// Taking over `caller_ptr`, the unlocked dangling thread of the killed caller of the write-held killed thread `thrd_ptr`
 /// in the same container, projects to `kernel_u_killed_caller_taken_over`, changes the projection, and changes no thread
 /// outside that container.
-pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
+pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
     requires
-        before.thr_mp.dom().contains(thread_ptr),
-        before.thr_mp.dom().contains(caller_ptr),
-        thread_ptr != caller_ptr,
-        before.thr_mp.spec_index(thread_ptr).view().state is KILLED,
-        before.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        before.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
-        before.thr_mp.spec_index(caller_ptr).view().state is DANGLING,
-        before.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr),
-        before.thr_mp.spec_index(caller_ptr).locking_thread() is None,
-        before.thr_mp.spec_index(caller_ptr).view().owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container,
-        *after == (KernelK { thr_mp: after.thr_mp, ..*before }),
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
-            before.thr_mp.dom().contains(t) && t != thread_ptr && t != caller_ptr ==> after.thr_mp.spec_index(t) == before.thr_mp.spec_index(t),
-        after.thr_mp.spec_index(thread_ptr).view() == (Thread { caller: None, ..before.thr_mp.spec_index(thread_ptr).view() }),
-        after.thr_mp.spec_index(thread_ptr).locking_thread() == before.thr_mp.spec_index(thread_ptr).locking_thread(),
-        after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
-        after.thr_mp.spec_index(caller_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thr_mp.spec_index(caller_ptr).view() }),
-        after.thr_mp.spec_index(caller_ptr).locking_thread() is Write,
-        after.thr_mp.spec_index(caller_ptr).being_killed() == before.thr_mp.spec_index(caller_ptr).being_killed(),
+        before.thrd_mp.dom().contains(thrd_ptr),
+        before.thrd_mp.dom().contains(caller_ptr),
+        thrd_ptr != caller_ptr,
+        before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
+        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).view().caller == Some(caller_ptr),
+        before.thrd_mp.spec_index(caller_ptr).view().state is DANGLING,
+        before.thrd_mp.spec_index(caller_ptr).view().callee == Some(thrd_ptr),
+        before.thrd_mp.spec_index(caller_ptr).locking_thread() is None,
+        before.thrd_mp.spec_index(caller_ptr).view().owning_container == before.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        *after == (KernelK { thrd_mp: after.thrd_mp, ..*before }),
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)]
+            before.thrd_mp.dom().contains(t) && t != thrd_ptr && t != caller_ptr ==> after.thrd_mp.spec_index(t) == before.thrd_mp.spec_index(t),
+        after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { caller: None, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
+        after.thrd_mp.spec_index(thrd_ptr).locking_thread() == before.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        after.thrd_mp.spec_index(thrd_ptr).being_killed() == before.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        after.thrd_mp.spec_index(caller_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thrd_mp.spec_index(caller_ptr).view() }),
+        after.thrd_mp.spec_index(caller_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(caller_ptr).being_killed() == before.thrd_mp.spec_index(caller_ptr).being_killed(),
     ensures
         kernel_u_killed_caller_taken_over(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
-                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thrd_mp.spec_index(thrd_ptr).view().owning_container
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_dangling_caller_taken_over_implies_u_step(before, after, thread_ptr, caller_ptr, None);
-    kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(before, caller_ptr); kernel_thread_projection_at(after, caller_ptr);
+    kernel_dangling_caller_taken_over_implies_u_step(before, after, thrd_ptr, caller_ptr, None);
+    kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(before, caller_ptr); kernel_thread_projection_at(after, caller_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_sets_equal!(pre.thread_map.dom().filter(|t: RwLockThreadPtr| pre.thread_map[t].state is DANGLING && post.thread_map[t].state is KILLED), set![caller_ptr]);
@@ -149,23 +149,23 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
     before: &KernelK, after: &KernelK, callee_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>,
 )
     requires
-        before.thr_mp.dom().contains(callee_ptr),
-        before.thr_mp.dom().contains(dangling_ptr),
+        before.thrd_mp.dom().contains(callee_ptr),
+        before.thrd_mp.dom().contains(dangling_ptr),
         callee_ptr != dangling_ptr,
-        *after == (KernelK { thr_mp: after.thr_mp, ep_mp: after.ep_mp, ..*before }),
+        *after == (KernelK { thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, ..*before }),
         match endpoint {
             Some(e) => before.ep_mp.dom().contains(e) && after.ep_mp.unchanged_except(&before.ep_mp, e) && wunlock_ensures(before.ep_mp.spec_index(e), after.ep_mp.spec_index(e)),
             None => after.ep_mp == before.ep_mp,
         },
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
-            before.thr_mp.dom().contains(t) && t != callee_ptr && t != dangling_ptr ==> after.thr_mp.spec_index(t) == before.thr_mp.spec_index(t),
-        after.thr_mp.spec_index(callee_ptr).view() == (Thread { caller: None, ..before.thr_mp.spec_index(callee_ptr).view() }),
-        after.thr_mp.spec_index(callee_ptr).locking_thread() == before.thr_mp.spec_index(callee_ptr).locking_thread(),
-        after.thr_mp.spec_index(callee_ptr).being_killed() == before.thr_mp.spec_index(callee_ptr).being_killed(),
-        after.thr_mp.spec_index(dangling_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thr_mp.spec_index(dangling_ptr).view() }),
-        after.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
-        after.thr_mp.spec_index(dangling_ptr).being_killed() == before.thr_mp.spec_index(dangling_ptr).being_killed(),
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)]
+            before.thrd_mp.dom().contains(t) && t != callee_ptr && t != dangling_ptr ==> after.thrd_mp.spec_index(t) == before.thrd_mp.spec_index(t),
+        after.thrd_mp.spec_index(callee_ptr).view() == (Thread { caller: None, ..before.thrd_mp.spec_index(callee_ptr).view() }),
+        after.thrd_mp.spec_index(callee_ptr).locking_thread() == before.thrd_mp.spec_index(callee_ptr).locking_thread(),
+        after.thrd_mp.spec_index(callee_ptr).being_killed() == before.thrd_mp.spec_index(callee_ptr).being_killed(),
+        after.thrd_mp.spec_index(dangling_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thrd_mp.spec_index(dangling_ptr).view() }),
+        after.thrd_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(dangling_ptr).being_killed() == before.thrd_mp.spec_index(dangling_ptr).being_killed(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
@@ -180,7 +180,7 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre.thread_map[dangling_ptr] }), t => {
-        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+        if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
     assert_maps_equal!(post.endpoint_map, match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map }, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
@@ -189,24 +189,24 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
 }
 
 /// Releasing a held cpu and its running thread changes only their lock modes and the cpu's running state.
-pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
+pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        before.thr_mp.dom().contains(thread_ptr),
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, thr_mp: after.thr_mp, ..*before }),
+        before.thrd_mp.dom().contains(thrd_ptr),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, thrd_mp: after.thrd_mp, ..*before }),
         after.cpu_arr.entries_unchanged_except(&before.cpu_arr, cpu_id),
         forall|i: CpuId| #![trigger after.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> after.cpu_op.view().view()[i as int] == before.cpu_op.view().view()[i as int],
         after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         after.cpu_arr.spec_index(cpu_id).value.being_killed() == before.cpu_arr.spec_index(cpu_id).value.being_killed(),
-        after.thr_mp.unchanged_except(&before.thr_mp, thread_ptr),
-        after.thr_mp.spec_index(thread_ptr).locking_thread() is None,
+        after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
+        after.thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
         kernel_cpu_process_thread_nonlock_fields_unchanged(before, after),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }),
-                thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thread_ptr] }),
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thrd_ptr] }),
                 ..pre
             })
         }),
@@ -214,8 +214,8 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thread_ptr] }), t => {
-        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+    assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thrd_ptr] }), t => {
+        if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     });
     assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }), i => {
@@ -236,7 +236,7 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
-                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(dangling_ptr).view().owning_container
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thrd_mp.spec_index(dangling_ptr).view().owning_container
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
@@ -247,7 +247,7 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
     assert_sets_equal!(pre.thread_map.dom().difference(post.thread_map.dom()), set![dangling_ptr]);
     kernel_thread_projection_at(before, dangling_ptr);
     assert_maps_equal!(post.thread_map, pre.thread_map.remove(dangling_ptr), t => {
-        if after.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+        if after.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
     let dangling = pre.thread_map[dangling_ptr];
     assert_maps_equal!(post.container_map, Map::new(pre.container_map.dom(), |c: RwLockContainerPtr| {

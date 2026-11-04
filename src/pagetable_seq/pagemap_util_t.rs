@@ -159,24 +159,24 @@ pub(crate) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
 }
 
 #[verifier(external_body)]
-pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
+pub fn page_perm_to_page_map(pg_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
     requires
         page_perm.is_init(),
-        page_perm.addr() == page_ptr,
+        page_perm.addr() == pg_ptr,
     ensures
-        ret.0 == page_ptr,
+        ret.0 == pg_ptr,
         ret.1.view().addr() == ret.0,
         ret.1.view().is_init(),
         ret.1.view().value().wf(),
         forall|i: usize| #![trigger ret.1.view().value().spec_index(i).is_empty()] pei_valid(i) ==> ret.1.view().value().spec_index(i).is_empty(),
 {
     unsafe {
-        let uptr = page_ptr as *mut MaybeUninit<PageMap>;
+        let uptr = pg_ptr as *mut MaybeUninit<PageMap>;
         for i in 0..512 {
             (*uptr).assume_init_mut().set_unpublished(i, PageEntry::empty());
         }
     }
-    (page_ptr, Tracked::assume_new())
+    (pg_ptr, Tracked::assume_new())
 }
 
 /// TCB: a table page that its page table no longer links and that no usable paging-structure cache names is an ordinary

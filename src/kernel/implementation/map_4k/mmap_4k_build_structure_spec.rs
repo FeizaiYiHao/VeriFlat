@@ -35,28 +35,28 @@ pub open spec fn mmap_4k_progress_after_directory(progress: Option<SyscallProgre
 
 /// The quota thread funds directory pages for its own container or for a
 /// write-held direct child container that receives their ownership.
-pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &LocalContext, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr) -> bool {
-    let owner = k.thr_mp.spec_index(thread_ptr).view().owning_container;
-    ||| owner == container_ptr
+pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &LocalContext, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr) -> bool {
+    let owner = k.thrd_mp.spec_index(thrd_ptr).view().owning_container;
+    ||| owner == ctn_ptr
     ||| {
-        &&& k.ctn_mp.dom().contains(container_ptr)
-        &&& k.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(owner)
-        &&& typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write)
+        &&& k.ctn_mp.dom().contains(ctn_ptr)
+        &&& k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent == Some(owner)
+        &&& typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write)
     }
 }
 
 /// The cpu and its running thread are write-locked, and the pagetable of the thread's process is locked.
 pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let process_ptr = u.thread_map.spec_index(thread_ptr).owning_proc;
+    let thrd_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let prc_ptr = u.thread_map.spec_index(thrd_ptr).owning_proc;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
     &&& u.cpu_array[cpu_id as int].current_thread is Some
-    &&& u.thread_map.dom().contains(thread_ptr)
-    &&& u.thread_map.spec_index(thread_ptr).lock_state is WriteLocked
-    &&& u.process_map.dom().contains(process_ptr)
-    &&& u.process_map.spec_index(process_ptr).pagetable is Some
-    &&& !(u.process_map.spec_index(process_ptr).pagetable->Some_0.lock_state is Unlocked)
+    &&& u.thread_map.dom().contains(thrd_ptr)
+    &&& u.thread_map.spec_index(thrd_ptr).lock_state is WriteLocked
+    &&& u.process_map.dom().contains(prc_ptr)
+    &&& u.process_map.spec_index(prc_ptr).pagetable is Some
+    &&& !(u.process_map.spec_index(prc_ptr).pagetable->Some_0.lock_state is Unlocked)
 }
 
 /// A directory step starts under the three mmap locks, before the recorded range is fully mapped,
@@ -77,15 +77,15 @@ pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 /// the table, those of the recorded range held.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let progress = thread.syscall_progress->Some_0;
-    let new_progress = new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0;
+    let new_progress = new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0;
     let process = old_u.process_map[thread.owning_proc];
     let table = process.pagetable->Some_0;
     let old_windows = table.pagetable_window_locks;
     let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
-    &&& new_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
+    &&& new_u.thread_map.spec_index(thrd_ptr).syscall_progress is Some
     &&& new_progress is Mmap4k
     &&& new_progress->Mmap4k_range == progress->Mmap4k_range
     &&& new_progress->Mmap4k_mapped == progress->Mmap4k_mapped
@@ -97,7 +97,7 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap4k_range)
     &&& !(new_progress->Mmap4k_directory is L3) ==> new_windows == old_windows
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
         ..old_u
     })
@@ -129,15 +129,15 @@ pub open spec fn mmap_2m_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 /// to the table, those of the recorded range held.
 #[verifier::opaque]
 pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let progress = thread.syscall_progress->Some_0;
-    let new_progress = new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0;
+    let new_progress = new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0;
     let process = old_u.process_map[thread.owning_proc];
     let table = process.pagetable->Some_0;
     let old_windows = table.pagetable_window_locks;
     let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
-    &&& new_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
+    &&& new_u.thread_map.spec_index(thrd_ptr).syscall_progress is Some
     &&& new_progress is Mmap2m
     &&& new_progress->Mmap2m_range == progress->Mmap2m_range
     &&& new_progress->Mmap2m_mapped == progress->Mmap2m_mapped
@@ -148,7 +148,7 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap2m_range.covering_4k_range())
     &&& !(new_progress->Mmap2m_directory is L3) ==> new_windows == old_windows
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
         ..old_u
     })

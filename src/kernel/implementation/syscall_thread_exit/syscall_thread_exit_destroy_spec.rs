@@ -2,21 +2,21 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The exiting thread `thread_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table: its
+/// The exiting thread `thrd_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table: its
 /// process drops it through the process-list node at `proc_node_addr`, absorbs its quotas, and becomes a zombie without
 /// threads; a zombie root process makes the container a zombie; the container and its upper containers drop the thread;
 /// and the thread's page returns through its free-list node at `cache_node_addr` to shard `cpu_id` of the 4K allocator
 /// of its owner `owner`, whose quota grows by one; a zombie releases its PCID to its container's PCID allocator.
 #[verifier::opaque]
 pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-    owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+    owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
 ) -> bool {
-    let page_index = page_ptr2page_index(thread_ptr);
-    let thread = pre.thr_mp.spec_index(thread_ptr).view();
-    let uppers = pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
-    let pre_process = pre.prc_mp.spec_index(process_ptr);
-    let post_process = post.prc_mp.spec_index(process_ptr);
+    let pg_idx = page_ptr2page_index(thrd_ptr);
+    let thread = pre.thrd_mp.spec_index(thrd_ptr).view();
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let pre_process = pre.prc_mp.spec_index(prc_ptr);
+    let post_process = post.prc_mp.spec_index(prc_ptr);
     let zombie = post_process.view().owned_threads.view().len() == 0;
     let pre_cpu = pre.cpu_arr.spec_index(cpu_id).view();
     let post_cpu = post.cpu_arr.spec_index(cpu_id).view();
@@ -24,19 +24,19 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     let post_needflush = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let flushed = pre_needflush.view().needflush;
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
-    let pre_page = pre.pg_arr.spec_index(page_index).view();
-    let post_page = post.pg_arr.spec_index(page_index).view();
-    let free_state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    let pre_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
-    let post_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
+    let pre_page = pre.pg_arr.spec_index(pg_idx).view();
+    let post_page = post.pg_arr.spec_index(pg_idx).view();
+    let free_state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    let pre_allocator = pre.allc_4k_mp.spec_index(allc_ptr);
+    let post_allocator = post.allc_4k_mp.spec_index(allc_ptr);
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
-    let pcid_allocator_ptr = pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator;
-    let pre_pcid_allocator = pre.pcid_allc_mp.spec_index(pcid_allocator_ptr);
-    let post_pcid_allocator = post.pcid_allc_mp.spec_index(pcid_allocator_ptr);
+    let pcid_allc_ptr = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator;
+    let pre_pcid_allocator = pre.pcid_allc_mp.spec_index(pcid_allc_ptr);
+    let post_pcid_allocator = post.pcid_allc_mp.spec_index(pcid_allc_ptr);
     &&& post == (KernelK {
         cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp,
-        thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
+        thrd_mp: post.thrd_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
     })
     &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
     &&& post_cpu.locking_thread() == pre_cpu.locking_thread()
@@ -72,20 +72,20 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
             let before = pre.ctn_mp.spec_index(c);
             let after = post.ctn_mp.spec_index(c);
             &&& after.is_init() == before.is_init()
-            &&& after.view() == if c == container_ptr { Container { zombie: before.view().zombie || (zombie && before.view().root_process == process_ptr), ..before.view() } } else { before.view() }
+            &&& after.view() == if c == ctn_ptr { Container { zombie: before.view().zombie || (zombie && before.view().root_process == prc_ptr), ..before.view() } } else { before.view() }
             &&& after.view_rodata() == before.view_rodata()
             &&& after.locking_thread() == before.locking_thread()
             &&& after.being_killed() == before.being_killed()
             &&& after.killer_info() == before.killer_info()
             &&& after.view_ghost() == (ContainerGhost {
-                owned_threads: if c == container_ptr { Ghost(before.view_ghost().owned_threads.view().remove(thread_ptr)) } else { before.view_ghost().owned_threads },
-                owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(before.view_ghost().owned_indirect_threads.view().remove(thread_ptr)) }
+                owned_threads: if c == ctn_ptr { Ghost(before.view_ghost().owned_threads.view().remove(thrd_ptr)) } else { before.view_ghost().owned_threads },
+                owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(before.view_ghost().owned_indirect_threads.view().remove(thrd_ptr)) }
                     else { before.view_ghost().owned_indirect_threads },
                 ..before.view_ghost()
             })
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
-    &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
+    &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p).view_ghost()]
         post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).view_ghost() == pre.prc_mp.spec_index(p).view_ghost()
     &&& post_process.view() == (Process {
@@ -93,7 +93,7 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
         quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize, quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize,
         owned_threads: post_process.view().owned_threads, ..pre_process.view()
     })
-    &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().remove_value(thread_ptr)
+    &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().remove_value(thrd_ptr)
     &&& post_process.view().owned_threads.view().len() == pre_process.view().owned_threads.view().len() - 1
     &&& post_process.view().owned_threads.dom() == pre_process.view().owned_threads.dom().remove(proc_node_addr)
     &&& post_process.view().owned_threads.map() == pre_process.view().owned_threads.map().remove(proc_node_addr)
@@ -103,12 +103,12 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_process.being_killed() == pre_process.being_killed()
     &&& post_process.killer_info() == pre_process.killer_info()
     &&& zombie ==> pre_process.view().state.view() is TablesEmptied
-    &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(thread_ptr)
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
-    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom().remove(thrd_ptr)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)] post.thrd_mp.dom().contains(t) ==> post.thrd_mp.spec_index(t) == pre.thrd_mp.spec_index(t)
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
-            &&& post.pg_arr.spec_index(i).view().view().state == if i == page_index { free_state } else { pre.pg_arr.spec_index(i).view().view().state }
+            &&& post.pg_arr.spec_index(i).view().view().state == if i == pg_idx { free_state } else { pre.pg_arr.spec_index(i).view().view().state }
             &&& post.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(i).view().view().owning_container
             &&& post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings()
         }
@@ -120,10 +120,10 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_page.view().free_list_node_storage.addr() == cache_node_addr
     &&& post_page.view() == (Page { state: free_state, free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator_ptr)
+    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allc_ptr)
     &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + 1
-    &&& post_cache.view().view() == pre_cache.view().view().insert(0, thread_ptr)
-    &&& post_cache.view().map() == pre_cache.view().map().insert(cache_node_addr, thread_ptr)
+    &&& post_cache.view().view() == pre_cache.view().view().insert(0, thrd_ptr)
+    &&& post_cache.view().map() == pre_cache.view().map().insert(cache_node_addr, thrd_ptr)
     &&& post_allocator.cpu_caches.entries_unchanged_except(&pre_allocator.cpu_caches, cpu_id)
     &&& post_cache.locking_thread() == pre_cache.locking_thread()
     &&& post_allocator.global_pool == pre_allocator.global_pool
@@ -137,11 +137,11 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_allocator.quota.being_killed() == pre_allocator.quota.being_killed()
     &&& post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom()
     &&& if zombie {
-        &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, pcid_allocator_ptr)
+        &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, pcid_allc_ptr)
         &&& pcid_valid(pre_process.view().pcid)
         &&& pre_process.view().pcid != KERNEL_DEFAULT_PCID
-        &&& pre_pcid_allocator.view().id_to_proc.view().spec_index(pre_process.view().pcid as int).contains(process_ptr)
-        &&& post_pcid_allocator.view().release_ensures(&pre_pcid_allocator.view(), process_ptr, pre_process.view().pcid)
+        &&& pre_pcid_allocator.view().id_to_proc.view().spec_index(pre_process.view().pcid as int).contains(prc_ptr)
+        &&& post_pcid_allocator.view().release_ensures(&pre_pcid_allocator.view(), prc_ptr, pre_process.view().pcid)
         &&& post_pcid_allocator.locking_thread() == pre_pcid_allocator.locking_thread()
         &&& post_pcid_allocator.being_killed() == pre_pcid_allocator.being_killed()
     } else { post.pcid_allc_mp == pre.pcid_allc_mp }

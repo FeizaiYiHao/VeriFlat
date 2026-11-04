@@ -14,12 +14,12 @@ verus! {
                 ==> container_map.dom().contains(endpoint_map.spec_index(e_ptr).view().owning_container) && container_map.spec_index(endpoint_map.spec_index(e_ptr).view().owning_container).view_ghost().owned_endpoints.view().contains(e_ptr)
     }
 
-    pub proof fn container_endpoint_wf_at(container_map: ContainerLockedMap, endpoint_map: EndpointLockedMap, endpoint_ptr: RwLockEndpointPtr)
+    pub proof fn container_endpoint_wf_at(container_map: ContainerLockedMap, endpoint_map: EndpointLockedMap, ep_ptr: RwLockEndpointPtr)
         requires
             container_endpoint_wf(container_map, endpoint_map),
-            endpoint_map.dom().contains(endpoint_ptr),
+            endpoint_map.dom().contains(ep_ptr),
         ensures
-            container_map.dom().contains(endpoint_map.spec_index(endpoint_ptr).view().owning_container),
-            container_map.spec_index(endpoint_map.spec_index(endpoint_ptr).view().owning_container).view_ghost().owned_endpoints.view().contains(endpoint_ptr),
+            container_map.dom().contains(endpoint_map.spec_index(ep_ptr).view().owning_container),
+            container_map.spec_index(endpoint_map.spec_index(ep_ptr).view().owning_container).view_ghost().owned_endpoints.view().contains(ep_ptr),
     { reveal(container_endpoint_wf); }
 }

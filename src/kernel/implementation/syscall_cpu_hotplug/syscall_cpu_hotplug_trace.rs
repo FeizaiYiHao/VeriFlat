@@ -9,33 +9,33 @@ pub(super) proof fn cpu_offline_request_result_from_k(krnl: &KernelK, cpu_id: Cp
         index_valid(NUM_CPUS, target),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
-            let container_ptr = cpu.view().view().owning_container;
+            let ctn_ptr = cpu.view().view().owning_container;
             let t = krnl.cpu_arr.spec_index(target).view().view().view();
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed()
-            &&& ret is ErrorCpuOwnerMismatch ==> t.owning_container != container_ptr
-            &&& ret is ErrorCpuAlreadyOff ==> t.owning_container == container_ptr && t.state is Off
-            &&& ret is Success ==> t.owning_container == container_ptr && !(t.state is Off)
-            &&& ret is Success ==> krnl.ctn_mp.dom().contains(container_ptr) && pending == krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).flags.spec_index(target).view().view().requested
+            &&& ret is ErrorCpuOwnerMismatch ==> t.owning_container != ctn_ptr
+            &&& ret is ErrorCpuAlreadyOff ==> t.owning_container == ctn_ptr && t.state is Off
+            &&& ret is Success ==> t.owning_container == ctn_ptr && !(t.state is Off)
+            &&& ret is Success ==> krnl.ctn_mp.dom().contains(ctn_ptr) && pending == krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).flags.spec_index(target).view().view().requested
             &&& ret is CpuIdle || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuAlreadyOff || ret is Success
         },
     ensures
         cpu_offline_request_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, target) == ret,
         ret is Success ==> cpu_offline_request_pending(kernel_k_to_kernel_u(*krnl), cpu_id, target) == pending,
 {
-    let container_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+    let ctn_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
     kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
-    if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
+    if krnl.ctn_mp.dom().contains(ctn_ptr) { kernel_container_projection_at(krnl, ctn_ptr); }
     reveal(cpu_offline_requests_of);
 }
 
 /// The request wrapper's user-view facts are exactly the request step on `pre`/`post`.
-pub(super) proof fn cpu_offline_request_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+pub(super) proof fn cpu_offline_request_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId)
     requires
-        kernel_u_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
+        kernel_u_cpu_offline_request_changed(pre, post, cpu_id, ctn_ptr, target),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
-        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
-        pre.cpu_array[cpu_id as int].owning_container == container_ptr,
+        pre.container_map[ctn_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container == ctn_ptr,
     ensures
         cpu_offline_request_step_pre(pre, cpu_id, target),
         cpu_offline_request_step(pre, post, cpu_id, target),
@@ -68,13 +68,13 @@ pub(super) proof fn cpu_online_result_from_k(krnl: &KernelK, cpu_id: CpuId, targ
         index_valid(NUM_CPUS, target),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
-            let container_ptr = cpu.view().view().owning_container;
+            let ctn_ptr = cpu.view().view().owning_container;
             let t = krnl.cpu_arr.spec_index(target).view().view().view();
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed()
-            &&& ret is ErrorCpuOwnerMismatch ==> t.owning_container != container_ptr
-            &&& ret is ErrorCpuNotOff ==> t.owning_container == container_ptr && !(t.state is Off)
-            &&& ret is Success ==> t.owning_container == container_ptr && t.state is Off
+            &&& ret is ErrorCpuOwnerMismatch ==> t.owning_container != ctn_ptr
+            &&& ret is ErrorCpuNotOff ==> t.owning_container == ctn_ptr && !(t.state is Off)
+            &&& ret is Success ==> t.owning_container == ctn_ptr && t.state is Off
             &&& ret is CpuIdle || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuNotOff || ret is Success
         },
     ensures
@@ -82,13 +82,13 @@ pub(super) proof fn cpu_online_result_from_k(krnl: &KernelK, cpu_id: CpuId, targ
 { kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target); }
 
 /// The online wrapper's user-view facts are exactly the online step on `pre`/`post`.
-pub(super) proof fn cpu_online_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+pub(super) proof fn cpu_online_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId)
     requires
-        kernel_u_cpu_online_changed(pre, post, cpu_id, container_ptr, target),
+        kernel_u_cpu_online_changed(pre, post, cpu_id, ctn_ptr, target),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
         pre.cpu_array[target as int].lock_state is Unlocked,
-        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
-        pre.cpu_array[cpu_id as int].owning_container == container_ptr,
+        pre.container_map[ctn_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container == ctn_ptr,
     ensures
         cpu_online_step_pre(pre, cpu_id, target),
         cpu_online_step(pre, post, cpu_id, target),
@@ -144,9 +144,9 @@ pub(super) proof fn cpu_offline_request_child_result_from_k(krnl: &KernelK, cpu_
         ret is Success ==> cpu_offline_request_child_pending(kernel_k_to_kernel_u(*krnl), target) == pending,
 {
     let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
-    let container_ptr = cpu.owning_container;
+    let ctn_ptr = cpu.owning_container;
     kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
-    if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
+    if krnl.ctn_mp.dom().contains(ctn_ptr) { kernel_container_projection_at(krnl, ctn_ptr); }
     cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
     if cpu.current_process is Some { kernel_process_projection_at(krnl, cpu.current_process->Some_0); }
     let t = krnl.cpu_arr.spec_index(target).view().view().view();
@@ -155,12 +155,12 @@ pub(super) proof fn cpu_offline_request_child_result_from_k(krnl: &KernelK, cpu_
 }
 
 /// The request wrapper's user-view facts on the child path are exactly the child request step on `pre`/`post`.
-pub(super) proof fn cpu_offline_request_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+pub(super) proof fn cpu_offline_request_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId)
     requires
-        kernel_u_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
+        kernel_u_cpu_offline_request_changed(pre, post, cpu_id, ctn_ptr, target),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
-        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
-        pre.cpu_array[cpu_id as int].owning_container != container_ptr,
+        pre.container_map[ctn_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container != ctn_ptr,
         pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is Unlocked,
     ensures
         cpu_offline_request_child_step_pre(pre, cpu_id, target),
@@ -217,21 +217,21 @@ pub(super) proof fn cpu_online_child_result_from_k(krnl: &KernelK, cpu_id: CpuId
         cpu_online_child_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child, target) == ret,
 {
     let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
-    let container_ptr = cpu.owning_container;
+    let ctn_ptr = cpu.owning_container;
     reveal(container_cpu_wf); kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
-    if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
+    if krnl.ctn_mp.dom().contains(ctn_ptr) { kernel_container_projection_at(krnl, ctn_ptr); }
     cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
     if cpu.current_process is Some { kernel_process_projection_at(krnl, cpu.current_process->Some_0); }
 }
 
 /// The online wrapper's user-view facts on the child path are exactly the child online step on `pre`/`post`.
-pub(super) proof fn cpu_online_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+pub(super) proof fn cpu_online_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId)
     requires
-        kernel_u_cpu_online_changed(pre, post, cpu_id, container_ptr, target),
+        kernel_u_cpu_online_changed(pre, post, cpu_id, ctn_ptr, target),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
         pre.cpu_array[target as int].lock_state is Unlocked,
-        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
-        pre.cpu_array[cpu_id as int].owning_container != container_ptr,
+        pre.container_map[ctn_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container != ctn_ptr,
         pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is Unlocked,
     ensures
         cpu_online_child_step_pre(pre, cpu_id, target),

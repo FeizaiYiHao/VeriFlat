@@ -9,7 +9,7 @@ verus! {
 /// Moves the write-held Off CPU from the parent CPU set into the child CPU set,
 /// then releases that CPU and both CPU sets.
 pub(super) fn transfer_new_container_cpu(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, parent_container_ptr: RwLockContainerPtr, child_container_ptr: RwLockContainerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, parent_ctn_ptr: RwLockContainerPtr, child_ctn_ptr: RwLockContainerPtr,
     parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, Tracked(transfer_cpu_lock_perm): Tracked<LockPerm>,
     Tracked(parent_cpu_set_lock_perm): Tracked<LockPerm>, Tracked(child_cpu_set_lock_perm): Tracked<LockPerm>,
 )
@@ -17,11 +17,11 @@ pub(super) fn transfer_new_container_cpu(
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid),
-        parent_container_ptr != child_container_ptr,
-        old(krnl).ctn_mp.dom().contains(parent_container_ptr),
-        old(krnl).ctn_mp.dom().contains(child_container_ptr),
-        old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().cpu_set == parent_cpu_set,
-        old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().cpu_set == child_cpu_set,
+        parent_ctn_ptr != child_ctn_ptr,
+        old(krnl).ctn_mp.dom().contains(parent_ctn_ptr),
+        old(krnl).ctn_mp.dom().contains(child_ctn_ptr),
+        old(krnl).ctn_mp.spec_index(parent_ctn_ptr).view_rodata().view().cpu_set == parent_cpu_set,
+        old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_rodata().view().cpu_set == child_cpu_set,
         old(krnl).cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id),
         old(lctx).cpu_set_lock_map().dom() =~= set![parent_cpu_set, child_cpu_set],
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), parent_cpu_set, TypedLockMode::Write),
@@ -41,7 +41,7 @@ pub(super) fn transfer_new_container_cpu(
         !old(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(child_cpu_set).being_killed(),
     ensures
         final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view() == (CpuView {
-            owning_container: child_container_ptr, container_depth: old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().depth,
+            owning_container: child_ctn_ptr, container_depth: old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_rodata().view().depth,
             ..old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view()
         }),
         final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread() is None,
@@ -80,17 +80,17 @@ pub(super) fn transfer_new_container_cpu(
 {
     proof {
         assert({
-            &&& krnl.ctn_mp.view().spec_index(child_container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(child_container_ptr).addr() == child_container_ptr
-        }) by { container_perms_wf_at(krnl.ctn_mp, child_container_ptr); };
+            &&& krnl.ctn_mp.view().spec_index(child_ctn_ptr).is_init()
+            &&& krnl.ctn_mp.view().spec_index(child_ctn_ptr).addr() == child_ctn_ptr
+        }) by { container_perms_wf_at(krnl.ctn_mp, child_ctn_ptr); };
         assert({
             &&& krnl.cpu_set_mp.dom().contains(parent_cpu_set)
             &&& krnl.cpu_set_mp.dom().contains(child_cpu_set)
             &&& parent_cpu_set != child_cpu_set
-        }) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_container_ptr); };
+        }) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ctn_ptr); };
         assert({
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
-            &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr
+            &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_ctn_ptr
             &&& !krnl.cpu_set_mp.spec_index(child_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
             &&& krnl.cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
             &&& krnl.cpu_set_mp.spec_index(parent_cpu_set).inv()
@@ -102,11 +102,11 @@ pub(super) fn transfer_new_container_cpu(
             &&& !krnl.cpu_arr.spec_index(transfer_cpu_id).view().being_killed()
         }) by {
             cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, child_cpu_set);
-            container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_container_ptr, transfer_cpu_id);
-            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, transfer_cpu_id);
+            container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_ctn_ptr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ctn_ptr, transfer_cpu_id);
+            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, transfer_cpu_id);
         };
     }
-    let child_container_depth = krnl.ctn_mp.borrow_rodata(child_container_ptr).borrow().depth;
+    let child_container_depth = krnl.ctn_mp.borrow_rodata(child_ctn_ptr).borrow().depth;
     let ghost locked_k = *krnl;
     {
         let parent_set = krnl.cpu_set_mp.borrow_mut_typed(parent_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&parent_cpu_set_lock_perm));
@@ -114,13 +114,13 @@ pub(super) fn transfer_new_container_cpu(
         let child_set = krnl.cpu_set_mp.borrow_mut_typed(child_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&child_cpu_set_lock_perm));
         child_set.owned_cpus.insert_closed(transfer_cpu_id);
         let transfer_cpu = krnl.cpu_arr.borrow_mut_typed(transfer_cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&transfer_cpu_lock_perm));
-        transfer_cpu.transfer_off_cpu_to_container(child_container_ptr, child_container_depth);
+        transfer_cpu.transfer_off_cpu_to_container(child_ctn_ptr, child_container_depth);
     }
     proof {
-        assert(new_container_cpu_transfer_eof_transition_framing(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id())) by {
+        assert(new_container_cpu_transfer_eof_transition_framing(locked_k, *krnl, parent_ctn_ptr, child_ctn_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id())) by {
             reveal(new_container_cpu_transfer_eof_transition_framing);
         };
-        new_container_cpu_transfer_eof(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
+        new_container_cpu_transfer_eof(locked_k, *krnl, parent_ctn_ptr, child_ctn_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
         assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !krnl.cpu_set_mp.spec_index(child_cpu_set).being_killed()) by { reveal(new_container_cpu_transfer_eof_transition_framing); };
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     }

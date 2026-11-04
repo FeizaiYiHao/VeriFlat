@@ -20,7 +20,7 @@ pub fn remove_shared_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableR
     proof { reveal(Page::mappings_va_valid); assert(page.iommu_mappings() == old(page).iommu_mappings()); }
 }
 
-pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: VAddr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: VAddr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
     requires
         old(page).inv(),
         old(page).state is Mapped4k,
@@ -30,7 +30,7 @@ pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPag
         index_valid(NUM_CPUS, cpu_id),
     ensures
         final(page).inv(),
-        final(page).state == (PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
+        final(page).state == (PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
         final(page).mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty(),
         final(page).mappings() == old(page).mappings().remove((pagetable_ptr, va)),
         final(page).ref_count == 0,
@@ -46,7 +46,7 @@ pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPag
     node_update_value(node_addr, &mut node_perm, page.addr);
     page.mappings = Ghost(Set::empty());
     page.ref_count = 0;
-    page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     (node_addr, node_perm)
 }
 
@@ -94,7 +94,7 @@ pub fn remove_shared_4k_iommu_mapping(page: &mut Page, iommu_table_ptr: RwLockPa
     proof { reveal(Page::mappings_va_valid); assert(page.mappings() == old(page).mappings()); }
 }
 
-pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
     requires
         old(page).inv(),
         old(page).state is Mapped4k,
@@ -104,7 +104,7 @@ pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: R
         index_valid(NUM_CPUS, cpu_id),
     ensures
         final(page).inv(),
-        final(page).state == (PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
+        final(page).state == (PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
         final(page).iommu_mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty(),
         final(page).iommu_mappings() == old(page).iommu_mappings().remove((iommu_table_ptr, iova)),
         final(page).mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty(),
@@ -121,7 +121,7 @@ pub fn remove_last_4k_iommu_mapping_to_cache(page: &mut Page, iommu_table_ptr: R
     node_update_value(node_addr, &mut node_perm, page.addr);
     page.iommu_mappings = Ghost(Set::empty());
     page.ref_count = 0;
-    page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    page.state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     (node_addr, node_perm)
 }
 

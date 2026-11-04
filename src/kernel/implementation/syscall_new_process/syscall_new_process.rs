@@ -31,16 +31,16 @@ pub fn syscall_new_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
         ret is SuccessPairUsize ==> {
-            let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-            let container_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+            let current_thrd_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            let ctn_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
             let child_ptr = ret->SuccessPairUsize_value1;
-            let thread_ptr = ret->SuccessPairUsize_value2;
+            let thrd_ptr = ret->SuccessPairUsize_value2;
             let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             &&& range > 0
             &&& source_range.wf()
-            &&& final(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
+            &&& final(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().state is SCHEDULED
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == child_ptr
         },
         (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false) is Success),
         !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false),

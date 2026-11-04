@@ -53,12 +53,12 @@ pub proof fn kernel_process_maps_unchanged_implies_u_process_map(pre: &KernelK, 
 
 /// An unchanged thread map projects to an unchanged thread map.
 pub proof fn kernel_thread_map_unchanged_implies_u_thread_map(pre: &KernelK, post: &KernelK)
-    requires post.thr_mp == pre.thr_mp,
+    requires post.thrd_mp == pre.thrd_mp,
     ensures kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(*pre).thread_map, t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
     });
 }
 
@@ -73,42 +73,42 @@ pub proof fn kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre: &KernelK,
     });
 }
 
-/// Retiring the zombie process `process_ptr` drops it from the processes of its container `container_ptr` and sets that
-/// container's 4K quota to the new quota of its 4K allocator `allocator_ptr` in the container projection.
+/// Retiring the zombie process `prc_ptr` drops it from the processes of its container `ctn_ptr` and sets that
+/// container's 4K quota to the new quota of its 4K allocator `allc_ptr` in the container projection.
 pub proof fn kernel_zombie_process_retired_implies_u_container_map(
-    pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr,
+    pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == allc_ptr,
         *post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
-        forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != container_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c),
-        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
-        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
-        post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
-            owned_processes: Ghost(pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(process_ptr)), ..pre.ctn_mp.spec_index(container_ptr).view_ghost() }),
-        post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread(),
-        post.ctn_mp.spec_index(container_ptr).control() == pre.ctn_mp.spec_index(container_ptr).control(),
+        forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != ctn_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c),
+        post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view(),
+        post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
+        post.ctn_mp.spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
+            owned_processes: Ghost(pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(prc_ptr)), ..pre.ctn_mp.spec_index(ctn_ptr).view_ghost() }),
+        post.ctn_mp.spec_index(ctn_ptr).locking_thread() == pre.ctn_mp.spec_index(ctn_ptr).locking_thread(),
+        post.ctn_mp.spec_index(ctn_ptr).control() == pre.ctn_mp.spec_index(ctn_ptr).control(),
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
-            pre.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> post.allc_4k_mp.spec_index(a).quota.view() == pre.allc_4k_mp.spec_index(a).quota.view(),
+            pre.allc_4k_mp.dom().contains(a) && a != allc_ptr ==> post.allc_4k_mp.spec_index(a).quota.view() == pre.allc_4k_mp.spec_index(a).quota.view(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let container = a.container_map[container_ptr];
-            kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(container_ptr, ContainerU {
-                owned_processes: container.owned_processes.remove(process_ptr), quota_4k: post.allc_4k_mp.spec_index(allocator_ptr).quota.view().view(), ..container })
+            let container = a.container_map[ctn_ptr];
+            kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(ctn_ptr, ContainerU {
+                owned_processes: container.owned_processes.remove(prc_ptr), quota_4k: post.allc_4k_mp.spec_index(allc_ptr).quota.view().view(), ..container })
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    let quota = post.allc_4k_mp.spec_index(allocator_ptr).quota.view().view();
-    kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr);
-    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, container_ptr);
-    let container = a.container_map[container_ptr];
-    assert_maps_equal!(b.container_map, a.container_map.insert(container_ptr, ContainerU { owned_processes: container.owned_processes.remove(process_ptr), quota_4k: quota, ..container }), c => {
+    let quota = post.allc_4k_mp.spec_index(allc_ptr).quota.view().view();
+    kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(post, ctn_ptr);
+    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
+    let container = a.container_map[ctn_ptr];
+    assert_maps_equal!(b.container_map, a.container_map.insert(ctn_ptr, ContainerU { owned_processes: container.owned_processes.remove(prc_ptr), quota_4k: quota, ..container }), c => {
         if pre.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c);
             container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c);
@@ -116,42 +116,42 @@ pub proof fn kernel_zombie_process_retired_implies_u_container_map(
     });
 }
 
-/// Retiring the zombie process `process_ptr`, whose parent is `parent_ptr`, drops it from the process projection, from its
+/// Retiring the zombie process `prc_ptr`, whose parent is `parent_ptr`, drops it from the process projection, from its
 /// parent's children, and from its ancestors' subtrees; every remaining process keeps its tables.
-pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, parent_ptr: RwLockProcessPtr)
+pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, parent_ptr: RwLockProcessPtr)
     requires
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
-        pre.prc_mp.dom().contains(process_ptr),
-        pre.prc_mp.spec_index(process_ptr).view().zombie,
-        pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent == Some(parent_ptr),
-        pre.prc_mp.spec_index(process_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr),
         *post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
-        post.prc_mp.dom() == pre.prc_mp.dom().remove(process_ptr),
+        post.prc_mp.dom() == pre.prc_mp.dom().remove(prc_ptr),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {
             let old_p = pre.prc_mp.spec_index(p);
             let new_p = post.prc_mp.spec_index(p);
             &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-            &&& new_p.view_ghost() == if pre.prc_mp.spec_index(process_ptr).view_ghost().uppertree_seq.view().contains(p) {
-                ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(process_ptr)), ..old_p.view_ghost() }
+            &&& new_p.view_ghost() == if pre.prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(p) {
+                ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(prc_ptr)), ..old_p.view_ghost() }
             } else { old_p.view_ghost() }
             &&& new_p.view_rodata() == old_p.view_rodata()
             &&& new_p.locking_thread() == old_p.locking_thread()
             &&& new_p.being_killed() == old_p.being_killed()
         },
-        post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(process_ptr),
-        post.pt_mp.dom() == pre.pt_mp.dom().remove(pre.prc_mp.spec_index(process_ptr).view().pagetable),
+        post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(prc_ptr),
+        post.pt_mp.dom() == pre.pt_mp.dom().remove(pre.prc_mp.spec_index(prc_ptr).view().pagetable),
         forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.spec_index(t) == pre.pt_mp.spec_index(t) && post.pt_lower.view().spec_index(t) == pre.pt_lower.view().spec_index(t),
-        post.it_mp.dom() == match pre.prc_mp.spec_index(process_ptr).view().iommu_table { Some(it) => pre.it_mp.dom().remove(it), None => pre.it_mp.dom() },
+        post.it_mp.dom() == match pre.prc_mp.spec_index(prc_ptr).view().iommu_table { Some(it) => pre.it_mp.dom().remove(it), None => pre.it_mp.dom() },
         forall|t: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(t)] post.it_mp.dom().contains(t) ==> post.it_mp.spec_index(t) == pre.it_mp.spec_index(t),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
-            kernel_k_to_kernel_u(*post).process_map == Map::new(a.process_map.dom().remove(process_ptr), |p: RwLockProcessPtr| {
+            let process = a.process_map[prc_ptr];
+            kernel_k_to_kernel_u(*post).process_map == Map::new(a.process_map.dom().remove(prc_ptr), |p: RwLockProcessPtr| {
                 let q = a.process_map[p];
                 if process.uppertree_seq.contains(p) {
-                    ProcessU { children: if p == parent_ptr { q.children.remove_value(process_ptr) } else { q.children }, subtree_set: q.subtree_set.remove(process_ptr), ..q }
+                    ProcessU { children: if p == parent_ptr { q.children.remove_value(prc_ptr) } else { q.children }, subtree_set: q.subtree_set.remove(prc_ptr), ..q }
                 } else { q }
             })
         }),
@@ -160,12 +160,12 @@ pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, 
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_process_projection_at(pre, process_ptr);
-    let process = a.process_map[process_ptr];
-    let retired = Map::new(a.process_map.dom().remove(process_ptr), |p: RwLockProcessPtr| {
+    kernel_process_projection_at(pre, prc_ptr);
+    let process = a.process_map[prc_ptr];
+    let retired = Map::new(a.process_map.dom().remove(prc_ptr), |p: RwLockProcessPtr| {
         let q = a.process_map[p];
         if process.uppertree_seq.contains(p) {
-            ProcessU { children: if p == parent_ptr { q.children.remove_value(process_ptr) } else { q.children }, subtree_set: q.subtree_set.remove(process_ptr), ..q }
+            ProcessU { children: if p == parent_ptr { q.children.remove_value(prc_ptr) } else { q.children }, subtree_set: q.subtree_set.remove(prc_ptr), ..q }
         } else { q }
     });
     assert_maps_equal!(b.process_map, retired, p => {
@@ -173,26 +173,26 @@ pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, 
             kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p);
             let old_p = pre.prc_mp.spec_index(p).view();
             if !old_p.zombie {
-                process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, process_ptr);
+                process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
                 if old_p.iommu_table is Some {
-                    process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, process_ptr);
+                    process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, p); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
                 }
             }
         }
     });
 }
 
-/// Returning the whole `size` quota of the process `process_ptr` to the `size` allocator of its container grows only that
+/// Returning the whole `size` quota of the process `prc_ptr` to the `size` allocator of its container grows only that
 /// container's `size` quota in the container projection.
-pub proof fn kernel_process_quota_returned_implies_u_container_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, size: PageSize)
+pub proof fn kernel_process_quota_returned_implies_u_container_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, size: PageSize)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
-        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container),
         *post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre }),
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
         ({
-            let container = pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view();
-            let process = pre.prc_mp.spec_index(process_ptr).view();
+            let container = pre.ctn_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container).view_rodata().view();
+            let process = pre.prc_mp.spec_index(prc_ptr).view();
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
                 pre.allc_4k_mp.dom().contains(a) && a != container.allocator_ptr_4k ==> post.allc_4k_mp.spec_index(a).quota.view().view() == pre.allc_4k_mp.spec_index(a).quota.view().view()
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a)]
@@ -209,7 +209,7 @@ pub proof fn kernel_process_quota_returned_implies_u_container_map(pre: &KernelK
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
+            let process = a.process_map[prc_ptr];
             let container = a.container_map[process.owning_container];
             kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(process.owning_container, match size {
                 PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k) as usize, ..container },
@@ -221,45 +221,45 @@ pub proof fn kernel_process_quota_returned_implies_u_container_map(pre: &KernelK
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    let container_ptr = pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
-    kernel_process_projection_at(pre, process_ptr);
-    kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr);
-    let process = a.process_map[process_ptr];
-    let container = a.container_map[container_ptr];
-    assert_maps_equal!(b.container_map, a.container_map.insert(container_ptr, match size {
+    let ctn_ptr = pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container;
+    kernel_process_projection_at(pre, prc_ptr);
+    kernel_container_projection_at(pre, ctn_ptr); kernel_container_projection_at(post, ctn_ptr);
+    let process = a.process_map[prc_ptr];
+    let container = a.container_map[ctn_ptr];
+    assert_maps_equal!(b.container_map, a.container_map.insert(ctn_ptr, match size {
         PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k) as usize, ..container },
         PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + process.quota_2m) as usize, ..container },
         PageSize::SZ1g => ContainerU { quota_1g: (container.quota_1g + process.quota_1g) as usize, ..container },
     }), c => {
         if pre.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c);
-            container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, container_ptr);
+            container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
         }
     });
 }
 
-/// Returning the whole `size` quota of the process `process_ptr` clears only that process's `size` quota in the process
+/// Returning the whole `size` quota of the process `prc_ptr` clears only that process's `size` quota in the process
 /// projection.
-pub proof fn kernel_process_quota_returned_implies_u_process_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, size: PageSize)
+pub proof fn kernel_process_quota_returned_implies_u_process_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, size: PageSize)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
         *post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom(),
-        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
-        post.prc_mp.spec_index(process_ptr).view() == match size {
-            PageSize::SZ4k => Process { quota_4k: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
-            PageSize::SZ2m => Process { quota_2m: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
-            PageSize::SZ1g => Process { quota_1g: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != prc_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
+        post.prc_mp.spec_index(prc_ptr).view() == match size {
+            PageSize::SZ4k => Process { quota_4k: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
+            PageSize::SZ2m => Process { quota_2m: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
+            PageSize::SZ1g => Process { quota_1g: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
         },
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() == pre.prc_mp.spec_index(process_ptr).locking_thread(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() == pre.prc_mp.spec_index(prc_ptr).locking_thread(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
-            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(process_ptr, match size {
+            let process = a.process_map[prc_ptr];
+            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(prc_ptr, match size {
                 PageSize::SZ4k => ProcessU { quota_4k: 0, ..process },
                 PageSize::SZ2m => ProcessU { quota_2m: 0, ..process },
                 PageSize::SZ1g => ProcessU { quota_1g: 0, ..process },
@@ -269,9 +269,9 @@ pub proof fn kernel_process_quota_returned_implies_u_process_map(pre: &KernelK, 
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
-    let process = a.process_map[process_ptr];
-    assert_maps_equal!(b.process_map, a.process_map.insert(process_ptr, match size {
+    kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
+    let process = a.process_map[prc_ptr];
+    assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, match size {
         PageSize::SZ4k => ProcessU { quota_4k: 0, ..process },
         PageSize::SZ2m => ProcessU { quota_2m: 0, ..process },
         PageSize::SZ1g => ProcessU { quota_1g: 0, ..process },
@@ -280,25 +280,25 @@ pub proof fn kernel_process_quota_returned_implies_u_process_map(pre: &KernelK, 
     });
 }
 
-/// The PCID allocator `allocator_ptr` releasing the PCID of the process `process_ptr` adds that PCID to its container's
+/// The PCID allocator `allc_ptr` releasing the PCID of the process `prc_ptr` adds that PCID to its container's
 /// free PCIDs in the container projection.
-pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPcidAllocatorPtr)
+pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPcidAllocatorPtr)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
-        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container),
         container_pcid_allocator_wf(pre.ctn_mp, pre.pcid_allc_mp),
-        pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator == allocator_ptr,
-        pre.pcid_allc_mp.dom().contains(allocator_ptr),
-        pre.pcid_allc_mp.spec_index(allocator_ptr).view().ref_counters.wf(),
-        pcid_valid(pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid),
-        pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid != KERNEL_DEFAULT_PCID,
+        pre.ctn_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator == allc_ptr,
+        pre.pcid_allc_mp.dom().contains(allc_ptr),
+        pre.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.wf(),
+        pcid_valid(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid != KERNEL_DEFAULT_PCID,
         *post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..*pre }),
-        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allocator_ptr),
-        post.pcid_allc_mp.spec_index(allocator_ptr).view().release_ensures(&pre.pcid_allc_mp.spec_index(allocator_ptr).view(), process_ptr, pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid),
+        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allc_ptr),
+        post.pcid_allc_mp.spec_index(allc_ptr).view().release_ensures(&pre.pcid_allc_mp.spec_index(allc_ptr).view(), prc_ptr, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
+            let process = a.process_map[prc_ptr];
             let container = a.container_map[process.owning_container];
             kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(process.owning_container, ContainerU { free_pcids: container.free_pcids.insert(process.pcid), ..container })
         }),
@@ -306,48 +306,48 @@ pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, pos
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    let container_ptr = pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
-    kernel_process_projection_at(pre, process_ptr);
-    kernel_container_projection_at(pre, container_ptr);
-    let process = a.process_map[process_ptr];
-    let container = a.container_map[container_ptr];
-    assert_maps_equal!(b.container_map, a.container_map.insert(container_ptr, ContainerU { free_pcids: container.free_pcids.insert(process.pcid), ..container }), c => {
+    let ctn_ptr = pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container;
+    kernel_process_projection_at(pre, prc_ptr);
+    kernel_container_projection_at(pre, ctn_ptr);
+    let process = a.process_map[prc_ptr];
+    let container = a.container_map[ctn_ptr];
+    assert_maps_equal!(b.container_map, a.container_map.insert(ctn_ptr, ContainerU { free_pcids: container.free_pcids.insert(process.pcid), ..container }), c => {
         if pre.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c);
-            if c == container_ptr {
-                assert_sets_equal!(PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(allocator_ptr).view().ref_counters.view()), PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(allocator_ptr).view().ref_counters.view()).insert(process.pcid));
+            if c == ctn_ptr {
+                assert_sets_equal!(PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()), PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.view()).insert(process.pcid));
             } else {
                 let a = pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator;
-                assert(pre.pcid_allc_mp.dom().contains(a) && a != allocator_ptr) by { reveal(container_pcid_allocator_wf); };
+                assert(pre.pcid_allc_mp.dom().contains(a) && a != allc_ptr) by { reveal(container_pcid_allocator_wf); };
             }
         }
     });
 }
 
-/// Making the live process `process_ptr` a zombie hides its tables in the process projection.
-pub proof fn kernel_process_zombified_implies_u_process_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr)
+/// Making the live process `prc_ptr` a zombie hides its tables in the process projection.
+pub proof fn kernel_process_zombified_implies_u_process_map(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
         *post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom(),
-        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
-        post.prc_mp.spec_index(process_ptr).view() == (Process { zombie: true, state: post.prc_mp.spec_index(process_ptr).view().state, ..pre.prc_mp.spec_index(process_ptr).view() }),
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() == pre.prc_mp.spec_index(process_ptr).locking_thread(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != prc_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
+        post.prc_mp.spec_index(prc_ptr).view() == (Process { zombie: true, state: post.prc_mp.spec_index(prc_ptr).view().state, ..pre.prc_mp.spec_index(prc_ptr).view() }),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() == pre.prc_mp.spec_index(prc_ptr).locking_thread(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(process_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..a.process_map[process_ptr] })
+            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..a.process_map[prc_ptr] })
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    kernel_process_projection_at(pre, process_ptr);
-    let process = a.process_map[process_ptr];
-    assert_maps_equal!(b.process_map, a.process_map.insert(process_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..process }), p => {
+    kernel_process_projection_at(pre, prc_ptr);
+    let process = a.process_map[prc_ptr];
+    assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); }
     });
 }

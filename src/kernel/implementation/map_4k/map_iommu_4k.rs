@@ -6,9 +6,9 @@ use super::map_iommu_4k_eof::*;
 verus! {
 /// Maps the page of the 4K leaf `va` of the read-held page table `source_pagetable` into the write-held IOMMU table
 /// `iommu_table_ptr` at `iova`, whose L1 page is already linked, and records `(iommu_table_ptr, iova)` on that page under the
-/// page's own lock. Both tables belong to `process_ptr`, whose live thread `thread_ptr` keeps it from emptying its tables.
+/// page's own lock. Both tables belong to `prc_ptr`, whose live thread `thrd_ptr` keeps it from emptying its tables.
 pub fn map_shared_page_into_iommu_4k(
-    krnl: &mut KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, source_pagetable: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot, va: VAddr, iova: VAddr,
+    krnl: &mut KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, source_pagetable: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot, va: VAddr, iova: VAddr,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
@@ -21,18 +21,18 @@ pub fn map_shared_page_into_iommu_4k(
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            ==> old(krnl).thrd_mp.spec_index(held_thread).being_killed() || !(old(krnl).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        old(krnl).prc_mp.dom().contains(process_ptr),
-        old(krnl).thr_mp.dom().contains(thread_ptr),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
-        !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
-        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+        old(krnl).prc_mp.dom().contains(prc_ptr),
+        old(krnl).thrd_mp.dom().contains(thrd_ptr),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
         old(krnl).pt_mp.dom().contains(source_pagetable),
-        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == process_ptr,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == prc_ptr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
         source_pagetable_lock_perm.state() is ReadLock,
         source_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -42,7 +42,7 @@ pub fn map_shared_page_into_iommu_4k(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).present,
         old(krnl).it_mp.dom().contains(iommu_table_ptr),
-        old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == process_ptr,
+        old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
         iommu_table_lock_perm.state() is WriteLock,
         iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -88,14 +88,14 @@ pub fn map_shared_page_into_iommu_4k(
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
         source_entry = source.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
-    let page_ptr = source_entry.addr;
-    let page_index = page_ptr2page_index(page_ptr);
+    let pg_ptr = source_entry.addr;
+    let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         assert({
-            &&& index_valid(NUM_PAGES, page_index)
-            &&& krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k
-            &&& !lctx.page_lock_map().dom().contains(page_index)
-            &&& krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
+            &&& !lctx.page_lock_map().dom().contains(pg_idx)
+            &&& krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR
         }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, va); };
     }
     let target_l1_ptr;
@@ -106,28 +106,28 @@ pub fn map_shared_page_into_iommu_4k(
         let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
         target_l1_ptr = l2.addr;
     }
-    let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
+    let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
     proof {
-        assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); };
-        assert(!krnl.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table_ptr, iova))) by {
-            page_iommu_table_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, page_index, iommu_table_ptr, iova);
+        assert(krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); };
+        assert(!krnl.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table_ptr, iova))) by {
+            page_iommu_table_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, pg_idx, iommu_table_ptr, iova);
         };
-        assert(krnl.pg_arr.spec_index(page_index).view().view().ref_count < usize::MAX) by { mapped_4k_page_ref_count_lt_usize_max(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_index); };
+        assert(krnl.pg_arr.spec_index(pg_idx).view().view().ref_count < usize::MAX) by { mapped_4k_page_ref_count_lt_usize_max(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pg_idx); };
     }
-    page_array_add_4k_iommu_mapping(&mut krnl.pg_arr, page_index, iommu_table_ptr, iova, Tracked(&*lctx), Tracked(&page_lock_perm));
+    page_array_add_4k_iommu_mapping(&mut krnl.pg_arr, pg_idx, iommu_table_ptr, iova, Tracked(&*lctx), Tracked(&page_lock_perm));
     iommu_table_map_insert_4k(&mut krnl.it_mp, iommu_table_ptr, indices, target_l1_ptr, &source_entry, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
     proof {
         locked_k.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
-        assert(map_shared_page_into_iommu_4k_eof_transition_framing(locked_k, *krnl, page_index, source_pagetable, va, iommu_table_ptr, iova)) by {
+        assert(map_shared_page_into_iommu_4k_eof_transition_framing(locked_k, *krnl, pg_idx, source_pagetable, va, iommu_table_ptr, iova)) by {
             reveal(map_shared_page_into_iommu_4k_eof_transition_framing);
         };
-        map_shared_page_into_iommu_4k_eof(locked_k, *krnl, page_index, process_ptr, thread_ptr, source_pagetable, va, iommu_table_ptr, iova);
+        map_shared_page_into_iommu_4k_eof(locked_k, *krnl, pg_idx, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
     }
-    krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
+    krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
+            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
     }
 }

@@ -9,7 +9,7 @@ verus! {
 /// through `window_perms`: clears the progress, releases every lock, and records the exiting step. The mappings do not change.
 pub(super) fn unmap_4k_release_and_exit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange4K,
-    process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(thread_perm): Tracked<LockPerm>,
+    prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(thread_perm): Tracked<LockPerm>,
     Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(window_perms): Tracked<Map<WindowVa, LockPerm>>,
 )
     requires
@@ -23,25 +23,25 @@ pub(super) fn unmap_4k_release_and_exit(
         *va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
         va_range.wf(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_perm.lock_id() }),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         cpu_perm.state() is WriteLock,
         cpu_perm.thread_id() == old(lctx).thread_id(),
-        old(krnl).thr_mp.dom().contains(thread_ptr),
-        !old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *va_range, unmapped: range, flushed: true }),
-        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        old(krnl).thrd_mp.dom().contains(thrd_ptr),
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *va_range, unmapped: range, flushed: true }),
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         thread_perm.state() is WriteLock,
         thread_perm.thread_id() == old(lctx).thread_id(),
-        thread_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        thread_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(pagetable),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= spec_va2index(va).0,
         old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_perm.lock_id()),
@@ -67,12 +67,12 @@ pub(super) fn unmap_4k_release_and_exit(
             },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable && window_perms.dom().contains(w)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Read),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom().is_empty(),
-        old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         old(lctx).pagetable_lock_map().dom() =~= set![pagetable],
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).endpoint_lock_map().dom().is_empty(),
@@ -104,20 +104,20 @@ pub(super) fn unmap_4k_release_and_exit(
     let ghost exit_start = *krnl;
     let ghost exit_lctx = *lctx;
     assert(va_range.view() =~= Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) by { va_range.wf_implies_view_index_is_start_plus_offset(); };
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     krnl.unlock_pagetable_range_existing_windows(pagetable, va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
     krnl.runlock_pagetable(cpu_id, pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
-    krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
+    krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         let ghost exit_k = *krnl;
-        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
+        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         assert(unmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
-            process_thread_wf_at(exit_start.prc_mp, exit_start.thr_mp, thread_ptr); process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, process_ptr);
-            kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable);
-            unmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, process_ptr, thread_ptr, pagetable, *va_range, exit_k.pt_mp.spec_index(pagetable).lock_state_u(),
+            process_thread_wf_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
+            kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
+            unmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, *va_range, exit_k.pt_mp.spec_index(pagetable).lock_state_u(),
                 whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable).lower.pagetable_window_locks);
             unmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range);
         };

@@ -4,37 +4,37 @@ use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_sp
 
 verus! {
 /// Blocking a running thread of `a` on an endpoint it holds leaves the view of `b` unchanged.
-pub proof fn ipc_block_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_block_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_block_step_pre(old_u, cpu_id, endpoint_index, waiting_state),
-        ipc_block_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step_pre(old_u, cpu_id, ep_idx, waiting_state),
+        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_block_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_block_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_block_step_pre(old_u, cpu_id, endpoint_index, waiting_state),
-        ipc_block_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step_pre(old_u, cpu_id, ep_idx, waiting_state),
+        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_block_changed);
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let endpoint_ptr = old_u.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
-    let container = old_u.thread_map[thread_ptr].owning_container;
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let ep_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let container = old_u.thread_map[thrd_ptr].owning_container;
     assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };
-    assert(old_u.endpoint_map[endpoint_ptr].owning_threads.contains((thread_ptr, endpoint_index))) by { reveal(kernel_u_endpoint_ownership_wf); };
+    assert(old_u.endpoint_map[ep_ptr].owning_threads.contains((thrd_ptr, ep_idx))) by { reveal(kernel_u_endpoint_ownership_wf); };
     assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
     assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
-    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != thread_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
-    assert(!(new_u.thread_map[thread_ptr].state is IPC_TRANSIT));
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != thrd_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
+    assert(!(new_u.thread_map[thrd_ptr].state is IPC_TRANSIT));
     assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
     assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
     assert forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx, j: int| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i)), new_u.endpoint_map[e].queue[j]]
@@ -42,8 +42,8 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
             &&& in_domain(new_u, a, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, b, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container)
             &&& in_domain(new_u, b, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, a, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container)
         } by {
-        if e == endpoint_ptr && j == old_u.endpoint_map[e].queue.len() {
-            assert(new_u.endpoint_map[e].queue[j] == thread_ptr);
+        if e == ep_ptr && j == old_u.endpoint_map[e].queue.len() {
+            assert(new_u.endpoint_map[e].queue[j] == thrd_ptr);
             assert(old_u.endpoint_map[e].owning_threads.contains((t, i)));
         } else {
             assert(new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
@@ -57,31 +57,31 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 /// endpoint, the head, which is outside `b`, a cpu moving between the head's container and `a`, and a PCI
 /// function moving between the processes of the thread and the head, which no process of `b` owns, together with
 /// the DID of the sender's IOMMU table, so it leaves the view of `b` unchanged.
-pub proof fn ipc_rendezvous_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_rendezvous_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_rendezvous_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload),
-        ipc_rendezvous_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload),
+        ipc_rendezvous_step_pre(old_u, cpu_id, ep_idx, waiting_state, payload),
+        ipc_rendezvous_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_pci_ownership_wf); }
 
 /// The step of `ipc_rendezvous_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_rendezvous_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload),
-        ipc_rendezvous_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload),
+        ipc_rendezvous_step_pre(old_u, cpu_id, ep_idx, waiting_state, payload),
+        ipc_rendezvous_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_rendezvous_changed);
     let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let endpoint_ptr = old_u.thread_map[caller_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
-    let peer_ptr = old_u.endpoint_map[endpoint_ptr].queue[0];
+    let ep_ptr = old_u.thread_map[caller_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let peer_ptr = old_u.endpoint_map[ep_ptr].queue[0];
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
     assert(new_u.process_map.dom() =~= old_u.process_map.dom());
@@ -99,11 +99,11 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     assert(!(new_u.thread_map[peer_ptr].state is IPC_TRANSIT));
     assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
     assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
-    assert(forall|e: RwLockEndpointPtr, j: int| #![trigger new_u.endpoint_map[e].queue[j]] e != endpoint_ptr ==> new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
-    assert(forall|j: int| #![trigger new_u.endpoint_map[endpoint_ptr].queue[j]]
-        0 <= j < new_u.endpoint_map[endpoint_ptr].queue.len() ==> new_u.endpoint_map[endpoint_ptr].queue[j] == old_u.endpoint_map[endpoint_ptr].queue[j + 1]);
-    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] e != endpoint_ptr ==> new_u.endpoint_map[e].queue.len() == old_u.endpoint_map[e].queue.len());
-    assert(new_u.endpoint_map[endpoint_ptr].queue.len() + 1 == old_u.endpoint_map[endpoint_ptr].queue.len());
+    assert(forall|e: RwLockEndpointPtr, j: int| #![trigger new_u.endpoint_map[e].queue[j]] e != ep_ptr ==> new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
+    assert(forall|j: int| #![trigger new_u.endpoint_map[ep_ptr].queue[j]]
+        0 <= j < new_u.endpoint_map[ep_ptr].queue.len() ==> new_u.endpoint_map[ep_ptr].queue[j] == old_u.endpoint_map[ep_ptr].queue[j + 1]);
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] e != ep_ptr ==> new_u.endpoint_map[e].queue.len() == old_u.endpoint_map[e].queue.len());
+    assert(new_u.endpoint_map[ep_ptr].queue.len() + 1 == old_u.endpoint_map[ep_ptr].queue.len());
     assert(domains_disjoint(new_u, a, b));
     assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b));
     assert(memory_iso(new_u, a, b));
@@ -113,113 +113,113 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 
 /// A call handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and the
 /// receive-call head, which is of its container, so it leaves the view of `b` unchanged.
-pub proof fn ipc_call_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_call_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_call_handoff_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_call_handoff_step(old_u, new_u, cpu_id, endpoint_index, regs, flushed_pcid),
+        ipc_call_handoff_step_pre(old_u, cpu_id, ep_idx),
+        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_call_handoff_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_call_handoff_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_call_handoff_step(old_u, new_u, cpu_id, endpoint_index, regs, flushed_pcid),
+        ipc_call_handoff_step_pre(old_u, cpu_id, ep_idx),
+        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures isolated(new_u, a, b),
 { reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Accepting a call on a running thread of `a` touches only itself, the endpoint it holds, and the calling
 /// head, which is of its container, so it leaves the view of `b` unchanged.
-pub proof fn ipc_accept_call_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_accept_call_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_accept_call_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_accept_call_step(old_u, new_u, cpu_id, endpoint_index),
+        ipc_accept_call_step_pre(old_u, cpu_id, ep_idx),
+        ipc_accept_call_step(old_u, new_u, cpu_id, ep_idx),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_accept_call_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_accept_call_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_accept_call_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_accept_call_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_accept_call_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_accept_call_step(old_u, new_u, cpu_id, endpoint_index),
+        ipc_accept_call_step_pre(old_u, cpu_id, ep_idx),
+        ipc_accept_call_step(old_u, new_u, cpu_id, ep_idx),
     ensures isolated(new_u, a, b),
 { reveal(kernel_u_ipc_accept_call_changed); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// A reply handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and its
 /// recorded caller, which is of its container, so it leaves the view of `b` unchanged.
-pub proof fn ipc_reply_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_reply_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_reply_handoff_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_reply_handoff_step(old_u, new_u, cpu_id, endpoint_index, regs, flushed_pcid),
+        ipc_reply_handoff_step_pre(old_u, cpu_id, ep_idx),
+        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_reply_handoff_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_reply_handoff_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_reply_handoff_step(old_u, new_u, cpu_id, endpoint_index, regs, flushed_pcid),
+        ipc_reply_handoff_step_pre(old_u, cpu_id, ep_idx),
+        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures isolated(new_u, a, b),
 { reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Moving the queue head of an endpoint a running thread of `a` holds into transit with that thread as its partner locks
 /// only objects of `a` and that head, which is outside `b`.
-pub proof fn ipc_endpoint_transit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_endpoint_transit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_endpoint_transit_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload_index),
-        ipc_endpoint_transit_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload_index),
+        ipc_endpoint_transit_step_pre(old_u, cpu_id, ep_idx, waiting_state, payload_index),
+        ipc_endpoint_transit_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload_index),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_endpoint_transit_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_endpoint_transit_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload_index),
-        ipc_endpoint_transit_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload_index),
+        ipc_endpoint_transit_step_pre(old_u, cpu_id, ep_idx, waiting_state, payload_index),
+        ipc_endpoint_transit_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload_index),
     ensures isolated(new_u, a, b),
 {
     reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step);
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let channel_ptr = old_u.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let channel_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int].unwrap();
     let peer_ptr = old_u.endpoint_map[channel_ptr].queue[0];
-    let container = old_u.thread_map[thread_ptr].owning_container;
+    let container = old_u.thread_map[thrd_ptr].owning_container;
     assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };
     assert(!in_domain(old_u, b, old_u.thread_map[peer_ptr].owning_container)) by {
         reveal(kernel_u_endpoint_ownership_wf);
-        assert(old_u.endpoint_map[channel_ptr].owning_threads.contains((thread_ptr, endpoint_index)));
+        assert(old_u.endpoint_map[channel_ptr].owning_threads.contains((thrd_ptr, ep_idx)));
     };
     assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
     assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
     assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != peer_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
-    assert(new_u.thread_map[peer_ptr].state->IPC_TRANSIT_partner == thread_ptr);
+    assert(new_u.thread_map[peer_ptr].state->IPC_TRANSIT_partner == thrd_ptr);
     assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
     assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
     assert(forall|e: RwLockEndpointPtr, j: int| #![trigger new_u.endpoint_map[e].queue[j]] e != channel_ptr ==> new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
@@ -291,46 +291,46 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
 
 /// Entering a pages rendezvous on a cpu of `a` locks only objects of `a`, the queue head of a channel its running thread
 /// holds, which is outside `b`, and that channel, and moves the head into transit with the running thread as its partner.
-pub proof fn ipc_pages_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_enter_step_pre(old_u, cpu_id, endpoint_index, waiting_state, range),
-        ipc_pages_enter_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, range),
+        ipc_pages_enter_step_pre(old_u, cpu_id, ep_idx, waiting_state, range),
+        ipc_pages_enter_step(old_u, new_u, cpu_id, ep_idx, waiting_state, range),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_pages_enter_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_enter_step_pre(old_u, cpu_id, endpoint_index, waiting_state, range),
-        ipc_pages_enter_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, range),
+        ipc_pages_enter_step_pre(old_u, cpu_id, ep_idx, waiting_state, range),
+        ipc_pages_enter_step(old_u, new_u, cpu_id, ep_idx, waiting_state, range),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Locking the page tables of a pages rendezvous on a cpu of `a` locks tables of `a` and of its peer outside `b`.
-pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id, endpoint_index, tables),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, ep_idx, tables),
         ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_pages_lock_tables_step_lr` preserves isolation.
-pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id, endpoint_index, tables),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, ep_idx, tables),
         ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures isolated(new_u, a, b),
 {
@@ -350,23 +350,23 @@ pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_
 
 /// Checking a pages rendezvous on a cpu of `a` records its result and may unlock tables of `a` and of its
 /// peer outside `b`.
-pub proof fn ipc_pages_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_check_step_pre(old_u, cpu_id, endpoint_index),
+        ipc_pages_check_step_pre(old_u, cpu_id, ep_idx),
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_check_step_pre); reveal(ipc_pages_check_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_pages_check_step_lr` preserves isolation.
-pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_check_step_pre(old_u, cpu_id, endpoint_index),
+        ipc_pages_check_step_pre(old_u, cpu_id, ep_idx),
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
@@ -444,26 +444,26 @@ pub proof fn ipc_pages_unlock_tables_step_iso(old_u: KernelU, new_u: KernelU, cp
 }
 
 /// Finishing a pages rendezvous on a cpu of `a` schedules its transit peer outside `b` and unlocks the channel at the
-/// running thread's descriptor `endpoint_index`.
-pub proof fn ipc_pages_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// running thread's descriptor `ep_idx`.
+pub proof fn ipc_pages_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_finish_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_pages_finish_step(old_u, new_u, cpu_id, endpoint_index),
+        ipc_pages_finish_step_pre(old_u, cpu_id, ep_idx),
+        ipc_pages_finish_step(old_u, new_u, cpu_id, ep_idx),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_pages_finish_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_finish_step_pre(old_u, cpu_id, endpoint_index),
-        ipc_pages_finish_step(old_u, new_u, cpu_id, endpoint_index),
+        ipc_pages_finish_step_pre(old_u, cpu_id, ep_idx),
+        ipc_pages_finish_step(old_u, new_u, cpu_id, ep_idx),
     ensures isolated(new_u, a, b),
 {
     reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step);
@@ -485,114 +485,114 @@ pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
 
 /// The IPC entry rejection of a running cpu of `b` reads only the view of `b` and whether the head of the
 /// endpoint queue, the peer, is killed.
-pub proof fn ipc_entry_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, blocking: bool, b: RwLockContainerPtr)
+pub proof fn ipc_entry_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, blocking: bool, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         steps_in_domain(u1, cpu_id, b),
         u1.cpu_array[cpu_id as int].state is Running,
-        edp_idx_valid(endpoint_index),
+        edp_idx_valid(ep_idx),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let thread = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0];
-            let peer = u1.endpoint_map[thread.endpoint_descriptors[endpoint_index as int]->Some_0].queue[0];
+            let peer = u1.endpoint_map[thread.endpoint_descriptors[ep_idx as int]->Some_0].queue[0];
             u1.thread_map[peer].killed == u2.thread_map[peer].killed
         }),
-    ensures ipc_entry_result(u1, cpu_id, endpoint_index, waiting_state, blocking) == ipc_entry_result(u2, cpu_id, endpoint_index, waiting_state, blocking),
+    ensures ipc_entry_result(u1, cpu_id, ep_idx, waiting_state, blocking) == ipc_entry_result(u2, cpu_id, ep_idx, waiting_state, blocking),
 {
     reveal(ipc_entry_result);
     assert({
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
+        let thrd_ptr = cpu.current_thread->Some_0;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
         &&& v1.processes.dom().contains(cpu.current_process->Some_0) && v1.processes[cpu.current_process->Some_0] == v2.processes[cpu.current_process->Some_0]
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
-        &&& v1.held_endpoints.dom().contains(thread_ptr) && v1.held_endpoints[thread_ptr][endpoint_index as int] == v2.held_endpoints[thread_ptr][endpoint_index as int]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
+        &&& v1.held_endpoints.dom().contains(thrd_ptr) && v1.held_endpoints[thrd_ptr][ep_idx as int] == v2.held_endpoints[thrd_ptr][ep_idx as int]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 
 /// The reply rejection of a cpu of `b` reads only the view of `b` and whether its recorded caller is killed.
-pub proof fn ipc_reply_entry_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, b: RwLockContainerPtr)
+pub proof fn ipc_reply_entry_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         steps_in_domain(u1, cpu_id, b),
         u1.cpu_array[cpu_id as int].state is Running,
-        edp_idx_valid(endpoint_index),
+        edp_idx_valid(ep_idx),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let thread = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0];
             u1.thread_map[thread.caller->Some_0].killed == u2.thread_map[thread.caller->Some_0].killed
         }),
-    ensures ipc_reply_entry_result(u1, cpu_id, endpoint_index) == ipc_reply_entry_result(u2, cpu_id, endpoint_index),
+    ensures ipc_reply_entry_result(u1, cpu_id, ep_idx) == ipc_reply_entry_result(u2, cpu_id, ep_idx),
 {
     reveal(ipc_reply_entry_result);
     assert({
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
+        let thrd_ptr = cpu.current_thread->Some_0;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
-        &&& v1.held_endpoints.dom().contains(thread_ptr) && v1.held_endpoints[thread_ptr][endpoint_index as int] == v2.held_endpoints[thread_ptr][endpoint_index as int]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
+        &&& v1.held_endpoints.dom().contains(thrd_ptr) && v1.held_endpoints[thrd_ptr][ep_idx as int] == v2.held_endpoints[thrd_ptr][ep_idx as int]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 
 /// The acceptance result of a cpu of `b` reads only the view of `b` and the payload of the calling head.
-pub proof fn ipc_accept_call_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, b: RwLockContainerPtr)
+pub proof fn ipc_accept_call_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         steps_in_domain(u1, cpu_id, b),
-        ipc_accept_call_step_pre(u1, cpu_id, endpoint_index),
+        ipc_accept_call_step_pre(u1, cpu_id, ep_idx),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let thread = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0];
-            let peer_ptr = u1.endpoint_map[thread.endpoint_descriptors[endpoint_index as int]->Some_0].queue[0];
+            let peer_ptr = u1.endpoint_map[thread.endpoint_descriptors[ep_idx as int]->Some_0].queue[0];
             u1.thread_map[peer_ptr].ipc_payload == u2.thread_map[peer_ptr].ipc_payload
         }),
-    ensures ipc_accept_call_result(u1, cpu_id, endpoint_index) == ipc_accept_call_result(u2, cpu_id, endpoint_index),
+    ensures ipc_accept_call_result(u1, cpu_id, ep_idx) == ipc_accept_call_result(u2, cpu_id, ep_idx),
 {
     reveal(ipc_accept_call_step_pre); reveal(ipc_step_pre);
     assert({
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
+        let thrd_ptr = cpu.current_thread->Some_0;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
-        &&& v1.held_endpoints.dom().contains(thread_ptr) && v1.held_endpoints[thread_ptr][endpoint_index as int] == v2.held_endpoints[thread_ptr][endpoint_index as int]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
+        &&& v1.held_endpoints.dom().contains(thrd_ptr) && v1.held_endpoints[thrd_ptr][ep_idx as int] == v2.held_endpoints[thrd_ptr][ep_idx as int]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 
 /// The rendezvous result of a cpu of `b` reads only the view of `b`, the queue head it meets, the cpu a
 /// Cpu payload hands over, and the head's process when the head sends a PCI function.
-pub proof fn ipc_rendezvous_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, b: RwLockContainerPtr)
+pub proof fn ipc_rendezvous_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         steps_in_domain(u1, cpu_id, b),
-        ipc_rendezvous_step_pre(u1, cpu_id, endpoint_index, waiting_state, payload),
+        ipc_rendezvous_step_pre(u1, cpu_id, ep_idx, waiting_state, payload),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let thread = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0];
-            let peer_ptr = u1.endpoint_map[thread.endpoint_descriptors[endpoint_index as int]->Some_0].queue[0];
+            let peer_ptr = u1.endpoint_map[thread.endpoint_descriptors[ep_idx as int]->Some_0].queue[0];
             let sent = if waiting_state is SENDING { payload } else { u1.thread_map[peer_ptr].ipc_payload };
             &&& u1.thread_map[peer_ptr] == u2.thread_map[peer_ptr]
             &&& sent matches IPCPayLoad::Cpu { cpu_id: transfer } ==> u1.cpu_array[transfer as int] == u2.cpu_array[transfer as int]
             &&& sent is Pci && waiting_state is RECEIVING ==> u1.process_map[u1.thread_map[peer_ptr].owning_proc] == u2.process_map[u1.thread_map[peer_ptr].owning_proc]
         }),
-    ensures ipc_rendezvous_result(u1, cpu_id, endpoint_index, waiting_state, payload) == ipc_rendezvous_result(u2, cpu_id, endpoint_index, waiting_state, payload),
+    ensures ipc_rendezvous_result(u1, cpu_id, ep_idx, waiting_state, payload) == ipc_rendezvous_result(u2, cpu_id, ep_idx, waiting_state, payload),
 {
     reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre);
     assert({
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
-        let process_ptr = u1.thread_map[thread_ptr].owning_proc;
+        let thrd_ptr = cpu.current_thread->Some_0;
+        let prc_ptr = u1.thread_map[thrd_ptr].owning_proc;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
-        &&& v1.held_endpoints.dom().contains(thread_ptr) && v1.held_endpoints[thread_ptr][endpoint_index as int] == v2.held_endpoints[thread_ptr][endpoint_index as int]
-        &&& v1.processes.dom().contains(process_ptr) && v1.processes[process_ptr] == v2.processes[process_ptr]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
+        &&& v1.held_endpoints.dom().contains(thrd_ptr) && v1.held_endpoints[thrd_ptr][ep_idx as int] == v2.held_endpoints[thrd_ptr][ep_idx as int]
+        &&& v1.processes.dom().contains(prc_ptr) && v1.processes[prc_ptr] == v2.processes[prc_ptr]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 
@@ -619,12 +619,12 @@ pub proof fn ipc_endpoint_finish_result_oc(u1: KernelU, u2: KernelU, cpu_id: Cpu
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
-        let thread = u1.thread_map[thread_ptr];
+        let thrd_ptr = cpu.current_thread->Some_0;
+        let thread = u1.thread_map[thrd_ptr];
         let source_index = thread.syscall_progress->Some_0->IpcEndpoint_payload_index;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
-        &&& v1.held_endpoints.dom().contains(thread_ptr) && v1.held_endpoints[thread_ptr][source_index as int] == v2.held_endpoints[thread_ptr][source_index as int]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
+        &&& v1.held_endpoints.dom().contains(thrd_ptr) && v1.held_endpoints[thrd_ptr][source_index as int] == v2.held_endpoints[thrd_ptr][source_index as int]
         &&& thread.owning_container == cpu.owning_container && v1.containers.dom().contains(thread.owning_container)
         &&& v1.containers[thread.owning_container] == v2.containers[thread.owning_container]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
@@ -632,12 +632,12 @@ pub proof fn ipc_endpoint_finish_result_oc(u1: KernelU, u2: KernelU, cpu_id: Cpu
 
 /// The pages check result of a cpu of `b` reads only the view of `b`, the peer, the peer's process, and the
 /// peer's container.
-pub proof fn ipc_pages_check_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         kernel_u_ownership_wf(u2),
         steps_in_domain(u1, cpu_id, b),
-        ipc_pages_check_step_pre(u1, cpu_id, endpoint_index),
+        ipc_pages_check_step_pre(u1, cpu_id, ep_idx),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let peer_ptr = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->IpcPages_peer;
@@ -653,11 +653,11 @@ pub proof fn ipc_pages_check_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, 
         let v1 = domain_view(u1, b);
         let v2 = domain_view(u2, b);
         let cpu = u1.cpu_array[cpu_id as int];
-        let thread_ptr = cpu.current_thread->Some_0;
-        let thread = u1.thread_map[thread_ptr];
+        let thrd_ptr = cpu.current_thread->Some_0;
+        let thread = u1.thread_map[thrd_ptr];
         let peer_container = u1.thread_map[thread.syscall_progress->Some_0->IpcPages_peer].owning_container;
         &&& v1.cpus[cpu_id as int] == Some(cpu)
-        &&& v1.threads.dom().contains(thread_ptr) && v1.threads[thread_ptr] == v2.threads[thread_ptr]
+        &&& v1.threads.dom().contains(thrd_ptr) && v1.threads[thrd_ptr] == v2.threads[thrd_ptr]
         &&& v1.processes.dom().contains(thread.owning_proc) && v1.processes[thread.owning_proc] == v2.processes[thread.owning_proc]
         &&& thread.owning_container == cpu.owning_container && v1.containers.dom().contains(thread.owning_container)
         &&& v1.containers[thread.owning_container] == v2.containers[thread.owning_container]

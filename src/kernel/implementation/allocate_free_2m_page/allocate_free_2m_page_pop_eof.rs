@@ -10,11 +10,11 @@ pub(super) open spec fn pop_stage_2m_page_eof_transition_framing(
     let index = page_ptr2page_index(page);
     let old_page = pre.pg_arr.spec_index(index).view().view();
     let new_page = post.pg_arr.spec_index(index).view().view();
-    let old_thread = pre.thr_mp.spec_index(thread);
-    let new_thread = post.thr_mp.spec_index(thread);
+    let old_thread = pre.thrd_mp.spec_index(thread);
+    let new_thread = post.thrd_mp.spec_index(thread);
     let old_allocator = pre.allc_2m_mp.spec_index(allocator);
     let new_allocator = post.allc_2m_mp.spec_index(allocator);
-    &&& post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_2m_mp: post.allc_2m_mp, ..pre })
+    &&& post == (KernelK { pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, allc_2m_mp: post.allc_2m_mp, ..pre })
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, index)
     &&& new_page == (Page { state: PageState::Owned2m { thread_ptr: thread }, free_list_node_storage: new_page.free_list_node_storage, ..old_page })
     &&& new_page.free_list_node_storage.addr() == old_page.free_list_node_storage.addr()
@@ -24,12 +24,12 @@ pub(super) open spec fn pop_stage_2m_page_eof_transition_framing(
     &&& post.pg_arr.spec_index(index).view().view_ghost() == pre.pg_arr.spec_index(index).view().view_ghost()
     &&& post.pg_arr.spec_index(index).view().being_killed() == pre.pg_arr.spec_index(index).view().being_killed()
     &&& post.pg_arr.spec_index(index).view().locking_thread() is Write
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread)
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) ==>
-        post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k
-        && post.thr_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g
-        && (t != thread ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m)
-        && post.thr_mp.spec_index(t).view().endpoint_descriptors == pre.thr_mp.spec_index(t).view().endpoint_descriptors
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thread)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)] pre.thrd_mp.dom().contains(t) ==>
+        post.thrd_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_4k
+        && post.thrd_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_1g
+        && (t != thread ==> post.thrd_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_2m)
+        && post.thrd_mp.spec_index(t).view().endpoint_descriptors == pre.thrd_mp.spec_index(t).view().endpoint_descriptors
     &&& new_thread.view() == (Thread { temp_alloc_cache_2m: Ghost(old_thread.view().temp_alloc_cache_2m.view().insert(page)), ..old_thread.view() })
     &&& new_thread.is_init() == old_thread.is_init()
     &&& new_thread.view_rodata() == old_thread.view_rodata()
@@ -80,13 +80,13 @@ proof fn pop_stage_2m_page_eof_subsystems_inv(pre: KernelK, post: KernelK, alloc
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let old_thread = pre.thr_mp.spec_index(thread);
+            let old_thread = pre.thrd_mp.spec_index(thread);
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& page_ptr_valid(page)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& pre.ctn_mp.dom().contains(container)
             &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_2m == allocator
-            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thrd_mp.dom().contains(thread)
             &&& thread_effective_quota_2m(old_thread) >= 1
             &&& old_thread.view().owning_container == container
             &&& pre.allc_2m_mp.dom().contains(allocator)
@@ -97,7 +97,7 @@ proof fn pop_stage_2m_page_eof_subsystems_inv(pre: KernelK, post: KernelK, alloc
             &&& !old_thread.view().temp_alloc_cache_2m.view().contains(page)
         }),
         post.pg_arr.inv(),
-        post.thr_mp.perms_wf(),
+        post.thrd_mp.perms_wf(),
         post.allc_2m_mp.perms_wf(),
         post.allc_2m_mp.spec_index(allocator).wf(),
     ensures post.subsystems_inv(),
@@ -258,21 +258,21 @@ proof fn pop_stage_2m_page_eof_process_pages(pre: KernelK, post: KernelK, alloca
 
 proof fn pop_stage_2m_page_eof_page_object_owner(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
-        page_object_owner_wf(pre.pg_arr, pre.ctn_mp, pre.thr_mp),
+        page_object_owner_wf(pre.pg_arr, pre.ctn_mp, pre.thrd_mp),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& old_page.state == (PageState::Free2m { allocator_ptr: Ghost(allocator), state: free_state })
-            &&& pre.thr_mp.dom().contains(thread)
-            &&& pre.thr_mp.spec_index(thread).view().owning_container == container
+            &&& pre.thrd_mp.dom().contains(thread)
+            &&& pre.thrd_mp.spec_index(thread).view().owning_container == container
             &&& old_page.owning_container == container
         }),
-    ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+    ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); };
 }
 
 proof fn pop_stage_2m_page_eof_quota(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -281,13 +281,13 @@ proof fn pop_stage_2m_page_eof_quota(pre: KernelK, post: KernelK, allocator: RwL
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let old_thread = pre.thr_mp.spec_index(thread);
+            let old_thread = pre.thrd_mp.spec_index(thread);
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& page_ptr_valid(page)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& pre.ctn_mp.dom().contains(container)
             &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_2m == allocator
-            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thrd_mp.dom().contains(thread)
             &&& thread_effective_quota_2m(old_thread) >= 1
             &&& old_thread.view().owning_container == container
             &&& pre.allc_2m_mp.dom().contains(allocator)
@@ -299,23 +299,23 @@ proof fn pop_stage_2m_page_eof_quota(pre: KernelK, post: KernelK, allocator: RwL
         }),
         post.subsystems_inv(),
     ensures
-        container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
-        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
-        container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
+        container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp),
+        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp),
+        container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
         reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
         lemma_thread_effective_quota_2m_fold_change_by_forall(thread, -1); lemma_thread_effective_quota_2m_fold_sum_eq_forall();
-        lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
-    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-        lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf); lemma_thread_effective_quota_1g_fold_sum_eq_forall();
-        lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
 }
 
@@ -339,7 +339,7 @@ proof fn pop_stage_2m_page_eof_page_types(pre: KernelK, post: KernelK, allocator
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
         pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
-        thread_pages_wf(post.thr_mp, post.pg_arr),
+        thread_pages_wf(post.thrd_mp, post.pg_arr),
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
@@ -351,7 +351,7 @@ proof fn pop_stage_2m_page_eof_page_types(pre: KernelK, post: KernelK, allocator
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
 }
 
@@ -361,13 +361,13 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let old_thread = pre.thr_mp.spec_index(thread);
+            let old_thread = pre.thrd_mp.spec_index(thread);
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& page_ptr_valid(page)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& pre.ctn_mp.dom().contains(container)
             &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_2m == allocator
-            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thrd_mp.dom().contains(thread)
             &&& thread_effective_quota_2m(old_thread) >= 1
             &&& old_thread.view().owning_container == container
             &&& pre.allc_2m_mp.dom().contains(allocator)
@@ -379,8 +379,8 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         }),
         post.subsystems_inv(),
     ensures
-        thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr),
-        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
+        thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr),
+        thread_staged_pages_wf(post.thrd_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
@@ -390,10 +390,10 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
-    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); page_ptr_roundtrip(); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); page_ptr_roundtrip(); };
+    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by {
+        assert(thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+        assert(thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
     };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
@@ -572,13 +572,13 @@ proof fn pop_stage_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let old_thread = pre.thr_mp.spec_index(thread);
+            let old_thread = pre.thrd_mp.spec_index(thread);
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& page_ptr_valid(page)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& pre.ctn_mp.dom().contains(container)
             &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_2m == allocator
-            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thrd_mp.dom().contains(thread)
             &&& thread_effective_quota_2m(old_thread) >= 1
             &&& old_thread.view().owning_container == container
             &&& pre.allc_2m_mp.dom().contains(allocator)
@@ -609,35 +609,35 @@ proof fn pop_stage_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
 
 proof fn pop_stage_2m_page_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, thread: RwLockThreadPtr)
     requires
-        thread_endpoint_ref_counter_wf(pre.thr_mp, pre.ep_mp),
+        thread_endpoint_ref_counter_wf(pre.thrd_mp, pre.ep_mp),
         post.ep_mp == pre.ep_mp,
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread),
-        forall|t: RwLockThreadPtr, i: EndpointIdx| #![trigger post.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int)]
-            pre.thr_mp.dom().contains(t) ==>
-                post.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int) == pre.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int),
-    ensures thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
+        forall|t: RwLockThreadPtr, i: EndpointIdx| #![trigger post.thrd_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int)]
+            pre.thrd_mp.dom().contains(t) ==>
+                post.thrd_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int) == pre.thrd_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int),
+    ensures thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
 { reveal(thread_endpoint_ref_counter_wf); }
 
 proof fn pop_stage_2m_page_eof_process_management_inv(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
         pre.inv(),
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        pre.thr_mp.dom().contains(thread),
+        pre.thrd_mp.dom().contains(thread),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
     pop_stage_2m_page_eof_thread_endpoint_ref_counter(pre, post, thread);
     assert(post.process_management_inv()) by {
-        assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
-        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
-        assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
-        assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
-        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
-        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
+        assert(thread_caller_callee_wf(post.thrd_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp); };
+        assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
+        assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.sched_mp); };
+        assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+        assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.cpu_arr); };
     };
 }
 
@@ -647,13 +647,13 @@ pub(super) proof fn pop_stage_2m_page_eof(pre: KernelK, post: KernelK, allocator
         pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let old_thread = pre.thr_mp.spec_index(thread);
+            let old_thread = pre.thrd_mp.spec_index(thread);
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& page_ptr_valid(page)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& pre.ctn_mp.dom().contains(container)
             &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_2m == allocator
-            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thrd_mp.dom().contains(thread)
             &&& thread_effective_quota_2m(old_thread) >= 1
             &&& old_thread.view().owning_container == container
             &&& pre.allc_2m_mp.dom().contains(allocator)
@@ -664,7 +664,7 @@ pub(super) proof fn pop_stage_2m_page_eof(pre: KernelK, post: KernelK, allocator
             &&& !old_thread.view().temp_alloc_cache_2m.view().contains(page)
         }),
         post.pg_arr.inv(),
-        post.thr_mp.perms_wf(),
+        post.thrd_mp.perms_wf(),
         post.allc_2m_mp.perms_wf(),
         post.allc_2m_mp.spec_index(allocator).wf(),
     ensures post.inv(),

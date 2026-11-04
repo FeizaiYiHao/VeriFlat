@@ -19,12 +19,12 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            ==> old(krnl).thrd_mp.spec_index(held_thread).being_killed() || !(old(krnl).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        old(krnl).thr_mp.dom().contains(target_thread),
+        old(krnl).thrd_mp.dom().contains(target_thread),
         old(lctx).thread_lock_map().dom().contains(target_thread),
         mmap_4k_quota_thread_container_compatible(old(krnl), old(lctx), target_thread, target_container),
         old(krnl).prc_mp.dom().contains(target_process),
@@ -74,7 +74,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_threads_unchanged(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx)),
+        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
         held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
@@ -116,23 +116,23 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
         source_entry = source.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
-    let page_ptr = source_entry.addr;
-    let page_index = page_ptr2page_index(page_ptr);
+    let pg_ptr = source_entry.addr;
+    let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         assert({
-            &&& index_valid(NUM_PAGES, page_index)
-            &&& krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k
-            &&& krnl.ctn_mp.dom().contains(krnl.pg_arr.spec_index(page_index).view().view().owning_container)
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
+            &&& krnl.ctn_mp.dom().contains(krnl.pg_arr.spec_index(pg_idx).view().view().owning_container)
         }) by {
             page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
-            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
+            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         };
     }
-    let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
+    let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let page_owner;
     {
         proof { assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); }; }
-        let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
+        let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
         page_owner = page.owning_container;
     }
     proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); }
@@ -146,14 +146,14 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
                 &&& container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)
                 &&& krnl.ctn_mp.dom().contains(page_owner)
                 &&& krnl.ctn_mp.dom().contains(target_container)
-            }) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); };
+            }) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, target_thread); };
         }
         page_compatible = container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, page_owner, target_container);
     }
-    krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
+    krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
+            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -166,7 +166,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         assert({
             &&& krnl.ctn_mp.dom().contains(target_container)
             &&& krnl.ctn_mp.spec_index(target_container).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq
-        }) by { assert(boundary_lctx.thread_lock_map().dom().contains(target_thread)); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, target_thread); };
+        }) by { assert(boundary_lctx.thread_lock_map().dom().contains(target_thread)); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); };
         assert({
             &&& krnl.prc_mp.dom().contains(target_process)
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container

@@ -203,8 +203,8 @@ pub proof fn kill_process_dequeue_endpoint_step_lr(old_u: KernelU, new_u: Kernel
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
-    let endpoint_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
-    let endpoint = old_u.endpoint_map[endpoint_ptr];
+    let ep_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
+    let endpoint = old_u.endpoint_map[ep_ptr];
     assert(in_domain(old_u, a, target.owning_container)) by {
         reveal(kernel_u_container_tree_wf); reveal(kernel_u_process_ownership_wf);
         if target.owning_container != owner {
@@ -221,7 +221,7 @@ pub proof fn kill_process_dequeue_endpoint_step_lr(old_u: KernelU, new_u: Kernel
         let holder = old_u.thread_map[h.0].owning_container;
         assert(h == (h.0, h.1));
         assert(endpoint.queue[j] == victim_ptr);
-        assert(old_u.thread_map[h.0].endpoint_descriptors[h.1 as int] == Some(endpoint_ptr));
+        assert(old_u.thread_map[h.0].endpoint_descriptors[h.1 as int] == Some(ep_ptr));
         assert(!in_domain(old_u, b, holder));
         if in_domain(old_u, b, endpoint.owning_container) && endpoint.owning_container != holder && endpoint.owning_container != b {
             reveal(kernel_u_container_tree_wf);
@@ -233,8 +233,8 @@ pub proof fn kill_process_dequeue_endpoint_step_lr(old_u: KernelU, new_u: Kernel
     if in_domain(old_u, b, endpoint.owning_container) { assert(endpoint.owning_threads =~= Set::<(RwLockThreadPtr, EndpointIdx)>::empty()); }
     assert forall|t: RwLockThreadPtr, i: int| #![trigger old_u.thread_map[t].endpoint_descriptors[i]]
         old_u.thread_map.dom().contains(t) && in_domain(old_u, b, old_u.thread_map[t].owning_container) && 0 <= i < MAX_NUM_ENDPOINT_DESCRIPTORS
-        implies old_u.thread_map[t].endpoint_descriptors[i] != Some(endpoint_ptr) by {
-        if old_u.thread_map[t].endpoint_descriptors[i] == Some(endpoint_ptr) {
+        implies old_u.thread_map[t].endpoint_descriptors[i] != Some(ep_ptr) by {
+        if old_u.thread_map[t].endpoint_descriptors[i] == Some(ep_ptr) {
             assert(endpoint.owning_threads.contains((t, i as EndpointIdx)));
             assert(endpoint.queue[j] == victim_ptr);
         }
@@ -253,8 +253,8 @@ pub proof fn kill_process_dequeue_endpoint_step_iso(old_u: KernelU, new_u: Kerne
 {
     reveal(kill_process_dequeue_endpoint_step); reveal(kernel_u_endpoint_ownership_wf);
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
-    let endpoint_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
-    let queue = old_u.endpoint_map[endpoint_ptr].queue;
+    let ep_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
+    let queue = old_u.endpoint_map[ep_ptr].queue;
     queue.index_of_first_ensures(victim_ptr);
 }
 
@@ -353,11 +353,11 @@ pub proof fn kill_process_descriptor_dropped_step_lr(old_u: KernelU, new_u: Kern
         let thread = old_u.thread_map[t];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         assert forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) implies domain_view(new_u, b) =~~= domain_view(old_u, b) by {
-            let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
+            let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
             assert forall|t2: RwLockThreadPtr, i: int| #![trigger old_u.thread_map[t2].endpoint_descriptors[i]]
                 old_u.thread_map.dom().contains(t2) && in_domain(old_u, b, old_u.thread_map[t2].owning_container) && 0 <= i < MAX_NUM_ENDPOINT_DESCRIPTORS
-                implies old_u.thread_map[t2].endpoint_descriptors[i] != Some(endpoint_ptr) by {
-                if old_u.thread_map[t2].endpoint_descriptors[i] == Some(endpoint_ptr) { assert(old_u.endpoint_map[endpoint_ptr].owning_threads.contains((t2, i as EndpointIdx))); }
+                implies old_u.thread_map[t2].endpoint_descriptors[i] != Some(ep_ptr) by {
+                if old_u.thread_map[t2].endpoint_descriptors[i] == Some(ep_ptr) { assert(old_u.endpoint_map[ep_ptr].owning_threads.contains((t2, i as EndpointIdx))); }
             };
         };
         if !(domain_view(new_u, b) =~~= domain_view(old_u, b)) { assert(dropped =~= Set::<int>::empty()); }
@@ -548,11 +548,11 @@ pub proof fn kill_process_endpoint_released_step_lr(old_u: KernelU, new_u: Kerne
         let thread = old_u.thread_map[t];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         assert forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) implies domain_view(new_u, b) =~~= domain_view(old_u, b) by {
-            let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
+            let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
             assert forall|t2: RwLockThreadPtr, i: int| #![trigger old_u.thread_map[t2].endpoint_descriptors[i]]
                 old_u.thread_map.dom().contains(t2) && in_domain(old_u, b, old_u.thread_map[t2].owning_container) && 0 <= i < MAX_NUM_ENDPOINT_DESCRIPTORS
-                implies old_u.thread_map[t2].endpoint_descriptors[i] != Some(endpoint_ptr) by {
-                if old_u.thread_map[t2].endpoint_descriptors[i] == Some(endpoint_ptr) { assert(old_u.endpoint_map[endpoint_ptr].owning_threads.contains((t2, i as EndpointIdx))); }
+                implies old_u.thread_map[t2].endpoint_descriptors[i] != Some(ep_ptr) by {
+                if old_u.thread_map[t2].endpoint_descriptors[i] == Some(ep_ptr) { assert(old_u.endpoint_map[ep_ptr].owning_threads.contains((t2, i as EndpointIdx))); }
             };
         };
         if !(domain_view(new_u, b) =~~= domain_view(old_u, b)) { assert(dropped =~= Set::<int>::empty()); }

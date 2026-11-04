@@ -3,18 +3,18 @@ use crate::*;
 
 verus! {
 /// Closes `inv()` after a PCID-allocator write lock or unlock: only the target entry's lock state moved.
-pub(super) proof fn pcid_allocator_lock_op_eof(pre: KernelK, post: KernelK, allocator_ptr: RwLockPcidAllocatorPtr)
+pub(super) proof fn pcid_allocator_lock_op_eof(pre: KernelK, post: KernelK, allc_ptr: RwLockPcidAllocatorPtr)
     requires
         pre.inv(),
-        pre.pcid_allc_mp.dom().contains(allocator_ptr),
+        pre.pcid_allc_mp.dom().contains(allc_ptr),
         post == (KernelK { pcid_allc_mp: post.pcid_allc_mp, ..pre }),
         post.pcid_allc_mp.perms_wf(),
-        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allocator_ptr),
-        post.pcid_allc_mp.spec_index(allocator_ptr).inv(),
-        post.pcid_allc_mp.spec_index(allocator_ptr).view() == pre.pcid_allc_mp.spec_index(allocator_ptr).view(),
-        post.pcid_allc_mp.spec_index(allocator_ptr).view_rodata() == pre.pcid_allc_mp.spec_index(allocator_ptr).view_rodata(),
-        post.pcid_allc_mp.spec_index(allocator_ptr).view_ghost() == pre.pcid_allc_mp.spec_index(allocator_ptr).view_ghost(),
-        post.pcid_allc_mp.spec_index(allocator_ptr).being_killed() == pre.pcid_allc_mp.spec_index(allocator_ptr).being_killed(),
+        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allc_ptr),
+        post.pcid_allc_mp.spec_index(allc_ptr).inv(),
+        post.pcid_allc_mp.spec_index(allc_ptr).view() == pre.pcid_allc_mp.spec_index(allc_ptr).view(),
+        post.pcid_allc_mp.spec_index(allc_ptr).view_rodata() == pre.pcid_allc_mp.spec_index(allc_ptr).view_rodata(),
+        post.pcid_allc_mp.spec_index(allc_ptr).view_ghost() == pre.pcid_allc_mp.spec_index(allc_ptr).view_ghost(),
+        post.pcid_allc_mp.spec_index(allc_ptr).being_killed() == pre.pcid_allc_mp.spec_index(allc_ptr).being_killed(),
     ensures
         post.inv(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),

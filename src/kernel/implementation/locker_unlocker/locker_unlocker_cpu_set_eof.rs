@@ -32,16 +32,16 @@ pub(super) proof fn cpu_set_lock_op_eof(pre: KernelK, post: KernelK, cpu_set_ptr
     reveal(container_cpu_set_wf);
 }
 
-/// Closes `inv()` after `wlock_cpu_set_and_mark_kill`: the cpu set of the marked container `container_ptr`, which owns no
+/// Closes `inv()` after `wlock_cpu_set_and_mark_kill`: the cpu set of the marked container `ctn_ptr`, which owns no
 /// process or thread, is write-locked by the thread that write-holds the killer's process and marked for that killer.
-pub(super) proof fn mark_kill_cpu_set_eof(pre: KernelK, post: KernelK, pre_lctx: LocalContext, container_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, killer_info: KillerInfo)
+pub(super) proof fn mark_kill_cpu_set_eof(pre: KernelK, post: KernelK, pre_lctx: LocalContext, ctn_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, killer_info: KillerInfo)
     requires
         pre.inv(),
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
-        pre.ctn_mp.spec_index(container_ptr).killer_info() == Some(killer_info),
-        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
-        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().is_empty(),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
+        pre.ctn_mp.spec_index(ctn_ptr).killer_info() == Some(killer_info),
+        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
+        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
         typed_lock_map_contains_mode(pre_lctx.process_lock_map(), killer_info.process, TypedLockMode::Write),
         typed_lock_maps_aligned(&pre, &pre_lctx),
         post == (KernelK { cpu_set_mp: post.cpu_set_mp, ..pre }),
@@ -61,7 +61,7 @@ pub(super) proof fn mark_kill_cpu_set_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(post.memory_management_inv()) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_invariant_fields_unchanged(pre.cpu_set_mp, post.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(pre.cpu_set_mp, post.cpu_set_mp, cpu_set_ptr); };
     assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by {
-        container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, container_ptr); pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_info.process);
+        container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, ctn_ptr); pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_info.process);
         reveal(cpu_set_kill_mark_wf);
     };
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };

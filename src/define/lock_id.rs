@@ -244,8 +244,8 @@ pub proof fn lock_id_gt_transitive(a: LockId, b: LockId, c: LockId)
 }
 
 /// Ordering id of a container write-acquired dynamically for the concrete process owner `requested`.
-pub open spec fn dynamic_container_lock_id(container_ptr: RwLockContainerPtr, container_depth: usize, requested: LockOwnerId) -> LockId {
-    LockId { container: LockOwnerId::Some(container_depth), process: requested, major: CONTAINER_LOCK_MAJOR, minor: seq![container_ptr] }
+pub open spec fn dynamic_container_lock_id(ctn_ptr: RwLockContainerPtr, container_depth: usize, requested: LockOwnerId) -> LockId {
+    LockId { container: LockOwnerId::Some(container_depth), process: requested, major: CONTAINER_LOCK_MAJOR, minor: seq![ctn_ptr] }
 }
 
 // -------------------- End of lock id  -----------------------

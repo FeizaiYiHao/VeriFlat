@@ -10,8 +10,8 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(iova) || iova >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(iova, range)),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
-            let thread_ptr = cpu.view().view().current_thread->Some_0;
-            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let thrd_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = krnl.it_mp.spec_index(process.view().iommu_table->Some_0).view();
@@ -23,7 +23,7 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
                 ==> table.mapping_4k().dom().contains(iova_range.view()[j]) && table.mapping_4k()[iova_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
-            &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& !(ret is CpuIdle) ==> krnl.thrd_mp.dom().contains(thrd_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
             &&& ret is ErrorContainerKilled ==> container.being_killed()
             &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && conflict
             &&& ret is ErrorContainerZombie ==> !container.being_killed() && unowned && container.view().zombie
@@ -40,7 +40,7 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
         iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, iova, range) == ret,
 {
     let c = krnl.cpu_arr.spec_index(cpu_id).value.view().view();
-    let thread = krnl.thr_mp.spec_index(c.current_thread->Some_0).view();
+    let thread = krnl.thrd_mp.spec_index(c.current_thread->Some_0).view();
     kernel_cpu_projection_at(krnl, cpu_id); kernel_u_domains_projection(krnl);
     if !(ret is CpuIdle) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_container_projection_at(krnl, thread.owning_container);
@@ -50,15 +50,15 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
 }
 
 /// Hiding the next iova of the recorded range and advancing the progress is a leaf step on `pre`/`post`.
-pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iova: VAddr)
+pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iova: VAddr)
     requires
         {
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let process = pre.process_map.spec_index(process_ptr);
+            let thread = pre.thread_map.spec_index(thrd_ptr);
+            let process = pre.process_map.spec_index(prc_ptr);
             let progress = thread.syscall_progress->Some_0;
             &&& iommu_unmap_4k_table_locked(pre, cpu_id)
-            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
-            &&& thread.owning_proc == process_ptr
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
+            &&& thread.owning_proc == prc_ptr
             &&& thread.syscall_progress is Some
             &&& progress is IommuUnmap4k
             &&& progress->IommuUnmap4k_unmapped < progress->IommuUnmap4k_iova_range.len
@@ -66,13 +66,13 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU,
             &&& progress->IommuUnmap4k_iova_range.view()[progress->IommuUnmap4k_unmapped as int] == iova
             &&& process.iommu_table->Some_0.mapping_4k.dom().contains(iova)
             &&& post == (KernelU {
-                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
                     syscall_progress: Some(SyscallProgress::IommuUnmap4k {
                         iova_range: progress->IommuUnmap4k_iova_range, unmapped: (progress->IommuUnmap4k_unmapped + 1) as usize, flushed: false,
                     }),
                     ..thread
                 }),
-                process_map: pre.process_map.insert(process_ptr, ProcessU {
+                process_map: pre.process_map.insert(prc_ptr, ProcessU {
                     iommu_table: Some(PageTableU { mapping_4k: process.iommu_table->Some_0.mapping_4k.remove(iova), ..process.iommu_table->Some_0 }), ..process
                 }),
                 ..pre
@@ -84,14 +84,14 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU,
 
 /// Invalidating only the IOTLB domain of the process's IOMMU table to what it may cache, or nothing when it has no DID, and
 /// recording the flush after the last hidden iova is the flush step on `pre`/`post`.
-pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
+pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr)
     requires
         {
-            let thread = pre.thread_map.spec_index(thread_ptr);
+            let thread = pre.thread_map.spec_index(thrd_ptr);
             let did = pre.process_map.spec_index(thread.owning_proc).iommu_table->Some_0.did;
             let progress = thread.syscall_progress->Some_0;
             &&& iommu_unmap_4k_table_locked(pre, cpu_id)
-            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& thread.syscall_progress is Some
             &&& progress is IommuUnmap4k
             &&& progress->IommuUnmap4k_unmapped == progress->IommuUnmap4k_iova_range.len
@@ -99,7 +99,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU
             &&& did matches Some(d) ==> iommu_tlb_within_may_cache_u(post, d, post.iommu_tlb[d])
             &&& post == (KernelU {
                 iommu_tlb: match did { Some(d) => pre.iommu_tlb.insert(d, post.iommu_tlb[d]), None => pre.iommu_tlb },
-                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
                     syscall_progress: Some(SyscallProgress::IommuUnmap4k { iova_range: progress->IommuUnmap4k_iova_range, unmapped: progress->IommuUnmap4k_unmapped, flushed: true }),
                     ..thread
                 }),
@@ -146,19 +146,19 @@ pub(super) proof fn iommu_unmap_4k_trace_exit_step(before: Seq<KernelStep>, trac
 /// Write-locking the cpu, its running thread, the thread's process and container, and the process's IOMMU table, and
 /// recording the first iova from a `Success` entry state is the enter step.
 pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
-    pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
     iova: VAddr, range: usize,
 )
     requires
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
-        pre.prc_mp.dom().contains(process_ptr),
-        !pre.prc_mp.spec_index(process_ptr).view().zombie,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.it_mp.dom().contains(iommu_table_ptr),
         iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*pre), cpu_id, iova, range) is Success,
         iommu_unmap_4k_iova_range(iova, range).wf(),
-        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, it_mp: post.it_mp, ..*pre }),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, it_mp: post.it_mp, ..*pre }),
         !pre.cpu_arr.spec_index(cpu_id).value.locked(),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
@@ -167,34 +167,34 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info(),
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        pre.ctn_mp.dom().contains(container_ptr),
-        !pre.ctn_mp.spec_index(container_ptr).locked(),
-        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
-        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
-        post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
-        post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
-        post.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
-        post.ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
-        !pre.prc_mp.spec_index(process_ptr).locked(),
-        post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
-        post.prc_mp.spec_index(process_ptr).view() == pre.prc_mp.spec_index(process_ptr).view(),
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() is Write,
-        pre.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
-        pre.thr_mp.dom().contains(thread_ptr),
-        !pre.thr_mp.spec_index(thread_ptr).locked(),
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
-        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range: iommu_unmap_4k_iova_range(iova, range), unmapped: 0, flushed: false }),
-        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
-        post.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        !pre.ctn_mp.spec_index(ctn_ptr).locked(),
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),
+        post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view(),
+        post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
+        post.ctn_mp.spec_index(ctn_ptr).view_ghost() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost(),
+        post.ctn_mp.spec_index(ctn_ptr).being_killed() == pre.ctn_mp.spec_index(ctn_ptr).being_killed(),
+        post.ctn_mp.spec_index(ctn_ptr).locking_thread() is Write,
+        post.ctn_mp.spec_index(ctn_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().depth)),
+        !pre.prc_mp.spec_index(prc_ptr).locked(),
+        post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr),
+        post.prc_mp.spec_index(prc_ptr).view() == pre.prc_mp.spec_index(prc_ptr).view(),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() is Write,
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table_ptr),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        !pre.thrd_mp.spec_index(thrd_ptr).locked(),
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range: iommu_unmap_4k_iova_range(iova, range), unmapped: 0, flushed: false }),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
         !pre.it_mp.spec_index(iommu_table_ptr).locked(),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
@@ -204,41 +204,41 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         iommu_unmap_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, iommu_unmap_4k_iova_range(iova, range)),
 {
     reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step);
-    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table_ptr);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, process_ptr, thread_ptr, None);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, container_ptr);
+    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table_ptr);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, prc_ptr, thrd_ptr, None);
+    kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, ctn_ptr);
 }
 
 /// Advancing the progress past iova `iova` and then clearing its present leaf in the write-held IOMMU table under the
 /// IOMMU-unmap locks is one leaf step from `pre` to `post`.
 pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
-    pre: &KernelK, mid: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pre: &KernelK, mid: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     iommu_table_ptr: RwLockPageTableRoot, iova_range: VaRange4K, unmapped: usize,
 )
     requires
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
-        pre.prc_mp.dom().contains(process_ptr),
-        !pre.prc_mp.spec_index(process_ptr).view().zombie,
-        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
-        pre.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.ctn_mp.spec_index(ctn_ptr).locking_thread() is Write,
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).locking_thread() is Write,
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table_ptr),
         pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         unmapped < iova_range.len,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped, flushed: false }),
-        *mid == (KernelK { thr_mp: mid.thr_mp, ..*pre }),
-        mid.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-        mid.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: mid.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
-        mid.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: (unmapped + 1) as usize, flushed: false }),
-        mid.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
-        mid.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped, flushed: false }),
+        *mid == (KernelK { thrd_mp: mid.thrd_mp, ..*pre }),
+        mid.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        mid.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: mid.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        mid.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: (unmapped + 1) as usize, flushed: false }),
+        mid.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        mid.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         *post == (KernelK { it_mp: post.it_mp, ..*mid }),
         post.it_mp.unchanged_except(&mid.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).locking_thread() == mid.it_mp.spec_index(iommu_table_ptr).locking_thread(),
@@ -254,39 +254,39 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     let iova = iova_range.view()[unmapped as int];
-    assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == process_ptr) by { reveal(process_iommu_table_match); };
-    kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thread_ptr);
+    assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_iommu_table_match); };
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thrd_ptr);
     kernel_iommu_table_4k_present_cleared_implies_u_step(mid, post, iommu_table_ptr, iova);
     kernel_u_domains_projection(pre);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(mid, thread_ptr);
-    kernel_process_projection_at(pre, process_ptr); kernel_iommu_table_mappings_projection_at(pre, process_ptr);
-    iommu_unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, iova);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, ctn_ptr);
+    kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(mid, thrd_ptr);
+    kernel_process_projection_at(pre, prc_ptr); kernel_iommu_table_mappings_projection_at(pre, prc_ptr);
+    iommu_unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, iova);
 }
 
 /// Invalidating the IOTLB domain of the write-held IOMMU table, if it has one, and then recording the flush after the last
 /// hidden iova under the IOMMU-unmap locks is the flush step from `pre` to `post`.
 pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
-    pre: &KernelK, mid: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pre: &KernelK, mid: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     iommu_table_ptr: RwLockPageTableRoot, iova_range: VaRange4K,
 )
     requires
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
-        pre.prc_mp.dom().contains(process_ptr),
-        !pre.prc_mp.spec_index(process_ptr).view().zombie,
-        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
-        pre.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.ctn_mp.spec_index(ctn_ptr).locking_thread() is Write,
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).locking_thread() is Write,
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table_ptr),
         pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: false }),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: false }),
         pre.iommu_tlb.inv(),
         mid.iommu_tlb.inv(),
         mid.inv(),
@@ -296,12 +296,12 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
             &&& iommu_tlb_within_may_cache(*mid, did, mid.iommu_tlb.spec_index(did))
         },
         pre.it_mp.spec_index(iommu_table_ptr).view().did is None ==> mid.iommu_tlb == pre.iommu_tlb,
-        *post == (KernelK { thr_mp: post.thr_mp, ..*mid }),
-        post.thr_mp.unchanged_except(&mid.thr_mp, thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..mid.thr_mp.spec_index(thread_ptr).view() }),
-        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true }),
-        post.thr_mp.spec_index(thread_ptr).being_killed() == mid.thr_mp.spec_index(thread_ptr).being_killed(),
-        post.thr_mp.spec_index(thread_ptr).locking_thread() == mid.thr_mp.spec_index(thread_ptr).locking_thread(),
+        *post == (KernelK { thrd_mp: post.thrd_mp, ..*mid }),
+        post.thrd_mp.unchanged_except(&mid.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true }),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == mid.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == mid.thrd_mp.spec_index(thrd_ptr).locking_thread(),
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
@@ -311,25 +311,25 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
         kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);
         kernel_iommu_tlb_within_may_cache_projection(mid, did, mid.iommu_tlb.spec_index(did));
     }
-    kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thread_ptr);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr); kernel_thread_projection_at(pre, thread_ptr);
-    kernel_process_projection_at(pre, process_ptr); kernel_iommu_table_mappings_projection_at(pre, process_ptr);
-    iommu_unmap_4k_flush_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr);
+    kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thrd_ptr);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, ctn_ptr); kernel_thread_projection_at(pre, thrd_ptr);
+    kernel_process_projection_at(pre, prc_ptr); kernel_iommu_table_mappings_projection_at(pre, prc_ptr);
+    iommu_unmap_4k_flush_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr);
 }
 
 /// Clearing progress and unlocking the IOMMU table, the running thread, its process and container, and the cpu after the
 /// recorded flush is the exit step.
 pub(super) proof fn iommu_unmap_4k_exit_step_from_k(
-    pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
 )
     requires
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
-        pre.prc_mp.dom().contains(process_ptr),
-        !pre.prc_mp.spec_index(process_ptr).view().zombie,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.it_mp.dom().contains(iommu_table_ptr),
-        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, it_mp: post.it_mp, ..*pre }),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, it_mp: post.it_mp, ..*pre }),
         pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
@@ -338,36 +338,36 @@ pub(super) proof fn iommu_unmap_4k_exit_step_from_k(
         post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info(),
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
-        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
-        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
-        post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
-        post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
-        post.ctn_mp.spec_index(container_ptr).locking_thread() is None,
-        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
-        post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
-        post.prc_mp.spec_index(process_ptr).view() == pre.prc_mp.spec_index(process_ptr).view(),
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() is None,
-        pre.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is Some,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0 is IommuUnmap4k,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_unmapped == pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_iova_range.len,
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_flushed,
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
-        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
-        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
-        post.thr_mp.spec_index(thread_ptr).locking_thread() is None,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.ctn_mp.spec_index(ctn_ptr).locking_thread() is Write,
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),
+        post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view(),
+        post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
+        post.ctn_mp.spec_index(ctn_ptr).view_ghost() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost(),
+        post.ctn_mp.spec_index(ctn_ptr).being_killed() == pre.ctn_mp.spec_index(ctn_ptr).being_killed(),
+        post.ctn_mp.spec_index(ctn_ptr).locking_thread() is None,
+        pre.prc_mp.spec_index(prc_ptr).locking_thread() is Write,
+        post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr),
+        post.prc_mp.spec_index(prc_ptr).view() == pre.prc_mp.spec_index(prc_ptr).view(),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() is None,
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table_ptr),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is IommuUnmap4k,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_unmapped == pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_iova_range.len,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->IommuUnmap4k_flushed,
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
         pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
@@ -377,14 +377,14 @@ pub(super) proof fn iommu_unmap_4k_exit_step_from_k(
         iommu_unmap_4k_exit_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
 {
     reveal(iommu_unmap_4k_exit_step_pre); reveal(iommu_unmap_4k_exit_step);
-    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table_ptr);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, process_ptr, thread_ptr, None);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, container_ptr);
+    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table_ptr);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, prc_ptr, thrd_ptr, None);
+    kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, ctn_ptr);
 }
 /// The 4K quota refund steps that `refund_unmap_4k_quota` appended under the IOMMU-unmap context locks after the recorded
 /// flush extend the partial trace `before`.
 pub(super) proof fn iommu_unmap_4k_trace_refund_steps(
-    before: Seq<KernelStep>, after: Seq<KernelStep>, krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, iova_range: VaRange4K,
+    before: Seq<KernelStep>, after: Seq<KernelStep>, krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, iova_range: VaRange4K,
 )
     requires
         iommu_unmap_4k_partial_trace(before, cpu_id, iova_range),
@@ -392,20 +392,20 @@ pub(super) proof fn iommu_unmap_4k_trace_refund_steps(
         forall|j: int| #![trigger after[j]] #![trigger before[j]] 0 <= j < before.len() ==> after[j] == before[j],
         index_valid(NUM_CPUS, cpu_id),
         lctx.cpu_id() == cpu_id,
-        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true }),
-        typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true }),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container, TypedLockMode::Write),
         forall|j: int| #![trigger after[j]] before.len() <= j < after.len() ==> {
             let old_u = after[j].old_u;
-            let thread = krnl.thr_mp.spec_index(thread_ptr).view();
+            let thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
             &&& kernel_u_container_quota_4k_increased(old_u, after[j].new_u, thread.owning_container)
             &&& old_u.cpu_array[lctx.cpu_id() as int].lock_state is WriteLocked
             &&& old_u.cpu_array[lctx.cpu_id() as int].current_thread == krnl.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_thread
-            &&& old_u.thread_map.dom().contains(thread_ptr)
-            &&& old_u.thread_map[thread_ptr].lock_state is WriteLocked
-            &&& old_u.thread_map[thread_ptr].owning_container == thread.owning_container
-            &&& old_u.thread_map[thread_ptr].owning_proc == thread.owning_proc
-            &&& old_u.thread_map[thread_ptr].syscall_progress == thread.syscall_progress.view()
+            &&& old_u.thread_map.dom().contains(thrd_ptr)
+            &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
+            &&& old_u.thread_map[thrd_ptr].owning_container == thread.owning_container
+            &&& old_u.thread_map[thrd_ptr].owning_proc == thread.owning_proc
+            &&& old_u.thread_map[thrd_ptr].syscall_progress == thread.syscall_progress.view()
             &&& old_u.process_map.dom().contains(thread.owning_proc)
             &&& old_u.process_map[thread.owning_proc].lock_state is WriteLocked
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), thread.owning_container, TypedLockMode::Write) ==> {

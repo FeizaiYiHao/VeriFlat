@@ -9,33 +9,33 @@ pub open spec fn kill_container_retire_pages_4k(ro: ContainerRO) -> Seq<PageInde
         page_ptr2page_index(ro.allocator_ptr_1g)]
 }
 
-/// The two 2M object pages of the container `container_ptr` with read-only data `ro`: the container with its offline
+/// The two 2M object pages of the container `ctn_ptr` with read-only data `ro`: the container with its offline
 /// request table and its PCID allocator.
-pub open spec fn kill_container_retire_heads(container_ptr: RwLockContainerPtr, ro: ContainerRO) -> Seq<PageIndex> {
-    seq![page_ptr2page_index(container_ptr), page_ptr2page_index(ro.pcid_allocator)]
+pub open spec fn kill_container_retire_heads(ctn_ptr: RwLockContainerPtr, ro: ContainerRO) -> Seq<PageIndex> {
+    seq![page_ptr2page_index(ctn_ptr), page_ptr2page_index(ro.pcid_allocator)]
 }
 
 /// The merged tails of both 2M object pages `heads`.
 pub open spec fn kill_container_retire_tails(heads: Seq<PageIndex>) -> Set<PageIndex> { page_2m_tail_indices(heads[0]) + page_2m_tail_indices(heads[1]) }
 
 /// Besides containers, the killer write-holds with the permissions given exactly what retiring the marked container
-/// `container_ptr` into the killer's container `owner_ptr` takes: the container's marked cpu set, its offline request
+/// `ctn_ptr` into the killer's container `owner_ptr` takes: the container's marked cpu set, its offline request
 /// cell, scheduler shard, and allocator caches on every cpu, its PCID allocator and allocator pools and quotas, the 4K
 /// and 2M pools and quotas of `owner_ptr`'s allocators, and the container's object pages with their tails.
 pub open spec fn kill_container_retire_held_locks(
-    k: KernelK, lctx: LocalContext, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, cpu_set_perm: LockPerm, flag_perms: Map<CpuId, LockPerm>,
+    k: KernelK, lctx: LocalContext, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, cpu_set_perm: LockPerm, flag_perms: Map<CpuId, LockPerm>,
     pcid_perm: LockPerm, shard_perms: Map<CpuId, LockPerm>, caches_4k: Map<CpuId, LockPerm>, caches_2m: Map<CpuId, LockPerm>, caches_1g: Map<CpuId, LockPerm>,
     pools_4k: Map<RwLockPageAllocatorPtr, LockPerm>, pools_2m: Map<RwLockPageAllocatorPtr, LockPerm>, pool_1g: LockPerm, quotas_4k: Map<RwLockPageAllocatorPtr, LockPerm>,
     quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>, quota_1g: LockPerm, page_perms: Map<PageIndex, LockPerm>, tails_container: Map<PageIndex, LockPerm>,
     tails_pcid: Map<PageIndex, LockPerm>,
 ) -> bool {
-    let ro = k.ctn_mp.spec_index(container_ptr).view_rodata().view();
+    let ro = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let owner_ro = k.ctn_mp.spec_index(owner_ptr).view_rodata().view();
-    let flags_ptr = cpu_offline_flags_ptr(container_ptr);
+    let flags_ptr = cpu_offline_flags_ptr(ctn_ptr);
     let pages_4k = kill_container_retire_pages_4k(ro);
-    let heads = kill_container_retire_heads(container_ptr, ro);
+    let heads = kill_container_retire_heads(ctn_ptr, ro);
     let (a4, a2, a1, o4, o2) = (ro.allocator_ptr_4k, ro.allocator_ptr_2m, ro.allocator_ptr_1g, owner_ro.allocator_ptr_4k, owner_ro.allocator_ptr_2m);
-    &&& k.ctn_mp.dom().contains(container_ptr)
+    &&& k.ctn_mp.dom().contains(ctn_ptr)
     &&& k.ctn_mp.dom().contains(owner_ptr)
     &&& typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), ro.cpu_set, TypedLockMode::Write)
     &&& cpu_set_perm.state() is WriteLock && cpu_set_perm.thread_id() == lctx.thread_id() && cpu_set_perm.lock_id() == k.cpu_set_mp.spec_index(ro.cpu_set).locking_thread()->Write_lock_id

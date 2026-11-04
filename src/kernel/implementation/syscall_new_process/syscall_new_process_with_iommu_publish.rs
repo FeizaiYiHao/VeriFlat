@@ -10,13 +10,13 @@ use super::syscall_new_process_with_iommu_release::release_staged_process_with_i
 verus! {
 pub(super) fn publish_staged_process_with_iommu(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-    container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr,
-    source_pagetable_ptr: RwLockPageTableRoot, source_range: &VaRange4K, pcid: Pcid, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
-    iommu_table_page_ptr: PagePtr, iommu_l4_page_ptr: PagePtr, process_page_lock_perm: Tracked<LockPerm>, pagetable_page_lock_perm: Tracked<LockPerm>,
+    ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr,
+    source_pagetable_ptr: RwLockPageTableRoot, source_range: &VaRange4K, pcid: Pcid, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, process_page_lock_perm: Tracked<LockPerm>, pagetable_page_lock_perm: Tracked<LockPerm>,
     l4_page_lock_perm: Tracked<LockPerm>, iommu_table_page_lock_perm: Tracked<LockPerm>, iommu_l4_page_lock_perm: Tracked<LockPerm>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, pcid_allocator_lock_perm: Tracked<LockPerm>,
     parent_lock_perm: Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<&LockPerm>,
-    Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Ghost(regs): Ghost<Registers>, Ghost(endpoint_index): Ghost<Option<EndpointIdx>>,
+    Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Ghost(regs): Ghost<Registers>, Ghost(ep_idx): Ghost<Option<EndpointIdx>>,
 ) -> (ret: (RwLockProcessPtr, RwLockPageTableRoot, RwLockPageTableRoot, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         old(steps).snapshot_k() == *old(krnl),
@@ -29,40 +29,40 @@ pub(super) fn publish_staged_process_with_iommu(
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).ctn_mp.dom().contains(container_ptr),
-        old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator == pcid_allocator_ptr,
-        old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
-        typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allocator_ptr, TypedLockMode::Write),
-        old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view().pcid_is_free(pcid),
+        old(krnl).ctn_mp.dom().contains(ctn_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator == pcid_allc_ptr,
+        old(krnl).pcid_allc_mp.dom().contains(pcid_allc_ptr),
+        typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allc_ptr, TypedLockMode::Write),
+        old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().pcid_is_free(pcid),
         pcid_allocator_lock_perm.view().state() is WriteLock,
         pcid_allocator_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        pcid_allocator_lock_perm.view().lock_id() == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).locking_thread()->Write_lock_id,
+        pcid_allocator_lock_perm.view().lock_id() == old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread()->Write_lock_id,
         old(krnl).prc_mp.dom().contains(parent_ptr),
-        old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
+        old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == ctn_ptr,
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
         old(krnl).prc_mp.spec_index(parent_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(parent_ptr).view().state.view() is Zombie,
         parent_lock_perm.view().state() is WriteLock,
         parent_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(parent_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.dom().contains(current_thread_ptr),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().proc_pagetable_ptr == source_pagetable_ptr,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr],
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: true, child: None })),
-        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 5,
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
-        !old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
+        old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == parent_ptr,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr == source_pagetable_ptr,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_4k.view() == set![process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr],
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_2m.view().is_empty(),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_1g.view().is_empty(),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index: ep_idx, with_iommu: true, child: None })),
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 5,
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-        current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
+        current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
@@ -71,44 +71,44 @@ pub(super) fn publish_staged_process_with_iommu(
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread() is Read,
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.lock_id()),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p == source_pagetable_ptr,
-        page_ptr_valid(process_page_ptr) && page_ptr_valid(pagetable_page_ptr) && page_ptr_valid(l4_page_ptr) && page_ptr_valid(iommu_table_page_ptr) && page_ptr_valid(iommu_l4_page_ptr),
-        process_page_ptr != pagetable_page_ptr && process_page_ptr != l4_page_ptr && process_page_ptr != iommu_table_page_ptr && process_page_ptr != iommu_l4_page_ptr
-            && pagetable_page_ptr != l4_page_ptr && pagetable_page_ptr != iommu_table_page_ptr && pagetable_page_ptr != iommu_l4_page_ptr
-            && l4_page_ptr != iommu_table_page_ptr && l4_page_ptr != iommu_l4_page_ptr && iommu_table_page_ptr != iommu_l4_page_ptr,
-        !old(krnl).prc_mp.dom().contains(process_page_ptr),
-        !old(krnl).pt_mp.dom().contains(pagetable_page_ptr),
-        !old(krnl).it_mp.dom().contains(iommu_table_page_ptr),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().view().owning_container == container_ptr,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().view().owning_container == container_ptr,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().view().owning_container == container_ptr,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_page_ptr)).view().view().owning_container == container_ptr,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().view().owning_container == container_ptr,
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(process_page_ptr), TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pagetable_page_ptr), TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_page_ptr), TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_table_page_ptr), TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_l4_page_ptr), TypedLockMode::Write),
-        process_page_lock_perm.view().state() is WriteLock && process_page_lock_perm.view().thread_id() == old(lctx).thread_id() && process_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().locking_thread()->Write_lock_id,
-        pagetable_page_lock_perm.view().state() is WriteLock && pagetable_page_lock_perm.view().thread_id() == old(lctx).thread_id() && pagetable_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().locking_thread()->Write_lock_id,
-        l4_page_lock_perm.view().state() is WriteLock && l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().locking_thread()->Write_lock_id,
+        page_ptr_valid(process_pg_ptr) && page_ptr_valid(pagetable_pg_ptr) && page_ptr_valid(l4_pg_ptr) && page_ptr_valid(iommu_table_pg_ptr) && page_ptr_valid(iommu_l4_pg_ptr),
+        process_pg_ptr != pagetable_pg_ptr && process_pg_ptr != l4_pg_ptr && process_pg_ptr != iommu_table_pg_ptr && process_pg_ptr != iommu_l4_pg_ptr
+            && pagetable_pg_ptr != l4_pg_ptr && pagetable_pg_ptr != iommu_table_pg_ptr && pagetable_pg_ptr != iommu_l4_pg_ptr
+            && l4_pg_ptr != iommu_table_pg_ptr && l4_pg_ptr != iommu_l4_pg_ptr && iommu_table_pg_ptr != iommu_l4_pg_ptr,
+        !old(krnl).prc_mp.dom().contains(process_pg_ptr),
+        !old(krnl).pt_mp.dom().contains(pagetable_pg_ptr),
+        !old(krnl).it_mp.dom().contains(iommu_table_pg_ptr),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().owning_container == ctn_ptr,
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().owning_container == ctn_ptr,
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().owning_container == ctn_ptr,
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().owning_container == ctn_ptr,
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().owning_container == ctn_ptr,
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(process_pg_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pagetable_pg_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_pg_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_table_pg_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_l4_pg_ptr), TypedLockMode::Write),
+        process_page_lock_perm.view().state() is WriteLock && process_page_lock_perm.view().thread_id() == old(lctx).thread_id() && process_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().locking_thread()->Write_lock_id,
+        pagetable_page_lock_perm.view().state() is WriteLock && pagetable_page_lock_perm.view().thread_id() == old(lctx).thread_id() && pagetable_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().locking_thread()->Write_lock_id,
+        l4_page_lock_perm.view().state() is WriteLock && l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().locking_thread()->Write_lock_id,
         iommu_table_page_lock_perm.view().state() is WriteLock && iommu_table_page_lock_perm.view().thread_id() == old(lctx).thread_id()
-            && iommu_table_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_page_ptr)).view().locking_thread()->Write_lock_id,
-        iommu_l4_page_lock_perm.view().state() is WriteLock && iommu_l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && iommu_l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().locking_thread()->Write_lock_id,
-        old(lctx).page_lock_map().dom() == set![page_ptr2page_index(process_page_ptr), page_ptr2page_index(pagetable_page_ptr), page_ptr2page_index(l4_page_ptr), page_ptr2page_index(iommu_table_page_ptr), page_ptr2page_index(iommu_l4_page_ptr)],
+            && iommu_table_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().locking_thread()->Write_lock_id,
+        iommu_l4_page_lock_perm.view().state() is WriteLock && iommu_l4_page_lock_perm.view().thread_id() == old(lctx).thread_id() && iommu_l4_page_lock_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().locking_thread()->Write_lock_id,
+        old(lctx).page_lock_map().dom() == set![page_ptr2page_index(process_pg_ptr), page_ptr2page_index(pagetable_pg_ptr), page_ptr2page_index(l4_pg_ptr), page_ptr2page_index(iommu_table_pg_ptr), page_ptr2page_index(iommu_l4_pg_ptr)],
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= set![parent_ptr],
-        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thrd_ptr],
         old(lctx).scheduler_lock_map().dom().is_empty(),
-        old(lctx).pcid_allocator_lock_map().dom() =~= set![pcid_allocator_ptr],
+        old(lctx).pcid_allocator_lock_map().dom() =~= set![pcid_allc_ptr],
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
@@ -136,7 +136,7 @@ pub(super) fn publish_staged_process_with_iommu(
         final(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         final(lctx).container_lock_map().dom().is_empty(),
         final(lctx).process_lock_map().dom() =~= set![ret.0],
-        final(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        final(lctx).thread_lock_map().dom() =~= set![current_thrd_ptr],
         final(lctx).scheduler_lock_map().dom().is_empty(),
         final(lctx).pcid_allocator_lock_map().dom().is_empty(),
         final(lctx).cpu_set_lock_map().dom().is_empty(),
@@ -151,15 +151,15 @@ pub(super) fn publish_staged_process_with_iommu(
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.thread_id() == final(lctx).thread_id(),
         cpu_lock_perm.lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        final(krnl).ctn_mp.dom().contains(container_ptr),
-        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler,
-        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k,
+        final(krnl).ctn_mp.dom().contains(ctn_ptr),
+        final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler,
+        final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k,
         final(krnl).prc_mp.dom().contains(ret.0),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), ret.0, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(ret.0).being_killed(),
         final(krnl).prc_mp.spec_index(ret.0).view().state.view() is Creating,
         !final(krnl).prc_mp.spec_index(ret.0).view().zombie,
-        final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == container_ptr,
+        final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == ctn_ptr,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pagetable == ret.1,
         final(krnl).prc_mp.spec_index(ret.0).view().iommu_table == Some(ret.2),
         final(krnl).it_mp.dom().contains(ret.2),
@@ -168,24 +168,24 @@ pub(super) fn publish_staged_process_with_iommu(
         ret.3.view().state() is WriteLock,
         ret.3.view().thread_id() == final(lctx).thread_id(),
         ret.3.view().lock_id() == final(krnl).prc_mp.spec_index(ret.0).locking_thread()->Write_lock_id,
-        final(krnl).thr_mp.dom().contains(current_thread_ptr),
-        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
-        !final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc != ret.0,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().proc_pagetable_ptr == source_pagetable_ptr,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
+        final(krnl).thrd_mp.dom().contains(current_thrd_ptr),
+        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
+        !final(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == parent_ptr,
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc != ret.0,
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr == source_pagetable_ptr,
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
-            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: true, child: Some(ret.0) }),
+            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index: ep_idx, with_iommu: true, child: Some(ret.0) }),
         }),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k - 5,
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k - 5,
         current_thread_lock_perm.thread_id() == final(lctx).thread_id(),
-        current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
+        current_thread_lock_perm.lock_id() == final(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
         source_pagetable_ptr != ret.1,
         final(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
@@ -219,8 +219,8 @@ pub(super) fn publish_staged_process_with_iommu(
     let tracked iommu_l4_page_lock_perm = iommu_l4_page_lock_perm.get();
     proof {
         assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
-            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr);
-            new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, container_ptr, *source_range, regs, endpoint_index, true);
+            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
+            new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, true);
         };
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
             let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
@@ -233,42 +233,42 @@ pub(super) fn publish_staged_process_with_iommu(
                 lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
             };
         };
-        assert(page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr)
-            && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(iommu_table_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr)
-            && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr) && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(iommu_table_page_ptr) && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr)
-            && page_ptr2page_index(l4_page_ptr) != page_ptr2page_index(iommu_table_page_ptr) && page_ptr2page_index(l4_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr) && page_ptr2page_index(iommu_table_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr)) by {
-            page_ptr2page_index_neq(process_page_ptr, pagetable_page_ptr);
-            page_ptr2page_index_neq(process_page_ptr, l4_page_ptr);
-            page_ptr2page_index_neq(process_page_ptr, iommu_table_page_ptr);
-            page_ptr2page_index_neq(process_page_ptr, iommu_l4_page_ptr);
-            page_ptr2page_index_neq(pagetable_page_ptr, l4_page_ptr);
-            page_ptr2page_index_neq(pagetable_page_ptr, iommu_table_page_ptr);
-            page_ptr2page_index_neq(pagetable_page_ptr, iommu_l4_page_ptr);
-            page_ptr2page_index_neq(l4_page_ptr, iommu_table_page_ptr);
-            page_ptr2page_index_neq(l4_page_ptr, iommu_l4_page_ptr);
-            page_ptr2page_index_neq(iommu_table_page_ptr, iommu_l4_page_ptr);
+        assert(page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(pagetable_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(l4_pg_ptr)
+            && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
+            && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(l4_pg_ptr) && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(pagetable_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)
+            && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(l4_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr) && page_ptr2page_index(iommu_table_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)) by {
+            page_ptr2page_index_neq(process_pg_ptr, pagetable_pg_ptr);
+            page_ptr2page_index_neq(process_pg_ptr, l4_pg_ptr);
+            page_ptr2page_index_neq(process_pg_ptr, iommu_table_pg_ptr);
+            page_ptr2page_index_neq(process_pg_ptr, iommu_l4_pg_ptr);
+            page_ptr2page_index_neq(pagetable_pg_ptr, l4_pg_ptr);
+            page_ptr2page_index_neq(pagetable_pg_ptr, iommu_table_pg_ptr);
+            page_ptr2page_index_neq(pagetable_pg_ptr, iommu_l4_pg_ptr);
+            page_ptr2page_index_neq(l4_pg_ptr, iommu_table_pg_ptr);
+            page_ptr2page_index_neq(l4_pg_ptr, iommu_l4_pg_ptr);
+            page_ptr2page_index_neq(iommu_table_pg_ptr, iommu_l4_pg_ptr);
         };
     }
     let (child_ptr, target_pagetable_ptr, iommu_table_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm)) = create_process_with_iommu_from_staged_pages(
-        krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, current_thread_ptr,
-        container_ptr, pcid_allocator_ptr, pcid, Tracked(&mut *lctx), Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm),
+        krnl, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, current_thrd_ptr,
+        ctn_ptr, pcid_allc_ptr, pcid, Tracked(&mut *lctx), Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm),
         Tracked(&l4_page_lock_perm), Tracked(&iommu_table_page_lock_perm), Tracked(&iommu_l4_page_lock_perm),
         Tracked(&parent_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&pcid_allocator_lock_perm),
     );
     proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_from_staged_pages_eof_transition_framing); }; }
     release_staged_process_with_iommu_input_locks(
-        krnl, Tracked(&mut *lctx), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
-        target_pagetable_ptr, iommu_table_ptr, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr,
+        krnl, Tracked(&mut *lctx), cpu_id, ctn_ptr, parent_ptr, child_ptr, current_thrd_ptr, pcid_allc_ptr, source_pagetable_ptr,
+        target_pagetable_ptr, iommu_table_ptr, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr,
         Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(iommu_table_page_lock_perm),
         Tracked(iommu_l4_page_lock_perm), Tracked(parent_lock_perm), Tracked(pcid_allocator_lock_perm),
     );
     proof { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(kernel_thread_quota_4k_changed); }
     end_new_process_publish_step(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
-        target_pagetable_ptr, Some(iommu_table_ptr), source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(endpoint_index),
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, parent_ptr, child_ptr, current_thrd_ptr, pcid_allc_ptr, source_pagetable_ptr,
+        target_pagetable_ptr, Some(iommu_table_ptr), source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(ep_idx),
     );
     proof {
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_match); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
         };

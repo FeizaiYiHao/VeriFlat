@@ -74,17 +74,17 @@ pub open spec fn kill_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ch
 pub open spec fn kill_container_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let owner_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     let child_ptr = old_u.container_map[owner_ptr].children[child_index as int];
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(owner_ptr, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[process_ptr].depth)), ..old_u.container_map[owner_ptr]
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[prc_ptr].depth)), ..old_u.container_map[owner_ptr]
         }).insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            lock_state: LockStateU::WriteLocked, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..old_u.thread_map[thread_ptr]
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[prc_ptr] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
+            lock_state: LockStateU::WriteLocked, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..old_u.thread_map[thrd_ptr]
         }),
         ..old_u
     })
@@ -135,8 +135,8 @@ pub open spec fn kill_container_mark_child_step(old_u: KernelU, new_u: KernelU, 
 /// that process.
 #[verifier::opaque]
 pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     let root_ptr = target.root_process;
     &&& kill_container_stage(old_u, cpu_id) is Walk
     &&& target.children.len() == 0
@@ -145,7 +145,7 @@ pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, c
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[root_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id),
-            kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Process { process: root_ptr, stage: KillStage::Walk })),
+            kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Process { process: root_ptr, stage: KillStage::Walk })),
         ..old_u
     })
 }
@@ -155,24 +155,24 @@ pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, c
 /// again.
 #[verifier::opaque]
 pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let container = old_u.container_map[container_ptr];
-    let process_ptr = kill_target(old_u, cpu_id);
-    let root = old_u.process_map[process_ptr];
-    let quota_4k = new_u.container_map[container_ptr].quota_4k;
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let container = old_u.container_map[ctn_ptr];
+    let prc_ptr = kill_target(old_u, cpu_id);
+    let root = old_u.process_map[prc_ptr];
+    let quota_4k = new_u.container_map[ctn_ptr].quota_4k;
     &&& kill_container_stage(old_u, cpu_id) is Process
     &&& kill_stage(old_u, cpu_id) is Retire
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& kill_process_empty_target_pre(old_u, cpu_id)
     &&& root.zombie
     &&& root.owned_pci_functions.is_empty()
     &&& root.parent is None
-    &&& root.owning_container == container_ptr
+    &&& root.owning_container == ctn_ptr
     &&& container.quota_4k < quota_4k
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { zombie: false, owned_processes: container.owned_processes.remove(process_ptr), quota_4k, ..container }),
-        process_map: old_u.process_map.remove(process_ptr),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Walk)),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { zombie: false, owned_processes: container.owned_processes.remove(prc_ptr), quota_4k, ..container }),
+        process_map: old_u.process_map.remove(prc_ptr),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Walk)),
         ..old_u
     })
 }
@@ -180,14 +180,14 @@ pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU,
 /// The target without child containers and processes marks and write-locks its cpu set and moves on to its cpus.
 #[verifier::opaque]
 pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     &&& kill_container_stage(old_u, cpu_id) is Walk
     &&& target.children.len() == 0
     &&& target.owned_processes.is_empty()
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..target }),
-        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Cpus)),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..target }),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Cpus)),
         ..old_u
     })
 }
@@ -196,8 +196,8 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
 /// its offline request for that cpu.
 #[verifier::opaque]
 pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     let owner_ptr = old_u.cpu_array[cpu_id as int].owning_container;
     let moved = Set::range(0usize, NUM_CPUS).filter(|i: CpuId| old_u.cpu_array[i as int] != new_u.cpu_array[i as int]);
     &&& kill_container_stage(old_u, cpu_id) is Cpus
@@ -205,14 +205,14 @@ pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cp
     &&& moved.len() == 1
     &&& forall|i: CpuId| #![trigger moved.contains(i)] moved.contains(i) ==> {
         let cpu = old_u.cpu_array[i as int];
-        &&& cpu.owning_container == container_ptr
+        &&& cpu.owning_container == ctn_ptr
         &&& cpu.state is Idle || cpu.state is Off
         &&& cpu.lock_state is Unlocked
         &&& new_u.cpu_array[i as int] == (CpuU { owning_container: owner_ptr, ..cpu })
     }
     &&& new_u == (KernelU {
         cpu_array: new_u.cpu_array,
-        container_map: old_u.container_map.insert(container_ptr, ContainerU {
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU {
             cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| target.cpu_offline_requests[i] && !moved.contains(i as CpuId)), ..target
         }),
         ..old_u
@@ -222,29 +222,29 @@ pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cp
 /// The target owning no cpu moves on to its free pages.
 #[verifier::opaque]
 pub open spec fn kill_container_pages_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
     &&& kill_container_stage(old_u, cpu_id) is Cpus
-    &&& forall|i: int| #![trigger old_u.cpu_array[i]] 0 <= i < NUM_CPUS ==> old_u.cpu_array[i].owning_container != container_ptr
-    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Pages)), ..old_u })
+    &&& forall|i: int| #![trigger old_u.cpu_array[i]] 0 <= i < NUM_CPUS ==> old_u.cpu_array[i].owning_container != ctn_ptr
+    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Pages)), ..old_u })
 }
 
 /// One free page of `size` moves from the target to the killer's container: the target's owned pages lose the 4K pages
 /// it spans and the killer's container gains them, and one page of `size` of quota moves with it.
 #[verifier::opaque]
 pub open spec fn kill_container_move_page_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, size: PageSize) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     let owner_ptr = old_u.cpu_array[cpu_id as int].owning_container;
     let owner = old_u.container_map[owner_ptr];
-    let kept = new_u.container_map[container_ptr].owned_pages;
+    let kept = new_u.container_map[ctn_ptr].owned_pages;
     let moved = target.owned_pages.difference(kept);
     &&& kill_container_stage(old_u, cpu_id) is Pages
-    &&& owner_ptr != container_ptr
+    &&& owner_ptr != ctn_ptr
     &&& kept.subset_of(target.owned_pages)
     &&& moved.len() == match size { PageSize::SZ4k => 1nat, PageSize::SZ2m => 512nat, PageSize::SZ1g => 512 * 512nat }
     &&& 0 < match size { PageSize::SZ4k => target.quota_4k, PageSize::SZ2m => target.quota_2m, PageSize::SZ1g => target.quota_1g }
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, match size {
+        container_map: old_u.container_map.insert(ctn_ptr, match size {
             PageSize::SZ4k => ContainerU { owned_pages: kept, quota_4k: (target.quota_4k - 1) as usize, ..target },
             PageSize::SZ2m => ContainerU { owned_pages: kept, quota_2m: (target.quota_2m - 1) as usize, ..target },
             PageSize::SZ1g => ContainerU { owned_pages: kept, quota_1g: (target.quota_1g - 1) as usize, ..target },
@@ -260,13 +260,13 @@ pub open spec fn kill_container_move_page_step(old_u: KernelU, new_u: KernelU, c
 /// The target without free pages left starts retiring.
 #[verifier::opaque]
 pub open spec fn kill_container_retire_stage_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     &&& kill_container_stage(old_u, cpu_id) is Pages
     &&& target.quota_4k == 0
     &&& target.quota_2m == 0
     &&& target.quota_1g == 0
-    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Retire)), ..old_u })
+    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Retire)), ..old_u })
 }
 
 /// Retiring the empty target removes it from the container map, from its parent's children, and from every
@@ -274,8 +274,8 @@ pub open spec fn kill_container_retire_stage_step(old_u: KernelU, new_u: KernelU
 /// amounts left open, and the kill walks the parent again.
 #[verifier::opaque]
 pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let container_ptr = kill_container_target(old_u, cpu_id);
-    let target = old_u.container_map[container_ptr];
+    let ctn_ptr = kill_container_target(old_u, cpu_id);
+    let target = old_u.container_map[ctn_ptr];
     let parent_ptr = target.parent->Some_0;
     let owner_ptr = old_u.cpu_array[cpu_id as int].owning_container;
     let owner = old_u.container_map[owner_ptr];
@@ -286,15 +286,15 @@ pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_
     &&& target.owned_processes.is_empty()
     &&& target.parent is Some
     &&& old_u.container_map.dom().contains(parent_ptr)
-    &&& owner_ptr != container_ptr
+    &&& owner_ptr != ctn_ptr
     &&& owner.quota_4k < quota_4k
     &&& owner.quota_2m < quota_2m
     &&& new_u == (KernelU {
-        container_map: Map::new(old_u.container_map.dom().remove(container_ptr), |c: RwLockContainerPtr| {
+        container_map: Map::new(old_u.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
             let container = old_u.container_map[c];
             ContainerU {
-                children: if c == parent_ptr { container.children.remove_value(container_ptr) } else { container.children },
-                subtree_set: if target.uppertree_seq.contains(c) { container.subtree_set.remove(container_ptr) } else { container.subtree_set },
+                children: if c == parent_ptr { container.children.remove_value(ctn_ptr) } else { container.children },
+                subtree_set: if target.uppertree_seq.contains(c) { container.subtree_set.remove(ctn_ptr) } else { container.subtree_set },
                 owned_pages: if c == owner_ptr { container.owned_pages.union(target.owned_pages) } else { container.owned_pages },
                 quota_4k: if c == owner_ptr { quota_4k } else { container.quota_4k },
                 quota_2m: if c == owner_ptr { quota_2m } else { container.quota_2m },
@@ -337,19 +337,19 @@ pub open spec fn kill_container_middle_step(step: KernelStep, cpu_id: CpuId) -> 
 #[verifier::opaque]
 pub open spec fn kill_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& old_u.container_map[cpu.owning_container].lock_state is WriteLocked
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map[process_ptr].lock_state is WriteLocked
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.thread_map[thread_ptr].lock_state is WriteLocked
-    &&& old_u.thread_map[thread_ptr].syscall_progress == kill_container_progress(cpu.owning_container, ContainerKillStage::Walk)
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map[prc_ptr].lock_state is WriteLocked
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
+    &&& old_u.thread_map[thrd_ptr].syscall_progress == kill_container_progress(cpu.owning_container, ContainerKillStage::Walk)
 }
 
 /// Finishing clears the kill's progress and unlocks the killer's thread, process, container, and cpu, which leaves its
@@ -358,13 +358,13 @@ pub open spec fn kill_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -
 pub open spec fn kill_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let owner_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         container_map: old_u.container_map.insert(owner_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[owner_ptr] }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[process_ptr] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thread_ptr] }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[prc_ptr] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thrd_ptr] }),
         ..old_u
     })
 }

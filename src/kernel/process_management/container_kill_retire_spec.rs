@@ -62,36 +62,36 @@ pub proof fn container_kill_retire_wf_at(
         }),
 { reveal(container_kill_retire_wf); }
 
-/// A container that owns the thread `thread_ptr` directly or indirectly is not retire-ready.
+/// A container that owns the thread `thrd_ptr` directly or indirectly is not retire-ready.
 pub proof fn container_with_thread_not_retire_ready_at(
     container_map: ContainerLockedMap, allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>,
-    allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, c: RwLockContainerPtr, thread_ptr: RwLockThreadPtr,
+    allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, c: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr,
 )
     requires
         container_kill_retire_wf(container_map, allocator_4k_map, allocator_2m_map, allocator_1g_map),
         container_map.dom().contains(c),
-        container_map.spec_index(c).view_ghost().owned_threads.view().contains(thread_ptr)
-            || container_map.spec_index(c).view_ghost().owned_indirect_threads.view().contains(thread_ptr),
+        container_map.spec_index(c).view_ghost().owned_threads.view().contains(thrd_ptr)
+            || container_map.spec_index(c).view_ghost().owned_indirect_threads.view().contains(thrd_ptr),
     ensures
         !container_map.spec_index(c).view_ghost().retire_ready,
 { reveal(container_kill_retire_wf); }
 
-/// The container `container_ptr` that owns no thread has no thread queued on shard `cpu_id` of its scheduler.
-pub proof fn container_without_threads_shard_empty_at(k: KernelK, container_ptr: RwLockContainerPtr, cpu_id: CpuId)
+/// The container `ctn_ptr` that owns no thread has no thread queued on shard `cpu_id` of its scheduler.
+pub proof fn container_without_threads_shard_empty_at(k: KernelK, ctn_ptr: RwLockContainerPtr, cpu_id: CpuId)
     requires
         k.inv(),
-        k.ctn_mp.dom().contains(container_ptr),
-        k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty(),
+        k.ctn_mp.dom().contains(ctn_ptr),
+        k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty(),
         index_valid(NUM_CPUS, cpu_id),
-    ensures k.sched_mp.spec_index(k.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler).shards.spec_index(cpu_id).view().view().queue.view().len() == 0,
+    ensures k.sched_mp.spec_index(k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler).shards.spec_index(cpu_id).view().view().queue.view().len() == 0,
 {
-    let sched = k.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler;
-    container_scheduler_wf_at(k.ctn_mp, k.sched_mp, container_ptr);
+    let sched = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler;
+    container_scheduler_wf_at(k.ctn_mp, k.sched_mp, ctn_ptr);
     if k.sched_mp.spec_index(sched).shard(cpu_id).queue.view().len() > 0 {
         let t = k.sched_mp.spec_index(sched).shard(cpu_id).queue.view()[0];
         assert(k.sched_mp.spec_index(sched).shard(cpu_id).queue.view().contains(t));
-        container_thread_scheduler_wf_at(k.ctn_mp, k.thr_mp, k.sched_mp, sched, cpu_id, t); container_thread_wf_at(k.ctn_mp, k.thr_mp, t);
-        assert(k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(t));
+        container_thread_scheduler_wf_at(k.ctn_mp, k.thrd_mp, k.sched_mp, sched, cpu_id, t); container_thread_wf_at(k.ctn_mp, k.thrd_mp, t);
+        assert(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(t));
     }
 }
 } // verus!

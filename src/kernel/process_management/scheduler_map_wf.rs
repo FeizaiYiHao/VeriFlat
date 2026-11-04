@@ -16,11 +16,11 @@ verus! {
         forall|scheduler_p: RwLockSchedulerPtr| #![trigger scheduler_map.spec_index(scheduler_p)] scheduler_map.dom().contains(scheduler_p) ==> scheduler_map.spec_index(scheduler_p).inv()
     }
 
-    pub proof fn scheduler_perms_wf_at(scheduler_map: SchedulerUnLockedMap, scheduler_ptr: RwLockSchedulerPtr)
+    pub proof fn scheduler_perms_wf_at(scheduler_map: SchedulerUnLockedMap, sched_ptr: RwLockSchedulerPtr)
         requires
             scheduler_perms_wf(scheduler_map),
-            scheduler_map.dom().contains(scheduler_ptr),
+            scheduler_map.dom().contains(sched_ptr),
         ensures
-            scheduler_map.spec_index(scheduler_ptr).inv(),
+            scheduler_map.spec_index(sched_ptr).inv(),
     { reveal(scheduler_perms_wf); }
 }

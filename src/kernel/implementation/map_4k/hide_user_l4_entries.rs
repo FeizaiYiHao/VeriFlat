@@ -33,7 +33,7 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
         final(krnl).inv(),
         held_containers_unchanged(hidden.view().ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(hidden.view().prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_threads_unchanged(hidden.view().thr_mp, final(krnl).thr_mp, old(lctx)),
+        held_threads_unchanged(hidden.view().thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_endpoints_unchanged(hidden.view().ep_mp, final(krnl).ep_mp, old(lctx)),
         held_cpu_sets_unchanged(hidden.view().cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
         held_iommu_tables_unchanged(hidden.view().it_mp, final(krnl).it_mp, old(lctx)),
@@ -118,12 +118,12 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             &&& hide_user_l4_entry_eof_transition_framing(hidden.view()[k].1, hidden.view()[k].2, pagetable, hidden.view()[k].0)
             &&& typed_lock_maps_aligned(&hidden.view()[k].1, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden.view()[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden.view()[k].1.ctn_mp, old(lctx))
-            &&& held_processes_unchanged(old(krnl).prc_mp, hidden.view()[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thr_mp, hidden.view()[k].1.thr_mp, old(lctx))
+            &&& held_processes_unchanged(old(krnl).prc_mp, hidden.view()[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thrd_mp, hidden.view()[k].1.thrd_mp, old(lctx))
         },
         forall|k: int, m: int| #![trigger hidden.view()[k], hidden.view()[m]] 0 <= k < m < hidden.view().len() ==> hidden.view()[k].0 < hidden.view()[m].0,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_threads_unchanged(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx)),
+        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
@@ -213,13 +213,13 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 &&& hide_user_l4_entry_eof_transition_framing(hidden[k].1, hidden[k].2, pagetable, hidden[k].0)
                 &&& typed_lock_maps_aligned(&hidden[k].1, old(lctx))
                 &&& held_cpus_unchanged(old(krnl).cpu_arr, hidden[k].1.cpu_arr, old(lctx)) && held_containers_unchanged(old(krnl).ctn_mp, hidden[k].1.ctn_mp, old(lctx))
-                &&& held_processes_unchanged(old(krnl).prc_mp, hidden[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thr_mp, hidden[k].1.thr_mp, old(lctx))
+                &&& held_processes_unchanged(old(krnl).prc_mp, hidden[k].1.prc_mp, old(lctx)) && held_threads_unchanged(old(krnl).thrd_mp, hidden[k].1.thrd_mp, old(lctx))
                 &&& hidden[k].0 < l4i
             },
             forall|k: int, m: int| #![trigger hidden[k], hidden[m]] 0 <= k < m < hidden.len() ==> hidden[k].0 < hidden[m].0,
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
-            held_threads_unchanged(old(krnl).thr_mp, krnl.thr_mp, old(lctx)),
+            held_threads_unchanged(old(krnl).thrd_mp, krnl.thrd_mp, old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
             held_cpu_sets_unchanged(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(lctx)),
             held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx)),

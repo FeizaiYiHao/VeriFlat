@@ -22,17 +22,17 @@ pub(super) fn cpu_offline_check_continue(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         0 <= start <= old(steps).view().len(),
         cpu_offline_check_trace_after_hold(old(steps).view().subrange(start, old(steps).view().len() as int), kernel_k_to_kernel_u(entry_k), cpu_id),
-        *old(krnl) == (KernelK { prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, cpu_offline_mp: old(krnl).cpu_offline_mp, cpu_set_mp: old(krnl).cpu_set_mp, ..old(steps).snapshot_k() }),
+        *old(krnl) == (KernelK { prc_mp: old(krnl).prc_mp, thrd_mp: old(krnl).thrd_mp, cpu_offline_mp: old(krnl).cpu_offline_mp, cpu_set_mp: old(krnl).cpu_set_mp, ..old(steps).snapshot_k() }),
         old(krnl).prc_mp.dom() == old(steps).snapshot_k().prc_mp.dom(),
-        old(krnl).thr_mp.dom() == old(steps).snapshot_k().thr_mp.dom(),
+        old(krnl).thrd_mp.dom() == old(steps).snapshot_k().thrd_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)]
             old(steps).snapshot_k().prc_mp.dom().contains(p) ==> if process_lock_perm is Some && current_process == Some(p) {
                 old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() is None
             } else { old(krnl).prc_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() },
-        forall|t: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(t)]
-            old(steps).snapshot_k().thr_mp.dom().contains(t) ==> if thread_lock_perm is Some && current_thread == Some(t) {
-                old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() is None
-            } else { old(krnl).thr_mp.spec_index(t).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() },
+        forall|t: RwLockThreadPtr| #![trigger old(krnl).thrd_mp.spec_index(t)]
+            old(steps).snapshot_k().thrd_mp.dom().contains(t) ==> if thread_lock_perm is Some && current_thread == Some(t) {
+                old(steps).snapshot_k().thrd_mp.spec_index(t).locking_thread() is None
+            } else { old(krnl).thrd_mp.spec_index(t).locking_thread() == old(steps).snapshot_k().thrd_mp.spec_index(t).locking_thread() },
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
@@ -50,33 +50,33 @@ pub(super) fn cpu_offline_check_continue(
             &&& perm.lock_id() == old(krnl).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locking_thread()->Write_lock_id
         },
         process_lock_perm is Some ==> {
-            let process_ptr = current_process.unwrap();
+            let prc_ptr = current_process.unwrap();
             let perm = process_lock_perm.unwrap().view();
             &&& current_process is Some
-            &&& old(krnl).prc_mp.dom().contains(process_ptr)
-            &&& !old(krnl).prc_mp.spec_index(process_ptr).being_killed()
-            &&& old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie
-            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)
+            &&& old(krnl).prc_mp.dom().contains(prc_ptr)
+            &&& !old(krnl).prc_mp.spec_index(prc_ptr).being_killed()
+            &&& old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie
+            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id
         },
         thread_lock_perm is Some ==> {
-            let thread_ptr = current_thread.unwrap();
+            let thrd_ptr = current_thread.unwrap();
             let perm = thread_lock_perm.unwrap().view();
             &&& current_thread is Some
             &&& process_lock_perm is Some
-            &&& old(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).being_killed()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
-            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
+            &&& old(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id })
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).process_lock_map().dom() =~= if process_lock_perm is Some { set![current_process.unwrap()] } else { Set::empty() },
@@ -137,12 +137,12 @@ pub(super) fn cpu_offline_check_continue(
 }
 
 /// From the snapshot after the hold step, recorded after the partial trace from `entry_k` starting at `start`, with `cpu_id`
-/// write-held, not Off, owned by `container_ptr`, and running `current_thread` of `current_process`, if any: write-locks that
+/// write-held, not Off, owned by `ctn_ptr`, and running `current_thread` of `current_process`, if any: write-locks that
 /// process and thread unless killed and then rechecks the request and commits the offline; when a killer intervened on
 /// the process or thread, releases every lock with the release step.
 pub(super) fn cpu_offline_check_recheck(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
-    Tracked(cpu_lock_perm): Tracked<LockPerm>, container_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
+    Tracked(cpu_lock_perm): Tracked<LockPerm>, ctn_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
     Ghost(entry_k): Ghost<KernelK>, Ghost(start): Ghost<int>,
 ) -> (ret: OfflineCheckResult)
     requires
@@ -181,7 +181,7 @@ pub(super) fn cpu_offline_check_recheck(
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             &&& !(cpu.state is Off)
-            &&& cpu.owning_container == container_ptr
+            &&& cpu.owning_container == ctn_ptr
             &&& cpu.current_process == current_process
             &&& cpu.current_thread == current_thread
             &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
@@ -207,41 +207,41 @@ pub(super) fn cpu_offline_check_recheck(
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof {
         assert({
-            &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
-            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
-        }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); };
-        assert(page_ptr_2m_valid(container_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr); };
+            &&& krnl.ctn_mp.dom().contains(ctn_ptr)
+            &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(ctn_ptr))
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ctn_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+        }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); };
+        assert(page_ptr_2m_valid(ctn_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr); };
         assert({
             &&& (current_process is Some ==> krnl.prc_mp.dom().contains(current_process.unwrap()) && krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running)
             &&& (current_process is Some == current_thread is Some)
-            &&& (current_process is Some ==> krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().owning_container == container_ptr)
+            &&& (current_process is Some ==> krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().owning_container == ctn_ptr)
             &&& (current_process is Some ==> {
                 &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().container_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
                 &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
             })
             &&& (current_thread is Some ==> {
                 let ptr = current_thread.unwrap();
-                &&& krnl.thr_mp.dom().contains(ptr)
-                &&& krnl.thr_mp.spec_index(ptr).view().container_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
-                &&& krnl.thr_mp.spec_index(ptr).view().process_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
-                &&& krnl.thr_mp.spec_index(ptr).view().state == (ThreadState::RUNNING { cpu_id })
-                &&& krnl.thr_mp.spec_index(ptr).view().owning_proc == current_process.unwrap()
-                &&& krnl.thr_mp.spec_index(ptr).view().owning_container == container_ptr
+                &&& krnl.thrd_mp.dom().contains(ptr)
+                &&& krnl.thrd_mp.spec_index(ptr).view().container_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+                &&& krnl.thrd_mp.spec_index(ptr).view().process_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
+                &&& krnl.thrd_mp.spec_index(ptr).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& krnl.thrd_mp.spec_index(ptr).view().owning_proc == current_process.unwrap()
+                &&& krnl.thrd_mp.spec_index(ptr).view().owning_container == ctn_ptr
             })
         }) by {
-            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+            thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
             cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
-            if current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread.unwrap()); }
+            if current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thread.unwrap()); }
             if current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, current_process.unwrap()); }
         };
     }
-    let flags_ptr = container_ptr + 4096;
+    let flags_ptr = ctn_ptr + 4096;
     let mut process_lock_perm: Option<Tracked<LockPerm>> = None;
     let mut thread_lock_perm: Option<Tracked<LockPerm>> = None;
     let mut live = true;
-    if let Some(process_ptr) = current_process {
-        process_lock_perm = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
+    if let Some(prc_ptr) = current_process {
+        process_lock_perm = krnl.wlock_process_unless_killed(prc_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
         if process_lock_perm.is_some() { thread_lock_perm = krnl.wlock_current_running_thread_unless_killed(current_thread.unwrap(), Tracked(&mut *lctx)); }
         live = thread_lock_perm.is_some();
     }
@@ -258,7 +258,7 @@ pub(super) fn cpu_offline_check_recheck(
         return OfflineCheckResult::Continue;
     }
     let committed = cpu_offline_check_lock_and_commit(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, flags_ptr, current_process, current_thread, process_lock_perm, thread_lock_perm,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, ctn_ptr, flags_ptr, current_process, current_thread, process_lock_perm, thread_lock_perm,
         Tracked(cpu_lock_perm), Ghost(entry_k), Ghost(start),
     );
     if !committed {
@@ -276,24 +276,24 @@ pub(super) fn cpu_offline_check_recheck(
 /// cpu set.
 pub(super) fn cpu_offline_check_lock_and_commit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
-    container_ptr: RwLockContainerPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
+    ctn_ptr: RwLockContainerPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
     process_lock_perm: Option<Tracked<LockPerm>>, thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Ghost(entry_k): Ghost<KernelK>,
     Ghost(start): Ghost<int>,
 ) -> (committed: bool)
     requires
         old(krnl).inv(),
-        *old(krnl) == (KernelK { prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ..old(steps).snapshot_k() }),
+        *old(krnl) == (KernelK { prc_mp: old(krnl).prc_mp, thrd_mp: old(krnl).thrd_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
         old(krnl).prc_mp.dom() == old(steps).snapshot_k().prc_mp.dom(),
-        old(krnl).thr_mp.dom() == old(steps).snapshot_k().thr_mp.dom(),
+        old(krnl).thrd_mp.dom() == old(steps).snapshot_k().thrd_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)]
             old(steps).snapshot_k().prc_mp.dom().contains(p) ==> if current_process == Some(p) {
                 old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() is None
             } else { old(krnl).prc_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() },
-        forall|t: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(t)]
-            old(steps).snapshot_k().thr_mp.dom().contains(t) ==> if current_thread == Some(t) {
-                old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() is None
-            } else { old(krnl).thr_mp.spec_index(t).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() },
+        forall|t: RwLockThreadPtr| #![trigger old(krnl).thrd_mp.spec_index(t)]
+            old(steps).snapshot_k().thrd_mp.dom().contains(t) ==> if current_thread == Some(t) {
+                old(steps).snapshot_k().thrd_mp.spec_index(t).locking_thread() is None
+            } else { old(krnl).thrd_mp.spec_index(t).locking_thread() == old(steps).snapshot_k().thrd_mp.spec_index(t).locking_thread() },
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
@@ -338,9 +338,9 @@ pub(super) fn cpu_offline_check_lock_and_commit(
             &&& current_process is Some ==> cpu.state is Running
             &&& cpu.current_process == current_process
             &&& cpu.current_thread == current_thread
-            &&& cpu.owning_container == container_ptr
-            &&& old(krnl).ctn_mp.dom().contains(container_ptr)
-            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& cpu.owning_container == ctn_ptr
+            &&& old(krnl).ctn_mp.dom().contains(ctn_ptr)
+            &&& flags_ptr == cpu_offline_flags_ptr(ctn_ptr)
             &&& old(krnl).cpu_offline_mp.spec_index(flags_ptr).container_depth.view() == cpu.container_depth
             &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
@@ -349,32 +349,32 @@ pub(super) fn cpu_offline_check_lock_and_commit(
         current_thread is Some == thread_lock_perm is Some,
         old(krnl).cpu_offline_mp.dom().contains(flags_ptr),
         current_process is Some ==> {
-            let process_ptr = current_process.unwrap();
+            let prc_ptr = current_process.unwrap();
             let perm = process_lock_perm.unwrap().view();
-            &&& old(krnl).prc_mp.dom().contains(process_ptr)
-            &&& !old(krnl).prc_mp.spec_index(process_ptr).being_killed()
-            &&& old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie
-            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)
+            &&& old(krnl).prc_mp.dom().contains(prc_ptr)
+            &&& !old(krnl).prc_mp.spec_index(prc_ptr).being_killed()
+            &&& old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie
+            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id
         },
         current_thread is Some ==> {
-            let thread_ptr = current_thread.unwrap();
+            let thrd_ptr = current_thread.unwrap();
             let perm = thread_lock_perm.unwrap().view();
-            &&& old(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).being_killed()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == current_process.unwrap()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
-            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
+            &&& old(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id })
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == current_process.unwrap()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },
     ensures
         final(krnl).inv(),
@@ -388,7 +388,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         committed == (old(krnl).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().view().requested
-            && !old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()),
+            && !old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()),
         cpu_offline_check_entry_trace(
             final(steps).view().subrange(start, final(steps).view().len() as int), kernel_k_to_kernel_u(entry_k), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *pt_regs,
             committed, if committed { cpu_offline_check_flushed_default_pcid(old(steps).snapshot_k(), cpu_id) } else { false },
@@ -411,15 +411,15 @@ pub(super) fn cpu_offline_check_lock_and_commit(
     }
     proof {
         assert({
-            &&& krnl.ctn_mp.spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-        }) by { container_perms_wf_at(krnl.ctn_mp, container_ptr); };
+            &&& krnl.ctn_mp.spec_index(ctn_ptr).is_init()
+            &&& krnl.ctn_mp.view().spec_index(ctn_ptr).is_init()
+            &&& krnl.ctn_mp.view().spec_index(ctn_ptr).addr() == ctn_ptr
+        }) by { container_perms_wf_at(krnl.ctn_mp, ctn_ptr); };
     }
-    let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr).borrow();
-    let scheduler_ptr = container_ro.scheduler;
+    let container_ro = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow();
+    let sched_ptr = container_ro.scheduler;
     let cpu_set_ptr = container_ro.cpu_set;
-    proof { assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); }; assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr); }; }
+    proof { assert(krnl.sched_mp.dom().contains(sched_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); }; assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); }; }
     let cpu_set_res = krnl.wlock_cpu_set_unless_killed(cpu_set_ptr, Tracked(&mut *lctx));
     if cpu_set_res.is_none() {
         proof {
@@ -434,13 +434,13 @@ pub(super) fn cpu_offline_check_lock_and_commit(
         return false;
     }
     let Tracked(cpu_set_lock_perm) = cpu_set_res.unwrap();
-    let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
+    let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx));
     proof {
-        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap())) by { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, current_thread.unwrap()); };
+        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap())) by { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, sched_ptr, cpu_id, current_thread.unwrap()); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
     }
     cpu_offline_commit(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, current_process, current_thread,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, current_process, current_thread,
         process_lock_perm, thread_lock_perm, Tracked(cpu_lock_perm), Tracked(flag_lock_perm), Tracked(cpu_set_lock_perm), Tracked(scheduler_lock_perm),
     );
     proof {

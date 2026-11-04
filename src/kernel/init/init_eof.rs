@@ -23,12 +23,12 @@ pub(super) proof fn boot_subsystems_inv_eof(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -54,13 +54,13 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(cpu_op_wf(krnl.cpu_op.view().view(), krnl.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(container_perms_wf(krnl.ctn_mp)) by { reveal(container_perms_wf); assert(container_tree_fields_wf(krnl.ctn_mp)) by { reveal(container_tree_fields_wf); }; };
     assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
-    assert(thread_perms_wf(krnl.thr_mp)) by {
+    assert(thread_perms_wf(krnl.thrd_mp)) by {
         reveal(thread_perms_wf);
-        assert(thread_free_quota_pending_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_free_quota_pending_empty_unless_wlocked); };
-        assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
-        assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
-        assert(thread_exited_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_exited_only_when_wlocked); };
-        assert(thread_ipc_transit_wf(krnl.thr_mp)) by { reveal(thread_ipc_transit_wf); };
+        assert(thread_free_quota_pending_empty_unless_wlocked(krnl.thrd_mp)) by { reveal(thread_free_quota_pending_empty_unless_wlocked); };
+        assert(thread_temp_alloc_empty_unless_wlocked(krnl.thrd_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
+        assert(thread_syscall_progress_only_when_wlocked(krnl.thrd_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
+        assert(thread_exited_only_when_wlocked(krnl.thrd_mp)) by { reveal(thread_exited_only_when_wlocked); };
+        assert(thread_ipc_transit_wf(krnl.thrd_mp)) by { reveal(thread_ipc_transit_wf); };
     };
     assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
@@ -89,12 +89,12 @@ proof fn boot_memory_management_inv_eof_allocator_pages(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -122,12 +122,12 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -156,12 +156,12 @@ proof fn boot_memory_management_inv_eof_free_4k(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -189,12 +189,12 @@ proof fn boot_memory_management_inv_eof_free_2m(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -222,12 +222,12 @@ proof fn boot_memory_management_inv_eof_free_1g(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -255,12 +255,12 @@ proof fn boot_memory_management_inv_eof_object_pages(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -268,11 +268,11 @@ proof fn boot_memory_management_inv_eof_object_pages(
         container_pages_wf(krnl.pg_arr, krnl.ctn_mp),
         process_pages_wf(krnl.pg_arr, krnl.prc_mp),
         pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
-        thread_pages_wf(krnl.thr_mp, krnl.pg_arr),
+        thread_pages_wf(krnl.thrd_mp, krnl.pg_arr),
         scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr),
         cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr),
         pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp),
-        thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr),
+        thread_staged_pages_wf(krnl.thrd_mp, krnl.pg_arr),
         endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr),
 {
     boot_memory_management_inv_eof_container_pages(
@@ -331,12 +331,12 @@ proof fn boot_memory_management_inv_eof_mappings(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -376,12 +376,12 @@ pub(super) proof fn boot_memory_management_inv_eof(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -451,12 +451,12 @@ pub(super) proof fn boot_process_management_inv_eof(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
@@ -489,22 +489,22 @@ pub(super) proof fn boot_process_management_inv_eof(
     assert(process_state_lock_wf(krnl.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
-    assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
-    assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
-    assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
-    assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
+    assert(thread_endpoint_ref_counter_wf(krnl.thrd_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+    assert(thread_endpoint_queue_wf(krnl.thrd_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
+    assert(thread_caller_callee_wf(krnl.thrd_mp)) by { reveal(thread_caller_callee_wf); };
+    assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thrd_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
     assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
     assert(container_cpu_offline_flags_wf(krnl.ctn_mp, krnl.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
     assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     prove_boot_container_thread_scheduler_wf(krnl, layout, scheduler_node_addr);
-    assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
+    assert(container_thread_wf(krnl.ctn_mp, krnl.thrd_mp)) by { reveal(container_thread_wf); };
     assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { reveal(process_cpu_wf); };
     prove_boot_process_thread_wf(krnl, layout, process_node_addr);
-    assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
-    assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
-    assert(thread_dangling_chain_end_wf(krnl.thr_mp)) by { reveal(thread_dangling_chain_end_wf); };
+    assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+    assert(thread_cpu_wf(krnl.thrd_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
+    assert(thread_dangling_chain_end_wf(krnl.thrd_mp)) by { reveal(thread_dangling_chain_end_wf); };
 }
 
 pub(super) proof fn boot_kernel_inv_eof(
@@ -525,12 +525,12 @@ pub(super) proof fn boot_kernel_inv_eof(
         kernel_entries.len() == kernel_l4_end,
         boot_dom0_manifest_wf(manifest_4k, layout.root_container),
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
-        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger cpu_page_closure.contains(pg_ptr)] cpu_page_closure.contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),

@@ -6,17 +6,17 @@ verus! {
 proof fn container_thread_own_process_at(k: KernelK, t_ptr: RwLockThreadPtr)
     requires
         k.inv(),
-        k.thr_mp.dom().contains(t_ptr),
-        !thread_is_dangling(k.thr_mp.spec_index(t_ptr)) || k.thr_mp.spec_index(t_ptr).being_killed(),
+        k.thrd_mp.dom().contains(t_ptr),
+        !thread_is_dangling(k.thrd_mp.spec_index(t_ptr)) || k.thrd_mp.spec_index(t_ptr).being_killed(),
     ensures
-        k.ctn_mp.spec_index(k.thr_mp.spec_index(t_ptr).view().owning_container).view_ghost().owned_processes.view().contains(k.thr_mp.spec_index(t_ptr).view().owning_proc),
+        k.ctn_mp.spec_index(k.thrd_mp.spec_index(t_ptr).view().owning_container).view_ghost().owned_processes.view().contains(k.thrd_mp.spec_index(t_ptr).view().owning_proc),
 {
-    let p_ptr = k.thr_mp.spec_index(t_ptr).view().owning_proc;
-    if thread_is_dangling(k.thr_mp.spec_index(t_ptr)) {
-        process_thread_wf_killed_thread_at(k.prc_mp, k.thr_mp, t_ptr);
+    let p_ptr = k.thrd_mp.spec_index(t_ptr).view().owning_proc;
+    if thread_is_dangling(k.thrd_mp.spec_index(t_ptr)) {
+        process_thread_wf_killed_thread_at(k.prc_mp, k.thrd_mp, t_ptr);
     } else {
-        process_thread_wf_at(k.prc_mp, k.thr_mp, t_ptr);
-        process_thread_wf_process_at(k.prc_mp, k.thr_mp, p_ptr, t_ptr);
+        process_thread_wf_at(k.prc_mp, k.thrd_mp, t_ptr);
+        process_thread_wf_process_at(k.prc_mp, k.thrd_mp, p_ptr, t_ptr);
     }
     container_process_wf_process_at(k.ctn_mp, k.prc_mp, p_ptr);
 }
@@ -30,15 +30,15 @@ proof fn container_thread_anchor_process_at(k: KernelK, c_ptr: RwLockContainerPt
         k.ctn_mp.spec_index(c_ptr).view_ghost().owned_threads.view().contains(t_ptr),
     ensures
         ({
-            let thread = k.thr_mp.spec_index(t_ptr);
+            let thread = k.thrd_mp.spec_index(t_ptr);
             let anchor = if thread_is_dangling(thread) && !thread.being_killed() { thread.view_ghost().chain_end.unwrap() } else { t_ptr };
-            k.ctn_mp.spec_index(c_ptr).view_ghost().owned_processes.view().contains(k.thr_mp.spec_index(anchor).view().owning_proc)
+            k.ctn_mp.spec_index(c_ptr).view_ghost().owned_processes.view().contains(k.thrd_mp.spec_index(anchor).view().owning_proc)
         }),
 {
-    container_thread_wf_owned_thread_at(k.ctn_mp, k.thr_mp, c_ptr, t_ptr);
-    if thread_is_dangling(k.thr_mp.spec_index(t_ptr)) && !k.thr_mp.spec_index(t_ptr).being_killed() {
-        thread_dangling_chain_end_wf_at(k.thr_mp, t_ptr);
-        container_thread_own_process_at(k, k.thr_mp.spec_index(t_ptr).view_ghost().chain_end.unwrap());
+    container_thread_wf_owned_thread_at(k.ctn_mp, k.thrd_mp, c_ptr, t_ptr);
+    if thread_is_dangling(k.thrd_mp.spec_index(t_ptr)) && !k.thrd_mp.spec_index(t_ptr).being_killed() {
+        thread_dangling_chain_end_wf_at(k.thrd_mp, t_ptr);
+        container_thread_own_process_at(k, k.thrd_mp.spec_index(t_ptr).view_ghost().chain_end.unwrap());
     } else {
         container_thread_own_process_at(k, t_ptr);
     }
@@ -53,9 +53,9 @@ proof fn container_indirect_thread_child_at(k: KernelK, c_ptr: RwLockContainerPt
     ensures
         0 < k.ctn_mp.spec_index(c_ptr).view().children.view().len(),
 {
-    container_thread_wf_indirect_thread_at(k.ctn_mp, k.thr_mp, c_ptr, t_ptr);
-    container_thread_wf_uppertree_at(k.ctn_mp, k.thr_mp, t_ptr);
-    let owner = k.thr_mp.spec_index(t_ptr).view().owning_container;
+    container_thread_wf_indirect_thread_at(k.ctn_mp, k.thrd_mp, c_ptr, t_ptr);
+    container_thread_wf_uppertree_at(k.ctn_mp, k.thrd_mp, t_ptr);
+    let owner = k.thrd_mp.spec_index(t_ptr).view().owning_container;
     let uppers = k.ctn_mp.spec_index(owner).view_ghost().uppertree_seq.view();
     let depth = k.ctn_mp.spec_index(c_ptr).view_rodata().view().depth;
     container_uppertree_seq_wf_at(k.rt_ctn, k.ctn_mp, owner, c_ptr);
@@ -107,8 +107,8 @@ pub proof fn container_without_children_and_processes_owns_no_threads(k: KernelK
         if queue.len() > 0 {
             let t = queue[0];
             assert(queue.contains(t));
-            container_thread_scheduler_wf_at(k.ctn_mp, k.thr_mp, k.sched_mp, s_ptr, i, t);
-            container_thread_wf_at(k.ctn_mp, k.thr_mp, t);
+            container_thread_scheduler_wf_at(k.ctn_mp, k.thrd_mp, k.sched_mp, s_ptr, i, t);
+            container_thread_wf_at(k.ctn_mp, k.thrd_mp, t);
         }
     };
 }

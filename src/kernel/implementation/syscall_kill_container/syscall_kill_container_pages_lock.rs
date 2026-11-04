@@ -5,11 +5,11 @@ use super::syscall_kill_container_pages_spec::*;
 use super::syscall_kill_container_lock_pairs::{kill_container_wlock_pool_pairs, kill_container_wlock_quota_pairs};
 
 verus! {
-/// Write-hold the 4K and then the 2M allocator caches of the marked container `container_ptr` on every cpu in cpu order,
+/// Write-hold the 4K and then the 2M allocator caches of the marked container `ctn_ptr` on every cpu in cpu order,
 /// then the 4K and 2M global pools and quotas of its allocators and of the killer's container `owner_ptr`'s allocators,
 /// each pair in container order; return the marked container's and the killer's container's 4K and 2M allocators.
 pub(crate) fn kill_container_pages_lock(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
     owner_ptr: RwLockContainerPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>,
     Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>, Tracked(caches_4k): Tracked<&mut Map<CpuId, LockPerm>>,
     Tracked(caches_2m): Tracked<&mut Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
@@ -20,7 +20,7 @@ pub(crate) fn kill_container_pages_lock(
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
-        kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
+        kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -39,19 +39,19 @@ pub(crate) fn kill_container_pages_lock(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
+        kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), container_ptr, owner_ptr, ret.0, ret.1, ret.2, ret.3, *final(caches_4k), *final(caches_2m), *final(pools_4k),
+        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, ret.0, ret.1, ret.2, ret.3, *final(caches_4k), *final(caches_2m), *final(pools_4k),
             *final(pools_2m), *final(quotas_4k), *final(quotas_2m)),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
 {
     proof {
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
-        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
     }
-    let a4 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-    let a2 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
+    let a4 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
+    let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
     let o4 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_4k;
     let o2 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_2m;
     proof {
@@ -74,21 +74,21 @@ pub(crate) fn kill_container_pages_lock(
             kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-            old(krnl).ctn_mp.dom().contains(container_ptr),
+            old(krnl).ctn_mp.dom().contains(ctn_ptr),
             old(krnl).ctn_mp.dom().contains(owner_ptr),
-            old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == a4,
-            old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2,
+            old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == a4,
+            old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m == a2,
             old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k == o4,
             old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m == o2,
             krnl.allc_4k_mp.dom().contains(a4),
             krnl.allc_4k_mp.dom().contains(o4),
             krnl.allc_2m_mp.dom().contains(a2),
             krnl.allc_2m_mp.dom().contains(o2),
-            krnl.allc_4k_mp.spec_index(a4).owning_container == container_ptr,
+            krnl.allc_4k_mp.spec_index(a4).owning_container == ctn_ptr,
             krnl.allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
-            krnl.allc_2m_mp.spec_index(a2).owning_container == container_ptr,
+            krnl.allc_2m_mp.spec_index(a2).owning_container == ctn_ptr,
             krnl.allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
-            kill_container_pages_killer_state(*krnl, *lctx, cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
+            kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
             lctx.allocator_quota_4k_lock_map().dom().is_empty(),
             lctx.allocator_global_pool_4k_lock_map().dom().is_empty(),
             lctx.holds_no_allocator_locks(PageSize::SZ2m),
@@ -130,21 +130,21 @@ pub(crate) fn kill_container_pages_lock(
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
             krnl.allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
-            old(krnl).ctn_mp.dom().contains(container_ptr),
+            old(krnl).ctn_mp.dom().contains(ctn_ptr),
             old(krnl).ctn_mp.dom().contains(owner_ptr),
-            old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == a4,
-            old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2,
+            old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == a4,
+            old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m == a2,
             old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k == o4,
             old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m == o2,
             krnl.allc_4k_mp.dom().contains(a4),
             krnl.allc_4k_mp.dom().contains(o4),
             krnl.allc_2m_mp.dom().contains(a2),
             krnl.allc_2m_mp.dom().contains(o2),
-            krnl.allc_4k_mp.spec_index(a4).owning_container == container_ptr,
+            krnl.allc_4k_mp.spec_index(a4).owning_container == ctn_ptr,
             krnl.allc_4k_mp.spec_index(o4).owning_container == owner_ptr,
-            krnl.allc_2m_mp.spec_index(a2).owning_container == container_ptr,
+            krnl.allc_2m_mp.spec_index(a2).owning_container == ctn_ptr,
             krnl.allc_2m_mp.spec_index(o2).owning_container == owner_ptr,
-            kill_container_pages_killer_state(*krnl, *lctx, cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
+            kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm, *owner_perm),
             lctx.allocator_quota_4k_lock_map().dom().is_empty(),
             lctx.allocator_global_pool_4k_lock_map().dom().is_empty(),
             lctx.allocator_quota_2m_lock_map().dom().is_empty(),
@@ -177,8 +177,8 @@ pub(crate) fn kill_container_pages_lock(
         }
         c = c + 1;
     }
-    kill_container_wlock_pool_pairs(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *pools_4k), Tracked(&mut *pools_2m));
-    kill_container_wlock_quota_pairs(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *quotas_4k), Tracked(&mut *quotas_2m));
+    kill_container_wlock_pool_pairs(krnl, Tracked(&mut *lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *pools_4k), Tracked(&mut *pools_2m));
+    kill_container_wlock_quota_pairs(krnl, Tracked(&mut *lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *quotas_4k), Tracked(&mut *quotas_2m));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
@@ -189,7 +189,7 @@ pub(crate) fn kill_container_pages_lock(
 
 /// Release every allocator lock that `kill_container_pages_lock` took with the permissions given.
 pub(crate) fn kill_container_pages_unlock(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr,
     o4: RwLockPageAllocatorPtr, a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>,
     Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(quotas_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
@@ -197,7 +197,7 @@ pub(crate) fn kill_container_pages_unlock(
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), container_ptr, owner_ptr, a4, o4, a2, o2, caches_4k, caches_2m, pools_4k, pools_2m, quotas_4k, quotas_2m),
+        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, caches_4k, caches_2m, pools_4k, pools_2m, quotas_4k, quotas_2m),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

@@ -20,7 +20,7 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
         !pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(source).view().pagetable == source_table,
         pre.prc_mp.spec_index(target).view().pagetable == target_table,
-        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, thr_mp: post.thr_mp, ..*pre }),
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, thrd_mp: post.thrd_mp, ..*pre }),
         post.pt_mp.dom() == pre.pt_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) && p != source_table && p != target_table ==> post.pt_mp.spec_index(p) == pre.pt_mp.spec_index(p),
@@ -31,18 +31,18 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
-        pre.thr_mp.dom().contains(thread),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread),
-        post.thr_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress, ..pre.thr_mp.spec_index(thread).view() }),
-        post.thr_mp.spec_index(thread).locking_thread() == pre.thr_mp.spec_index(thread).locking_thread(),
-        post.thr_mp.spec_index(thread).being_killed() == pre.thr_mp.spec_index(thread).being_killed(),
+        pre.thrd_mp.dom().contains(thread),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
+        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, ..pre.thrd_mp.spec_index(thread).view() }),
+        post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),
+        post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
             &&& a.thread_map.dom().contains(thread)
-            &&& a.thread_map[thread].syscall_progress == pre.thr_mp.spec_index(thread).view().syscall_progress.view()
+            &&& a.thread_map[thread].syscall_progress == pre.thrd_mp.spec_index(thread).view().syscall_progress.view()
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
-                thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
+                thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
                 process_map: a.process_map.insert(source, ProcessU {
                     pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(),
                         pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
@@ -58,8 +58,8 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     kernel_thread_projection_at(pre, thread);
-    assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+    assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
     });
     kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(pre, post, source, target, source_table, target_table);
     assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });

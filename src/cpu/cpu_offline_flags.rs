@@ -23,7 +23,7 @@ pub struct CpuOfflineFlags {
 
 pub type CpuOfflineFlagsUnLockedMap = UnLockedMap<RwLockCpuOfflineFlagsPtr, CpuOfflineFlags>;
 
-pub open spec fn cpu_offline_flags_ptr(container_ptr: RwLockContainerPtr) -> RwLockCpuOfflineFlagsPtr { (container_ptr + 4096) as usize }
+pub open spec fn cpu_offline_flags_ptr(ctn_ptr: RwLockContainerPtr) -> RwLockCpuOfflineFlagsPtr { (ctn_ptr + 4096) as usize }
 
 /// The per-cpu request bits of one table, as `ContainerU.cpu_offline_requests` projects them.
 #[verifier::opaque]

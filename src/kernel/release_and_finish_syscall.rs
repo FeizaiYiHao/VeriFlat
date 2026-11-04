@@ -1,19 +1,19 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub proof fn thread_lock_id_preserved_for_typed_maps_unchanged(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thread_ptr: RwLockThreadPtr)
+    pub proof fn thread_lock_id_preserved_for_typed_maps_unchanged(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thrd_ptr: RwLockThreadPtr)
         requires
             pre.inv(),
             post.inv(),
             typed_lock_maps_aligned(pre, pre_lctx),
             typed_lock_maps_aligned(post, post_lctx),
             post_lctx.thread_lock_map() == pre_lctx.thread_lock_map(),
-            pre_lctx.thread_lock_map().dom().contains(thread_ptr),
+            pre_lctx.thread_lock_map().dom().contains(thrd_ptr),
         ensures
-            post.thr_mp.lock_id_by_key(thread_ptr) == pre.thr_mp.lock_id_by_key(thread_ptr),
+            post.thrd_mp.lock_id_by_key(thrd_ptr) == pre.thrd_mp.lock_id_by_key(thrd_ptr),
     {
-        assert(post.thr_mp.lock_id_by_key(thread_ptr) == post_lctx.thread_lock_map().index(thread_ptr).lock_id
-            && pre.thr_mp.lock_id_by_key(thread_ptr) == pre_lctx.thread_lock_map().index(thread_ptr).lock_id) by {
+        assert(post.thrd_mp.lock_id_by_key(thrd_ptr) == post_lctx.thread_lock_map().index(thrd_ptr).lock_id
+            && pre.thrd_mp.lock_id_by_key(thrd_ptr) == pre_lctx.thread_lock_map().index(thrd_ptr).lock_id) by {
             reveal(thread_perms_wf); reveal(LockedMap::typed_lock_map_aligned);
         };
     }
@@ -164,8 +164,8 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thrd_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -177,7 +177,7 @@ verus! {
     }
 
     /// Release process + cpu when the current thread cannot be locked.
-    pub fn release_cpu_and_process_and_finish_syscall(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr, process_lock_perm: Tracked<LockPerm>, cpu_lock_perm: Tracked<LockPerm>)
+    pub fn release_cpu_and_process_and_finish_syscall(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, process_lock_perm: Tracked<LockPerm>, cpu_lock_perm: Tracked<LockPerm>)
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
@@ -192,17 +192,17 @@ verus! {
             cpu_lock_perm.view().thread_id() == lctx.thread_id(),
             cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
-            old(krnl).prc_mp.dom().contains(process_ptr),
+            old(krnl).prc_mp.dom().contains(prc_ptr),
             process_lock_perm.view().state() is WriteLock,
             process_lock_perm.view().thread_id() == lctx.thread_id(),
-            process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-            typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
-            old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
-            old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
+            process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
+            old(krnl).prc_mp.spec_index(prc_ptr).being_killed() == false,
+            old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
-            old(lctx).process_lock_map().dom() =~= set![process_ptr],
+            old(lctx).process_lock_map().dom() =~= set![prc_ptr],
             old(lctx).thread_lock_map().dom().is_empty(),
             old(lctx).endpoint_lock_map().dom().is_empty(),
             old(lctx).scheduler_lock_map().dom().is_empty(),
@@ -228,8 +228,8 @@ verus! {
             *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, ..*old(krnl) }),
             final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
             final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
-            final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, process_ptr),
-            final(krnl).prc_mp.spec_index(process_ptr).locking_thread() is None,
+            final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, prc_ptr),
+            final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
@@ -247,12 +247,12 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thrd_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -263,14 +263,14 @@ verus! {
     /// Release thread + cpu on an IPC rejection; the IPC path takes no process lock.
     pub fn release_cpu_and_thread_and_finish_syscall(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-        thread_ptr: RwLockThreadPtr, thread_lock_perm: Tracked<LockPerm>, cpu_lock_perm: Tracked<LockPerm>,
+        thrd_ptr: RwLockThreadPtr, thread_lock_perm: Tracked<LockPerm>, cpu_lock_perm: Tracked<LockPerm>,
     )
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
-            old(krnl).thr_mp.dom().contains(thread_ptr),
-            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT),
-            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED),
+            old(krnl).thrd_mp.dom().contains(thrd_ptr),
+            !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().state is IPC_TRANSIT),
+            !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().state is KILLED),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -284,18 +284,18 @@ verus! {
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             thread_lock_perm.view().state() is WriteLock,
             thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
-            thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
-            old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
-            old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-            old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+            thread_lock_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
             old(lctx).process_lock_map().dom().is_empty(),
-            old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
+            old(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
             old(lctx).endpoint_lock_map().dom().is_empty(),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
@@ -317,12 +317,12 @@ verus! {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), final(krnl)),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), final(krnl)),
-            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
+            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) }),
             final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
             final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
             final(krnl).cpu_arr.spec_index(cpu_id).value.being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).value.being_killed(),
-            final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
+            final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
@@ -341,12 +341,12 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thrd_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
-        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -356,16 +356,16 @@ verus! {
     }
     pub fn release_cpu_and_process_and_thread_and_finish_syscall(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, thread_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>,
+        prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, thread_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>,
         cpu_lock_perm: Tracked<LockPerm>,
     )
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
-            old(krnl).prc_mp.dom().contains(process_ptr),
-            old(krnl).thr_mp.dom().contains(thread_ptr),
-            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT),
-            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED),
+            old(krnl).prc_mp.dom().contains(prc_ptr),
+            old(krnl).thrd_mp.dom().contains(thrd_ptr),
+            !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().state is IPC_TRANSIT),
+            !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().state is KILLED),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -379,24 +379,24 @@ verus! {
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             process_lock_perm.view().state() is WriteLock,
             process_lock_perm.view().thread_id() == old(lctx).thread_id(),
-            process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
-            old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
-            old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
+            process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write),
+            old(krnl).prc_mp.spec_index(prc_ptr).being_killed() == false,
+            old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie,
             thread_lock_perm.view().state() is WriteLock,
             thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
-            thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
-            old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
-            old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-            old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+            thread_lock_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
-            old(lctx).process_lock_map().dom() =~= set![process_ptr],
-            old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
+            old(lctx).process_lock_map().dom() =~= set![prc_ptr],
+            old(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
             old(lctx).endpoint_lock_map().dom().is_empty(),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
@@ -418,13 +418,13 @@ verus! {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), final(krnl)),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), final(krnl)),
-            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
+            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) }),
             final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
             final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
-            final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, process_ptr),
-            final(krnl).prc_mp.spec_index(process_ptr).locking_thread() is None,
-            final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
+            final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, prc_ptr),
+            final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() is None,
+            final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
@@ -443,14 +443,14 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thrd_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
-        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

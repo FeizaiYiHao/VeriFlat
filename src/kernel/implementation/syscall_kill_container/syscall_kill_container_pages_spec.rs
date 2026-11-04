@@ -2,39 +2,39 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The killer on `cpu_id`, which runs `thread_ptr` of `process_ptr` in its container `owner_ptr`, write-holds with the
+/// The killer on `cpu_id`, which runs `thrd_ptr` of `prc_ptr` in its container `owner_ptr`, write-holds with the
 /// permissions given exactly its cpu, its process, and itself, and also its container and the marked container
-/// `container_ptr`, which owns no process, thread, or indirect thread; every other container it holds is marked, and every cpu
+/// `ctn_ptr`, which owns no process, thread, or indirect thread; every other container it holds is marked, and every cpu
 /// set it holds is write-held and marked.
 /// It holds no page, table, endpoint, scheduler, PCID allocator, dirty-PCID record, or cpu offline flag.
 pub open spec fn kill_container_pages_killer_state(
-    k: KernelK, lctx: LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
     owner_ptr: RwLockContainerPtr, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, container_perm: LockPerm, owner_perm: LockPerm,
 ) -> bool {
     let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
-    let target = k.ctn_mp.spec_index(container_ptr);
+    let target = k.ctn_mp.spec_index(ctn_ptr);
     &&& lctx.cpu_id() == cpu_id
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& k.prc_mp.dom().contains(process_ptr)
-    &&& k.thr_mp.dom().contains(thread_ptr)
-    &&& k.ctn_mp.dom().contains(container_ptr)
+    &&& k.prc_mp.dom().contains(prc_ptr)
+    &&& k.thrd_mp.dom().contains(thrd_ptr)
+    &&& k.ctn_mp.dom().contains(ctn_ptr)
     &&& k.ctn_mp.dom().contains(owner_ptr)
     &&& lctx.cpu_lock_map().dom() =~= set![cpu_id]
     &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.current_thread == Some(thread_ptr)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
     &&& cpu.owning_container == owner_ptr
-    &&& lctx.process_lock_map().dom() =~= set![process_ptr]
-    &&& typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write)
-    &&& lctx.thread_lock_map().dom() =~= set![thread_ptr]
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write)
-    &&& !(k.thr_mp.spec_index(thread_ptr).view().state is SCHEDULED)
+    &&& lctx.process_lock_map().dom() =~= set![prc_ptr]
+    &&& typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write)
+    &&& lctx.thread_lock_map().dom() =~= set![thrd_ptr]
+    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write)
+    &&& !(k.thrd_mp.spec_index(thrd_ptr).view().state is SCHEDULED)
     &&& typed_lock_map_contains_mode(lctx.container_lock_map(), owner_ptr, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write)
+    &&& typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write)
     &&& forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c)
         ==> k.ctn_mp.dom().contains(c) && (c != owner_ptr ==> k.ctn_mp.spec_index(c).being_killed())
-    &&& owner_ptr != container_ptr
+    &&& owner_ptr != ctn_ptr
     &&& target.being_killed()
     &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
     &&& target.view_ghost().owned_processes.view() == Set::<RwLockProcessPtr>::empty()
@@ -53,26 +53,26 @@ pub open spec fn kill_container_pages_killer_state(
     &&& lctx.pcid_needflush_lock_map().dom().is_empty()
     &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
     &&& cpu_perm.state() is WriteLock && cpu_perm.thread_id() == lctx.thread_id() && cpu_perm.lock_id() == k.cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id
-    &&& process_perm.state() is WriteLock && process_perm.thread_id() == lctx.thread_id() && process_perm.lock_id() == k.prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id
-    &&& thread_perm.state() is WriteLock && thread_perm.thread_id() == lctx.thread_id() && thread_perm.lock_id() == k.thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
+    &&& process_perm.state() is WriteLock && process_perm.thread_id() == lctx.thread_id() && process_perm.lock_id() == k.prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id
+    &&& thread_perm.state() is WriteLock && thread_perm.thread_id() == lctx.thread_id() && thread_perm.lock_id() == k.thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
     &&& container_perm.state() is WriteLock && container_perm.thread_id() == lctx.thread_id() && container_perm.lock_id() == target.locking_thread()->Write_lock_id
     &&& owner_perm.state() is WriteLock && owner_perm.thread_id() == lctx.thread_id() && owner_perm.lock_id() == k.ctn_mp.spec_index(owner_ptr).locking_thread()->Write_lock_id
 }
 
 /// The killer write-holds, with the permissions given, the 4K and 2M allocator caches on every cpu of the marked
-/// container `container_ptr`'s 4K and 2M allocators `a4` and `a2`, and the 4K and 2M global pools and quotas of those
+/// container `ctn_ptr`'s 4K and 2M allocators `a4` and `a2`, and the 4K and 2M global pools and quotas of those
 /// allocators and of its own container `owner_ptr`'s allocators `o4` and `o2`; it holds no other allocator lock.
 pub open spec fn kill_container_pages_allocator_locks(
-    k: KernelK, lctx: LocalContext, container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
+    k: KernelK, lctx: LocalContext, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
     a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr,
     caches_4k: Map<CpuId, LockPerm>, caches_2m: Map<CpuId, LockPerm>, pools_4k: Map<RwLockPageAllocatorPtr, LockPerm>, pools_2m: Map<RwLockPageAllocatorPtr, LockPerm>,
     quotas_4k: Map<RwLockPageAllocatorPtr, LockPerm>, quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>,
 ) -> bool {
-    &&& k.ctn_mp.dom().contains(container_ptr)
+    &&& k.ctn_mp.dom().contains(ctn_ptr)
     &&& k.ctn_mp.dom().contains(owner_ptr)
-    &&& k.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == a4
+    &&& k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == a4
     &&& k.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k == o4
-    &&& k.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2
+    &&& k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m == a2
     &&& k.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m == o2
     &&& k.allc_4k_mp.dom().contains(a4)
     &&& k.allc_4k_mp.dom().contains(o4)

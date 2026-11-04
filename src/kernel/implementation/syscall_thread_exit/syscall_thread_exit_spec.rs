@@ -25,8 +25,8 @@ pub open spec fn thread_exit_syscall_result(pre: KernelU, cpu_id: CpuId) -> RetV
 #[verifier::opaque]
 pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
+    let ctn_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let caller = old_u.thread_map.spec_index(thread.caller->Some_0);
     &&& index_valid(NUM_CPUS, cpu_id)
@@ -34,19 +34,19 @@ pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& cpu.state is Running
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map.spec_index(container_ptr).lock_state is Unlocked
-    &&& !old_u.container_map.spec_index(container_ptr).killed
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
-    &&& !old_u.process_map.spec_index(process_ptr).killed
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
+    &&& !old_u.container_map.spec_index(ctn_ptr).killed
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
+    &&& !old_u.process_map.spec_index(prc_ptr).killed
     &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
     &&& thread.syscall_progress is None
     &&& !thread.killed
     &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == process_ptr
-    &&& thread.owning_container == container_ptr
+    &&& thread.owning_proc == prc_ptr
+    &&& thread.owning_container == ctn_ptr
     &&& thread.caller is Some ==> {
         &&& old_u.thread_map.dom().contains(thread.caller->Some_0)
         &&& caller.lock_state is Unlocked
@@ -62,22 +62,22 @@ pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 #[verifier::opaque]
 pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let ctn_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     let locked = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(process_ptr).depth)), ..old_u.container_map.spec_index(container_ptr)
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU {
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(prc_ptr).depth)), ..old_u.container_map.spec_index(ctn_ptr)
         }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(process_ptr) }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thread_ptr) }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(prc_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     };
-    let woken = match old_u.thread_map.spec_index(thread_ptr).caller {
+    let woken = match old_u.thread_map.spec_index(thrd_ptr).caller {
         Some(caller_ptr) => if locked.thread_map[caller_ptr].state is DANGLING {
             KernelU {
-                thread_map: locked.thread_map.insert(thread_ptr, ThreadU { caller: None, ..locked.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
+                thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..locked.thread_map[thrd_ptr] }).insert(caller_ptr, ThreadU {
                     state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked.thread_map[caller_ptr]
                 }),
                 ..locked
@@ -89,7 +89,7 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
                 container_map: locked.container_map.insert(caller_container, ContainerU {
                     scheduler: scheduler.update(cpu_id as int, scheduler[cpu_id as int].push(caller_ptr)), ..locked.container_map[caller_container]
                 }),
-                thread_map: locked.thread_map.insert(thread_ptr, ThreadU { caller: None, ..locked.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
+                thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..locked.thread_map[thrd_ptr] }).insert(caller_ptr, ThreadU {
                     state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited), ..locked.thread_map[caller_ptr]
                 }),
                 ..locked
@@ -97,7 +97,7 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         },
         None => locked,
     };
-    new_u == (KernelU { thread_map: woken.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExit { next: 0 }), ..woken.thread_map[thread_ptr] }), ..woken })
+    new_u == (KernelU { thread_map: woken.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExit { next: 0 }), ..woken.thread_map[thrd_ptr] }), ..woken })
 }
 
 /// Dropping a descriptor runs while the running thread records an exit and holds the cpu, its container, its process,
@@ -105,17 +105,17 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
 #[verifier::opaque]
 pub open spec fn thread_exit_drop_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
+    let ctn_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map.spec_index(container_ptr).lock_state is WriteLocked
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is WriteLocked
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map.spec_index(ctn_ptr).lock_state is WriteLocked
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is WriteLocked
     &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is WriteLocked
     &&& thread.syscall_progress is Some
@@ -126,23 +126,23 @@ pub open spec fn thread_exit_drop_step_pre(old_u: KernelU, cpu_id: CpuId) -> boo
 /// unlocked endpoint, still held elsewhere, drops the reference, and the thread records the position after it.
 #[verifier::opaque]
 pub open spec fn thread_exit_drop_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let next = thread.syscall_progress->Some_0->ThreadExit_next;
-    let index = (new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0->ThreadExit_next - 1) as EndpointIdx;
-    let endpoint_ptr = thread.endpoint_descriptors[index as int]->Some_0;
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let index = (new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0->ThreadExit_next - 1) as EndpointIdx;
+    let ep_ptr = thread.endpoint_descriptors[index as int]->Some_0;
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     &&& next <= index < MAX_NUM_ENDPOINT_DESCRIPTORS
     &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] next <= j < index ==> thread.endpoint_descriptors[j] is None
     &&& thread.endpoint_descriptors[index as int] is Some
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& endpoint.lock_state is Unlocked
     &&& endpoint.owning_threads.len() > 1
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
             endpoint_descriptors: thread.endpoint_descriptors.update(index as int, None), syscall_progress: Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }), ..thread
         }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thread_ptr, index)), ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thrd_ptr, index)), ..endpoint }),
         ..old_u
     })
 }
@@ -151,14 +151,14 @@ pub open spec fn thread_exit_drop_step(old_u: KernelU, new_u: KernelU, cpu_id: C
 /// its unlocked endpoint: the descriptor is cleared, the endpoint is released, and the thread records the position after it.
 #[verifier::opaque]
 pub open spec fn thread_exit_release_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let next = thread.syscall_progress->Some_0->ThreadExit_next;
-    let index = (new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0->ThreadExit_next - 1) as EndpointIdx;
+    let index = (new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0->ThreadExit_next - 1) as EndpointIdx;
     &&& next <= index < MAX_NUM_ENDPOINT_DESCRIPTORS
     &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] next <= j < index ==> thread.endpoint_descriptors[j] is None
-    &&& kernel_u_endpoint_released(old_u, new_u, thread_ptr, index as int)
-    &&& new_u.thread_map == old_u.thread_map.insert(thread_ptr, ThreadU {
+    &&& kernel_u_endpoint_released(old_u, new_u, thrd_ptr, index as int)
+    &&& new_u.thread_map == old_u.thread_map.insert(thrd_ptr, ThreadU {
         endpoint_descriptors: thread.endpoint_descriptors.update(index as int, None), syscall_progress: Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }), ..thread
     })
 }
@@ -190,15 +190,15 @@ pub open spec fn thread_exit_lock_table_step_pre(old_u: KernelU, cpu_id: CpuId) 
     &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
 }
 
-/// Exit detaches every attached function that `process_ptr` owns.
-pub open spec fn thread_exit_detaches(table: IommuRootTableU, process_ptr: RwLockProcessPtr, bus: int, device: int, function: int) -> bool {
-    table.attached[bus][device][function] && table.owners[bus][device][function] == process_ptr
+/// Exit detaches every attached function that `prc_ptr` owns.
+pub open spec fn thread_exit_detaches(table: IommuRootTableU, prc_ptr: RwLockProcessPtr, bus: int, device: int, function: int) -> bool {
+    table.attached[bus][device][function] && table.owners[bus][device][function] == prc_ptr
 }
 
-/// The attached flags after exit detaches the functions `process_ptr` owns.
-pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, process_ptr: RwLockProcessPtr) -> Seq3<bool> {
+/// The attached flags after exit detaches the functions `prc_ptr` owns.
+pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, prc_ptr: RwLockProcessPtr) -> Seq3<bool> {
     Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && !thread_exit_detaches(table, process_ptr, bus, device, function))))
+        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && !thread_exit_detaches(table, prc_ptr, bus, device, function))))
 }
 
 /// Locking the process's page table starts reclaiming and the thread records that nothing is flushed yet. A process
@@ -206,12 +206,12 @@ pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, process_p
 /// table drops its DID, and the IOTLB domain of that DID, if any, is emptied; owners stay.
 #[verifier::opaque]
 pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let table = old_u.iommu_root_table;
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }),
             iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, ..t }), None => None },
@@ -256,10 +256,10 @@ pub open spec fn thread_exit_table_key_dropped(o: PageTableU, n: PageTableU, va:
 /// key with that index is dropped.
 #[verifier::opaque]
 pub open spec fn thread_exit_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
-    let process = old_u.process_map.spec_index(process_ptr);
+    let prc_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
+    let process = old_u.process_map.spec_index(prc_ptr);
     let o = process.pagetable->Some_0;
-    let n = new_u.process_map.spec_index(process_ptr).pagetable->Some_0;
+    let n = new_u.process_map.spec_index(prc_ptr).pagetable->Some_0;
     &&& process.pagetable is Some
     &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
     &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
@@ -268,7 +268,7 @@ pub open spec fn thread_exit_table_hidden_step(old_u: KernelU, new_u: KernelU, c
     &&& forall|a: VAddr, b: VAddr| #![trigger thread_exit_table_key_dropped(o, n, a), spec_v2l4index(b)]
         thread_exit_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU {
                 mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
                 pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
@@ -327,13 +327,13 @@ pub open spec fn thread_exit_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_
 /// thread's container, which no writer holds afterwards.
 #[verifier::opaque]
 pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let container_ptr = old_u.thread_map.spec_index(thread_ptr).owning_container;
-    let cpu_set_lock = new_u.container_map.spec_index(container_ptr).cpu_set_lock;
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ctn_ptr = old_u.thread_map.spec_index(thrd_ptr).owning_container;
+    let cpu_set_lock = new_u.container_map.spec_index(ctn_ptr).cpu_set_lock;
     &&& !(cpu_set_lock is WriteLocked)
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..old_u.thread_map.spec_index(thread_ptr) }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(container_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..old_u.thread_map.spec_index(thrd_ptr) }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(ctn_ptr) }),
         ..old_u
     })
 }
@@ -368,11 +368,11 @@ pub open spec fn thread_exit_quota_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 /// and of its process moves to their container.
 #[verifier::opaque]
 pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let container = old_u.container_map.spec_index(thread.owning_container);
-    let progress = new_u.thread_map.spec_index(thread_ptr).syscall_progress;
+    let progress = new_u.thread_map.spec_index(thrd_ptr).syscall_progress;
     let size = progress->Some_0->ThreadExitQuota_returned;
     &&& progress is Some
     &&& progress->Some_0 is ThreadExitQuota
@@ -388,7 +388,7 @@ pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             PageSize::SZ2m => ProcessU { quota_2m: 0, ..process },
             PageSize::SZ1g => ProcessU { quota_1g: 0, ..process },
         }),
-        thread_map: old_u.thread_map.insert(thread_ptr, match size {
+        thread_map: old_u.thread_map.insert(thrd_ptr, match size {
             PageSize::SZ4k => ThreadU { quota_4k: 0, syscall_progress: progress, ..thread },
             PageSize::SZ2m => ThreadU { quota_2m: 0, syscall_progress: progress, ..thread },
             PageSize::SZ1g => ThreadU { quota_1g: 0, syscall_progress: progress, ..thread },
@@ -416,11 +416,11 @@ pub open spec fn thread_exit_unlock_table_step_pre(old_u: KernelU, cpu_id: CpuId
 /// Unlocking the reclaimed page table and IOMMU table leaves the thread ready to make its process a zombie.
 #[verifier::opaque]
 pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitZombie), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitZombie), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.pagetable->Some_0 }),
             iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }), None => None },
@@ -478,17 +478,17 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
-    let process = old_u.process_map.spec_index(process_ptr);
+    let ctn_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
+    let process = old_u.process_map.spec_index(prc_ptr);
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map.spec_index(container_ptr).lock_state is WriteLocked
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map.spec_index(ctn_ptr).lock_state is WriteLocked
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& process.lock_state is WriteLocked
     &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is WriteLocked
@@ -513,12 +513,12 @@ pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let process_ptr = cpu.current_process->Some_0;
+    let ctn_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
     let unlocked = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..cpu }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(container_ptr) }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map.spec_index(process_ptr) }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(ctn_ptr) }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map.spec_index(prc_ptr) }),
         ..old_u
     };
     ||| kernel_u_thread_exit_changed(unlocked, new_u, cpu_id, cpu.current_thread->Some_0, false)

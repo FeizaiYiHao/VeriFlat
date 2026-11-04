@@ -9,11 +9,11 @@ use super::syscall_new_process_common::syscall_new_process_shared_body;
 use super::syscall_new_process_spec::*;
 
 verus! {
-pub fn syscall_new_process_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: EndpointIdx, initial_regs: &Registers) -> (ret: RetValueType)
+pub fn syscall_new_process_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, ep_idx: EndpointIdx, initial_regs: &Registers) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        edp_idx_valid(endpoint_index),
+        edp_idx_valid(ep_idx),
         old(krnl).inv(),
         old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -25,29 +25,29 @@ pub fn syscall_new_process_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Trac
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
-            kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, Some(endpoint_index), false, ret),
+            kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, Some(ep_idx), false, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
         ret is SuccessPairUsize ==> {
-            let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-            let container_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+            let current_thrd_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            let ctn_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
             let child_ptr = ret->SuccessPairUsize_value1;
-            let thread_ptr = ret->SuccessPairUsize_value2;
+            let thrd_ptr = ret->SuccessPairUsize_value2;
             let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             &&& range > 0
             &&& source_range.wf()
-            &&& old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf()
-            &&& old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) is Some
-            &&& final(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index)
+            &&& old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.wf()
+            &&& old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.spec_index(ep_idx) is Some
+            &&& final(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().state is SCHEDULED
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == child_ptr
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.wf()
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(0) == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.spec_index(ep_idx)
         },
-        (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), false) is Success),
-        !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), false),
-{ syscall_new_process_shared_body(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(endpoint_index), false, initial_regs) }
+        (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(ep_idx), false) is Success),
+        !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(ep_idx), false),
+{ syscall_new_process_shared_body(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(ep_idx), false, initial_regs) }
 }

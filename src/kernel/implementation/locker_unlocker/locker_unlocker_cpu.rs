@@ -157,9 +157,9 @@ impl KernelK {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
                 if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom()) {
-                    thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_id);
+                    thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, old(lctx).cpu_id()); thread_cpu_wf_cpu_at(old(self).thrd_mp, old(self).cpu_arr, cpu_id);
                     process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id()); container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
-                    thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
+                    thread_perms_wf_at(old(self).thrd_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thrd_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 }
@@ -253,7 +253,7 @@ impl KernelK {
             };
         }
         assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-        assert(!self.cpu_arr.spec_index(cpu_id).view().being_killed()) by { thread_cpu_wf_killed_cpu_at(self.thr_mp, self.cpu_arr, cpu_id); };
+        assert(!self.cpu_arr.spec_index(cpu_id).view().being_killed()) by { thread_cpu_wf_killed_cpu_at(self.thrd_mp, self.cpu_arr, cpu_id); };
         let Tracked(perm) = self.cpu_arr.wlock_unless_killed(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id))).unwrap();
         self.cpu_arr.set_ghost(cpu_id, Ghost(Some(lctx.cpu_id())), Tracked(&*lctx), Tracked(&perm));
         proof {

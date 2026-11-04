@@ -56,19 +56,19 @@ pub fn syscall_pci_attach_dma(
         &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
     }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let process_ptr = cpu.current_process().unwrap();
+    let prc_ptr = cpu.current_process().unwrap();
     assert({
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
-        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().depth
     }) by {
-        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     };
-    let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
+    let process_res = krnl.wlock_process_unless_killed(prc_ptr, Ghost(cpu_id), Tracked(lctx));
     if process_res.is_none() {
         krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None);
             pci_attach_dma_trace_stutter(
                 steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function,
                 RetValueType::ErrorProcessKilled,
@@ -78,26 +78,26 @@ pub fn syscall_pci_attach_dma(
         return RetValueType::ErrorProcessKilled;
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by {
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+    proof { assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 0) by {
+        thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
     }; }
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
     let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus, device, function);
     let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, device, function);
-    let iommu_table = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).iommu_table;
-    let result = if owner != process_ptr { RetValueType::ErrorPciOwnerMismatch }
+    let iommu_table = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).iommu_table;
+    let result = if owner != prc_ptr { RetValueType::ErrorPciOwnerMismatch }
         else if iommu_table.is_none() { RetValueType::ErrorPciNoIommuTable }
         else if attached { RetValueType::ErrorPciAlreadyAttached }
         else { RetValueType::Success };
     proof {
         assert(result == pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function)) by {
-            process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), process_ptr);
+            process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), prc_ptr);
             pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result);
         };
     }
-    if owner != process_ptr || iommu_table.is_none() || attached {
+    if owner != prc_ptr || iommu_table.is_none() || attached {
         krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
-        krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
+        krnl.wunlock_process(prc_ptr, Tracked(lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -112,8 +112,8 @@ pub fn syscall_pci_attach_dma(
     }
     let iommu_table_ptr = iommu_table.unwrap();
     proof {
-        assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), process_ptr); };
-        assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == process_ptr) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr); };
+        assert(old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), prc_ptr); };
+        assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); };
     }
     let Tracked(iommu_table_lock_perm) = krnl.wlock_iommu_table(iommu_table_ptr, Tracked(lctx));
     proof {
@@ -125,11 +125,11 @@ pub fn syscall_pci_attach_dma(
     iommu_root_table_attach(
         &mut krnl.irt, &mut krnl.it_mp, iommu_table_ptr, bus, device, function, Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(&iommu_table_lock_perm),
     );
-    proof { pci_attach_dma_eof(locked, *krnl, process_ptr, iommu_table_ptr, bus, device, function); }
+    proof { pci_attach_dma_eof(locked, *krnl, prc_ptr, iommu_table_ptr, bus, device, function); }
     let ghost attached_k = *krnl;
     krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
-    krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
+    krnl.wunlock_process(prc_ptr, Tracked(lctx), Tracked(process_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {
         let attach_before = steps.view();
@@ -139,19 +139,19 @@ pub fn syscall_pci_attach_dma(
             &&& kernel_pagetable_nonlock_fields_unchanged(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view())
             &&& kernel_cpu_nonlock_fields_unchanged(steps.snapshot_k().cpu_arr, krnl.cpu_arr)
             &&& kernel_process_nonlock_fields_unchanged(steps.snapshot_k().prc_mp, krnl.prc_mp)
-            &&& kernel_thread_nonlock_fields_unchanged(steps.snapshot_k().thr_mp, krnl.thr_mp)
+            &&& kernel_thread_nonlock_fields_unchanged(steps.snapshot_k().thrd_mp, krnl.thrd_mp)
             &&& krnl.dflt_pt == steps.snapshot_k().dflt_pt
         }) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-        steps.end_kernel_step_pci_attach(&*krnl, &*lctx, cpu_id, process_ptr, bus, device, function, locked.it_mp.spec_index(iommu_table_ptr).view().cr3);
+        steps.end_kernel_step_pci_attach(&*krnl, &*lctx, cpu_id, prc_ptr, bus, device, function, locked.it_mp.spec_index(iommu_table_ptr).view().cr3);
         assert({
             &&& pci_attach_dma_syscall_trace(
                 steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl),
                 cpu_id, bus, device, function, RetValueType::Success,
             )
         }) by {
-            pci_attach_dma_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, bus, device, function);
+            pci_attach_dma_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, bus, device, function);
             pci_attach_dma_trace_step(&*steps, attach_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, bus, device, function);
         };
     }

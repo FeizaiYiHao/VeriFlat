@@ -227,13 +227,13 @@ impl KernelSteps {
             },
             match thread {
                 Some(p) => {
-                    &&& krnl.thr_mp.unchanged_except(&old(self).snapshot_k().thr_mp, p)
-                    &&& krnl.thr_mp.spec_index(p).view() == old(self).snapshot_k().thr_mp.spec_index(p).view()
-                    &&& krnl.thr_mp.spec_index(p).being_killed() == old(self).snapshot_k().thr_mp.spec_index(p).being_killed()
-                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.thrd_mp.unchanged_except(&old(self).snapshot_k().thrd_mp, p)
+                    &&& krnl.thrd_mp.spec_index(p).view() == old(self).snapshot_k().thrd_mp.spec_index(p).view()
+                    &&& krnl.thrd_mp.spec_index(p).being_killed() == old(self).snapshot_k().thrd_mp.spec_index(p).being_killed()
+                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Read)
                 },
-                None => krnl.thr_mp == old(self).snapshot_k().thr_mp,
+                None => krnl.thrd_mp == old(self).snapshot_k().thrd_mp,
             },
             match endpoint {
                 Some(p) => {
@@ -344,13 +344,13 @@ impl KernelSteps {
             },
             match thread {
                 Some(p) => {
-                    &&& krnl.thr_mp.unchanged_except(&old(self).snapshot_k().thr_mp, p)
-                    &&& krnl.thr_mp.spec_index(p).view() == old(self).snapshot_k().thr_mp.spec_index(p).view()
-                    &&& krnl.thr_mp.spec_index(p).being_killed() == old(self).snapshot_k().thr_mp.spec_index(p).being_killed()
-                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.thrd_mp.unchanged_except(&old(self).snapshot_k().thrd_mp, p)
+                    &&& krnl.thrd_mp.spec_index(p).view() == old(self).snapshot_k().thrd_mp.spec_index(p).view()
+                    &&& krnl.thrd_mp.spec_index(p).being_killed() == old(self).snapshot_k().thrd_mp.spec_index(p).being_killed()
+                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Read)
                 },
-                None => krnl.thr_mp == old(self).snapshot_k().thr_mp,
+                None => krnl.thrd_mp == old(self).snapshot_k().thrd_mp,
             },
             match endpoint {
                 Some(p) => {
@@ -440,10 +440,10 @@ impl KernelSteps {
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
                 },
-            forall|p: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(p)]
-                krnl.thr_mp.dom().contains(p) && old(self).snapshot_k().thr_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().thr_mp.spec_index(p).locking_thread();
-                    let after = krnl.thr_mp.spec_index(p).locking_thread();
+            forall|p: RwLockThreadPtr| #![trigger krnl.thrd_mp.spec_index(p)]
+                krnl.thrd_mp.dom().contains(p) && old(self).snapshot_k().thrd_mp.dom().contains(p) ==> {
+                    let before = old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread();
+                    let after = krnl.thrd_mp.spec_index(p).locking_thread();
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
                 },
@@ -522,13 +522,13 @@ impl KernelSteps {
     }
 
     pub proof fn end_kernel_step_new_thread(
-        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
-        cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, initial_endpoint: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
+        cpu_id: CpuId, new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers, initial_endpoint: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
     )
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_new_thread_fields(&old(self).snapshot_k(), krnl, process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress),
+            kernel_new_thread_fields(&old(self).snapshot_k(), krnl, prc_ptr, staging_thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, initial_endpoint, staging_progress),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -541,16 +541,16 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    /// Finish an endpoint creation: one quota of `staging_thread_ptr` funds `new_endpoint_ptr`, installed at its
-    /// descriptor `endpoint_index`, with the staging thread's progress cleared.
+    /// Finish an endpoint creation: one quota of `staging_thrd_ptr` funds `new_ep_ptr`, installed at its
+    /// descriptor `ep_idx`, with the staging thread's progress cleared.
     pub proof fn end_kernel_step_new_endpoint(
-        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr,
-        endpoint_index: EndpointIdx, new_endpoint_ptr: RwLockEndpointPtr,
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, ctn_ptr: RwLockContainerPtr, staging_thrd_ptr: RwLockThreadPtr,
+        ep_idx: EndpointIdx, new_ep_ptr: RwLockEndpointPtr,
     )
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_new_endpoint_fields(&old(self).snapshot_k(), krnl, container_ptr, staging_thread_ptr, endpoint_index, new_endpoint_ptr, None),
+            kernel_new_endpoint_fields(&old(self).snapshot_k(), krnl, ctn_ptr, staging_thrd_ptr, ep_idx, new_ep_ptr, None),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -563,12 +563,12 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    /// Finish a thread exit: `thread_ptr` leaves the kernel and `cpu_id` goes idle.
-    pub proof fn end_kernel_step_thread_exit(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, flushed_default_pcid: bool)
+    /// Finish a thread exit: `thrd_ptr` leaves the kernel and `cpu_id` goes idle.
+    pub proof fn end_kernel_step_thread_exit(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, flushed_default_pcid: bool)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_thread_exit_fields(&old(self).snapshot_k(), krnl, cpu_id, thread_ptr, flushed_default_pcid),
+            kernel_thread_exit_fields(&old(self).snapshot_k(), krnl, cpu_id, thrd_ptr, flushed_default_pcid),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -581,15 +581,15 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    pub proof fn end_kernel_step_thread_state_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thread_ptr: RwLockThreadPtr, old_state: ThreadState, new_state: ThreadState)
+    pub proof fn end_kernel_step_thread_state_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thrd_ptr: RwLockThreadPtr, old_state: ThreadState, new_state: ThreadState)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_thread_state_changed(&old(self).snapshot_k(), krnl, thread_ptr),
-            old(self).snapshot_k().thr_mp.dom().contains(thread_ptr),
-            krnl.thr_mp.dom().contains(thread_ptr),
-            old(self).snapshot_k().thr_mp.spec_index(thread_ptr).view().state == old_state,
-            krnl.thr_mp.spec_index(thread_ptr).view().state == new_state,
+            kernel_thread_state_changed(&old(self).snapshot_k(), krnl, thrd_ptr),
+            old(self).snapshot_k().thrd_mp.dom().contains(thrd_ptr),
+            krnl.thrd_mp.dom().contains(thrd_ptr),
+            old(self).snapshot_k().thrd_mp.spec_index(thrd_ptr).view().state == old_state,
+            krnl.thrd_mp.spec_index(thrd_ptr).view().state == new_state,
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == record_user_view_change(old(self).view(), old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl)),
@@ -601,13 +601,13 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    pub proof fn end_kernel_step_thread_syscall_progress_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thread_ptr: RwLockThreadPtr)
+    pub proof fn end_kernel_step_thread_syscall_progress_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thrd_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            old(self).snapshot_k().thr_mp.dom().contains(thread_ptr),
-            krnl.thr_mp.dom().contains(thread_ptr),
-            old(self).snapshot_k().thr_mp.spec_index(thread_ptr).view().syscall_progress.view() != krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
+            old(self).snapshot_k().thrd_mp.dom().contains(thrd_ptr),
+            krnl.thrd_mp.dom().contains(thrd_ptr),
+            old(self).snapshot_k().thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() != krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
         ensures
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
@@ -616,8 +616,8 @@ impl KernelSteps {
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.snapshot_u().thread_map.spec_index(thread_ptr).syscall_progress != kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).syscall_progress) by {
-            kernel_thread_projection_at(&self.snapshot_k(), thread_ptr); kernel_thread_projection_at(krnl, thread_ptr);
+        assert(self.snapshot_u().thread_map.spec_index(thrd_ptr).syscall_progress != kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).syscall_progress) by {
+            kernel_thread_projection_at(&self.snapshot_k(), thrd_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
         };
         self.end_kernel_step_raw(krnl, lctx);
     }
@@ -679,7 +679,7 @@ impl KernelSteps {
             &&& cpu.current_process is Some ==> pre_u.process_map.spec_index(cpu.current_process.unwrap()).lock_state is Unlocked
         }) by {
             reveal(kernel_context_switch_fields); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id); kernel_thread_projection_at(&self.snapshot_k(), next_thread);
-            if let Some(t) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if self.snapshot_k().thr_mp.dom().contains(t) { kernel_thread_projection_at(&self.snapshot_k(), t); } }
+            if let Some(t) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if self.snapshot_k().thrd_mp.dom().contains(t) { kernel_thread_projection_at(&self.snapshot_k(), t); } }
             if let Some(p) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_process { if self.snapshot_k().prc_mp.dom().contains(p) { kernel_process_projection_at(&self.snapshot_k(), p); } }
         };
         assert(kernel_u_context_switch_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid)) by {

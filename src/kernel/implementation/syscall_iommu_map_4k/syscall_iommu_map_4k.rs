@@ -49,21 +49,21 @@ pub fn syscall_iommu_map_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
     let Tracked(pagetable_lock_perm) = locked.pagetable_lock_perm;
     let Tracked(iommu_table_lock_perm) = locked.iommu_table_lock_perm;
     let Tracked(window_perms) = locked.window_perms;
-    let (container_ptr, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr, locked.pagetable_ptr, locked.iommu_table_ptr);
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::IommuMap4k { va_range, iova_range, mapped: 0, directory: Mmap4kDirectory::None })), Tracked(&*lctx),
+    let (ctn_ptr, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr, locked.pagetable_ptr, locked.iommu_table_ptr);
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::IommuMap4k { va_range, iova_range, mapped: 0, directory: Mmap4kDirectory::None })), Tracked(&*lctx),
         Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
     proof {
-        iommu_map_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr, va, iova, range);
+        iommu_map_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr, va, iova, range);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         iommu_map_4k_trace_enter(steps.view(), old(steps).view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, va_range, iova_range);
     }
     proof {
         va_range.wf_implies_view_index_is_start_plus_offset(); iova_range.wf_implies_view_index_is_start_plus_offset(); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int);
-        thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
     }
-    iommu_map_4k_map_range_and_exit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, &va_range, &iova_range, thread_ptr, process_ptr, container_ptr, pagetable_ptr, iommu_table_ptr,
+    iommu_map_4k_map_range_and_exit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, &va_range, &iova_range, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, iommu_table_ptr,
         Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm), Tracked(window_perms));
     RetValueType::Success
 }

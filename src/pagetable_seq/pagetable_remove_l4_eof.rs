@@ -347,7 +347,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l3_p),
     {
         reveal(PageTable::remove_l4_entry_eof_transition_framing);
-        assert_sets_equal!(post.page_closure() == pre.page_closure().remove(target_l3_p), page_ptr => { reveal(PageTable::table_pages_wf); });
+        assert_sets_equal!(post.page_closure() == pre.page_closure().remove(target_l3_p), pg_ptr => { reveal(PageTable::table_pages_wf); });
     }
 }
 } // verus!

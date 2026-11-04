@@ -4,98 +4,98 @@ use crate::*;
 verus! {
 /// The live process running on `cpu_id` takes `delta` 4K quota from its live container without overflow.
 #[verifier::opaque]
-pub open spec fn kernel_u_only_process_quota_4k_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int) -> bool {
+pub open spec fn kernel_u_only_process_quota_4k_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container = old_u.container_map.spec_index(container_ptr);
-    let process = old_u.process_map.spec_index(process_ptr);
+    let container = old_u.container_map.spec_index(ctn_ptr);
+    let process = old_u.process_map.spec_index(prc_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.owning_container == container_ptr
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.owning_container == ctn_ptr
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& !container.killed
     &&& !container.zombie
     &&& container.quota_4k >= delta
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& !process.killed
     &&& process.quota_4k + delta <= usize::MAX
     &&& delta > 0
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { quota_4k: (container.quota_4k as int - delta) as usize, ..container }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { quota_4k: (process.quota_4k as int + delta) as usize, ..process }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { quota_4k: (container.quota_4k as int - delta) as usize, ..container }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_4k: (process.quota_4k as int + delta) as usize, ..process }),
         ..old_u
     })
 }
 
 /// The live process running on `cpu_id` moves `delta` 4K quota to its live running thread without overflow.
 #[verifier::opaque]
-pub open spec fn kernel_u_only_process2thread_quota_4k_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, delta: int) -> bool {
+pub open spec fn kernel_u_only_process2thread_quota_4k_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process = old_u.process_map.spec_index(process_ptr);
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let process = old_u.process_map.spec_index(prc_ptr);
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.current_thread == Some(thread_ptr)
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& !process.killed
     &&& process.quota_4k >= delta
-    &&& old_u.thread_map.dom().contains(thread_ptr)
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
     &&& !thread.killed
     &&& thread.quota_4k + delta <= usize::MAX
     &&& delta > 0
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { quota_4k: (process.quota_4k as int - delta) as usize, ..process }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k as int + delta) as usize, ..thread }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_4k: (process.quota_4k as int - delta) as usize, ..process }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k as int + delta) as usize, ..thread }),
         ..old_u
     })
 }
 
 /// The live process running on `cpu_id` takes `delta` 2M quota from its live container without overflow.
 #[verifier::opaque]
-pub open spec fn kernel_u_only_process_quota_2m_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int) -> bool {
+pub open spec fn kernel_u_only_process_quota_2m_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container = old_u.container_map.spec_index(container_ptr);
-    let process = old_u.process_map.spec_index(process_ptr);
+    let container = old_u.container_map.spec_index(ctn_ptr);
+    let process = old_u.process_map.spec_index(prc_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.owning_container == container_ptr
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.owning_container == ctn_ptr
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& !container.killed
     &&& !container.zombie
     &&& container.quota_2m >= delta
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& !process.killed
     &&& process.quota_2m + delta <= usize::MAX
     &&& delta > 0
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { quota_2m: (container.quota_2m as int - delta) as usize, ..container }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { quota_2m: (process.quota_2m as int + delta) as usize, ..process }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { quota_2m: (container.quota_2m as int - delta) as usize, ..container }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_2m: (process.quota_2m as int + delta) as usize, ..process }),
         ..old_u
     })
 }
 
 /// The live process running on `cpu_id` moves `delta` 2M quota to its live running thread without overflow.
 #[verifier::opaque]
-pub open spec fn kernel_u_only_process2thread_quota_2m_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, delta: int) -> bool {
+pub open spec fn kernel_u_only_process2thread_quota_2m_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process = old_u.process_map.spec_index(process_ptr);
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let process = old_u.process_map.spec_index(prc_ptr);
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_process == Some(process_ptr)
-    &&& cpu.current_thread == Some(thread_ptr)
-    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& !process.killed
     &&& process.quota_2m >= delta
-    &&& old_u.thread_map.dom().contains(thread_ptr)
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
     &&& !thread.killed
     &&& thread.quota_2m + delta <= usize::MAX
     &&& delta > 0
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { quota_2m: (process.quota_2m as int - delta) as usize, ..process }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_2m: (thread.quota_2m as int + delta) as usize, ..thread }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_2m: (process.quota_2m as int - delta) as usize, ..process }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_2m: (thread.quota_2m as int + delta) as usize, ..thread }),
         ..old_u
     })
 }
@@ -184,36 +184,36 @@ pub open spec fn kernel_u_rebalance_pull_changed(old_u: KernelU, new_u: KernelU,
     })
 }
 
-/// The live thread running on `cpu_id` blocks on the live endpoint at `endpoint_index` and the CPU goes idle.
+/// The live thread running on `cpu_id` blocks on the live endpoint at `ep_idx` and the CPU goes idle.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_block_changed(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread = old_u.thread_map.spec_index(thread_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_thread == Some(thread_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
     &&& cpu.current_process == Some(thread.owning_proc)
     &&& old_u.process_map.dom().contains(thread.owning_proc)
-    &&& old_u.thread_map.dom().contains(thread_ptr)
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
     &&& !thread.killed
     &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& edp_idx_valid(endpoint_index)
-    &&& thread.endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
-    &&& !endpoint.queue.contains(thread_ptr)
+    &&& edp_idx_valid(ep_idx)
+    &&& thread.endpoint_descriptors[ep_idx as int] == Some(ep_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
+    &&& !endpoint.queue.contains(thrd_ptr)
     &&& waiting_state.is_endpoint_waiting()
     &&& endpoint.queue.len() == 0 || (endpoint.queue_state is SEND) == waiting_state.is_endpoint_send_waiting()
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..cpu }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            state: waiting_state, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: payload, trap_frame: Some(regs), ..thread
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
+            state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, trap_frame: Some(regs), ..thread
         }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU {
-            queue: endpoint.queue.push(thread_ptr),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU {
+            queue: endpoint.queue.push(thrd_ptr),
             queue_state: if endpoint.queue.len() == 0 {
                 match waiting_state { ThreadState::SENDING | ThreadState::CALLING => EndpointState::SEND, _ => EndpointState::RECEIVE }
             } else { endpoint.queue_state },
@@ -227,17 +227,17 @@ pub open spec fn kernel_u_ipc_block_changed(
 }
 
 /// The live caller running on `cpu_id` hands its CPU to the live receive-call head `callee_ptr` of the
-/// endpoint at `endpoint_index`, which records the caller and runs; the caller saves `regs` and waits for the
+/// endpoint at `ep_idx`, which records the caller and runs; the caller saves `regs` and waits for the
 /// reply.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_call_handoff_changed(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let caller = old_u.thread_map.spec_index(caller_ptr);
     let callee = old_u.thread_map.spec_index(callee_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(caller_ptr)
@@ -247,9 +247,9 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
     &&& !caller.killed
     &&& caller.state == (ThreadState::RUNNING { cpu_id })
     &&& caller.callee is None
-    &&& edp_idx_valid(endpoint_index)
-    &&& caller.endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& edp_idx_valid(ep_idx)
+    &&& caller.endpoint_descriptors[ep_idx as int] == Some(ep_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& !endpoint.queue.contains(caller_ptr)
     &&& endpoint.queue.len() > 0
     &&& endpoint.queue[0] == callee_ptr
@@ -260,14 +260,14 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
     &&& callee.state is RECEIVING_CALL
     &&& callee.caller is None
     &&& callee.callee is None
-    &&& callee.blocking_endpoint_ptr == Some(endpoint_ptr)
+    &&& callee.blocking_endpoint_ptr == Some(ep_ptr)
     &&& callee.owning_container == caller.owning_container
     &&& old_u.process_map.dom().contains(callee.owning_proc)
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { current_process: Some(callee.owning_proc), current_thread: Some(callee_ptr), ..cpu }),
         thread_map: old_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: Some(regs), ..caller })
             .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
         cpu_tlb: match flushed_pcid {
             Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
             None => old_u.cpu_tlb,
@@ -278,16 +278,16 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
 }
 
 /// The live receive-call thread running on `cpu_id` accepts the live calling head `caller_ptr` of the endpoint
-/// at `endpoint_index`: the caller is dequeued and waits for the reply, and the callee records it.
+/// at `ep_idx`: the caller is dequeued and waits for the reply, and the callee records it.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_accept_call_changed(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     caller_ptr: RwLockThreadPtr,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let callee = old_u.thread_map.spec_index(callee_ptr);
     let caller = old_u.thread_map.spec_index(caller_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(callee_ptr)
@@ -298,9 +298,9 @@ pub open spec fn kernel_u_ipc_accept_call_changed(
     &&& callee.state == (ThreadState::RUNNING { cpu_id })
     &&& callee.caller is None
     &&& callee.callee is None
-    &&& edp_idx_valid(endpoint_index)
-    &&& callee.endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& edp_idx_valid(ep_idx)
+    &&& callee.endpoint_descriptors[ep_idx as int] == Some(ep_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& !endpoint.queue.contains(callee_ptr)
     &&& endpoint.queue.len() > 0
     &&& endpoint.queue[0] == caller_ptr
@@ -310,26 +310,26 @@ pub open spec fn kernel_u_ipc_accept_call_changed(
     &&& !caller.killed
     &&& caller.state is CALLING
     &&& caller.callee is None
-    &&& caller.blocking_endpoint_ptr == Some(endpoint_ptr)
+    &&& caller.blocking_endpoint_ptr == Some(ep_ptr)
     &&& caller.owning_container == callee.owning_container
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { caller: Some(caller_ptr), ..callee }).insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), blocking_endpoint_ptr: None, ..caller }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
         ..old_u
     })
 }
 
 /// The live callee running on `cpu_id` replies to its recorded caller `caller_ptr`, which resumes on `cpu_id`,
-/// and waits with `regs` for the next call on the endpoint at `endpoint_index`.
+/// and waits with `regs` for the next call on the endpoint at `ep_idx`.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_reply_handoff_changed(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let callee = old_u.thread_map.spec_index(callee_ptr);
     let caller = old_u.thread_map.spec_index(caller_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(callee_ptr)
@@ -340,9 +340,9 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
     &&& callee.state == (ThreadState::RUNNING { cpu_id })
     &&& callee.caller == Some(caller_ptr)
     &&& callee.callee is None
-    &&& edp_idx_valid(endpoint_index)
-    &&& callee.endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& edp_idx_valid(ep_idx)
+    &&& callee.endpoint_descriptors[ep_idx as int] == Some(ep_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& !endpoint.queue.contains(callee_ptr)
     &&& endpoint.queue.len() == 0 || endpoint.queue_state is RECEIVE
     &&& caller_ptr != callee_ptr
@@ -355,9 +355,9 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { current_process: Some(caller.owning_proc), current_thread: Some(caller_ptr), ..cpu }),
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU {
-            state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
+            state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
         }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: None, ..caller }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU {
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU {
             queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
         }),
         cpu_tlb: match flushed_pcid {
@@ -375,37 +375,37 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
 /// attached function empties the sender table's old DID domain, and the sender table's DID follows `pci_handoff_table_did`.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_rendezvous_changed(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
-    endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr, peer_result: RetValueType,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
+    ep_idx: EndpointIdx, waiting_state: ThreadState, peer_thrd_ptr: RwLockThreadPtr, peer_result: RetValueType,
     cpu_transfer: Option<(CpuId, RwLockThreadPtr)>, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let caller = old_u.thread_map.spec_index(caller_thread_ptr);
-    let peer = old_u.thread_map.spec_index(peer_thread_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(endpoint_ptr);
+    let caller = old_u.thread_map.spec_index(caller_thrd_ptr);
+    let peer = old_u.thread_map.spec_index(peer_thrd_ptr);
+    let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     let container = old_u.container_map.spec_index(peer.owning_container);
     let wake_cpu = if peer.owning_container == caller.owning_container { cpu_id } else { peer.last_cpu };
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& cpu.current_thread == Some(caller_thread_ptr)
+    &&& cpu.current_thread == Some(caller_thrd_ptr)
     &&& cpu.current_process == Some(caller.owning_proc)
     &&& old_u.process_map.dom().contains(caller.owning_proc)
-    &&& old_u.thread_map.dom().contains(caller_thread_ptr)
+    &&& old_u.thread_map.dom().contains(caller_thrd_ptr)
     &&& !caller.killed
     &&& caller.state == (ThreadState::RUNNING { cpu_id })
-    &&& edp_idx_valid(endpoint_index)
-    &&& caller.endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
-    &&& !endpoint.queue.contains(caller_thread_ptr)
+    &&& edp_idx_valid(ep_idx)
+    &&& caller.endpoint_descriptors[ep_idx as int] == Some(ep_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
+    &&& !endpoint.queue.contains(caller_thrd_ptr)
     &&& waiting_state.is_endpoint_waiting()
     &&& endpoint.queue.len() > 0
-    &&& endpoint.queue[0] == peer_thread_ptr
+    &&& endpoint.queue[0] == peer_thrd_ptr
     &&& (endpoint.queue_state is SEND) != waiting_state.is_endpoint_send_waiting()
-    &&& old_u.thread_map.dom().contains(peer_thread_ptr)
-    &&& peer_thread_ptr != caller_thread_ptr
+    &&& old_u.thread_map.dom().contains(peer_thrd_ptr)
+    &&& peer_thrd_ptr != caller_thrd_ptr
     &&& !peer.killed
     &&& peer.state.is_endpoint_waiting()
-    &&& peer.blocking_endpoint_ptr == Some(endpoint_ptr)
+    &&& peer.blocking_endpoint_ptr == Some(ep_ptr)
     &&& old_u.container_map.dom().contains(peer.owning_container)
     &&& (cpu_transfer is Some ==> index_valid(NUM_CPUS, cpu_transfer.unwrap().0) && old_u.thread_map.dom().contains(cpu_transfer.unwrap().1))
     &&& pci_transfer matches Some((bdf, sender, receiver)) ==> {
@@ -424,12 +424,12 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
             None => old_u.cpu_array,
         },
         container_map: old_u.container_map.insert(peer.owning_container, ContainerU {
-            scheduler: container.scheduler.update(wake_cpu as int, container.scheduler[wake_cpu as int].push(peer_thread_ptr)), ..container
+            scheduler: container.scheduler.update(wake_cpu as int, container.scheduler[wake_cpu as int].push(peer_thrd_ptr)), ..container
         }),
-        thread_map: old_u.thread_map.insert(peer_thread_ptr, ThreadU {
+        thread_map: old_u.thread_map.insert(peer_thrd_ptr, ThreadU {
             state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(peer_result), ..peer
         }),
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
         process_map: match pci_transfer {
             Some((bdf, sender, receiver)) => {
                 let s = old_u.process_map.spec_index(sender);
@@ -465,7 +465,7 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
     }
 }
 
-/// The caller's result of meeting the queue head of the endpoint at `endpoint_index`, decided from the two
+/// The caller's result of meeting the queue head of the endpoint at `ep_idx`, decided from the two
 /// payloads as the implementation does. Empty payloads in opposite directions succeed. A CPU handover needs
 /// different containers and an Off CPU of the sender's container; an endpoint transfer needs the sender's
 /// source descriptor and a free receiver target descriptor; a pages transfer needs equal lengths and different
@@ -473,9 +473,9 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
 /// process that owns the function. Any other pairing is a type mismatch. Success on Endpoint and Pages
 /// payloads starts their multi-step transfer. A calling or receive-call caller only reaches this error step:
 /// CallAcrossContainers when the head waits in the matching call state, else a type mismatch.
-pub open spec fn ipc_rendezvous_result(old_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> RetValueType {
+pub open spec fn ipc_rendezvous_result(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> RetValueType {
     let caller = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
-    let peer = old_u.thread_map[old_u.endpoint_map[caller.endpoint_descriptors[endpoint_index as int]->Some_0].queue[0]];
+    let peer = old_u.thread_map[old_u.endpoint_map[caller.endpoint_descriptors[ep_idx as int]->Some_0].queue[0]];
     let sends = waiting_state.is_endpoint_send_waiting();
     let sender = if sends { caller } else { peer };
     let receiver = if sends { peer } else { caller };
@@ -731,42 +731,42 @@ pub open spec fn share_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     }
 }
 
-/// `container_ptr`, the running thread's container or a direct child of that live, non-zombie container, records an
+/// `ctn_ptr`, the running thread's container or a direct child of that live, non-zombie container, records an
 /// offline request for `target`, a non-Off cpu it owns whose request bit is clear.
 #[verifier::opaque]
-pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container = old_u.container_map[container_ptr];
+    let container = old_u.container_map[ctn_ptr];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& cpu.owning_container == container_ptr || (container.parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& cpu.owning_container == ctn_ptr || (container.parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
         && !old_u.container_map[cpu.owning_container].killed && !old_u.container_map[cpu.owning_container].zombie)
     &&& index_valid(NUM_CPUS, target)
-    &&& old_u.cpu_array[target as int].owning_container == container_ptr
+    &&& old_u.cpu_array[target as int].owning_container == ctn_ptr
     &&& !(old_u.cpu_array[target as int].state is Off)
     &&& container.cpu_offline_requests.len() == NUM_CPUS
     &&& !container.cpu_offline_requests[target as int]
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container }),
         ..old_u
     })
 }
 
-/// `target`, an Off cpu owned by `container_ptr`, the running thread's container or a direct child of that
+/// `target`, an Off cpu owned by `ctn_ptr`, the running thread's container or a direct child of that
 /// live, non-zombie container, becomes Idle.
 #[verifier::opaque]
-pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let target_cpu = old_u.cpu_array[target as int];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& cpu.owning_container == container_ptr || (old_u.container_map[container_ptr].parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& cpu.owning_container == ctn_ptr || (old_u.container_map[ctn_ptr].parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
         && !old_u.container_map[cpu.owning_container].killed && !old_u.container_map[cpu.owning_container].zombie)
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.cpu_array.len() == NUM_CPUS
-    &&& target_cpu.owning_container == container_ptr
+    &&& target_cpu.owning_container == ctn_ptr
     &&& target_cpu.state is Off
     &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, ..target_cpu }), ..old_u })
 }
@@ -803,8 +803,8 @@ pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu
 #[verifier::opaque]
 pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let container = old_u.container_map.spec_index(container_ptr);
+    let ctn_ptr = cpu.owning_container;
+    let container = old_u.container_map.spec_index(ctn_ptr);
     let requeued = match cpu.current_thread {
         Some(prev) => old_u.thread_map.insert(prev, ThreadU { state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..old_u.thread_map.spec_index(prev) }),
         None => old_u.thread_map,
@@ -812,7 +812,7 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& old_u.cpu_array.len() == NUM_CPUS
     &&& !(cpu.state is Off)
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& container.cpu_offline_requests.len() == NUM_CPUS
     &&& container.cpu_offline_requests[cpu_id as int]
     &&& cpu.current_process is Some == cpu.current_thread is Some
@@ -827,7 +827,7 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
     })
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, state: CpuState::Off, op: CpuOpState::Off, current_process: None, current_thread: None, ..cpu }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU {
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU {
             scheduler: match cpu.current_thread {
                 Some(prev) => container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(prev)),
                 None => container.scheduler,
@@ -841,58 +841,58 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// One quota of `thread_ptr` funds a new empty, unlocked receive endpoint `endpoint_ptr` of `container_ptr`,
-/// installed at the thread's empty descriptor `endpoint_index`; the thread's progress is cleared.
+/// One quota of `thrd_ptr` funds a new empty, unlocked receive endpoint `ep_ptr` of `ctn_ptr`,
+/// installed at the thread's empty descriptor `ep_idx`; the thread's progress is cleared.
 #[verifier::opaque]
 pub open spec fn kernel_u_new_endpoint_changed(
-    old_u: KernelU, new_u: KernelU, container_ptr: RwLockContainerPtr, thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx, endpoint_ptr: RwLockEndpointPtr,
+    old_u: KernelU, new_u: KernelU, ctn_ptr: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr, ep_idx: EndpointIdx, ep_ptr: RwLockEndpointPtr,
 ) -> bool {
-    let thread = old_u.thread_map.spec_index(thread_ptr);
-    let container = old_u.container_map.spec_index(container_ptr);
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& !old_u.endpoint_map.dom().contains(endpoint_ptr)
-    &&& edp_idx_valid(endpoint_index)
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let container = old_u.container_map.spec_index(ctn_ptr);
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& !old_u.endpoint_map.dom().contains(ep_ptr)
+    &&& edp_idx_valid(ep_idx)
     &&& thread.quota_4k > 0
-    &&& thread.endpoint_descriptors[endpoint_index as int] is None
+    &&& thread.endpoint_descriptors[ep_idx as int] is None
     &&& new_u == (KernelU {
-        endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU {
-            lock_state: LockStateU::Unlocked, queue: Seq::empty(), queue_state: EndpointState::RECEIVE, owning_threads: set![(thread_ptr, endpoint_index)],
-            owning_container: container_ptr, killed: false,
+        endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU {
+            lock_state: LockStateU::Unlocked, queue: Seq::empty(), queue_state: EndpointState::RECEIVE, owning_threads: set![(thrd_ptr, ep_idx)],
+            owning_container: ctn_ptr, killed: false,
         }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            quota_4k: (thread.quota_4k as int - 1) as usize, endpoint_descriptors: thread.endpoint_descriptors.update(endpoint_index as int, Some(endpoint_ptr)),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
+            quota_4k: (thread.quota_4k as int - 1) as usize, endpoint_descriptors: thread.endpoint_descriptors.update(ep_idx as int, Some(ep_ptr)),
             syscall_progress: None, ..thread
         }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { owned_endpoints: container.owned_endpoints.insert(endpoint_ptr), ..container }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { owned_endpoints: container.owned_endpoints.insert(ep_ptr), ..container }),
         ..old_u
     })
 }
 
-/// The running thread `thread_ptr` exits from `cpu_id`, which goes idle. The thread leaves the thread map and its
+/// The running thread `thrd_ptr` exits from `cpu_id`, which goes idle. The thread leaves the thread map and its
 /// container's thread set; its process drops it, absorbs its quota, and becomes a zombie without threads; a zombie
 /// returns its PCID to its container's free set; a zombie root process makes its container a zombie; the container
 /// owning the thread's page regains one 4K quota; and at most the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is flushed.
 #[verifier::opaque]
-pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, flushed_default_pcid: bool) -> bool {
-    let thread = old_u.thread_map.spec_index(thread_ptr);
-    let process_ptr = thread.owning_proc;
-    let container_ptr = thread.owning_container;
-    let process = old_u.process_map.spec_index(process_ptr);
-    let threads = process.owned_threads.remove_value(thread_ptr);
+pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, flushed_default_pcid: bool) -> bool {
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let prc_ptr = thread.owning_proc;
+    let ctn_ptr = thread.owning_container;
+    let process = old_u.process_map.spec_index(prc_ptr);
+    let threads = process.owned_threads.remove_value(thrd_ptr);
     let zombie = threads.len() == 0;
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& new_u.container_map.dom() == old_u.container_map.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger new_u.container_map.spec_index(c)]
         old_u.container_map.dom().contains(c) ==> {
             let container = old_u.container_map.spec_index(c);
-            let quota_4k = if container.owned_pages.contains(thread_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
-            new_u.container_map.spec_index(c) == if c == container_ptr {
+            let quota_4k = if container.owned_pages.contains(thrd_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
+            new_u.container_map.spec_index(c) == if c == ctn_ptr {
                 ContainerU {
-                    zombie: container.zombie || (zombie && container.root_process == process_ptr), owned_threads: container.owned_threads.remove(thread_ptr), quota_4k,
+                    zombie: container.zombie || (zombie && container.root_process == prc_ptr), owned_threads: container.owned_threads.remove(thrd_ptr), quota_4k,
                     free_pcids: if zombie { container.free_pcids.insert(process.pcid) } else { container.free_pcids }, ..container
                 }
             } else { ContainerU { quota_4k, ..container } }
@@ -900,12 +900,12 @@ pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cp
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[cpu_id as int] }),
         container_map: new_u.container_map,
-        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             zombie, pagetable: if zombie { None } else { process.pagetable }, iommu_table: if zombie { None } else { process.iommu_table },
             quota_4k: (process.quota_4k + thread.quota_4k) as usize, quota_2m: (process.quota_2m + thread.quota_2m) as usize,
             quota_1g: (process.quota_1g + thread.quota_1g) as usize, owned_threads: threads, ..process
         }),
-        thread_map: old_u.thread_map.remove(thread_ptr),
+        thread_map: old_u.thread_map.remove(thrd_ptr),
         cpu_tlb: if flushed_default_pcid {
             old_u.cpu_tlb.insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
         } else { old_u.cpu_tlb },
@@ -941,25 +941,25 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
         }
 }
 
-/// Thread `thread_ptr` drops the last reference of the unlocked, unqueued endpoint at its descriptor `index`: the endpoint
+/// Thread `thrd_ptr` drops the last reference of the unlocked, unqueued endpoint at its descriptor `index`: the endpoint
 /// leaves the endpoint map and its owner's endpoint set, and the container owning the endpoint's page regains one 4K quota.
 /// The caller fixes the thread entry.
 #[verifier::opaque]
-pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thread_ptr: RwLockThreadPtr, index: int) -> bool {
-    let thread = old_u.thread_map[thread_ptr];
-    let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
-    let endpoint = old_u.endpoint_map[endpoint_ptr];
+pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thrd_ptr: RwLockThreadPtr, index: int) -> bool {
+    let thread = old_u.thread_map[thrd_ptr];
+    let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
+    let endpoint = old_u.endpoint_map[ep_ptr];
     &&& thread.endpoint_descriptors[index] is Some
-    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& old_u.endpoint_map.dom().contains(ep_ptr)
     &&& endpoint.lock_state is Unlocked
-    &&& endpoint.owning_threads == set![(thread_ptr, index as EndpointIdx)]
+    &&& endpoint.owning_threads == set![(thrd_ptr, index as EndpointIdx)]
     &&& endpoint.queue == Seq::<RwLockThreadPtr>::empty()
-    &&& new_u.endpoint_map == old_u.endpoint_map.remove(endpoint_ptr)
+    &&& new_u.endpoint_map == old_u.endpoint_map.remove(ep_ptr)
     &&& new_u.container_map == Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
         let container = old_u.container_map[c];
         ContainerU {
-            owned_endpoints: if c == endpoint.owning_container { container.owned_endpoints.remove(endpoint_ptr) } else { container.owned_endpoints },
-            quota_4k: if container.owned_pages.contains(endpoint_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
+            owned_endpoints: if c == endpoint.owning_container { container.owned_endpoints.remove(ep_ptr) } else { container.owned_endpoints },
+            quota_4k: if container.owned_pages.contains(ep_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
         }
     })
     &&& new_u == (KernelU { container_map: new_u.container_map, thread_map: new_u.thread_map, endpoint_map: new_u.endpoint_map, ..old_u })
@@ -971,22 +971,22 @@ pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thre
 pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     &&& changed.len() == 1
-    &&& forall|thread_ptr: RwLockThreadPtr| #![trigger changed.contains(thread_ptr)] changed.contains(thread_ptr) ==> {
-        let thread = old_u.thread_map[thread_ptr];
-        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thread_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+    &&& forall|thrd_ptr: RwLockThreadPtr| #![trigger changed.contains(thrd_ptr)] changed.contains(thrd_ptr) ==> {
+        let thread = old_u.thread_map[thrd_ptr];
+        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thrd_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         &&& thread.state is KILLED
         &&& thread.lock_state is WriteLocked
         &&& dropped.len() == 1
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
-            let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
-            let endpoint = old_u.endpoint_map[endpoint_ptr];
+            let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
+            let endpoint = old_u.endpoint_map[ep_ptr];
             &&& thread.endpoint_descriptors[index] is Some
-            &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+            &&& old_u.endpoint_map.dom().contains(ep_ptr)
             &&& endpoint.lock_state is Unlocked
             &&& endpoint.owning_threads.len() > 1
             &&& new_u == (KernelU {
-                thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread }),
-                endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thread_ptr, index as EndpointIdx)), ..endpoint }),
+                thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread }),
+                endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thrd_ptr, index as EndpointIdx)), ..endpoint }),
                 ..old_u
             })
         }
@@ -999,15 +999,15 @@ pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: Kerne
 pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: KernelU) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     &&& changed.len() == 1
-    &&& forall|thread_ptr: RwLockThreadPtr| #![trigger changed.contains(thread_ptr)] changed.contains(thread_ptr) ==> {
-        let thread = old_u.thread_map[thread_ptr];
-        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thread_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+    &&& forall|thrd_ptr: RwLockThreadPtr| #![trigger changed.contains(thrd_ptr)] changed.contains(thrd_ptr) ==> {
+        let thread = old_u.thread_map[thrd_ptr];
+        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thrd_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         &&& thread.state is KILLED
         &&& thread.lock_state is WriteLocked
         &&& dropped.len() == 1
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
-            &&& kernel_u_endpoint_released(old_u, new_u, thread_ptr, index)
-            &&& new_u.thread_map == old_u.thread_map.insert(thread_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread })
+            &&& kernel_u_endpoint_released(old_u, new_u, thrd_ptr, index)
+            &&& new_u.thread_map == old_u.thread_map.insert(thrd_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread })
         }
     }
 }
@@ -1021,11 +1021,11 @@ pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cp
     &&& woken.len() == 1
     &&& forall|caller_ptr: RwLockThreadPtr| #![trigger woken.contains(caller_ptr)] woken.contains(caller_ptr) ==> {
         let caller = old_u.thread_map[caller_ptr];
-        let thread_ptr = caller.callee->Some_0;
-        let thread = old_u.thread_map[thread_ptr];
+        let thrd_ptr = caller.callee->Some_0;
+        let thread = old_u.thread_map[thrd_ptr];
         let container = old_u.container_map[caller.owning_container];
         &&& caller.callee is Some
-        &&& old_u.thread_map.dom().contains(thread_ptr)
+        &&& old_u.thread_map.dom().contains(thrd_ptr)
         &&& thread.state is KILLED
         &&& thread.lock_state is WriteLocked
         &&& thread.caller == Some(caller_ptr)
@@ -1034,7 +1034,7 @@ pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cp
             container_map: old_u.container_map.insert(caller.owning_container, ContainerU {
                 scheduler: container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(caller_ptr)), ..container
             }),
-            thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { caller: None, ..thread }).insert(caller_ptr, ThreadU {
+            thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..thread }).insert(caller_ptr, ThreadU {
                 state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited), ..caller
             }),
             ..old_u
@@ -1050,16 +1050,16 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
     &&& taken.len() == 1
     &&& forall|caller_ptr: RwLockThreadPtr| #![trigger taken.contains(caller_ptr)] taken.contains(caller_ptr) ==> {
         let caller = old_u.thread_map[caller_ptr];
-        let thread_ptr = caller.callee->Some_0;
-        let thread = old_u.thread_map[thread_ptr];
+        let thrd_ptr = caller.callee->Some_0;
+        let thread = old_u.thread_map[thrd_ptr];
         &&& caller.callee is Some
-        &&& old_u.thread_map.dom().contains(thread_ptr)
+        &&& old_u.thread_map.dom().contains(thrd_ptr)
         &&& thread.state is KILLED
         &&& thread.lock_state is WriteLocked
         &&& thread.caller == Some(caller_ptr)
         &&& caller.lock_state is Unlocked
         &&& new_u == (KernelU {
-            thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { caller: None, ..thread }) .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..caller }),
+            thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..thread }) .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..caller }),
             ..old_u
         })
     }

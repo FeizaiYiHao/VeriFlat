@@ -45,42 +45,42 @@ impl LockOwnerIdTrait for Endpoint {
 }
 
 impl Endpoint {
-    pub fn new_root(endpoint_ptr: RwLockEndpointPtr, owning_container: RwLockContainerPtr, owning_thread: RwLockThreadPtr) -> (ret: Self)
+    pub fn new_root(ep_ptr: RwLockEndpointPtr, owning_container: RwLockContainerPtr, owning_thread: RwLockThreadPtr) -> (ret: Self)
         ensures
             ret.inv(),
             ret.queue.view() == Seq::<RwLockThreadPtr>::empty(),
             ret.queue.map() == Map::<usize, RwLockThreadPtr>::empty(),
             ret.queue.container_depth.view() == Some(0),
-            ret.queue.lock_minor() == seq![endpoint_ptr],
+            ret.queue.lock_minor() == seq![ep_ptr],
             ret.queue_state is RECEIVE,
             ret.rf_counter == 1,
             ret.owning_threads.view() =~= set![(owning_thread, 0usize)],
             ret.owning_container == owning_container,
     {
-        Self::new_held(endpoint_ptr, owning_container, owning_thread, 0)
+        Self::new_held(ep_ptr, owning_container, owning_thread, 0)
     }
 
-    /// An empty receive endpoint of `owning_container` held only at descriptor `endpoint_index` of `owning_thread`.
-    pub fn new_held(endpoint_ptr: RwLockEndpointPtr, owning_container: RwLockContainerPtr, owning_thread: RwLockThreadPtr, endpoint_index: EndpointIdx) -> (ret: Self)
+    /// An empty receive endpoint of `owning_container` held only at descriptor `ep_idx` of `owning_thread`.
+    pub fn new_held(ep_ptr: RwLockEndpointPtr, owning_container: RwLockContainerPtr, owning_thread: RwLockThreadPtr, ep_idx: EndpointIdx) -> (ret: Self)
         ensures
             ret.inv(),
             ret.queue.view() == Seq::<RwLockThreadPtr>::empty(),
             ret.queue.map() == Map::<usize, RwLockThreadPtr>::empty(),
             ret.queue.container_depth.view() == Some(0),
-            ret.queue.lock_minor() == seq![endpoint_ptr],
+            ret.queue.lock_minor() == seq![ep_ptr],
             ret.queue_state is RECEIVE,
             ret.rf_counter == 1,
-            ret.owning_threads.view() =~= set![(owning_thread, endpoint_index)],
+            ret.owning_threads.view() =~= set![(owning_thread, ep_idx)],
             ret.owning_container == owning_container,
     {
-        Self { queue: LinkedList::new(Some(0), Some(endpoint_ptr)), queue_state: EndpointState::RECEIVE, rf_counter: 1, owning_threads: Ghost(Set::<(RwLockThreadPtr, EndpointIdx)>::empty().insert((owning_thread, endpoint_index))), owning_container }
+        Self { queue: LinkedList::new(Some(0), Some(ep_ptr)), queue_state: EndpointState::RECEIVE, rf_counter: 1, owning_threads: Ghost(Set::<(RwLockThreadPtr, EndpointIdx)>::empty().insert((owning_thread, ep_idx))), owning_container }
     }
 
-    pub fn dequeue_waiter(&mut self, thread_ptr: RwLockThreadPtr) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn dequeue_waiter(&mut self, thrd_ptr: RwLockThreadPtr) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).queue.len() != 0,
-            old(self).queue.view().spec_index(0) == thread_ptr,
+            old(self).queue.view().spec_index(0) == thrd_ptr,
         ensures
             final(self).inv(),
             final(self).queue.container_depth == old(self).queue.container_depth,
@@ -91,13 +91,13 @@ impl Endpoint {
             final(self).queue.map() == old(self).queue.map().remove(ret.0),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
             old(self).queue.dom().contains(ret.0),
             old(self).queue.map().dom().contains(ret.0),
-            old(self).queue.map().spec_index(ret.0) == thread_ptr,
-            forall|value: RwLockThreadPtr| #![trigger final(self).queue.view().contains(value)] old(self).queue.view().contains(value) && value != thread_ptr ==> final(self).queue.view().contains(value),
+            old(self).queue.map().spec_index(ret.0) == thrd_ptr,
+            forall|value: RwLockThreadPtr| #![trigger final(self).queue.view().contains(value)] old(self).queue.view().contains(value) && value != thrd_ptr ==> final(self).queue.view().contains(value),
             forall|value: RwLockThreadPtr| #![trigger final(self).queue.view().contains(value)] final(self).queue.view().contains(value) ==> old(self).queue.view().contains(value),
-            !final(self).queue.view().contains(thread_ptr),
+            !final(self).queue.view().contains(thrd_ptr),
             final(self).queue_state == old(self).queue_state,
             final(self).rf_counter == old(self).rf_counter,
             final(self).owning_threads == old(self).owning_threads,
@@ -131,21 +131,21 @@ impl Endpoint {
         node_perm
     }
 
-    pub fn enqueue_waiter(&mut self, thread_ptr: RwLockThreadPtr, waiting_state: ThreadState, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    pub fn enqueue_waiter(&mut self, thrd_ptr: RwLockThreadPtr, waiting_state: ThreadState, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
             waiting_state.is_endpoint_waiting(),
             node_perm.view().is_init(),
             node_perm.view().addr() == node_addr,
-            node_perm.view().value().view() == thread_ptr,
-            !old(self).queue.view().contains(thread_ptr),
+            node_perm.view().value().view() == thrd_ptr,
+            !old(self).queue.view().contains(thrd_ptr),
             old(self).queue.length != usize::MAX,
         ensures
             final(self).inv(),
             final(self).queue.length == old(self).queue.length + 1,
-            final(self).queue.view() == old(self).queue.view().push(thread_ptr),
+            final(self).queue.view() == old(self).queue.view().push(thrd_ptr),
             final(self).queue.dom() == old(self).queue.dom().insert(node_addr),
-            final(self).queue.map() == old(self).queue.map().insert(node_addr, thread_ptr),
+            final(self).queue.map() == old(self).queue.map().insert(node_addr, thrd_ptr),
             !old(self).queue.dom().contains(node_addr),
             !old(self).queue.map().dom().contains(node_addr),
             final(self).queue.container_depth == old(self).queue.container_depth,

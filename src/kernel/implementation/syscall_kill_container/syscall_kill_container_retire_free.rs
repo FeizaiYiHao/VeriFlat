@@ -6,10 +6,10 @@ use super::syscall_kill_container_retire_eof_pages::kill_container_retire_set_ta
 
 verus! {
 /// In a released view, returns the write-held `Allocated4k` pages `pages`, whose kernel objects were removed with their
-/// permissions in `page_perms`, through their free-list nodes to the global pool of the 4K allocator `allocator_ptr` of
+/// permissions in `page_perms`, through their free-list nodes to the global pool of the 4K allocator `allc_ptr` of
 /// `owner_ptr`, which takes them over. The quota is left to the caller.
 pub(crate) fn kill_container_retire_pages_4k_to_pool(
-    krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(page_perms): Tracked<Map<PageIndex, PagePerm4k>>, allocator_ptr: RwLockPageAllocatorPtr,
+    krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(page_perms): Tracked<Map<PageIndex, PagePerm4k>>, allc_ptr: RwLockPageAllocatorPtr,
     owner_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pool_lock_perm): Tracked<&LockPerm>,
 )
     requires
@@ -17,28 +17,28 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
         old(lctx).kernel_view_locking_state() is Release,
         page_array_wf(old(krnl).pg_arr),
         old(krnl).allc_4k_mp.perms_wf(),
-        old(krnl).allc_4k_mp.dom().contains(allocator_ptr),
-        old(krnl).allc_4k_mp.spec_index(allocator_ptr).wf(),
-        typed_lock_map_contains_mode(old(lctx).allocator_global_pool_4k_lock_map(), allocator_ptr, TypedLockMode::Write),
+        old(krnl).allc_4k_mp.dom().contains(allc_ptr),
+        old(krnl).allc_4k_mp.spec_index(allc_ptr).wf(),
+        typed_lock_map_contains_mode(old(lctx).allocator_global_pool_4k_lock_map(), allc_ptr, TypedLockMode::Write),
         pool_lock_perm.state() is WriteLock,
         pool_lock_perm.thread_id() == old(lctx).thread_id(),
-        pool_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool.locking_thread()->Write_lock_id,
-        old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
+        pool_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allc_ptr).global_pool.locking_thread()->Write_lock_id,
+        old(krnl).allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
         pages.wf(),
         pages.view().no_duplicates(),
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> {
-            let page_index = pages.view()[k];
-            &&& index_valid(NUM_PAGES, page_index)
-            &&& old(krnl).pg_arr.spec_index(page_index).view().view().state is Allocated4k
-            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write)
-            &&& page_lock_perms.dom().contains(page_index)
-            &&& page_lock_perms.spec_index(page_index).state() is WriteLock
-            &&& page_lock_perms.spec_index(page_index).thread_id() == old(lctx).thread_id()
-            &&& page_lock_perms.spec_index(page_index).lock_id() == old(krnl).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id
-            &&& page_perms.dom().contains(page_index)
-            &&& page_perms.spec_index(page_index).is_init()
-            &&& page_perms.spec_index(page_index).addr() == page_index2page_ptr(page_index)
-            &&& !old(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool.view().view().contains(page_index2page_ptr(page_index))
+            let pg_idx = pages.view()[k];
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& old(krnl).pg_arr.spec_index(pg_idx).view().view().state is Allocated4k
+            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), pg_idx, TypedLockMode::Write)
+            &&& page_lock_perms.dom().contains(pg_idx)
+            &&& page_lock_perms.spec_index(pg_idx).state() is WriteLock
+            &&& page_lock_perms.spec_index(pg_idx).thread_id() == old(lctx).thread_id()
+            &&& page_lock_perms.spec_index(pg_idx).lock_id() == old(krnl).pg_arr.spec_index(pg_idx).view().locking_thread()->Write_lock_id
+            &&& page_perms.dom().contains(pg_idx)
+            &&& page_perms.spec_index(pg_idx).is_init()
+            &&& page_perms.spec_index(pg_idx).addr() == page_index2page_ptr(pg_idx)
+            &&& !old(krnl).allc_4k_mp.spec_index(allc_ptr).global_pool.view().view().contains(page_index2page_ptr(pg_idx))
         },
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -47,7 +47,7 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         page_array_wf(final(krnl).pg_arr),
         final(krnl).allc_4k_mp.perms_wf(),
-        final(krnl).allc_4k_mp.spec_index(allocator_ptr).wf(),
+        final(krnl).allc_4k_mp.spec_index(allc_ptr).wf(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom(),
         forall|i: PageIndex| #![trigger final(lctx).page_lock_map().index(i)] old(lctx).page_lock_map().dom().contains(i) ==> final(lctx).page_lock_map().index(i)
@@ -79,14 +79,14 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
             &&& post_page.locking_thread() == pre_page.locking_thread()
             &&& post_page.being_killed() == pre_page.being_killed()
             &&& post_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
-            &&& post_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
+            &&& post_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
                 free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
         },
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-        final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_ptr),
+        final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allc_ptr),
         ({
-            let pre_allocator = old(krnl).allc_4k_mp.spec_index(allocator_ptr);
-            let post_allocator = final(krnl).allc_4k_mp.spec_index(allocator_ptr);
+            let pre_allocator = old(krnl).allc_4k_mp.spec_index(allc_ptr);
+            let post_allocator = final(krnl).allc_4k_mp.spec_index(allc_ptr);
             let pre_pool = pre_allocator.global_pool.view();
             let post_pool = post_allocator.global_pool.view();
             &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + pages.view().len()
@@ -119,27 +119,27 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
             typed_lock_maps_aligned(krnl, &*lctx),
             page_array_wf(krnl.pg_arr),
             krnl.allc_4k_mp.perms_wf(),
-            typed_lock_map_contains_mode(lctx.allocator_global_pool_4k_lock_map(), allocator_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(lctx.allocator_global_pool_4k_lock_map(), allc_ptr, TypedLockMode::Write),
             pool_lock_perm.state() is WriteLock,
             pool_lock_perm.thread_id() == lctx.thread_id(),
-            pool_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool.locking_thread()->Write_lock_id,
-            old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
+            pool_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allc_ptr).global_pool.locking_thread()->Write_lock_id,
+            old(krnl).allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
             forall|j: int| #![trigger pages.view()[j]] 0 <= j < pages.view().len() ==> {
-                let page_index = pages.view()[j];
-                &&& index_valid(NUM_PAGES, page_index)
-                &&& old(krnl).pg_arr.spec_index(page_index).view().view().state is Allocated4k
-                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write)
-                &&& page_lock_perms.dom().contains(page_index)
-                &&& page_lock_perms.spec_index(page_index).state() is WriteLock
-                &&& page_lock_perms.spec_index(page_index).thread_id() == old(lctx).thread_id()
-                &&& page_lock_perms.spec_index(page_index).lock_id() == old(krnl).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id
-                &&& !old(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool.view().view().contains(page_index2page_ptr(page_index))
+                let pg_idx = pages.view()[j];
+                &&& index_valid(NUM_PAGES, pg_idx)
+                &&& old(krnl).pg_arr.spec_index(pg_idx).view().view().state is Allocated4k
+                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), pg_idx, TypedLockMode::Write)
+                &&& page_lock_perms.dom().contains(pg_idx)
+                &&& page_lock_perms.spec_index(pg_idx).state() is WriteLock
+                &&& page_lock_perms.spec_index(pg_idx).thread_id() == old(lctx).thread_id()
+                &&& page_lock_perms.spec_index(pg_idx).lock_id() == old(krnl).pg_arr.spec_index(pg_idx).view().locking_thread()->Write_lock_id
+                &&& !old(krnl).allc_4k_mp.spec_index(allc_ptr).global_pool.view().view().contains(page_index2page_ptr(pg_idx))
             },
             forall|j: int| #![trigger pages.view()[j]] k <= j < pages.view().len() ==> {
-                let page_index = pages.view()[j];
-                &&& page_perms.dom().contains(page_index)
-                &&& page_perms.spec_index(page_index).is_init()
-                &&& page_perms.spec_index(page_index).addr() == page_index2page_ptr(page_index)
+                let pg_idx = pages.view()[j];
+                &&& page_perms.dom().contains(pg_idx)
+                &&& page_perms.spec_index(pg_idx).is_init()
+                &&& page_perms.spec_index(pg_idx).addr() == page_index2page_ptr(pg_idx)
             },
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom(),
             forall|i: PageIndex| #![trigger lctx.page_lock_map().index(i)] old(lctx).page_lock_map().dom().contains(i) ==> lctx.page_lock_map().index(i)
@@ -172,14 +172,14 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
                 &&& cur_page.locking_thread() == pre_page.locking_thread()
                 &&& cur_page.being_killed() == pre_page.being_killed()
                 &&& cur_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
-                &&& cur_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
+                &&& cur_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
                     free_list_node_storage: cur_page.view().free_list_node_storage, perm_4k: cur_page.view().perm_4k, ..pre_page.view() })
             },
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-            krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_ptr),
+            krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allc_ptr),
             ({
-                let pre_allocator = old(krnl).allc_4k_mp.spec_index(allocator_ptr);
-                let cur_allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
+                let pre_allocator = old(krnl).allc_4k_mp.spec_index(allc_ptr);
+                let cur_allocator = krnl.allc_4k_mp.spec_index(allc_ptr);
                 let pre_pool = pre_allocator.global_pool.view();
                 let cur_pool = cur_allocator.global_pool.view();
                 &&& cur_allocator.wf()
@@ -202,28 +202,28 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
         decreases pages.view().len() - k,
     {
         broadcast use vstd::seq_lib::lemma_seq_concat_contains_all_elements, vstd::seq_lib::lemma_seq_contains_after_push;
-        let page_index = *pages.get(k);
-        let ghost cur_pool = krnl.allc_4k_mp.spec_index(allocator_ptr).global_pool.view();
-        let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
+        let pg_idx = *pages.get(k);
+        let ghost cur_pool = krnl.allc_4k_mp.spec_index(allc_ptr).global_pool.view();
+        let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         proof {
-            page_array_wf_at(krnl.pg_arr, page_index);
-            assert(!cur_pool.view().contains(page_index2page_ptr(page_index))) by {
+            page_array_wf_at(krnl.pg_arr, pg_idx);
+            assert(!cur_pool.view().contains(page_index2page_ptr(pg_idx))) by {
                 page_ptr_roundtrip();
-                assert(!pages.view().subrange(0, k as int).contains(page_index)) by { reveal(Seq::contains); };
+                assert(!pages.view().subrange(0, k as int).contains(pg_idx)) by { reveal(Seq::contains); };
             };
         }
-        let tracked page_perm = page_perms.tracked_remove(page_index);
-        let tracked page_lock_perm = page_lock_perms.tracked_borrow(page_index);
-        let (node_addr, node_perm) = page_array_retire_kernel_object_4k_to_global(&mut krnl.pg_arr, page_index, Tracked(page_perm), allocator_ptr, owner_ptr, Tracked(&*lctx),
+        let tracked page_perm = page_perms.tracked_remove(pg_idx);
+        let tracked page_lock_perm = page_lock_perms.tracked_borrow(pg_idx);
+        let (node_addr, node_perm) = page_array_retire_kernel_object_4k_to_global(&mut krnl.pg_arr, pg_idx, Tracked(page_perm), allc_ptr, owner_ptr, Tracked(&*lctx),
             Tracked(page_lock_perm));
-        proof { lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index)); }
-        krnl.allc_4k_mp.push_global_pool_page_typed(allocator_ptr, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
+        proof { lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx)); }
+        krnl.allc_4k_mp.push_global_pool_page_typed(allc_ptr, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
             Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(pool_lock_perm));
         proof {
-            assert(cur_pool.view().insert(0, page_index2page_ptr(page_index)) =~= seq![page_index2page_ptr(page_index)] + cur_pool.view());
-            assert(seq![page_index2page_ptr(page_index)][0] == page_index2page_ptr(page_index));
+            assert(cur_pool.view().insert(0, page_index2page_ptr(pg_idx)) =~= seq![page_index2page_ptr(pg_idx)] + cur_pool.view());
+            assert(seq![page_index2page_ptr(pg_idx)][0] == page_index2page_ptr(pg_idx));
             page_index_valid_imply_page_ptr_valid();
-            assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(page_index));
+            assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(pg_idx));
         }
         k = k + 1;
     }
@@ -231,11 +231,11 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
 }
 
 /// In a released view, returns the write-held `Allocated2m` head page `head`, whose kernel object was removed with its
-/// permission `page_perm`, through its free-list node to the global pool of the 2M allocator `allocator_ptr` of
+/// permission `page_perm`, through its free-list node to the global pool of the 2M allocator `allc_ptr` of
 /// `owner_ptr`, which takes it over with its merged tails, write-held through `tail_perms`. The quota is left to the
 /// caller.
 pub(crate) fn kill_container_retire_head_2m_to_pool(
-    krnl: &mut KernelK, head: PageIndex, Tracked(page_perm): Tracked<PagePerm2m>, allocator_ptr: RwLockPageAllocatorPtr, owner_ptr: RwLockContainerPtr,
+    krnl: &mut KernelK, head: PageIndex, Tracked(page_perm): Tracked<PagePerm2m>, allc_ptr: RwLockPageAllocatorPtr, owner_ptr: RwLockContainerPtr,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>, Tracked(tail_perms): Tracked<&Map<PageIndex, LockPerm>>,
     Tracked(pool_lock_perm): Tracked<&LockPerm>,
 )
@@ -244,13 +244,13 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
         old(lctx).kernel_view_locking_state() is Release,
         page_array_wf(old(krnl).pg_arr),
         old(krnl).allc_2m_mp.perms_wf(),
-        old(krnl).allc_2m_mp.dom().contains(allocator_ptr),
-        old(krnl).allc_2m_mp.spec_index(allocator_ptr).wf(),
-        typed_lock_map_contains_mode(old(lctx).allocator_global_pool_2m_lock_map(), allocator_ptr, TypedLockMode::Write),
+        old(krnl).allc_2m_mp.dom().contains(allc_ptr),
+        old(krnl).allc_2m_mp.spec_index(allc_ptr).wf(),
+        typed_lock_map_contains_mode(old(lctx).allocator_global_pool_2m_lock_map(), allc_ptr, TypedLockMode::Write),
         pool_lock_perm.state() is WriteLock,
         pool_lock_perm.thread_id() == old(lctx).thread_id(),
-        pool_lock_perm.lock_id() == old(krnl).allc_2m_mp.spec_index(allocator_ptr).global_pool.locking_thread()->Write_lock_id,
-        old(krnl).allc_2m_mp.spec_index(allocator_ptr).total_free_pages.view() < usize::MAX,
+        pool_lock_perm.lock_id() == old(krnl).allc_2m_mp.spec_index(allc_ptr).global_pool.locking_thread()->Write_lock_id,
+        old(krnl).allc_2m_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX,
         page_index_2m_valid(head),
         old(krnl).pg_arr.spec_index(head).view().view().state is Allocated2m,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), head, TypedLockMode::Write),
@@ -259,7 +259,7 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
         page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(head).view().locking_thread()->Write_lock_id,
         page_perm.is_init(),
         page_perm.addr() == page_index2page_ptr(head),
-        !old(krnl).allc_2m_mp.spec_index(allocator_ptr).global_pool.view().view().contains(page_index2page_ptr(head)),
+        !old(krnl).allc_2m_mp.spec_index(allc_ptr).global_pool.view().view().contains(page_index2page_ptr(head)),
         owned_2m_tail_lock_perms_wf(*tail_perms, old(krnl).pg_arr, old(lctx), head),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -268,7 +268,7 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         page_array_wf(final(krnl).pg_arr),
         final(krnl).allc_2m_mp.perms_wf(),
-        final(krnl).allc_2m_mp.spec_index(allocator_ptr).wf(),
+        final(krnl).allc_2m_mp.spec_index(allc_ptr).wf(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(head), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(head), mode: TypedLockMode::Write }),
         owned_2m_tail_lock_perms_wf(*tail_perms, final(krnl).pg_arr, final(lctx), head),
@@ -283,7 +283,7 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
             &&& post_page.locking_thread() == pre_page.locking_thread()
             &&& post_page.being_killed() == pre_page.being_killed()
             &&& post_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
-            &&& post_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
+            &&& post_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
                 free_list_node_storage: post_page.view().free_list_node_storage, perm_2m: post_page.view().perm_2m, ..pre_page.view() })
         }),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)] page_2m_tail_indices(head).contains(i) ==> {
@@ -295,10 +295,10 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
             &&& final(krnl).pg_arr.spec_index(i).view().being_killed() == old(krnl).pg_arr.spec_index(i).view().being_killed()
         },
         final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
-        final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, allocator_ptr),
+        final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, allc_ptr),
         ({
-            let pre_allocator = old(krnl).allc_2m_mp.spec_index(allocator_ptr);
-            let post_allocator = final(krnl).allc_2m_mp.spec_index(allocator_ptr);
+            let pre_allocator = old(krnl).allc_2m_mp.spec_index(allc_ptr);
+            let post_allocator = final(krnl).allc_2m_mp.spec_index(allc_ptr);
             let node = old(krnl).pg_arr.spec_index(head).view().view().free_list_node_storage.addr();
             &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + 1
             &&& post_allocator.global_pool.view().view() == pre_allocator.global_pool.view().view().insert(0, page_index2page_ptr(head))
@@ -313,10 +313,10 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
 {
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(head);
     proof { page_array_wf_at(krnl.pg_arr, head); page_ptr_roundtrip(); }
-    let (node_addr, node_perm) = page_array_retire_kernel_object_2m_to_global(&mut krnl.pg_arr, head, Tracked(page_perm), allocator_ptr, owner_ptr, Tracked(&*lctx),
+    let (node_addr, node_perm) = page_array_retire_kernel_object_2m_to_global(&mut krnl.pg_arr, head, Tracked(page_perm), allc_ptr, owner_ptr, Tracked(&*lctx),
         Tracked(page_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Page(head), old_page_lock_id, krnl.pg_arr.lock_id_by_index(head)); }
-    krnl.allc_2m_mp.push_global_pool_page_typed(allocator_ptr, node_addr, node_perm, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
+    krnl.allc_2m_mp.push_global_pool_page_typed(allc_ptr, node_addr, node_perm, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
         Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(pool_lock_perm));
     kill_container_retire_set_tails_owner(&mut krnl.pg_arr, head, owner_ptr, Tracked(&*lctx), Tracked(tail_perms));
 }

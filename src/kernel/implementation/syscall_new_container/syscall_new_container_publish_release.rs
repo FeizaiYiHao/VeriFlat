@@ -8,7 +8,7 @@ use super::*;
 verus! {
 /// Returns the published funding chain to the child allocator, records the sharing progress, and releases the staging page locks.
 pub(super) fn release_new_container_publish_staging(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, current_thread_ptr: RwLockThreadPtr, pages_4k: &ArrayVec<PagePtr, 9>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, current_thrd_ptr: RwLockThreadPtr, pages_4k: &ArrayVec<PagePtr, 9>,
     container_page: PagePtr, pcid_allocator_page: PagePtr, funding_page_count: usize, funding_page_head: PagePtr, Ghost(funding_pages): Ghost<Seq<PagePtr>>,
     Ghost(progress): Ghost<Option<SyscallProgress>>, Tracked(funding_page_lock_perms): Tracked<Map<PagePtr, LockPerm>>,
     Tracked(container_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>, Tracked(pcid_allocator_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
@@ -72,25 +72,25 @@ pub(super) fn release_new_container_publish_staging(
             pages_4k.view().spec_index(4), pages_4k.view().spec_index(5), pages_4k.view().spec_index(6),
         )),
         old(krnl).allc_4k_mp.dom().contains(pages_4k.view().spec_index(0)),
-        forall|page_ptr: PagePtr|
-            #![trigger funding_page_lock_perms.dom().contains(page_ptr)]
-            funding_page_lock_perms.dom().contains(page_ptr) ==> {
-                &&& page_ptr_valid(page_ptr)
-                &&& old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(pages_4k.view().spec_index(0)), state: FreePageAllocatorState::GlobalList })
-                &&& old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_page
-                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
-                &&& funding_page_lock_perms.spec_index(page_ptr).state() is WriteLock
-                &&& funding_page_lock_perms.spec_index(page_ptr).thread_id() == old(lctx).thread_id()
-                &&& funding_page_lock_perms.spec_index(page_ptr).lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id
+        forall|pg_ptr: PagePtr|
+            #![trigger funding_page_lock_perms.dom().contains(pg_ptr)]
+            funding_page_lock_perms.dom().contains(pg_ptr) ==> {
+                &&& page_ptr_valid(pg_ptr)
+                &&& old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(pages_4k.view().spec_index(0)), state: FreePageAllocatorState::GlobalList })
+                &&& old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == container_page
+                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write)
+                &&& funding_page_lock_perms.spec_index(pg_ptr).state() is WriteLock
+                &&& funding_page_lock_perms.spec_index(pg_ptr).thread_id() == old(lctx).thread_id()
+                &&& funding_page_lock_perms.spec_index(pg_ptr).lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread()->Write_lock_id
             },
         owned_2m_tail_lock_perms_wf(container_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(container_page)),
         owned_2m_tail_lock_perms_wf(pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(pcid_allocator_page)),
-        old(krnl).thr_mp.dom().contains(current_thread_ptr),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-        current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
-        progress_peer_of(progress) == progress_peer_of(old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()),
+        current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
+        progress_peer_of(progress) == progress_peer_of(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()),
         old(krnl).ctn_mp.dom().contains(container_page),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_page, TypedLockMode::Write),
         child_container_lock_perm.state() is WriteLock,
@@ -156,13 +156,13 @@ pub(super) fn release_new_container_publish_staging(
         thread_page_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
     ensures
-        ret.4.view() == (KernelK { pg_arr: ret.4.view().pg_arr, thr_mp: ret.4.view().thr_mp, ..*old(krnl) }),
+        ret.4.view() == (KernelK { pg_arr: ret.4.view().pg_arr, thrd_mp: ret.4.view().thrd_mp, ..*old(krnl) }),
         ret.4.view().inv(),
-        ret.4.view().thr_mp.unchanged_except(&old(krnl).thr_mp, current_thread_ptr),
-        ret.4.view().thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: Ghost(progress), ..old(krnl).thr_mp.spec_index(current_thread_ptr).view() }),
-        ret.4.view().thr_mp.spec_index(current_thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread(),
-        ret.4.view().thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
-        ret.4.view().thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
+        ret.4.view().thrd_mp.unchanged_except(&old(krnl).thrd_mp, current_thrd_ptr),
+        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).view() == (Thread { syscall_progress: Ghost(progress), ..old(krnl).thrd_mp.spec_index(current_thrd_ptr).view() }),
+        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread(),
+        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
+        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.4.view()),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, pcid_allc_mp: final(krnl).pcid_allc_mp, ..ret.4.view() }),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))) == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))),
@@ -222,10 +222,10 @@ pub(super) fn release_new_container_publish_staging(
                 page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
                 page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
             ])) == set![page_ptr2page_index(thread_page)],
-            page_index => {}
+            pg_idx => {}
         );
     }
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(progress), Tracked(&*lctx), Tracked(current_thread_lock_perm));
+    krnl.set_thread_syscall_progress(current_thrd_ptr, Ghost(progress), Tracked(&*lctx), Tracked(current_thread_lock_perm));
     let ghost progressed_k = *krnl;
     let (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm)) = finish_staged_container_publish(
         krnl, Tracked(&mut *lctx), pages_4k, container_page, pcid_allocator_page, Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),

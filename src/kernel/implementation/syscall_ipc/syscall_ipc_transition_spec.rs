@@ -6,20 +6,20 @@ verus! {
 /// changes.
 #[verifier::opaque]
 pub(super) open spec fn ipc_block_current_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, current_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, payload: IPCPayLoad, default_cr3: PageTableRoot,
 ) -> bool {
-    let thread_before = pre.thr_mp.spec_index(current_thread_ptr);
-    let thread_after = post.thr_mp.spec_index(current_thread_ptr);
-    let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
-    let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
+    let thread_before = pre.thrd_mp.spec_index(current_thrd_ptr);
+    let thread_after = post.thrd_mp.spec_index(current_thrd_ptr);
+    let endpoint_before = pre.ep_mp.spec_index(ep_ptr);
+    let endpoint_after = post.ep_mp.spec_index(ep_ptr);
     let node = thread_after.view().endpoint_linkedlist_node.addr();
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let flush_before = pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let flush_after = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre })
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre })
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, current_thrd_ptr)
     &&& thread_after.locking_thread() == thread_before.locking_thread()
     &&& thread_after.being_killed() == thread_before.being_killed()
     &&& thread_after.view_ghost() == thread_before.view_ghost()
@@ -29,11 +29,11 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
     &&& thread_after.view().callee == thread_before.view().callee
     &&& thread_after.view().error_code == thread_before.view().error_code
     &&& thread_after.view().state == waiting_state
-    &&& thread_after.view().blocking_endpoint_ptr == Some(endpoint_ptr)
-    &&& thread_after.view().blocking_endpoint_index == Some(endpoint_index)
+    &&& thread_after.view().blocking_endpoint_ptr == Some(ep_ptr)
+    &&& thread_after.view().blocking_endpoint_index == Some(ep_idx)
     &&& thread_after.view().ipc_payload == payload
     &&& thread_after.view().trap_frame.is_some()
-    &&& post.ep_mp.unchanged_except(&pre.ep_mp, endpoint_ptr)
+    &&& post.ep_mp.unchanged_except(&pre.ep_mp, ep_ptr)
     &&& endpoint_after.is_init() == endpoint_before.is_init()
     &&& endpoint_after.view_rodata() == endpoint_before.view_rodata()
     &&& endpoint_after.view_ghost() == endpoint_before.view_ghost()
@@ -47,8 +47,8 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
     &&& endpoint_after.view().rf_counter == endpoint_before.view().rf_counter
     &&& endpoint_after.view().owning_threads == endpoint_before.view().owning_threads
     &&& endpoint_after.view().owning_container == endpoint_before.view().owning_container
-    &&& endpoint_after.view().queue.view() == endpoint_before.view().queue.view().push(current_thread_ptr)
-    &&& endpoint_after.view().queue.map() == endpoint_before.view().queue.map().insert(node, current_thread_ptr)
+    &&& endpoint_after.view().queue.view() == endpoint_before.view().queue.view().push(current_thrd_ptr)
+    &&& endpoint_after.view().queue.map() == endpoint_before.view().queue.map().insert(node, current_thrd_ptr)
     &&& !endpoint_before.view().queue.map().dom().contains(node)
     &&& endpoint_after.view().queue_state == if endpoint_before.view().queue.length == 0 {
         match waiting_state { ThreadState::SENDING | ThreadState::CALLING => EndpointState::SEND, _ => EndpointState::RECEIVE }
@@ -90,8 +90,8 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
 /// Dequeues the endpoint waiter and schedules it on `wake_cpu`; no other object changes.
 #[verifier::opaque]
 pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
-    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
-    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, peer_result: RetValueType, thread_id: LockThreadId,
+    pre: KernelK, post: KernelK, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
+    peer_sched_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
     &&& post.pt_mp == pre.pt_mp
     &&& post.pt_lower == pre.pt_lower
@@ -114,22 +114,22 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& forall|key: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(key)] #![trigger post.thr_mp.spec_index(key)]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
-        pre.thr_mp.dom().contains(key) ==> {
-            let before = pre.thr_mp.spec_index(key);
-            let after = post.thr_mp.spec_index(key);
-            &&& post.thr_mp.view().spec_index(key).is_init() == pre.thr_mp.view().spec_index(key).is_init()
-            &&& post.thr_mp.view().spec_index(key).addr() == pre.thr_mp.view().spec_index(key).addr()
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|key: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(key)] #![trigger post.thrd_mp.spec_index(key)]
+        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_1g]
+        pre.thrd_mp.dom().contains(key) ==> {
+            let before = pre.thrd_mp.spec_index(key);
+            let after = post.thrd_mp.spec_index(key);
+            &&& post.thrd_mp.view().spec_index(key).is_init() == pre.thrd_mp.view().spec_index(key).is_init()
+            &&& post.thrd_mp.view().spec_index(key).addr() == pre.thrd_mp.view().spec_index(key).addr()
             &&& after.view().temp_alloc_cache_2m == before.view().temp_alloc_cache_2m
             &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
-            &&& !(key == peer_thread_ptr) ==> after == before
+            &&& !(key == peer_thrd_ptr) ==> after == before
         }
     &&& {
-        let before = pre.thr_mp.spec_index(peer_thread_ptr);
-        let after = post.thr_mp.spec_index(peer_thread_ptr);
+        let before = pre.thrd_mp.spec_index(peer_thrd_ptr);
+        let after = post.thrd_mp.spec_index(peer_thrd_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
@@ -148,11 +148,11 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
         let after = post.ep_mp.spec_index(key);
         &&& post.ep_mp.view().spec_index(key).is_init() == pre.ep_mp.view().spec_index(key).is_init()
         &&& post.ep_mp.view().spec_index(key).addr() == pre.ep_mp.view().spec_index(key).addr()
-        &&& !(key == endpoint_ptr) ==> after == before
+        &&& !(key == ep_ptr) ==> after == before
     }
     &&& {
-        let before = pre.ep_mp.spec_index(endpoint_ptr);
-        let after = post.ep_mp.spec_index(endpoint_ptr);
+        let before = pre.ep_mp.spec_index(ep_ptr);
+        let after = post.ep_mp.spec_index(ep_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
@@ -163,8 +163,8 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
         &&& after.view().queue.lock_minor() == before.view().queue.lock_minor()
         &&& after.view().queue.view() == before.view().queue.view().skip(1)
         &&& after.view().queue.length as int == before.view().queue.length as int - 1
-        &&& after.view().queue.map() == before.view().queue.map().remove(pre.thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr())
-        &&& after.view().queue.dom() == before.view().queue.dom().remove(pre.thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr())
+        &&& after.view().queue.map() == before.view().queue.map().remove(pre.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
+        &&& after.view().queue.dom() == before.view().queue.dom().remove(pre.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
     }
     &&& post.sched_mp.dom() == pre.sched_mp.dom()
     &&& forall|key: RwLockSchedulerPtr| #![trigger pre.sched_mp.spec_index(key)] #![trigger post.sched_mp.spec_index(key)] pre.sched_mp.dom().contains(key) ==> {
@@ -172,11 +172,11 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
         let after = post.sched_mp.spec_index(key);
         &&& post.sched_mp.view().spec_index(key).is_init() == pre.sched_mp.view().spec_index(key).is_init()
         &&& post.sched_mp.view().spec_index(key).addr() == pre.sched_mp.view().spec_index(key).addr()
-        &&& !(key == peer_scheduler_ptr) ==> after == before
+        &&& !(key == peer_sched_ptr) ==> after == before
     }
     &&& {
-        let before = pre.sched_mp.spec_index(peer_scheduler_ptr);
-        let after = post.sched_mp.spec_index(peer_scheduler_ptr);
+        let before = pre.sched_mp.spec_index(peer_sched_ptr);
+        let after = post.sched_mp.spec_index(peer_sched_ptr);
         let shard_before = before.shards.spec_index(wake_cpu).view();
         let shard_after = after.shards.spec_index(wake_cpu).view();
         &&& after.owning_container == before.owning_container
@@ -187,11 +187,11 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
         &&& shard_after.being_killed() == shard_before.being_killed()
         &&& shard_after.locking_thread() is Write
         &&& shard_after.locking_thread()->Write_thread_id == thread_id
-        &&& shard_after.view().queue.view() == shard_before.view().queue.view().push(peer_thread_ptr)
+        &&& shard_after.view().queue.view() == shard_before.view().queue.view().push(peer_thrd_ptr)
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
-        &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
-        &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
-        &&& scheduler_shards_of(after) == scheduler_shards_of(before).update(wake_cpu as int, scheduler_shards_of(before)[wake_cpu as int].push(peer_thread_ptr))
+        &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr(), peer_thrd_ptr)
+        &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr())
+        &&& scheduler_shards_of(after) == scheduler_shards_of(before).update(wake_cpu as int, scheduler_shards_of(before)[wake_cpu as int].push(peer_thrd_ptr))
     }
 }
 } // verus!

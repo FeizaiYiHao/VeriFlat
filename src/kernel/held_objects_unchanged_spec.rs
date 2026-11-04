@@ -30,13 +30,13 @@ pub open spec fn held_processes_unchanged(pre: ProcessLockedMap, post: ProcessLo
 /// rodata unchanged.
 pub open spec fn held_owner_rodata_unchanged(pre: KernelK, post: KernelK, lctx: LocalContext) -> bool {
     &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) ==> {
-        let thread = pre.thr_mp.spec_index(t).view();
+        let thread = pre.thrd_mp.spec_index(t).view();
         let uppers = thread.upper_container_seq.view();
         &&& post.ctn_mp.dom().contains(thread.owning_container)
         &&& post.ctn_mp.spec_index(thread.owning_container).view_rodata() == pre.ctn_mp.spec_index(thread.owning_container).view_rodata()
         &&& forall|i: int| #![trigger uppers[i]] 0 <= i < uppers.len() ==> post.ctn_mp.dom().contains(uppers[i]) && post.ctn_mp.spec_index(uppers[i]).view_rodata() == pre.ctn_mp.spec_index(uppers[i]).view_rodata()
-        &&& !thread_is_dangling(pre.thr_mp.spec_index(t)) ==> post.prc_mp.dom().contains(thread.owning_proc)
-        &&& !thread_is_dangling(pre.thr_mp.spec_index(t)) ==> post.prc_mp.spec_index(thread.owning_proc).view_rodata() == pre.prc_mp.spec_index(thread.owning_proc).view_rodata()
+        &&& !thread_is_dangling(pre.thrd_mp.spec_index(t)) ==> post.prc_mp.dom().contains(thread.owning_proc)
+        &&& !thread_is_dangling(pre.thrd_mp.spec_index(t)) ==> post.prc_mp.spec_index(thread.owning_proc).view_rodata() == pre.prc_mp.spec_index(thread.owning_proc).view_rodata()
     }
     &&& forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)] lctx.process_lock_map().dom().contains(p) ==> {
         let owner = pre.prc_mp.spec_index(p).view_rodata().view().owning_container;

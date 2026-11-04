@@ -3,10 +3,10 @@ use crate::*;
 
 verus! {
     pub open spec fn process_pages_forward_wf(page_array: PageLockedArray, process_map: ProcessLockedMap) -> bool {
-        forall|page_index:PageIndex|
-            #![trigger page_array.spec_index(page_index).view().view().state]
-            #![trigger process_map.dom().contains(page_index2page_ptr(page_index))]
-            index_valid(NUM_PAGES, page_index) ==> { page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess} ==> process_map.dom().contains(page_index2page_ptr(page_index)) }
+        forall|pg_idx:PageIndex|
+            #![trigger page_array.spec_index(pg_idx).view().view().state]
+            #![trigger process_map.dom().contains(page_index2page_ptr(pg_idx))]
+            index_valid(NUM_PAGES, pg_idx) ==> { page_array.spec_index(pg_idx).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess} ==> process_map.dom().contains(page_index2page_ptr(pg_idx)) }
     }
 
     pub open spec fn process_pages_backward_wf(page_array: PageLockedArray, process_map: ProcessLockedMap) -> bool {

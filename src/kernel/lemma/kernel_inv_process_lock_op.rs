@@ -42,7 +42,7 @@ pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: K
         post.sched_mp == pre.sched_mp,
         post.pcid_allc_mp == pre.pcid_allc_mp,
         post.cpu_set_mp == pre.cpu_set_mp,
-        post.thr_mp == pre.thr_mp,
+        post.thrd_mp == pre.thrd_mp,
         post.ep_mp == pre.ep_mp,
         post.allc_4k_mp == pre.allc_4k_mp,
         post.allc_2m_mp == pre.allc_2m_mp,
@@ -53,13 +53,13 @@ pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: K
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { container_process_page_pagetable_wf_preserved_for_process_fields_except_quota(); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_process_fields_except_quota(); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
-    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_wf);
         lemma_process_effective_quota_4k_fold_sum_eq_forall();
     };
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thr_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thr_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp); };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thrd_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
@@ -68,19 +68,19 @@ pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: K
 pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
-        process_thread_wf(post.prc_mp, post.thr_mp),
+        process_thread_wf(post.prc_mp, post.thrd_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
         cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
-        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
         process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
         post.cpu_arr == pre.cpu_arr,
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,
         post.pcid_allc_mp == pre.pcid_allc_mp,
         post.cpu_set_mp == pre.cpu_set_mp,
-        post.thr_mp == pre.thr_mp,
+        post.thrd_mp == pre.thrd_mp,
         post.ep_mp == pre.ep_mp,
         post.rt_ctn == pre.rt_ctn,
         post.cpu_offline_mp == pre.cpu_offline_mp,

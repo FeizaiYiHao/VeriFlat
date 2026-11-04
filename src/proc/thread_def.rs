@@ -226,7 +226,7 @@ impl UserViewHasKillState for ThreadU {
 impl Thread {
     /// Boot-only fresh root thread: RUNNING on CPU 0 with endpoint 0 set. The
     /// caller retypes it into its page before taking any intrusive node.
-    pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, endpoint_ptr: RwLockEndpointPtr) -> (ret: Self)
+    pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, ep_ptr: RwLockEndpointPtr) -> (ret: Self)
         ensures
             ret.inv(),
             ret.state == (ThreadState::RUNNING { cpu_id: 0 }),
@@ -238,8 +238,8 @@ impl Thread {
             ret.process_depth == 0,
             ret.proc_pagetable_ptr == proc_pagetable_ptr,
             ret.upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty(),
-            ret.endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
-            forall|endpoint_index: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(endpoint_index)] edp_idx_valid(endpoint_index) && endpoint_index != 0 ==> ret.endpoint_descriptors.spec_index(endpoint_index) is None,
+            ret.endpoint_descriptors.spec_index(0) == Some(ep_ptr),
+            forall|ep_idx: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(ep_idx)] edp_idx_valid(ep_idx) && ep_idx != 0 ==> ret.endpoint_descriptors.spec_index(ep_idx) is None,
             ret.ipc_payload is Empty,
             ret.error_code is None,
             ret.caller is None,
@@ -258,7 +258,7 @@ impl Thread {
             ret.proc_linkedlist_node.is_init(),
     {
         let mut thread = Self::new_fresh(owning_container, 0, owning_proc, 0, proc_pagetable_ptr, Ghost(Seq::empty()));
-        thread.endpoint_descriptors.set(0, Some(endpoint_ptr));
+        thread.endpoint_descriptors.set(0, Some(ep_ptr));
         thread
     }
 
@@ -331,7 +331,7 @@ impl Thread {
             ret.scheduler_linkedlist_node.is_init(),
             ret.blocking_endpoint_ptr is None,
             ret.blocking_endpoint_index is None,
-            forall|edp_index: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(edp_index)] edp_idx_valid(edp_index) ==> ret.endpoint_descriptors.spec_index(edp_index) is None,
+            forall|ep_idx: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(ep_idx)] edp_idx_valid(ep_idx) ==> ret.endpoint_descriptors.spec_index(ep_idx) is None,
             ret.endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None),
             ret.ipc_payload is Empty,
             ret.error_code is None,
@@ -362,7 +362,7 @@ impl Thread {
 
     /// In-place RUNNING -> SCHEDULED transition for a freshly retyped thread. Both
     /// intrusive nodes are taken here so their addresses are the in-page ones.
-    pub fn fresh_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, initial_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn fresh_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, initial_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
@@ -388,16 +388,16 @@ impl Thread {
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
             ret.2 == final(self).proc_linkedlist_node.addr(),
             ret.3.view().is_init(),
             ret.3.view().addr() == ret.2,
-            ret.3.view().value().view() == thread_ptr,
+            ret.3.view().value().view() == thrd_ptr,
     {
         let (sched_node_addr, mut sched_node_perm) = self.scheduler_linkedlist_node.take();
-        node_update_value(sched_node_addr, &mut sched_node_perm, thread_ptr);
+        node_update_value(sched_node_addr, &mut sched_node_perm, thrd_ptr);
         let (process_node_addr, mut process_node_perm) = self.proc_linkedlist_node.take();
-        node_update_value(process_node_addr, &mut process_node_perm, thread_ptr);
+        node_update_value(process_node_addr, &mut process_node_perm, thrd_ptr);
         self.trap_frame.set_self(initial_regs);
         self.state = ThreadState::SCHEDULED { cpu_id };
         self.last_cpu = cpu_id;
@@ -406,23 +406,23 @@ impl Thread {
 }
 
 impl Thread {
-    pub fn consume_staged_4k(&mut self, page_ptr: PagePtr)
+    pub fn consume_staged_4k(&mut self, pg_ptr: PagePtr)
         requires
-            old(self).temp_alloc_cache_4k.view().contains(page_ptr),
+            old(self).temp_alloc_cache_4k.view().contains(pg_ptr),
             old(self).quota_4k >= 1,
         ensures
             old(self).inv() ==> final(self).inv(),
             *final(self) == (Thread { quota_4k: final(self).quota_4k, temp_alloc_cache_4k: final(self).temp_alloc_cache_4k, ..*old(self) }),
-            final(self).temp_alloc_cache_4k.view() == old(self).temp_alloc_cache_4k.view().remove(page_ptr),
+            final(self).temp_alloc_cache_4k.view() == old(self).temp_alloc_cache_4k.view().remove(pg_ptr),
             final(self).temp_alloc_cache_4k.view().len() == old(self).temp_alloc_cache_4k.view().len() - 1,
             final(self).quota_4k == old(self).quota_4k - 1,
     {
         let ghost old_cache = self.temp_alloc_cache_4k.view();
-        self.temp_alloc_cache_4k = Ghost(old_cache.remove(page_ptr));
+        self.temp_alloc_cache_4k = Ghost(old_cache.remove(pg_ptr));
         self.quota_4k = self.quota_4k - 1;
     }
 
-    pub fn running_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn running_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
@@ -438,11 +438,11 @@ impl Thread {
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
     {
         self.trap_frame.set_self(pt_regs);
         let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
         self.state = ThreadState::SCHEDULED { cpu_id };
         (node_addr, node_perm)
     }
@@ -490,26 +490,26 @@ impl Thread {
 
     /// Move the running thread into an endpoint wait queue and hand its
     /// intrusive endpoint node to the queue owner.
-    pub fn block_on_endpoint(&mut self, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn block_on_endpoint(&mut self, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
             waiting_state.is_endpoint_waiting(),
             waiting_state is RECEIVING_CALL ==> old(self).caller is None,
             payload.wf(),
-            edp_idx_valid(endpoint_index),
-            old(self).endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+            edp_idx_valid(ep_idx),
+            old(self).endpoint_descriptors.spec_index(ep_idx) == Some(ep_ptr),
         ensures
             final(self).inv(),
             final(self).non_ipc_fields_unchanged(old(self)),
             *final(self) == (Thread {
-                state: waiting_state, blocking_endpoint_ptr: Some(endpoint_ptr), blocking_endpoint_index: Some(endpoint_index), ipc_payload: payload,
+                state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), blocking_endpoint_index: Some(ep_idx), ipc_payload: payload,
                 trap_frame: final(self).trap_frame, endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, ..*old(self)
             }),
             !final(self).endpoint_linkedlist_node.is_init(),
             final(self).state == waiting_state,
-            final(self).blocking_endpoint_ptr == Some(endpoint_ptr),
-            final(self).blocking_endpoint_index == Some(endpoint_index),
+            final(self).blocking_endpoint_ptr == Some(ep_ptr),
+            final(self).blocking_endpoint_index == Some(ep_idx),
             final(self).ipc_payload =~= payload,
             final(self).trap_frame.is_some(),
             final(self).trap_frame.get_some_0() =~= pt_regs,
@@ -520,12 +520,12 @@ impl Thread {
             ret.0 == final(self).endpoint_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
     {
         let (node_addr, mut node_perm) = self.endpoint_linkedlist_node.take();
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
-        self.blocking_endpoint_ptr = Some(endpoint_ptr);
-        self.blocking_endpoint_index = Some(endpoint_index);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
+        self.blocking_endpoint_ptr = Some(ep_ptr);
+        self.blocking_endpoint_index = Some(ep_idx);
         self.ipc_payload = payload;
         self.trap_frame.set_self(pt_regs);
         self.state = waiting_state;
@@ -534,14 +534,14 @@ impl Thread {
 
     /// Remove an ordinary sender/receiver from its endpoint and prepare its
     /// scheduler node. The saved trap frame remains available for dispatch.
-    pub fn endpoint_waiter_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn endpoint_waiter_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state.is_endpoint_waiting(),
             index_valid(NUM_CPUS, cpu_id),
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
-            endpoint_node_perm.view().value().view() == thread_ptr,
+            endpoint_node_perm.view().value().view() == thrd_ptr,
         ensures
             final(self).inv(),
             final(self).non_ipc_fields_unchanged(old(self)),
@@ -560,11 +560,11 @@ impl Thread {
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
     {
         self.endpoint_linkedlist_node.put(endpoint_node_perm);
         let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
         self.blocking_endpoint_ptr = None;
         self.blocking_endpoint_index = None;
         self.ipc_payload = IPCPayLoad::Empty;
@@ -574,13 +574,13 @@ impl Thread {
     }
 
     /// Remove a matched sender/receiver from its endpoint into transit with the rendezvous thread `partner`, recording whether it was sending.
-    pub fn endpoint_waiter_to_ipc_transit(&mut self, thread_ptr: RwLockThreadPtr, partner: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    pub fn endpoint_waiter_to_ipc_transit(&mut self, thrd_ptr: RwLockThreadPtr, partner: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
             old(self).state is SENDING || old(self).state is RECEIVING,
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
-            endpoint_node_perm.view().value().view() == thread_ptr,
+            endpoint_node_perm.view().value().view() == thrd_ptr,
         ensures
             final(self).inv(),
             final(self).non_ipc_fields_unchanged(old(self)),
@@ -604,7 +604,7 @@ impl Thread {
     }
 
     /// Prepare a peer in IPC transit for its scheduler with the rendezvous result that the current thread also receives.
-    pub fn ipc_transit_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn ipc_transit_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is IPC_TRANSIT,
@@ -626,10 +626,10 @@ impl Thread {
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
     {
         let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
         self.ipc_payload = IPCPayLoad::Empty;
         self.error_code = Some(result);
         self.state = ThreadState::SCHEDULED { cpu_id };
@@ -638,14 +638,14 @@ impl Thread {
 
     /// A queued caller has met a receive-call thread. It leaves the endpoint
     /// but stays blocked until its callee replies.
-    pub fn endpoint_caller_to_waiting_reply(&mut self, thread_ptr: RwLockThreadPtr, callee_ptr: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    pub fn endpoint_caller_to_waiting_reply(&mut self, thrd_ptr: RwLockThreadPtr, callee_ptr: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
             old(self).state is CALLING,
-            thread_ptr != callee_ptr,
+            thrd_ptr != callee_ptr,
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
-            endpoint_node_perm.view().value().view() == thread_ptr,
+            endpoint_node_perm.view().value().view() == thrd_ptr,
         ensures
             final(self).inv(),
             final(self).non_ipc_fields_unchanged(old(self)),
@@ -700,17 +700,17 @@ impl Thread {
 
     /// A blocked receive-call thread becomes the running callee and restores
     /// the register image it saved when entering the endpoint.
-    pub fn endpoint_receiver_to_running(&mut self, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers)
+    pub fn endpoint_receiver_to_running(&mut self, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers)
         requires
             old(self).inv(),
             old(self).state is RECEIVING_CALL,
             old(self).caller is None,
             old(self).callee is None,
-            thread_ptr != caller_ptr,
+            thrd_ptr != caller_ptr,
             index_valid(NUM_CPUS, cpu_id),
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
-            endpoint_node_perm.view().value().view() == thread_ptr,
+            endpoint_node_perm.view().value().view() == thrd_ptr,
         ensures
             final(self).inv(),
             *final(self) == (Thread {
@@ -754,7 +754,7 @@ impl Thread {
     }
 
     /// A caller waiting for its reply is woken on shard `cpu_id` with `result` because its callee exited.
-    pub fn waiting_reply_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn waiting_reply_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is WAITING_REPLY,
@@ -769,10 +769,10 @@ impl Thread {
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == thread_ptr,
+            ret.1.view().value().view() == thrd_ptr,
     {
         let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
-        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        node_update_value(node_addr, &mut node_perm, thrd_ptr);
         self.callee = None;
         self.error_code = Some(result);
         self.state = ThreadState::SCHEDULED { cpu_id };
@@ -1015,7 +1015,7 @@ impl IPCPayLoad {
         match self {
             IPCPayLoad::Pages { va_range } => va_range.wf(),
             IPCPayLoad::Cpu { cpu_id } => index_valid(NUM_CPUS, *cpu_id),
-            IPCPayLoad::Endpoint { endpoint_index } => edp_idx_valid(*endpoint_index),
+            IPCPayLoad::Endpoint { endpoint_index: ep_idx } => edp_idx_valid(*ep_idx),
             IPCPayLoad::Pci { bus, dev, fun } => pci_bdf_valid(*bus as usize, *dev as usize, *fun as usize),
             _ => true,
         }

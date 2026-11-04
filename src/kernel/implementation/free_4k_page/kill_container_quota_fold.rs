@@ -4,16 +4,16 @@ use crate::*;
 verus! {
 /// A container without processes, threads, and indirect threads holds every free page of each of its allocators as
 /// quota.
-pub proof fn lemma_container_allocator_quota_eq_total_free_without_users(k: KernelK, container_ptr: RwLockContainerPtr)
+pub proof fn lemma_container_allocator_quota_eq_total_free_without_users(k: KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         k.inv(),
-        k.ctn_mp.dom().contains(container_ptr),
-        k.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view() =~= Set::<RwLockProcessPtr>::empty(),
-        k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
-        k.ctn_mp.spec_index(container_ptr).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
+        k.ctn_mp.dom().contains(ctn_ptr),
+        k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view() =~= Set::<RwLockProcessPtr>::empty(),
+        k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
+        k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
     ensures
         ({
-            let ro = k.ctn_mp.spec_index(container_ptr).view_rodata().view();
+            let ro = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
             &&& k.allc_4k_mp.dom().contains(ro.allocator_ptr_4k)
             &&& k.allc_4k_mp.spec_index(ro.allocator_ptr_4k).quota.view().value == k.allc_4k_mp.spec_index(ro.allocator_ptr_4k).total_free_pages.view()
             &&& k.allc_2m_mp.dom().contains(ro.allocator_ptr_2m)
@@ -22,11 +22,11 @@ pub proof fn lemma_container_allocator_quota_eq_total_free_without_users(k: Kern
             &&& k.allc_1g_mp.spec_index(ro.allocator_ptr_1g).quota.view().value == k.allc_1g_mp.spec_index(ro.allocator_ptr_1g).total_free_pages.view()
         }),
 {
-    let processes = k.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-    let depth = k.ctn_mp.spec_index(container_ptr).view_rodata().view().depth as int;
-    container_allocator_wf_at(k.ctn_mp, k.allc_4k_mp, k.allc_2m_mp, k.allc_1g_mp, container_ptr);
-    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view(), k.thr_mp, depth);
-    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(container_ptr).view_ghost().owned_indirect_threads.view(), k.thr_mp, depth);
+    let processes = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
+    let depth = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth as int;
+    container_allocator_wf_at(k.ctn_mp, k.allc_4k_mp, k.allc_2m_mp, k.allc_1g_mp, ctn_ptr);
+    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view(), k.thrd_mp, depth);
+    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view(), k.thrd_mp, depth);
     let value_4k = |p: RwLockProcessPtr| process_effective_quota_4k(k.prc_mp.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + value_4k(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(k.prc_mp.spec_index(p)))
         && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_4k(p)) == 0) by { lemma_set_fold_int_sum_empty(processes, value_4k); };
@@ -51,21 +51,21 @@ pub proof fn lemma_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: R
         krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m).total_free_pages.view() < usize::MAX,
         krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m).total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
 {
-    let allocator_ptr = krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m;
-    let allocator = krnl.allc_2m_mp.spec_index(allocator_ptr);
+    let allc_ptr = krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m;
+    let allocator = krnl.allc_2m_mp.spec_index(allc_ptr);
     let threads = krnl.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
     reveal(container_allocator_wf);
     assert(allocator.quota.view().value <= allocator.total_free_pages.view()) by {
         reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
         lemma_process_effective_quota_2m_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
-        let effective = |t: RwLockThreadPtr| thread_effective_quota_2m(krnl.thr_mp.spec_index(t));
-        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thr_mp.spec_index(t)))
+        let effective = |t: RwLockThreadPtr| thread_effective_quota_2m(krnl.thrd_mp.spec_index(t));
+        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thrd_mp.spec_index(t)))
             && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, effective); };
-        lemma_thread_direct_pending_2m_fold_nonneg(threads, krnl.thr_mp);
-        lemma_thread_indirect_pending_2m_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thr_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
+        lemma_thread_direct_pending_2m_fold_nonneg(threads, krnl.thrd_mp);
+        lemma_thread_indirect_pending_2m_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thrd_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
     };
     assert(allocator.total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
-        allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr);
+        allocator_perms_wf_at(krnl.allc_2m_mp, allc_ptr);
         reveal(allocator_free_page_ptrs_wf);
         assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by {
             reveal(LinkedList::value_list_unique); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();

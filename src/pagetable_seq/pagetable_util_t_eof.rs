@@ -5,29 +5,29 @@ use crate::*;
 /// EOF closure of `KernelK::retype_page_to_pagetable_and_insert`: the new table is empty and write-held by this thread,
 /// so it has no window, and the page-table invariants and the window alignment carry over.
 pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
-    old_k: KernelK, new_k: KernelK, old_lctx: LocalContext, new_lctx: LocalContext, page_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>,
+    old_k: KernelK, new_k: KernelK, old_lctx: LocalContext, new_lctx: LocalContext, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>,
     lower: PageTableLower<PT_TYPE>, lock_perm: LockPerm,
 )
     requires
-        !old_k.pt_mp.dom().contains(page_ptr),
+        !old_k.pt_mp.dom().contains(pg_ptr),
         (WholePageTable { higher, lower }).wf(),
         (WholePageTable { higher, lower }).is_empty(),
         new_k == (KernelK { pt_mp: new_k.pt_mp, pt_lower: new_k.pt_lower, ..old_k }),
-        new_k.pt_mp.dom() =~= old_k.pt_mp.dom().insert(page_ptr),
+        new_k.pt_mp.dom() =~= old_k.pt_mp.dom().insert(pg_ptr),
         forall|ptr: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(ptr)] #![trigger old_k.pt_mp.spec_index(ptr)] old_k.pt_mp.dom().contains(ptr) ==> new_k.pt_mp.spec_index(ptr) == old_k.pt_mp.spec_index(ptr),
-        new_k.pt_mp.spec_index(page_ptr).is_init(),
-        new_k.pt_mp.spec_index(page_ptr).view() == higher,
-        new_k.pt_mp.spec_index(page_ptr).view_ghost() == lower,
-        new_k.pt_mp.spec_index(page_ptr).write_lock_perm_match(&lock_perm),
+        new_k.pt_mp.spec_index(pg_ptr).is_init(),
+        new_k.pt_mp.spec_index(pg_ptr).view() == higher,
+        new_k.pt_mp.spec_index(pg_ptr).view_ghost() == lower,
+        new_k.pt_mp.spec_index(pg_ptr).write_lock_perm_match(&lock_perm),
         lock_perm.thread_id() == new_lctx.thread_id(),
-        new_k.pt_lower.view() == old_k.pt_lower.view().insert(page_ptr, lower),
+        new_k.pt_lower.view() == old_k.pt_lower.view().insert(pg_ptr, lower),
         forall|r: RwLockPageTableRoot|
             #![trigger whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r)]
             old_k.pt_mp.dom().contains(r) ==> whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r) == whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), r),
         new_lctx.thread_id() == old_lctx.thread_id(),
-        typed_lock_maps_inserted(&old_lctx, &new_lctx, KernelObjId::PageTable(page_ptr), TypedHeldLock { lock_id: new_k.pt_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
+        typed_lock_maps_inserted(&old_lctx, &new_lctx, KernelObjId::PageTable(pg_ptr), TypedHeldLock { lock_id: new_k.pt_mp.lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
     ensures
-        whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), page_ptr) == (WholePageTable { higher, lower }),
+        whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), pg_ptr) == (WholePageTable { higher, lower }),
         pagetable_perms_wf(old_k.pt_mp) && new_k.pt_mp.perms_wf() ==> pagetable_perms_wf(new_k.pt_mp),
         pagetable_lower_wf(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_lower_wf(new_k.pt_mp, new_k.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(new_k.pt_mp, new_k.pt_lower.view()),

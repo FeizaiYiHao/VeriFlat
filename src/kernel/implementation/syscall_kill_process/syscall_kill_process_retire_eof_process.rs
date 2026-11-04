@@ -7,12 +7,12 @@ verus! {
 /// Retiring the empty zombie `target` keeps the container tree and the container, endpoint, scheduler, cpu-set,
 /// offline-flag, PCID-allocator, and thread relations.
 pub(crate) proof fn kill_retire_eof_container_relations(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),
@@ -21,7 +21,7 @@ pub(crate) proof fn kill_retire_eof_container_relations(
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == parent,
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         parent is Some ==> {
             let parent_ptr = parent->Some_0;
             &&& pre.prc_mp.dom().contains(parent_ptr)
@@ -30,44 +30,44 @@ pub(crate) proof fn kill_retire_eof_container_relations(
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target
         },
-        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
-        thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
-        thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
-        thread_caller_callee_wf(post.thr_mp),
-        thread_dangling_chain_end_wf(post.thr_mp),
-        container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
+        thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
+        thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp),
+        thread_caller_callee_wf(post.thrd_mp),
+        thread_dangling_chain_end_wf(post.thrd_mp),
+        container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
         container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp),
         container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp),
-        container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp),
-        container_thread_wf(post.ctn_mp, post.thr_mp),
-        thread_cpu_wf(post.thr_mp, post.cpu_arr),
+        container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp),
+        container_thread_wf(post.ctn_mp, post.thrd_mp),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, pre.ep_mp, post.ep_mp); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
     assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { container_cpu_offline_flags_wf_preserved_for_flags_owner_eq(pre.ctn_mp, post.ctn_mp, pre.cpu_offline_mp, post.cpu_offline_mp); };
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
-    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
-    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.sched_mp); };
+    assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
 }
 
 /// Retiring the empty zombie `target` keeps the container-cpu relation and the process PCID, cpu, thread, kill-mark,
 /// lock-state, and emptied-thread invariants.
 pub(crate) proof fn kill_retire_eof_process_relations(
-    pre: KernelK, post: KernelK, lctx: LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, lctx: LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),
@@ -76,7 +76,7 @@ pub(crate) proof fn kill_retire_eof_process_relations(
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == parent,
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         parent is Some ==> {
             let parent_ptr = parent->Some_0;
             &&& pre.prc_mp.dom().contains(parent_ptr)
@@ -89,47 +89,47 @@ pub(crate) proof fn kill_retire_eof_process_relations(
         pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
         kill_retire_tables_emptied(pre, target),
         pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
-        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
         pre.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.process_lock_map(), target, TypedLockMode::Write),
         forall|d: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(d)] lctx.process_lock_map().dom().contains(d) && pre.prc_mp.spec_index(d).killer_info() is Some
-            ==> pre.prc_mp.spec_index(d).killer_info()->Some_0.process != target && pre.prc_mp.spec_index(d).view_rodata().view().owning_container == container_ptr,
+            ==> pre.prc_mp.spec_index(d).killer_info()->Some_0.process != target && pre.prc_mp.spec_index(d).view_rodata().view().owning_container == ctn_ptr,
         pre.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
         forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
-        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
-            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thr_mp.spec_index(u).being_killed(),
+        forall|u: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(u).locking_thread()]
+            pre.thrd_mp.dom().contains(u) && pre.thrd_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thrd_mp.spec_index(u).being_killed(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp),
         process_cpu_wf(post.prc_mp, post.cpu_arr),
-        process_thread_wf(post.prc_mp, post.thr_mp),
+        process_thread_wf(post.prc_mp, post.thrd_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
         cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
-        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(process_cpu_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); reveal(process_thread_wf); };
+    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_children_parent_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
 /// Retiring the empty zombie `target` keeps the IOMMU root-table, PCI-function ownership, IOTLB, and IOMMU-table lock
 /// invariants.
 pub(crate) proof fn kill_retire_eof_iommu(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),
@@ -137,12 +137,12 @@ pub(crate) proof fn kill_retire_eof_iommu(
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
         pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
         kill_retire_tables_emptied(pre, target),
         pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
-        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
@@ -159,8 +159,8 @@ pub(crate) proof fn kill_retire_eof_iommu(
 /// structure-cache entry for the target's page table would need a user root that resolves or a stale CPU, and the
 /// zombie's table has neither.
 broadcast proof fn kill_retire_eof_tlb_entry(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr, c: CpuId, p: Pcid,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr, c: CpuId, p: Pcid,
 )
     requires
         cpu_array_wf(pre.cpu_arr, pre.dflt_pt.view()),
@@ -171,7 +171,7 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         cpu_dirty_map_proc_pcid_match(pre.prc_mp, pre.cpu_arr, pre.pcid_needflush, pre.cpu_tlb),
         tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),
@@ -185,9 +185,9 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         pcid_valid(p),
         p != KERNEL_DEFAULT_PCID,
     ensures
-        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_tlb.spec_index((c, p))]
-        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_tlb.structure_cache((c, p))]
-        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p)]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr), post.cpu_tlb.spec_index((c, p))]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr), post.cpu_tlb.structure_cache((c, p))]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr), post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p)]
         ({
             let tlb = post.cpu_tlb.spec_index((c, p));
             let cache = post.cpu_tlb.structure_cache((c, p));
@@ -220,12 +220,12 @@ broadcast proof fn kill_retire_eof_tlb_entry(
 
 /// Retiring the empty zombie `target` keeps the cpu dirty-map, TLB and structure-cache invariants.
 pub(crate) proof fn kill_retire_eof_tlb(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),

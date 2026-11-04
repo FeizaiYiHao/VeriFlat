@@ -9,34 +9,34 @@ verus! {
 /// (`ASSERT_CONTAINER_LOCK_FITS_4K`); `retype_container_page_tail_and_insert` keeps each table
 /// pointer unique through `insert_with_perm`.
 #[verifier::external_body]
-fn retype_container_page_tail_to_offline_flags(container_map: &ContainerLockedMap, container_ptr: RwLockContainerPtr, flags: CpuOfflineFlags) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
+fn retype_container_page_tail_to_offline_flags(container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
     requires
-        container_map.dom().contains(container_ptr),
-        page_ptr_2m_valid(container_ptr),
+        container_map.dom().contains(ctn_ptr),
+        page_ptr_2m_valid(ctn_ptr),
         flags.inv(),
     ensures
         ret.view().is_init(),
-        ret.view().addr() == cpu_offline_flags_ptr(container_ptr),
+        ret.view().addr() == cpu_offline_flags_ptr(ctn_ptr),
         ret.view().value() == flags,
 {
-    unsafe { ((container_ptr + PAGE_SZ_4K) as *mut CpuOfflineFlags).write(flags); }
+    unsafe { ((ctn_ptr + PAGE_SZ_4K) as *mut CpuOfflineFlags).write(flags); }
     Tracked::assume_new()
 }
 
 impl UnLockedMap<usize, CpuOfflineFlags> {
-    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, container_ptr: RwLockContainerPtr, flags: CpuOfflineFlags, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
-            container_map.dom().contains(container_ptr),
-            page_ptr_2m_valid(container_ptr),
-            !old(self).dom().contains(cpu_offline_flags_ptr(container_ptr)),
+            container_map.dom().contains(ctn_ptr),
+            page_ptr_2m_valid(ctn_ptr),
+            !old(self).dom().contains(cpu_offline_flags_ptr(ctn_ptr)),
             flags.inv(),
             lctx.kernel_view_locking_state() is Acquire,
         ensures
             final(self).perms_wf(),
-            final(self).dom() =~= old(self).dom().insert(cpu_offline_flags_ptr(container_ptr)),
-            final(self).dom().contains(cpu_offline_flags_ptr(container_ptr)),
-            final(self).spec_index(cpu_offline_flags_ptr(container_ptr)) == flags,
+            final(self).dom() =~= old(self).dom().insert(cpu_offline_flags_ptr(ctn_ptr)),
+            final(self).dom().contains(cpu_offline_flags_ptr(ctn_ptr)),
+            final(self).spec_index(cpu_offline_flags_ptr(ctn_ptr)) == flags,
             forall|ptr: RwLockCpuOfflineFlagsPtr|
                 #![trigger final(self).spec_index(ptr)]
                 #![trigger old(self).spec_index(ptr)]
@@ -47,8 +47,8 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
                     &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
                 },
     {
-        let Tracked(flags_perm) = retype_container_page_tail_to_offline_flags(container_map, container_ptr, flags);
-        self.insert_with_perm(container_ptr + 4096, Tracked(flags_perm));
+        let Tracked(flags_perm) = retype_container_page_tail_to_offline_flags(container_map, ctn_ptr, flags);
+        self.insert_with_perm(ctn_ptr + 4096, Tracked(flags_perm));
     }
 
     #[verifier::opaque]

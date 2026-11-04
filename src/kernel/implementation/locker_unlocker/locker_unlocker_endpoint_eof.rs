@@ -3,15 +3,15 @@ use crate::*;
 
 verus! {
 /// Closes `inv()` after an endpoint write lock or unlock: only the target entry's lock state moved.
-pub(super) proof fn endpoint_lock_op_eof(pre: KernelK, post: KernelK, endpoint_ptr: RwLockEndpointPtr)
+pub(super) proof fn endpoint_lock_op_eof(pre: KernelK, post: KernelK, ep_ptr: RwLockEndpointPtr)
     requires
         pre.inv(),
-        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ep_mp.dom().contains(ep_ptr),
         post == (KernelK { ep_mp: post.ep_mp, ..pre }),
         post.ep_mp.perms_wf(),
-        post.ep_mp.unchanged_except(&pre.ep_mp, endpoint_ptr),
-        post.ep_mp.spec_index(endpoint_ptr).inv(),
-        post.ep_mp.spec_index(endpoint_ptr).view() == pre.ep_mp.spec_index(endpoint_ptr).view(),
+        post.ep_mp.unchanged_except(&pre.ep_mp, ep_ptr),
+        post.ep_mp.spec_index(ep_ptr).inv(),
+        post.ep_mp.spec_index(ep_ptr).view() == pre.ep_mp.spec_index(ep_ptr).view(),
     ensures
         post.inv(),
 {

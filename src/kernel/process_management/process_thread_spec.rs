@@ -66,24 +66,24 @@ verus! {
         ensures forall|t_ptr: RwLockThreadPtr| #[trigger] process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr) ==> thread_map.dom().contains(t_ptr),
     { reveal(process_thread_wf); }
 
-    pub proof fn process_thread_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    pub proof fn process_thread_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             process_thread_wf(process_map, thread_map),
-            thread_map.dom().contains(thread_ptr),
-            !thread_is_dangling(thread_map.spec_index(thread_ptr)),
+            thread_map.dom().contains(thrd_ptr),
+            !thread_is_dangling(thread_map.spec_index(thrd_ptr)),
         ensures
             ({
-                let thread = thread_map.spec_index(thread_ptr).view();
+                let thread = thread_map.spec_index(thrd_ptr).view();
                 let process = process_map.spec_index(thread.owning_proc);
                 &&& process_map.dom().contains(thread.owning_proc)
                 &&& !process.view().zombie
-                &&& process.view().owned_threads.view().contains(thread_ptr)
+                &&& process.view().owned_threads.view().contains(thrd_ptr)
                 &&& thread.owning_container == process.view_rodata().view().owning_container
                 &&& thread.container_depth == process.view_rodata().view().container_depth
                 &&& thread.process_depth == process.view_rodata().view().depth
                 &&& thread.proc_pagetable_ptr == process.view().pagetable
                 &&& process.view().owned_threads.map().dom().contains(thread.proc_linkedlist_node.addr())
-                &&& process.view().owned_threads.map().spec_index(thread.proc_linkedlist_node.addr()) == thread_ptr
+                &&& process.view().owned_threads.map().spec_index(thread.proc_linkedlist_node.addr()) == thrd_ptr
             }),
     { reveal(process_thread_wf); }
 

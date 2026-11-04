@@ -34,8 +34,8 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         ret is Err ==> ({
             let r = ret->Err_0;
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).value;
-            let thread_ptr = cpu.view().view().current_thread->Some_0;
-            let thread = old(krnl).thr_mp.spec_index(thread_ptr);
+            let thrd_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = old(krnl).thrd_mp.spec_index(thrd_ptr);
             let container = old(krnl).ctn_mp.spec_index(thread.view().owning_container);
             let process = old(krnl).prc_mp.spec_index(thread.view().owning_proc);
             let unowned = container.lock_process_owner_u() is None;
@@ -43,7 +43,7 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& !(r is Success)
             &&& r is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(r is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
-            &&& !(r is CpuIdle) ==> old(krnl).thr_mp.dom().contains(thread_ptr) && old(krnl).prc_mp.dom().contains(thread.view().owning_proc) && old(krnl).ctn_mp.dom().contains(thread.view().owning_container)
+            &&& !(r is CpuIdle) ==> old(krnl).thrd_mp.dom().contains(thrd_ptr) && old(krnl).prc_mp.dom().contains(thread.view().owning_proc) && old(krnl).ctn_mp.dom().contains(thread.view().owning_container)
             &&& r is ErrorContainerKilled ==> container.being_killed()
             &&& r is ErrorContainerLockOrderConflict ==> !container.being_killed() && container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth)
             &&& r is ErrorContainerZombie ==> !container.being_killed() && unowned && container.view().zombie
@@ -60,7 +60,7 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             let old_cpu = old(krnl).cpu_arr.spec_index(cpu_id).view();
             let cpu_lock = final(krnl).cpu_arr.spec_index(cpu_id).view();
             let cpu = cpu_lock.view().view();
-            let thread = final(krnl).thr_mp.spec_index(e.thread_ptr).view();
+            let thread = final(krnl).thrd_mp.spec_index(e.thread_ptr).view();
             &&& *final(steps) == *old(steps)
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
@@ -100,24 +100,24 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& e.container_lock_perm.view().state() is WriteLock
             &&& e.container_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& wlock_ensures(old(krnl).prc_mp.spec_index(e.process_ptr), final(krnl).prc_mp.spec_index(e.process_ptr), old(krnl).prc_mp.lock_id_by_key(e.process_ptr), final(lctx), e.process_lock_perm.view())
-            &&& wlock_ensures(old(krnl).thr_mp.spec_index(e.thread_ptr), final(krnl).thr_mp.spec_index(e.thread_ptr), old(krnl).thr_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
+            &&& wlock_ensures(old(krnl).thrd_mp.spec_index(e.thread_ptr), final(krnl).thrd_mp.spec_index(e.thread_ptr), old(krnl).thrd_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
             &&& cpu.state is Running && !cpu_lock.being_killed()
             &&& cpu.current_process == Some(e.process_ptr) && cpu.current_thread == Some(e.thread_ptr) && cpu.owning_container == e.container_ptr
             &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
             &&& final(krnl).ctn_mp.dom().contains(e.container_ptr) && !final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() && !final(krnl).ctn_mp.spec_index(e.container_ptr).view().zombie
             &&& !final(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost().owned_processes.view().is_empty()
             &&& final(krnl).prc_mp.dom().contains(e.process_ptr) && !final(krnl).prc_mp.spec_index(e.process_ptr).being_killed() && !final(krnl).prc_mp.spec_index(e.process_ptr).view().zombie
-            &&& final(krnl).thr_mp.dom().contains(e.thread_ptr) && !final(krnl).thr_mp.spec_index(e.thread_ptr).being_killed()
+            &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
-            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, e.container_ptr)
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, e.process_ptr)
-            &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, e.thread_ptr)
+            &&& final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, e.thread_ptr)
         }),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
@@ -132,38 +132,38 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         &&& cpu.current_thread() is Some
         &&& krnl.ctn_mp.dom().contains(cpu.owning_container())
         &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
-        &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
+        &&& krnl.thrd_mp.dom().contains(cpu.current_thread().unwrap())
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
         &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_ghost().owned_processes.view().contains(cpu.current_process().unwrap())
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().owned_threads.view().len() != 0
         &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
         &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_rodata().view().depth == cpu.view().container_depth
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().container_depth == cpu.view().container_depth
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().depth == cpu.view().process_depth
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().container_depth == cpu.view().container_depth
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().container_depth == cpu.view().container_depth
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
     }) by {
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
-        container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
-        container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, cpu.owning_container, cpu.current_process.unwrap()); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, cpu.current_thread.unwrap());
+        container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
+        container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, cpu.owning_container, cpu.current_process.unwrap()); process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread.unwrap());
         process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap());
     };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_perm));
-    let process_ptr = cpu.current_process().unwrap();
-    let thread_ptr = cpu.current_thread().unwrap();
-    let container_ptr = cpu.owning_container();
+    let prc_ptr = cpu.current_process().unwrap();
+    let thrd_ptr = cpu.current_thread().unwrap();
+    let ctn_ptr = cpu.owning_container();
     let requested = LockOwnerId::Some(cpu.process_depth());
-    let container_res = krnl.wlock_container_unless_killed(container_ptr, requested, Tracked(&mut *lctx));
+    let container_res = krnl.wlock_container_unless_killed(ctn_ptr, requested, Tracked(&mut *lctx));
     let Tracked(container_perm) = match container_res {
         DynamicWLockResult::Acquired(perm) => perm,
         DynamicWLockResult::Killed(_) => {
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
             }
             return Err(RetValueType::ErrorContainerKilled);
         },
@@ -171,47 +171,47 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
             }
             return Err(RetValueType::ErrorContainerLockOrderConflict);
         },
     };
-    let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_perm));
+    let container = krnl.ctn_mp.borrow_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_perm));
     if container.zombie {
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
+        krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
         }
         return Err(RetValueType::ErrorContainerZombie);
     }
-    assert(!krnl.prc_mp.spec_index(process_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(process_ptr))) by { process_perms_wf_at(krnl.prc_mp, process_ptr); };
-    let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
+    assert(!krnl.prc_mp.spec_index(prc_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(prc_ptr))) by { process_perms_wf_at(krnl.prc_mp, prc_ptr); };
+    let process_res = krnl.wlock_process_unless_killed(prc_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
+        krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), None, None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), None, None, None, None);
         }
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(process_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thrd_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
+        krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_perm));
+        krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
         }
         return Err(RetValueType::ErrorThreadKilled);
     }
     let Tracked(thread_perm) = thread_res.unwrap();
     Ok(Unmap4kLocked {
-        container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_perm), container_lock_perm: Tracked(container_perm), process_lock_perm: Tracked(process_perm),
+        container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_perm), container_lock_perm: Tracked(container_perm), process_lock_perm: Tracked(process_perm),
         thread_lock_perm: Tracked(thread_perm),
     })
 }
@@ -238,12 +238,12 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         ret is Err ==> ({
             let r = ret->Err_0;
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).value;
-            let thread_ptr = cpu.view().view().current_thread->Some_0;
-            let thread = old(krnl).thr_mp.spec_index(thread_ptr);
+            let thrd_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = old(krnl).thrd_mp.spec_index(thrd_ptr);
             &&& r is CpuIdle || r is ErrorThreadKilled
             &&& r is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(r is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
-            &&& !(r is CpuIdle) ==> old(krnl).thr_mp.dom().contains(thread_ptr) && old(krnl).prc_mp.dom().contains(thread.view().owning_proc)
+            &&& !(r is CpuIdle) ==> old(krnl).thrd_mp.dom().contains(thrd_ptr) && old(krnl).prc_mp.dom().contains(thread.view().owning_proc)
             &&& r is ErrorThreadKilled ==> thread.being_killed()
             &&& final(lctx).kernel_view_locking_state() is Release
             &&& final(lctx).no_locks_held()
@@ -256,7 +256,7 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             let old_cpu = old(krnl).cpu_arr.spec_index(cpu_id).view();
             let cpu_lock = final(krnl).cpu_arr.spec_index(cpu_id).view();
             let cpu = cpu_lock.view().view();
-            let thread = final(krnl).thr_mp.spec_index(e.thread_ptr).view();
+            let thread = final(krnl).thrd_mp.spec_index(e.thread_ptr).view();
             &&& *final(steps) == *old(steps)
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
@@ -284,20 +284,20 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& cpu == old_cpu.view().view() && cpu_lock.view().kernel_call_perm() is None
             &&& cpu_lock.being_killed() == old_cpu.being_killed() && cpu_lock.killer_info() == old_cpu.killer_info()
             &&& e.cpu_lock_perm.view().state() is WriteLock && e.cpu_lock_perm.view().thread_id() == final(lctx).thread_id()
-            &&& wlock_ensures(old(krnl).thr_mp.spec_index(e.thread_ptr), final(krnl).thr_mp.spec_index(e.thread_ptr), old(krnl).thr_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
+            &&& wlock_ensures(old(krnl).thrd_mp.spec_index(e.thread_ptr), final(krnl).thrd_mp.spec_index(e.thread_ptr), old(krnl).thrd_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
             &&& cpu.state is Running && !cpu_lock.being_killed()
             &&& cpu.current_process == Some(e.process_ptr) && cpu.current_thread == Some(e.thread_ptr)
             &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
             &&& final(krnl).prc_mp.dom().contains(e.process_ptr) && !final(krnl).prc_mp.spec_index(e.process_ptr).view().zombie
             &&& final(krnl).ctn_mp.dom().contains(thread.owning_container)
-            &&& final(krnl).thr_mp.dom().contains(e.thread_ptr) && !final(krnl).thr_mp.spec_index(e.thread_ptr).being_killed()
+            &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
-            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).view_ghost().exited
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
-            &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, e.thread_ptr)
+            &&& final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, e.thread_ptr)
         }),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
@@ -313,30 +313,30 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         &&& krnl.ctn_mp.dom().contains(cpu.owning_container())
         &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
         &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
-        &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().container_depth == cpu.view().container_depth
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
+        &&& krnl.thrd_mp.dom().contains(cpu.current_thread().unwrap())
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().container_depth == cpu.view().container_depth
+        &&& krnl.thrd_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
     }) by {
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
-        container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, cpu.current_thread.unwrap()); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap());
+        container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, cpu.current_thread.unwrap()); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap());
     };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_perm));
-    let process_ptr = cpu.current_process().unwrap();
-    let thread_ptr = cpu.current_thread().unwrap();
-    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let prc_ptr = cpu.current_process().unwrap();
+    let thrd_ptr = cpu.current_thread().unwrap();
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thrd_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thread_ptr), None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, None, None);
         }
         return Err(RetValueType::ErrorThreadKilled);
     }
     let Tracked(thread_perm) = thread_res.unwrap();
-    Ok(Unmap4kThreadLocked { process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_perm), thread_lock_perm: Tracked(thread_perm) })
+    Ok(Unmap4kThreadLocked { process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_perm), thread_lock_perm: Tracked(thread_perm) })
 }
 } // verus!

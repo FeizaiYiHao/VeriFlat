@@ -387,9 +387,9 @@ pub fn iommu_root_table_detach_all(
         iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
     };
     let iommu_table = iommu_table_map.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
-    let process_ptr = iommu_table.proc_ptr;
+    let prc_ptr = iommu_table.proc_ptr;
     let old_did = iommu_table.did;
-    irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(process_ptr, process_ptr);
+    irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(prc_ptr, prc_ptr);
     if let Some(did) = old_did {
         iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
         iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, None, Tracked(lctx), Tracked(iommu_table_lock_perm));
@@ -457,9 +457,9 @@ pub fn iommu_root_table_reassign_detach_all(
         iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
     };
     let iommu_table = iommu_table_map.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
-    let process_ptr = iommu_table.proc_ptr;
+    let prc_ptr = iommu_table.proc_ptr;
     let old_did = iommu_table.did;
-    irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(process_ptr, recipient);
+    irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(prc_ptr, recipient);
     if let Some(did) = old_did {
         iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
         iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, None, Tracked(lctx), Tracked(iommu_table_lock_perm));

@@ -9,8 +9,8 @@ verus! {
 /// the receiver may hold it, write-locks the peer's scheduler shard, and finishes the transit step with the owner-check result.
 pub(super) fn ipc_endpoint_copy_and_finish_transit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, receiver_thread_ptr: RwLockThreadPtr,
-    payload_endpoint_ptr: RwLockEndpointPtr, source_endpoint_index: EndpointIdx, target_endpoint_index: EndpointIdx,
+    prc_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr, receiver_thrd_ptr: RwLockThreadPtr,
+    payload_ep_ptr: RwLockEndpointPtr, source_ep_idx: EndpointIdx, target_ep_idx: EndpointIdx,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
 ) -> (ret: RetValueType)
     requires
@@ -22,55 +22,55 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
         cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
-        current_thread_ptr != peer_thread_ptr,
-        receiver_thread_ptr == current_thread_ptr || receiver_thread_ptr == peer_thread_ptr,
-        edp_idx_valid(source_endpoint_index),
-        edp_idx_valid(target_endpoint_index),
+        current_thrd_ptr != peer_thrd_ptr,
+        receiver_thrd_ptr == current_thrd_ptr || receiver_thrd_ptr == peer_thrd_ptr,
+        edp_idx_valid(source_ep_idx),
+        edp_idx_valid(target_ep_idx),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
-        old(krnl).thr_mp.dom().contains(current_thread_ptr),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcEndpoint {
-            peer: peer_thread_ptr, caller_sends: receiver_thread_ptr == peer_thread_ptr,
-            payload_index: if receiver_thread_ptr == peer_thread_ptr { source_endpoint_index } else { target_endpoint_index },
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
+        old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed() == false,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcEndpoint {
+            peer: peer_thrd_ptr, caller_sends: receiver_thrd_ptr == peer_thrd_ptr,
+            payload_index: if receiver_thrd_ptr == peer_thrd_ptr { source_ep_idx } else { target_ep_idx },
         }),
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-        current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).is_init(),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is IPC_TRANSIT,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state->IPC_TRANSIT_partner == current_thread_ptr,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver_thread_ptr == peer_thread_ptr { target_endpoint_index } else { source_endpoint_index } }),
+        current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thrd_mp.dom().contains(peer_thrd_ptr),
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).is_init(),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thrd_ptr, TypedLockMode::Write),
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).being_killed() == false,
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().state is IPC_TRANSIT,
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().state->IPC_TRANSIT_partner == current_thrd_ptr,
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+        old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver_thrd_ptr == peer_thrd_ptr { target_ep_idx } else { source_ep_idx } }),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-        peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(if receiver_thread_ptr == peer_thread_ptr { current_thread_ptr } else { peer_thread_ptr }).view().endpoint_descriptors.view()[source_endpoint_index as int] == Some(payload_endpoint_ptr),
-        old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.wf(),
-        old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.view()[target_endpoint_index as int] is None,
-        old(krnl).ep_mp.dom().contains(payload_endpoint_ptr),
+        peer_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thrd_mp.spec_index(if receiver_thrd_ptr == peer_thrd_ptr { current_thrd_ptr } else { peer_thrd_ptr }).view().endpoint_descriptors.view()[source_ep_idx as int] == Some(payload_ep_ptr),
+        old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view().endpoint_descriptors.wf(),
+        old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view().endpoint_descriptors.view()[target_ep_idx as int] is None,
+        old(krnl).ep_mp.dom().contains(payload_ep_ptr),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom().is_empty(),
-        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thrd_ptr, peer_thrd_ptr],
         old(lctx).endpoint_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
@@ -106,30 +106,30 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
 {
     proof {
-        assert(krnl.prc_mp.dom().contains(process_ptr)) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr);
-        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread_ptr);
-        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thread_ptr);
+        assert(krnl.prc_mp.dom().contains(prc_ptr)) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
+        container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, current_thrd_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thrd_mp, peer_thrd_ptr);
+        krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), current_thrd_ptr);
+        krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thrd_ptr);
     }
     let (result, Tracked(payload_endpoint_lock_perm)) = ipc_endpoint_lock_and_copy(
-        krnl, Tracked(&mut *lctx), cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, receiver_thread_ptr, payload_endpoint_ptr, source_endpoint_index,
-        target_endpoint_index, Tracked(&current_thread_lock_perm), Tracked(&peer_thread_lock_perm),
+        krnl, Tracked(&mut *lctx), cpu_id, prc_ptr, current_thrd_ptr, peer_thrd_ptr, receiver_thrd_ptr, payload_ep_ptr, source_ep_idx,
+        target_ep_idx, Tracked(&current_thread_lock_perm), Tracked(&peer_thread_lock_perm),
     );
-    proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
-    let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
-    let peer_container_ptr = peer_thread_ref.owning_container;
+    proof { thread_perms_wf_at(krnl.thrd_mp, peer_thrd_ptr); thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thrd_ptr); }
+    let peer_thread_ref = krnl.thrd_mp.borrow_typed(peer_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
+    let peer_ctn_ptr = peer_thread_ref.owning_container;
     let peer_last_cpu = peer_thread_ref.last_cpu;
-    let caller_container_ptr = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
-    let wake_cpu = if peer_container_ptr == caller_container_ptr { cpu_id } else { peer_last_cpu };
-    proof { container_perms_wf_at(krnl.ctn_mp, peer_container_ptr); }
-    let peer_scheduler_ptr = krnl.ctn_mp.borrow_rodata(peer_container_ptr).borrow().scheduler;
-    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container_ptr); }
-    let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx));
-    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, peer_scheduler_ptr, wake_cpu, peer_thread_ptr); }
+    let caller_ctn_ptr = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
+    let wake_cpu = if peer_ctn_ptr == caller_ctn_ptr { cpu_id } else { peer_last_cpu };
+    proof { container_perms_wf_at(krnl.ctn_mp, peer_ctn_ptr); }
+    let peer_sched_ptr = krnl.ctn_mp.borrow_rodata(peer_ctn_ptr).borrow().scheduler;
+    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_ctn_ptr); }
+    let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_sched_ptr, wake_cpu, Tracked(&mut *lctx));
+    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp, peer_sched_ptr, wake_cpu, peer_thrd_ptr); }
     ipc_finish_endpoint_transit(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, payload_endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, payload_ep_ptr, peer_thrd_ptr, peer_sched_ptr,
         wake_cpu, result, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(payload_endpoint_lock_perm),
-        Ghost(receiver_thread_ptr), Ghost(target_endpoint_index), Ghost(source_endpoint_index), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
+        Ghost(receiver_thrd_ptr), Ghost(target_ep_idx), Ghost(source_ep_idx), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
     )
 }
 }

@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The offline request: the request cell of `container_ptr` for `target` turns on; nothing else changes.
+/// The offline request: the request cell of `ctn_ptr` for `target` turns on; nothing else changes.
 #[verifier::opaque]
-pub(super) open spec fn cpu_offline_request_eof_transition_framing(pre: KernelK, post: KernelK, flags_ptr: RwLockCpuOfflineFlagsPtr, target: CpuId, container_ptr: RwLockContainerPtr) -> bool {
+pub(super) open spec fn cpu_offline_request_eof_transition_framing(pre: KernelK, post: KernelK, flags_ptr: RwLockCpuOfflineFlagsPtr, target: CpuId, ctn_ptr: RwLockContainerPtr) -> bool {
     let old_table = pre.cpu_offline_mp.spec_index(flags_ptr);
     let new_table = post.cpu_offline_mp.spec_index(flags_ptr);
     let old_cell = old_table.flags.spec_index(target).view();
@@ -29,15 +29,15 @@ pub(super) open spec fn cpu_offline_request_eof_transition_framing(pre: KernelK,
 
 /// Closes every kernel invariant after the offline request from the entry invariants, the summary, and the
 /// representation facts `set_flag` guarantees.
-pub(super) proof fn cpu_offline_request_eof(pre: KernelK, post: KernelK, flags_ptr: RwLockCpuOfflineFlagsPtr, target: CpuId, container_ptr: RwLockContainerPtr)
+pub(super) proof fn cpu_offline_request_eof(pre: KernelK, post: KernelK, flags_ptr: RwLockCpuOfflineFlagsPtr, target: CpuId, ctn_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
-        cpu_offline_request_eof_transition_framing(pre, post, flags_ptr, target, container_ptr),
+        cpu_offline_request_eof_transition_framing(pre, post, flags_ptr, target, ctn_ptr),
         index_valid(NUM_CPUS, target),
-        flags_ptr == cpu_offline_flags_ptr(container_ptr),
+        flags_ptr == cpu_offline_flags_ptr(ctn_ptr),
         pre.cpu_offline_mp.dom().contains(flags_ptr),
-        pre.cpu_offline_mp.spec_index(flags_ptr).owning_container.view() == container_ptr,
-        pre.cpu_arr.spec_index(target).view().view().view().owning_container == container_ptr,
+        pre.cpu_offline_mp.spec_index(flags_ptr).owning_container.view() == ctn_ptr,
+        pre.cpu_arr.spec_index(target).view().view().view().owning_container == ctn_ptr,
         !(pre.cpu_arr.spec_index(target).view().view().view().state is Off),
         post.cpu_offline_mp.perms_wf(),
         post.cpu_offline_mp.spec_index(flags_ptr).inv(),

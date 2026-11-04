@@ -9,13 +9,13 @@ pub(super) proof fn pci_attach_dma_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
         pci_bdf_valid(bus, device, function),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
-            let process_ptr = cpu.view().view().current_process->Some_0;
-            let process = krnl.prc_mp.spec_index(process_ptr);
+            let prc_ptr = cpu.view().view().current_process->Some_0;
+            let process = krnl.prc_mp.spec_index(prc_ptr);
             let owns = process.view_ghost().owned_pci_functions.view().contains((bus, device, function));
             let live = !process.being_killed() && owns;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_process is Some
-            &&& !(ret is CpuIdle) ==> krnl.prc_mp.dom().contains(process_ptr) && !process.view().zombie
+            &&& !(ret is CpuIdle) ==> krnl.prc_mp.dom().contains(prc_ptr) && !process.view().zombie
             &&& ret is ErrorProcessKilled ==> process.being_killed()
             &&& ret is ErrorPciOwnerMismatch ==> !process.being_killed() && !owns
             &&& ret is ErrorPciNoIommuTable ==> live && process.view().iommu_table is None
@@ -33,13 +33,13 @@ pub(super) proof fn pci_attach_dma_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
 }
 
 /// The attach wrapper's user-view facts are exactly the attach step on `pre`/`post`.
-pub(super) proof fn pci_attach_dma_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, bus: usize, device: usize, function: usize)
+pub(super) proof fn pci_attach_dma_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, bus: usize, device: usize, function: usize)
     requires
         kernel_u_pci_attach_changed(pre, post, cpu_id, bus, device, function),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
-        pre.cpu_array[cpu_id as int].current_process == Some(process_ptr),
-        pre.process_map[process_ptr].lock_state is Unlocked,
-        pre.process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked,
+        pre.cpu_array[cpu_id as int].current_process == Some(prc_ptr),
+        pre.process_map[prc_ptr].lock_state is Unlocked,
+        pre.process_map[prc_ptr].iommu_table->Some_0.lock_state is Unlocked,
     ensures
         pci_attach_dma_step_pre(pre, cpu_id, bus, device, function),
         pci_attach_dma_step(pre, post, cpu_id, bus, device, function),

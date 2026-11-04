@@ -14,16 +14,16 @@ pub open spec fn kill_retire_pages(k: KernelK, target: RwLockProcessPtr) -> Seq<
     }
 }
 
-/// Retiring the empty zombie `target` of the container `container_ptr`: the process leaves the process map and its
+/// Retiring the empty zombie `target` of the container `ctn_ptr`: the process leaves the process map and its
 /// container's processes; with a parent `parent`, it also leaves that parent's children and its ancestors' subtrees, and
 /// without one it is the container's root, so the container clears its zombie flag; its page table and IOMMU table, which
 /// only hold their root tables, leave their maps; every page in `kill_retire_pages(pre, target)` returns through its
-/// free-list node to shard `cpu_id` of the container's 4K allocator `allocator_ptr`, whose quota grows by the number of
+/// free-list node to shard `cpu_id` of the container's 4K allocator `allc_ptr`, whose quota grows by the number of
 /// those pages.
 #[verifier::opaque]
 pub(crate) open spec fn kill_retire_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 ) -> bool {
     let process = pre.prc_mp.spec_index(target);
     let pagetable = process.view().pagetable;
@@ -32,9 +32,9 @@ pub(crate) open spec fn kill_retire_eof_transition_framing(
     let node_addr = process.view().parent_linkedlist_node.addr();
     let pages = kill_retire_pages(pre, target);
     let n = pages.len();
-    let free_state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    let pre_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
-    let post_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
+    let free_state = PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    let pre_allocator = pre.allc_4k_mp.spec_index(allc_ptr);
+    let post_allocator = post.allc_4k_mp.spec_index(allc_ptr);
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
     &&& post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
@@ -59,17 +59,17 @@ pub(crate) open spec fn kill_retire_eof_transition_framing(
         &&& post.prc_mp.spec_index(parent_ptr).view().children.dom() == pre.prc_mp.spec_index(parent_ptr).view().children.dom().remove(node_addr)
     }
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
-    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != container_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c)
-    &&& post.ctn_mp.spec_index(container_ptr).view() == if parent is Some { pre.ctn_mp.spec_index(container_ptr).view() }
-        else { Container { zombie: false, ..pre.ctn_mp.spec_index(container_ptr).view() } }
-    &&& post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata()
-    &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
-        owned_processes: Ghost(pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..pre.ctn_mp.spec_index(container_ptr).view_ghost() })
-    &&& post.ctn_mp.spec_index(container_ptr).is_init() == pre.ctn_mp.spec_index(container_ptr).is_init()
-    &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
-    &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
-    &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()
-    &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr)
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != ctn_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c)
+    &&& post.ctn_mp.spec_index(ctn_ptr).view() == if parent is Some { pre.ctn_mp.spec_index(ctn_ptr).view() }
+        else { Container { zombie: false, ..pre.ctn_mp.spec_index(ctn_ptr).view() } }
+    &&& post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata()
+    &&& post.ctn_mp.spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
+        owned_processes: Ghost(pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(target)), ..pre.ctn_mp.spec_index(ctn_ptr).view_ghost() })
+    &&& post.ctn_mp.spec_index(ctn_ptr).is_init() == pre.ctn_mp.spec_index(ctn_ptr).is_init()
+    &&& post.ctn_mp.spec_index(ctn_ptr).locking_thread() == pre.ctn_mp.spec_index(ctn_ptr).locking_thread()
+    &&& post.ctn_mp.spec_index(ctn_ptr).being_killed() == pre.ctn_mp.spec_index(ctn_ptr).being_killed()
+    &&& post.ctn_mp.spec_index(ctn_ptr).killer_info() == pre.ctn_mp.spec_index(ctn_ptr).killer_info()
+    &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr)
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().remove(pagetable)
     &&& post.pt_lower.view() == pre.pt_lower.view().remove(pagetable)
     &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
@@ -92,7 +92,7 @@ pub(crate) open spec fn kill_retire_eof_transition_framing(
         &&& post_page.view() == (Page { state: free_state, free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
     }
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator_ptr)
+    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allc_ptr)
     &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + n
     &&& post_cache.view().view().len() == pre_cache.view().view().len() + n
     &&& forall|p: PagePtr| #![trigger post_cache.view().view().contains(p)]
@@ -128,17 +128,17 @@ pub open spec fn kill_retire_held_pages(k: KernelK, target: RwLockProcessPtr) ->
     }
 }
 
-/// The killer `thread_ptr` of process `process_ptr`, retiring the zombie `target`, holds its
+/// The killer `thrd_ptr` of process `prc_ptr`, retiring the zombie `target`, holds its
 /// `killer_held_context_except_tables` locks with the containers it holds and no cpu set, and besides write-holds the pages
 /// `kill_retire_held_pages(k, target)` with `page_perms`, the target's page table with `pt_perm`, and its IOMMU table, if
 /// any, with `it_perm`.
 pub open spec fn kill_retire_held_state(
-    k: KernelK, lctx: LocalContext, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr,
+    k: KernelK, lctx: LocalContext, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr,
     page_perms: Map<PageIndex, LockPerm>, pt_perm: LockPerm, it_perm: Option<LockPerm>,
 ) -> bool {
     let process = k.prc_mp.spec_index(target).view();
     let held = kill_retire_held_pages(k, target);
-    &&& killer_held_context_except_tables(k, lctx, process_ptr, thread_ptr, lctx.container_lock_map().dom())
+    &&& killer_held_context_except_tables(k, lctx, prc_ptr, thrd_ptr, lctx.container_lock_map().dom())
     &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& lctx.page_lock_map().dom() == held
     &&& page_perms.dom() == held

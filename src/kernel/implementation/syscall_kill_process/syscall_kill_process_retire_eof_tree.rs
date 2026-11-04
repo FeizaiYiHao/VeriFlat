@@ -7,12 +7,12 @@ verus! {
 /// Dropping the retired zombie leaf keeps its container's process tree well formed, every container's process set
 /// consistent with the process map, and the root container's root process.
 pub(crate) proof fn kill_retire_eof_tree(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),
@@ -21,23 +21,23 @@ pub(crate) proof fn kill_retire_eof_tree(
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.dom().contains(parent_ptr),
         parent_ptr != target,
         pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
-        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
     ensures
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
 {
     reveal(kill_retire_eof_transition_framing);
-    kill_retire_eof_per_container_process_tree_wf(pre, post, container_ptr, parent_ptr, target);
-    kill_retire_eof_container_process_wf(pre, post, container_ptr, parent_ptr, target);
-    let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
-    let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
+    kill_retire_eof_per_container_process_tree_wf(pre, post, ctn_ptr, parent_ptr, target);
+    kill_retire_eof_container_process_wf(pre, post, ctn_ptr, parent_ptr, target);
+    let root_process = pre.ctn_mp.spec_index(ctn_ptr).view().root_process;
+    let process_tree_dom = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
     assert(process_tree_dom.contains(target)) by { container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, target); };
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(root_process != target) by { reveal(process_root_wf); reveal(process_children_parent_wf); };
@@ -248,17 +248,17 @@ pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
     assert(process_children_depth_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_children_depth_wf); };
 }
 
-/// Container-level form of `kill_retire_eof_process_tree_wf`: `container_ptr`, the owner of the retired leaf
+/// Container-level form of `kill_retire_eof_process_tree_wf`: `ctn_ptr`, the owner of the retired leaf
 /// `target`, drops it from its ghost process set and every other container entry is unchanged.
 pub(crate) proof fn kill_retire_eof_per_container_process_tree_wf(
-    pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
+    pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires
         per_container_process_tree_wf(pre.ctn_mp, pre.prc_mp),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
         process_perms_wf(pre.prc_mp),
         pre.prc_mp.dom().contains(target),
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         post.prc_mp.dom() == pre.prc_mp.dom().remove(target),
@@ -276,15 +276,15 @@ pub(crate) proof fn kill_retire_eof_per_container_process_tree_wf(
             },
         post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target),
         post.prc_mp.spec_index(parent_ptr).view().children.map() == pre.prc_mp.spec_index(parent_ptr).view().children.map().remove(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
-        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
-        post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target),
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),
+        post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view(),
+        post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(target),
     ensures
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
 {
-    let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
-    let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-    assert(pre.ctn_mp.dom().contains(container_ptr) && process_tree_dom.contains(target)) by { reveal(container_process_wf); };
+    let root_process = pre.ctn_mp.spec_index(ctn_ptr).view().root_process;
+    let process_tree_dom = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
+    assert(pre.ctn_mp.dom().contains(ctn_ptr) && process_tree_dom.contains(target)) by { reveal(container_process_wf); };
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(process_tree_fields_wf(pre.prc_mp)) by { reveal(process_perms_wf); };
     kill_retire_eof_process_tree_wf(pre, post, root_process, process_tree_dom, parent_ptr, target);
@@ -307,16 +307,16 @@ proof fn kill_retire_eof_target_uppers_in_tree(pre: KernelK, root_process: RwLoc
     reveal(process_uppertree_seq_wf);
 }
 
-/// Dropping the retired leaf `target` from both the process map and its owning container `container_ptr` keeps the
+/// Dropping the retired leaf `target` from both the process map and its owning container `ctn_ptr` keeps the
 /// container-process ownership invariant; the container keeps the leaf's parent, so its process set stays non-empty.
 pub(crate) proof fn kill_retire_eof_container_process_wf(
-    pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
+    pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires
         per_container_process_tree_wf(pre.ctn_mp, pre.prc_mp),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
         pre.prc_mp.dom().contains(target),
-        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         post.prc_mp.dom() == pre.prc_mp.dom().remove(target),
         forall|p_ptr: RwLockProcessPtr|
@@ -325,18 +325,18 @@ pub(crate) proof fn kill_retire_eof_container_process_wf(
                 &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
                 &&& post.prc_mp.spec_index(p_ptr).view().zombie == pre.prc_mp.spec_index(p_ptr).view().zombie
             },
-        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
-        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
-        post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target),
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),
+        post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view(),
+        post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
+        post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(target),
     ensures
         container_process_wf(post.ctn_mp, post.prc_mp),
 {
-    let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
-    let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-    assert(pre.ctn_mp.dom().contains(container_ptr) && process_tree_dom.contains(target)) by { reveal(container_process_wf); };
+    let root_process = pre.ctn_mp.spec_index(ctn_ptr).view().root_process;
+    let process_tree_dom = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
+    assert(pre.ctn_mp.dom().contains(ctn_ptr) && process_tree_dom.contains(target)) by { reveal(container_process_wf); };
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(per_container_process_tree_wf); };
-    assert(process_tree_dom.contains(parent_ptr) && root_process != target && post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(parent_ptr)) by {
+    assert(process_tree_dom.contains(parent_ptr) && root_process != target && post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(parent_ptr)) by {
         reveal(process_root_wf); reveal(process_children_parent_wf);
     };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };

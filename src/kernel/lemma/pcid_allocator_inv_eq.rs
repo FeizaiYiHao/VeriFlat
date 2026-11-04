@@ -27,12 +27,12 @@ pub proof fn pcid_allocator_pages_wf_preserved_for_page_state_eq(pre: PageLocked
     requires
         pcid_allocator_pages_wf(pre, pre_pcid_allocator_map),
         post_pcid_allocator_map.dom() == pre_pcid_allocator_map.dom(),
-        forall|page_index: PageIndex|
-            #![trigger post.spec_index(page_index).view().view().state]
-            index_valid(NUM_PAGES, page_index) && {
-                ||| pre.spec_index(page_index).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }
-                ||| post.spec_index(page_index).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }
-            } ==> post.spec_index(page_index).view().view().state == pre.spec_index(page_index).view().view().state,
+        forall|pg_idx: PageIndex|
+            #![trigger post.spec_index(pg_idx).view().view().state]
+            index_valid(NUM_PAGES, pg_idx) && {
+                ||| pre.spec_index(pg_idx).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }
+                ||| post.spec_index(pg_idx).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }
+            } ==> post.spec_index(pg_idx).view().view().state == pre.spec_index(pg_idx).view().view().state,
     ensures
         pcid_allocator_pages_wf(post, post_pcid_allocator_map),
 { reveal(pcid_allocator_pages_wf); }

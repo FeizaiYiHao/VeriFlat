@@ -36,7 +36,7 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(self).ep_mp),
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
-                let owner = old(self).thr_mp.spec_index(t).view().owning_container;
+                let owner = old(self).thrd_mp.spec_index(t).view().owning_container;
                 &&& old(self).ctn_mp.dom().contains(owner)
                 &&& final(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq == old(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq
             },
@@ -46,24 +46,24 @@ impl KernelK {
                     && spec_v2l4index(va) == spec_v2l4index(window_va.va) && spec_v2l3index(va) == spec_v2l3index(window_va.va) && spec_v2l2index(va) == spec_v2l2index(window_va.va)
                     && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().dom().contains(va) && page_ptr_valid(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va).addr) ==> {
                     let entry = whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va);
-                    let page_index = page_ptr2page_index(entry.addr);
-                    &&& old(self).pg_arr.spec_index(page_index).view().view().owning_container == entry.owning_container.view()
+                    let pg_idx = page_ptr2page_index(entry.addr);
+                    &&& old(self).pg_arr.spec_index(pg_idx).view().view().owning_container == entry.owning_container.view()
                     &&& old(self).ctn_mp.dom().contains(entry.owning_container.view())
                     &&& final(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).pg_arr.spec_index(page_index).view().view().state == PageState::Mapped4k
-                    &&& final(self).pg_arr.spec_index(page_index).view().view().mappings().contains((pt, va))
+                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
+                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, va))
                 },
             forall|pt: RwLockPageTableRoot, va: VAddr|
                 #![trigger typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pt, TypedLockMode::Write), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va)]
                 typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pt, TypedLockMode::Write) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().dom().contains(va)
                     && page_ptr_valid(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va).addr) ==> {
                     let entry = whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va);
-                    let page_index = page_ptr2page_index(entry.addr);
-                    &&& old(self).pg_arr.spec_index(page_index).view().view().owning_container == entry.owning_container.view()
+                    let pg_idx = page_ptr2page_index(entry.addr);
+                    &&& old(self).pg_arr.spec_index(pg_idx).view().view().owning_container == entry.owning_container.view()
                     &&& old(self).ctn_mp.dom().contains(entry.owning_container.view())
                     &&& final(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).pg_arr.spec_index(page_index).view().view().state == PageState::Mapped4k
-                    &&& final(self).pg_arr.spec_index(page_index).view().view().mappings().contains((pt, va))
+                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
+                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, va))
                 },
     {
         use_type_invariant(&*steps);
@@ -71,7 +71,7 @@ impl KernelK {
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
-        old(self).thr_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); old(self).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id());
+        old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); old(self).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id());
         reveal(container_page_owner_wf); reveal(container_thread_wf); reveal(mapped_4k_page_pagetable_wf);
     }
 
@@ -153,24 +153,24 @@ impl KernelK {
     }
 
     #[verifier::spinoff_prover]
-    pub proof fn kernel_step_boundary_container_quota_4k_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, container_ptr: RwLockContainerPtr, delta: int, origin: RwLockContainerPtr)
+    pub proof fn kernel_step_boundary_container_quota_4k_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, ctn_ptr: RwLockContainerPtr, delta: int, origin: RwLockContainerPtr)
         requires
             old(self).inv(),
             delta > 0,
-            kernel_container_quota_4k_changed(&old(steps).snapshot_k(), old(self), container_ptr, delta),
+            kernel_container_quota_4k_changed(&old(steps).snapshot_k(), old(self), ctn_ptr, delta),
             old(steps).snapshot_k().ctn_mp.dom().contains(origin),
-            container_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(container_ptr),
+            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(ctn_ptr),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             kernel_u_container_quota_4k_increased(old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(self)), origin),
-            old(steps).snapshot_u().container_map.dom().contains(container_ptr),
-            kernel_k_to_kernel_u(*old(self)).container_map[container_ptr].quota_4k as int == old(steps).snapshot_u().container_map[container_ptr].quota_4k as int + delta,
+            old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
+            kernel_k_to_kernel_u(*old(self)).container_map[ctn_ptr].quota_4k as int == old(steps).snapshot_u().container_map[ctn_ptr].quota_4k as int + delta,
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-            kernel_k_to_kernel_u(*old(self)) == (KernelU { container_map: old(steps).snapshot_u().container_map.insert(container_ptr, ContainerU {
-                quota_4k: (old(steps).snapshot_u().container_map[container_ptr].quota_4k as int + delta) as usize,
-                ..old(steps).snapshot_u().container_map[container_ptr]
+            kernel_k_to_kernel_u(*old(self)) == (KernelU { container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU {
+                quota_4k: (old(steps).snapshot_u().container_map[ctn_ptr].quota_4k as int + delta) as usize,
+                ..old(steps).snapshot_u().container_map[ctn_ptr]
             }), ..old(steps).snapshot_u() }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
@@ -188,19 +188,19 @@ impl KernelK {
                 ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
     {
         use_type_invariant(&*steps);
-        assert(steps.snapshot_u().container_map.dom().contains(container_ptr)
-            && kernel_k_to_kernel_u(*self).container_map[container_ptr].quota_4k as int == steps.snapshot_u().container_map[container_ptr].quota_4k as int + delta
+        assert(steps.snapshot_u().container_map.dom().contains(ctn_ptr)
+            && kernel_k_to_kernel_u(*self).container_map[ctn_ptr].quota_4k as int == steps.snapshot_u().container_map[ctn_ptr].quota_4k as int + delta
             && kernel_k_to_kernel_u(*self) != steps.snapshot_u() && kernel_k_to_kernel_u(*self) == (KernelU {
-                container_map: steps.snapshot_u().container_map.insert(container_ptr, ContainerU {
-                    quota_4k: (steps.snapshot_u().container_map[container_ptr].quota_4k as int + delta) as usize, ..steps.snapshot_u().container_map[container_ptr]
+                container_map: steps.snapshot_u().container_map.insert(ctn_ptr, ContainerU {
+                    quota_4k: (steps.snapshot_u().container_map[ctn_ptr].quota_4k as int + delta) as usize, ..steps.snapshot_u().container_map[ctn_ptr]
                 }), ..steps.snapshot_u()
-            })) by { kernel_container_quota_4k_changed_implies_u_step(&steps.snapshot_k(), &*self, container_ptr, delta); };
+            })) by { kernel_container_quota_4k_changed_implies_u_step(&steps.snapshot_k(), &*self, ctn_ptr, delta); };
         assert(kernel_u_container_quota_4k_increased(steps.snapshot_u(), kernel_k_to_kernel_u(*self), origin)) by {
             reveal(kernel_u_container_quota_4k_increased);
             kernel_container_ancestry_projection_at(&steps.snapshot_k(), origin);
             let pre = steps.snapshot_u();
             let post = kernel_k_to_kernel_u(*self);
-            assert_sets_equal!(pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]), set![container_ptr]);
+            assert_sets_equal!(pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]), set![ctn_ptr]);
             assert_sets_equal!(post.container_map.dom(), pre.container_map.dom());
         };
         steps.end_kernel_step_raw(&*self, &*lctx);
@@ -209,11 +209,11 @@ impl KernelK {
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 
-    pub proof fn kernel_step_boundary_thread_quota_4k_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread_ptr: RwLockThreadPtr, delta: int)
+    pub proof fn kernel_step_boundary_thread_quota_4k_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thrd_ptr: RwLockThreadPtr, delta: int)
         requires
             old(self).inv(),
             delta != 0,
-            kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(self), thread_ptr, delta),
+            kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(self), thrd_ptr, delta),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -235,19 +235,19 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
     {
         use_type_invariant(&*steps);
-        kernel_thread_quota_4k_changed_implies_u_neq(&steps.snapshot_k(), &*self, thread_ptr, delta);
+        kernel_thread_quota_4k_changed_implies_u_neq(&steps.snapshot_k(), &*self, thrd_ptr, delta);
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 
-    pub proof fn kernel_step_boundary_thread_syscall_progress_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread_ptr: RwLockThreadPtr)
+    pub proof fn kernel_step_boundary_thread_syscall_progress_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thrd_ptr: RwLockThreadPtr)
         requires
             old(self).inv(),
-            old(steps).snapshot_k().thr_mp.dom().contains(thread_ptr),
-            old(self).thr_mp.dom().contains(thread_ptr),
-            old(steps).snapshot_k().thr_mp.spec_index(thread_ptr).view().syscall_progress.view() != old(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
+            old(steps).snapshot_k().thrd_mp.dom().contains(thrd_ptr),
+            old(self).thrd_mp.dom().contains(thrd_ptr),
+            old(steps).snapshot_k().thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() != old(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -269,7 +269,7 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
     {
         use_type_invariant(&*steps);
-        steps.end_kernel_step_thread_syscall_progress_changed(&*self, &*lctx, thread_ptr);
+        steps.end_kernel_step_thread_syscall_progress_changed(&*self, &*lctx, thrd_ptr);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
@@ -288,13 +288,13 @@ impl KernelK {
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            forall|thread_ptr: RwLockThreadPtr|
-                #![trigger old(lctx).thread_lock_map().dom().contains(thread_ptr)]
-                #![trigger final(self).thr_mp.dom().contains(thread_ptr)]
-                old(lctx).thread_lock_map().dom().contains(thread_ptr) ==> {
-                    &&& final(self).thr_mp.dom().contains(thread_ptr)
-                    &&& final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr)
-                    &&& final(self).thr_mp.spec_index(thread_ptr) == old(self).thr_mp.spec_index(thread_ptr)
+            forall|thrd_ptr: RwLockThreadPtr|
+                #![trigger old(lctx).thread_lock_map().dom().contains(thrd_ptr)]
+                #![trigger final(self).thrd_mp.dom().contains(thrd_ptr)]
+                old(lctx).thread_lock_map().dom().contains(thrd_ptr) ==> {
+                    &&& final(self).thrd_mp.dom().contains(thrd_ptr)
+                    &&& final(self).thrd_mp.lock_id_by_key(thrd_ptr) == old(self).thrd_mp.lock_id_by_key(thrd_ptr)
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr) == old(self).thrd_mp.spec_index(thrd_ptr)
                 },
             forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
                 ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
@@ -316,14 +316,14 @@ impl KernelK {
     }
 
     #[verifier::spinoff_prover]
-    pub proof fn kernel_step_boundary_thread_state_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread_ptr: RwLockThreadPtr, old_state: ThreadState, new_state: ThreadState)
+    pub proof fn kernel_step_boundary_thread_state_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thrd_ptr: RwLockThreadPtr, old_state: ThreadState, new_state: ThreadState)
         requires
             old(self).inv(),
-            kernel_thread_state_changed(&old(steps).snapshot_k(), old(self), thread_ptr),
-            old(steps).snapshot_k().thr_mp.spec_index(thread_ptr).view().state == old_state,
-            old(self).thr_mp.spec_index(thread_ptr).view().state == new_state,
+            kernel_thread_state_changed(&old(steps).snapshot_k(), old(self), thrd_ptr),
+            old(steps).snapshot_k().thrd_mp.spec_index(thrd_ptr).view().state == old_state,
+            old(self).thrd_mp.spec_index(thrd_ptr).view().state == new_state,
             old(lctx).kernel_view_locking_state() is Release,
-            old(lctx).thread_lock_map().dom().contains(thread_ptr),
+            old(lctx).thread_lock_map().dom().contains(thrd_ptr),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
@@ -341,24 +341,24 @@ impl KernelK {
             final(steps).snapshot_k() == *final(self),
     {
         use_type_invariant(&*steps);
-        assert(steps.snapshot_k().thr_mp.dom().contains(thread_ptr) && old(self).thr_mp.dom().contains(thread_ptr)) by { reveal(kernel_thread_state_changed); };
+        assert(steps.snapshot_k().thrd_mp.dom().contains(thrd_ptr) && old(self).thrd_mp.dom().contains(thrd_ptr)) by { reveal(kernel_thread_state_changed); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
     }
 
-    pub proof fn kernel_step_boundary_process_added(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr)
+    pub proof fn kernel_step_boundary_process_added(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, prc_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr)
         requires
             old(self).inv(),
-            kernel_process_added(&old(steps).snapshot_k(), old(self), process_ptr),
-            !old(self).prc_mp.spec_index(process_ptr).view().zombie,
-            old(self).thr_mp.dom().contains(current_thread_ptr),
+            kernel_process_added(&old(steps).snapshot_k(), old(self), prc_ptr),
+            !old(self).prc_mp.spec_index(prc_ptr).view().zombie,
+            old(self).thrd_mp.dom().contains(current_thrd_ptr),
             old(lctx).kernel_view_locking_state() is Release,
-            old(lctx).process_lock_map().dom().contains(process_ptr),
-            old(lctx).thread_lock_map().dom().contains(current_thread_ptr),
-            typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(self).prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Write),
+            old(lctx).process_lock_map().dom().contains(prc_ptr),
+            old(lctx).thread_lock_map().dom().contains(current_thrd_ptr),
+            typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(self).prc_mp.spec_index(prc_ptr).view().pagetable, TypedLockMode::Write),
             {
-                let iommu_table = old(self).prc_mp.spec_index(process_ptr).view().iommu_table;
+                let iommu_table = old(self).prc_mp.spec_index(prc_ptr).view().iommu_table;
                 ||| iommu_table is None
                 ||| iommu_table is Some && old(lctx).iommu_table_lock_map().dom().contains(iommu_table.unwrap())
             },
@@ -379,39 +379,39 @@ impl KernelK {
             final(steps).snapshot_k() == *final(self),
     {
         use_type_invariant(&*steps);
-        assert(old(self).prc_mp.dom().contains(process_ptr)) by { reveal(kernel_process_added); };
-        kernel_process_added_implies_u_neq(&steps.snapshot_k(), &*self, process_ptr);
+        assert(old(self).prc_mp.dom().contains(prc_ptr)) by { reveal(kernel_process_added); };
+        kernel_process_added_implies_u_neq(&steps.snapshot_k(), &*self, prc_ptr);
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
-        let pagetable = old(self).prc_mp.spec_index(process_ptr).view().pagetable;
+        let pagetable = old(self).prc_mp.spec_index(prc_ptr).view().pagetable;
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable);
-        let iommu_table = old(self).prc_mp.spec_index(process_ptr).view().iommu_table;
+        let iommu_table = old(self).prc_mp.spec_index(prc_ptr).view().iommu_table;
         if iommu_table is Some {
             assert(old(self).it_mp.dom().contains(iommu_table.unwrap())) by { reveal(process_iommu_table_match); };
         }
     }
 
     pub proof fn kernel_step_boundary_process_4k_mapping_changed(
-        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, process_ptr: RwLockProcessPtr,
-        pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_process_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
-        stable_thread_ptr: RwLockThreadPtr, stable_owner_thread_ptr: RwLockThreadPtr,
+        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, prc_ptr: RwLockProcessPtr,
+        pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_prc_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
+        stable_thrd_ptr: RwLockThreadPtr, stable_owner_thrd_ptr: RwLockThreadPtr,
     )
         requires
             old(self).inv(),
-            kernel_process_4k_mapping_changed(&old(steps).snapshot_k(), old(self), process_ptr, pagetable_ptr, va),
-            old(self).thr_mp.dom().contains(stable_thread_ptr),
+            kernel_process_4k_mapping_changed(&old(steps).snapshot_k(), old(self), prc_ptr, pagetable_ptr, va),
+            old(self).thrd_mp.dom().contains(stable_thrd_ptr),
             old(lctx).kernel_view_locking_state() is Release,
-            old(self).prc_mp.dom().contains(stable_process_ptr),
-            old(self).prc_mp.spec_index(stable_process_ptr).view().pagetable == stable_pagetable_ptr,
+            old(self).prc_mp.dom().contains(stable_prc_ptr),
+            old(self).prc_mp.spec_index(stable_prc_ptr).view().pagetable == stable_pagetable_ptr,
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), stable_pagetable_ptr, TypedLockMode::Write),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-            old(lctx).thread_lock_map().dom().contains(stable_thread_ptr),
-            old(lctx).thread_lock_map().dom().contains(stable_owner_thread_ptr),
-            old(self).thr_mp.dom().contains(stable_owner_thread_ptr),
-            old(self).thr_mp.spec_index(stable_owner_thread_ptr).view().owning_proc == stable_process_ptr,
-            !thread_is_dangling(old(self).thr_mp.spec_index(stable_owner_thread_ptr)),
+            old(lctx).thread_lock_map().dom().contains(stable_thrd_ptr),
+            old(lctx).thread_lock_map().dom().contains(stable_owner_thrd_ptr),
+            old(self).thrd_mp.dom().contains(stable_owner_thrd_ptr),
+            old(self).thrd_mp.spec_index(stable_owner_thrd_ptr).view().owning_proc == stable_prc_ptr,
+            !thread_is_dangling(old(self).thrd_mp.spec_index(stable_owner_thrd_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -432,13 +432,13 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
     {
         use_type_invariant(&*steps);
-        assert(old(self).prc_mp.dom().contains(process_ptr) && !old(self).prc_mp.spec_index(process_ptr).view().zombie && old(self).prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
-        kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, process_ptr, pagetable_ptr, va);
-        assert(!self.prc_mp.spec_index(stable_process_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thr_mp, stable_owner_thread_ptr); };
+        assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
+        kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, prc_ptr, pagetable_ptr, va);
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(!self.prc_mp.spec_index(stable_process_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thr_mp, stable_owner_thread_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), stable_pagetable_ptr);
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
@@ -447,29 +447,29 @@ impl KernelK {
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 
-    /// Records the section that changed `va` of `process_ptr`'s pagetable when the tables are held in either mode: the
+    /// Records the section that changed `va` of `prc_ptr`'s pagetable when the tables are held in either mode: the
     /// changed table is write-held or its window around `va` is held. Only the held windows of the stable table keep
     /// their 4K mappings, and the stable table keeps its lock state.
     pub proof fn kernel_step_boundary_process_4k_mapping_changed_windowed(
-        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, process_ptr: RwLockProcessPtr,
-        pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_process_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
-        stable_thread_ptr: RwLockThreadPtr, stable_owner_thread_ptr: RwLockThreadPtr,
+        tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, prc_ptr: RwLockProcessPtr,
+        pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_prc_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
+        stable_thrd_ptr: RwLockThreadPtr, stable_owner_thrd_ptr: RwLockThreadPtr,
     )
         requires
             old(self).inv(),
-            kernel_process_4k_mapping_changed(&old(steps).snapshot_k(), old(self), process_ptr, pagetable_ptr, va),
-            old(self).thr_mp.dom().contains(stable_thread_ptr),
+            kernel_process_4k_mapping_changed(&old(steps).snapshot_k(), old(self), prc_ptr, pagetable_ptr, va),
+            old(self).thrd_mp.dom().contains(stable_thrd_ptr),
             old(lctx).kernel_view_locking_state() is Release,
-            old(self).prc_mp.dom().contains(stable_process_ptr),
-            old(self).prc_mp.spec_index(stable_process_ptr).view().pagetable == stable_pagetable_ptr,
+            old(self).prc_mp.dom().contains(stable_prc_ptr),
+            old(self).prc_mp.spec_index(stable_prc_ptr).view().pagetable == stable_pagetable_ptr,
             old(lctx).pagetable_lock_map().dom().contains(stable_pagetable_ptr),
             old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) || old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(va))),
-            old(lctx).thread_lock_map().dom().contains(stable_thread_ptr),
-            old(lctx).thread_lock_map().dom().contains(stable_owner_thread_ptr),
-            old(self).thr_mp.dom().contains(stable_owner_thread_ptr),
-            old(self).thr_mp.spec_index(stable_owner_thread_ptr).view().owning_proc == stable_process_ptr,
-            !thread_is_dangling(old(self).thr_mp.spec_index(stable_owner_thread_ptr)),
+            old(lctx).thread_lock_map().dom().contains(stable_thrd_ptr),
+            old(lctx).thread_lock_map().dom().contains(stable_owner_thrd_ptr),
+            old(self).thrd_mp.dom().contains(stable_owner_thrd_ptr),
+            old(self).thrd_mp.spec_index(stable_owner_thrd_ptr).view().owning_proc == stable_prc_ptr,
+            !thread_is_dangling(old(self).thrd_mp.spec_index(stable_owner_thrd_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -488,18 +488,18 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
-            final(steps).view().last().new_u.process_map.dom().contains(stable_process_ptr) && final(steps).view().last().new_u.process_map.spec_index(stable_process_ptr).pagetable is Some,
-            kernel_k_to_kernel_u(*final(self)).process_map.dom().contains(stable_process_ptr) && kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_process_ptr).pagetable is Some,
-            final(steps).view().last().new_u.process_map.spec_index(stable_process_ptr).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_process_ptr).pagetable->Some_0.lock_state,
+            final(steps).view().last().new_u.process_map.dom().contains(stable_prc_ptr) && final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable is Some,
+            kernel_k_to_kernel_u(*final(self)).process_map.dom().contains(stable_prc_ptr) && kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable is Some,
+            final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state,
     {
         use_type_invariant(&*steps);
-        assert(old(self).prc_mp.dom().contains(process_ptr) && !old(self).prc_mp.spec_index(process_ptr).view().zombie && old(self).prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
-        kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, process_ptr, pagetable_ptr, va);
-        assert(!self.prc_mp.spec_index(stable_process_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thr_mp, stable_owner_thread_ptr); };
+        assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };
+        kernel_process_4k_mapping_changed_implies_u_neq(&steps.snapshot_k(), &*self, prc_ptr, pagetable_ptr, va);
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(!self.prc_mp.spec_index(stable_process_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thr_mp, stable_owner_thread_ptr); };
+        assert(!self.prc_mp.spec_index(stable_prc_ptr).view().zombie) by { process_thread_wf_at(self.prc_mp, self.thrd_mp, stable_owner_thrd_ptr); };
         if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) {
             old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
             pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
@@ -510,8 +510,8 @@ impl KernelK {
             old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), stable_pagetable_ptr);
         }
         reveal(process_pagetable_match); reveal(process_iommu_table_match);
-        kernel_process_projection_at(old(self), stable_process_ptr); kernel_process_projection_at(&*self, stable_process_ptr);
-        kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_eq(old(self), &*self, old(lctx), stable_process_ptr, stable_pagetable_ptr);
+        kernel_process_projection_at(old(self), stable_prc_ptr); kernel_process_projection_at(&*self, stable_prc_ptr);
+        kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_eq(old(self), &*self, old(lctx), stable_prc_ptr, stable_pagetable_ptr);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 }

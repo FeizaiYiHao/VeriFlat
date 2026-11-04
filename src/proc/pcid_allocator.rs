@@ -54,8 +54,8 @@ impl PcidAllocator {
             }
     }
 
-    pub open spec fn process_is_unallocated(&self, process_ptr: RwLockProcessPtr) -> bool {
-        forall|id: usize| #![trigger self.id_to_proc.view().spec_index(id as int).contains(process_ptr)] usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
+    pub open spec fn process_is_unallocated(&self, prc_ptr: RwLockProcessPtr) -> bool {
+        forall|id: usize| #![trigger self.id_to_proc.view().spec_index(id as int).contains(prc_ptr)] usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(prc_ptr) == false
     }
 
     pub open spec fn pcid_is_free(&self, id: Pcid) -> bool {
@@ -92,49 +92,49 @@ impl PcidAllocator {
         None
     }
 
-    pub open spec fn alloc_ensures(&self, old: &Self, process_ptr: RwLockProcessPtr, id: usize) -> bool {
+    pub open spec fn alloc_ensures(&self, old: &Self, prc_ptr: RwLockProcessPtr, id: usize) -> bool {
         &&& self.owning_container.view() == old.owning_container.view()
         &&& self.container_depth.view() == old.container_depth.view()
         &&& self.ref_counters.view() =~= old.ref_counters.view().update(id as int, (old.ref_counters.spec_index(id) + 1) as usize)
-        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).insert(process_ptr))
+        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).insert(prc_ptr))
     }
 
-    pub fn alloc(&mut self, id: usize, process_ptr: RwLockProcessPtr)
+    pub fn alloc(&mut self, id: usize, prc_ptr: RwLockProcessPtr)
         requires
             old(self).wf(),
             usize_in_range::<PCID_MAX>(id),
             id != KERNEL_DEFAULT_PCID,
-            old(self).process_is_unallocated(process_ptr),
+            old(self).process_is_unallocated(prc_ptr),
             old(self).ref_counters.spec_index(id) == 0,
         ensures
             final(self).wf(),
-            final(self).alloc_ensures(old(self), process_ptr, id),
+            final(self).alloc_ensures(old(self), prc_ptr, id),
     {
         let old_counter = *self.ref_counters.get(id);
         self.ref_counters.set(id, old_counter + 1);
-        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(process_ptr)));
+        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(prc_ptr)));
     }
 
-    pub open spec fn release_ensures(&self, old: &Self, process_ptr: RwLockProcessPtr, id: usize) -> bool {
+    pub open spec fn release_ensures(&self, old: &Self, prc_ptr: RwLockProcessPtr, id: usize) -> bool {
         &&& self.owning_container.view() == old.owning_container.view()
         &&& self.container_depth.view() == old.container_depth.view()
         &&& self.ref_counters.view() =~= old.ref_counters.view().update(id as int, 0)
-        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).remove(process_ptr))
+        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).remove(prc_ptr))
     }
 
-    /// Releases `id` from `process_ptr`; `wf` bounds every counter by one, so the id becomes free.
-    pub fn release(&mut self, id: usize, process_ptr: RwLockProcessPtr)
+    /// Releases `id` from `prc_ptr`; `wf` bounds every counter by one, so the id becomes free.
+    pub fn release(&mut self, id: usize, prc_ptr: RwLockProcessPtr)
         requires
             old(self).wf(),
             usize_in_range::<PCID_MAX>(id),
             id != KERNEL_DEFAULT_PCID,
-            old(self).id_to_proc.view().spec_index(id as int).contains(process_ptr),
+            old(self).id_to_proc.view().spec_index(id as int).contains(prc_ptr),
         ensures
             final(self).wf(),
-            final(self).release_ensures(old(self), process_ptr, id),
+            final(self).release_ensures(old(self), prc_ptr, id),
     {
         self.ref_counters.set(id, 0);
-        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).remove(process_ptr)));
+        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).remove(prc_ptr)));
     }
 }
 

@@ -84,14 +84,14 @@ pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_cont
 pub type BootRevMaps = (Map<PageMapPtr, L4Index>, Map<PageMapPtr, (L4Index, L3Index)>, Map<PageMapPtr, (L4Index, L3Index, L2Index)>);
 
 pub open spec fn boot_dom0_pagetable_model(
-    raw_cr3: PageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize, kernel_entries: Seq<PageEntry>,
+    raw_cr3: PageTableRoot, prc_ptr: RwLockProcessPtr, kernel_l4_end: usize, kernel_entries: Seq<PageEntry>,
     manifest_4k: Map<VAddr, MapEntry>, l4_tables: Map<PageMapPtr, PointsTo<PageMap>>, l3_tables: Map<PageMapPtr, PointsTo<PageMap>>,
     l2_tables: Map<PageMapPtr, PointsTo<PageMap>>, l1_tables: Map<PageMapPtr, PointsTo<PageMap>>, rev_maps: BootRevMaps,
 ) -> PageTable<PT_TYPE> {
     PageTable {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.2), l1_tables: Tracked(l1_tables),
-        mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries: Ghost(kernel_entries), proc_ptr: process_ptr,
+        mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries: Ghost(kernel_entries), proc_ptr: prc_ptr,
     }
 }
 
@@ -100,20 +100,20 @@ pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootK
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|page_index: PageIndex|
-        #![trigger page_array.spec_index(page_index).view().view().state]
-        index_valid(NUM_PAGES, page_index) && page_array.spec_index(page_index).view().view().state is Free4k ==> {
-            let page = page_array.spec_index(page_index).view().view();
+    &&& forall|pg_idx: PageIndex|
+        #![trigger page_array.spec_index(pg_idx).view().view().state]
+        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free4k ==> {
+            let page = page_array.spec_index(pg_idx).view().view();
             &&& page.state == PageState::Free4k { allocator_ptr: Ghost(layout.allocator_4k), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(page_index))
+            &&& pool.view().contains(page_index2page_ptr(pg_idx))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(page_index)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
         }
-    &&& forall|page_ptr: PagePtr|
-        #![trigger pool.view().contains(page_ptr)]
-        pool.view().contains(page_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(page_ptr)).view().view();
-            &&& page_ptr_valid(page_ptr)
+    &&& forall|pg_ptr: PagePtr|
+        #![trigger pool.view().contains(pg_ptr)]
+        pool.view().contains(pg_ptr) ==> {
+            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            &&& page_ptr_valid(pg_ptr)
             &&& page.state == PageState::Free4k { allocator_ptr: Ghost(layout.allocator_4k), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
         }
@@ -124,20 +124,20 @@ pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootK
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|page_index: PageIndex|
-        #![trigger page_array.spec_index(page_index).view().view().state]
-        index_valid(NUM_PAGES, page_index) && page_array.spec_index(page_index).view().view().state is Free2m ==> {
-            let page = page_array.spec_index(page_index).view().view();
+    &&& forall|pg_idx: PageIndex|
+        #![trigger page_array.spec_index(pg_idx).view().view().state]
+        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free2m ==> {
+            let page = page_array.spec_index(pg_idx).view().view();
             &&& page.state == PageState::Free2m { allocator_ptr: Ghost(layout.allocator_2m), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(page_index))
+            &&& pool.view().contains(page_index2page_ptr(pg_idx))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(page_index)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
         }
-    &&& forall|page_ptr: PagePtr|
-        #![trigger pool.view().contains(page_ptr)]
-        pool.view().contains(page_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(page_ptr)).view().view();
-            &&& page_ptr_2m_valid(page_ptr)
+    &&& forall|pg_ptr: PagePtr|
+        #![trigger pool.view().contains(pg_ptr)]
+        pool.view().contains(pg_ptr) ==> {
+            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            &&& page_ptr_2m_valid(pg_ptr)
             &&& page.state == PageState::Free2m { allocator_ptr: Ghost(layout.allocator_2m), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
         }
@@ -148,20 +148,20 @@ pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootK
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
     &&& pool.minor.view() == Some(layout.root_container)
-    &&& forall|page_index: PageIndex|
-        #![trigger page_array.spec_index(page_index).view().view().state]
-        index_valid(NUM_PAGES, page_index) && page_array.spec_index(page_index).view().view().state is Free1g ==> {
-            let page = page_array.spec_index(page_index).view().view();
+    &&& forall|pg_idx: PageIndex|
+        #![trigger page_array.spec_index(pg_idx).view().view().state]
+        index_valid(NUM_PAGES, pg_idx) && page_array.spec_index(pg_idx).view().view().state is Free1g ==> {
+            let page = page_array.spec_index(pg_idx).view().view();
             &&& page.state == PageState::Free1g { allocator_ptr: Ghost(layout.allocator_1g), state: FreePageAllocatorState::GlobalList }
-            &&& pool.view().contains(page_index2page_ptr(page_index))
+            &&& pool.view().contains(page_index2page_ptr(pg_idx))
             &&& pool.map().dom().contains(page.free_list_node_storage.addr())
-            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(page_index)
+            &&& pool.map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(pg_idx)
         }
-    &&& forall|page_ptr: PagePtr|
-        #![trigger pool.view().contains(page_ptr)]
-        pool.view().contains(page_ptr) ==> {
-            let page = page_array.spec_index(page_ptr2page_index(page_ptr)).view().view();
-            &&& page_ptr_1g_valid(page_ptr)
+    &&& forall|pg_ptr: PagePtr|
+        #![trigger pool.view().contains(pg_ptr)]
+        pool.view().contains(pg_ptr) ==> {
+            let page = page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            &&& page_ptr_1g_valid(pg_ptr)
             &&& page.state == PageState::Free1g { allocator_ptr: Ghost(layout.allocator_1g), state: FreePageAllocatorState::GlobalList }
             &&& page.owning_container == layout.root_container
         }
@@ -181,29 +181,29 @@ pub open spec fn boot_page_array_ready(
     &&& boot_free_1g_pool_wf(page_array, layout, free_1g_pool)
     &&& cpu_page_closure.contains(layout.cpu_cr3)
     &&& !cpu_page_closure.contains(layout.cpu_pagetable)
-    &&& forall|page_index: PageIndex|
-        #![trigger page_array.spec_index(page_index).view().view().state]
-        #![trigger page_array.spec_index(page_index).view().view().owning_container]
-        index_valid(NUM_PAGES, page_index) ==> {
-            let page_ptr = page_index2page_ptr(page_index);
-            let page = page_array.spec_index(page_index).view().view();
-            &&& !page_array.spec_index(page_index).view().locked()
+    &&& forall|pg_idx: PageIndex|
+        #![trigger page_array.spec_index(pg_idx).view().view().state]
+        #![trigger page_array.spec_index(pg_idx).view().view().owning_container]
+        index_valid(NUM_PAGES, pg_idx) ==> {
+            let pg_ptr = page_index2page_ptr(pg_idx);
+            let page = page_array.spec_index(pg_idx).view().view();
+            &&& !page_array.spec_index(pg_idx).view().locked()
             &&& page.owning_container == layout.root_container
-            &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) <==> page_ptr == layout.root_container
-            &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) <==> page_ptr == layout.pcid_allocator
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator }) <==> page_ptr == layout.allocator_4k
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator }) <==> page_ptr == layout.allocator_2m
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) <==> page_ptr == layout.allocator_1g
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsScheduler }) <==> page_ptr == layout.scheduler
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsCpuSet }) <==> page_ptr == layout.cpu_set
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess }) <==> page_ptr == layout.root_process
-            &&& (page.state == PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }) <==> page_ptr == layout.cpu_pagetable
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsThread }) <==> page_ptr == layout.root_thread
-            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }) <==> page_ptr == layout.root_endpoint
-            &&& (page.state == PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } }) <==> page_ptr == layout.iommu_table
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE) <==> cpu_page_closure.contains(page_ptr)
+            &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) <==> pg_ptr == layout.root_container
+            &&& (page.state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) <==> pg_ptr == layout.pcid_allocator
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator }) <==> pg_ptr == layout.allocator_4k
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator }) <==> pg_ptr == layout.allocator_2m
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) <==> pg_ptr == layout.allocator_1g
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsScheduler }) <==> pg_ptr == layout.scheduler
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsCpuSet }) <==> pg_ptr == layout.cpu_set
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess }) <==> pg_ptr == layout.root_process
+            &&& (page.state == PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }) <==> pg_ptr == layout.cpu_pagetable
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsThread }) <==> pg_ptr == layout.root_thread
+            &&& (page.state matches PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }) <==> pg_ptr == layout.root_endpoint
+            &&& (page.state == PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } }) <==> pg_ptr == layout.iommu_table
+            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE) <==> cpu_page_closure.contains(pg_ptr)
             &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == PT_TYPE) ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.cpu_pagetable
-            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE) <==> page_ptr == layout.iommu_l4
+            &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE) <==> pg_ptr == layout.iommu_l4
             &&& (page.state is Allocated4k && page.state->Allocated4k_state is PageTable && page.state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE) ==> page.state->Allocated4k_state->PageTable_pagetable_root == layout.iommu_table
             &&& !(page.state is Owned4k)
             &&& !(page.state is Owned2m)
@@ -216,7 +216,7 @@ pub open spec fn boot_page_array_ready(
                     &&& page.state is Mapped4k
                     &&& pagetable_ptr == layout.cpu_pagetable
                     &&& manifest_4k.dom().contains(va)
-                    &&& manifest_4k.spec_index(va).addr == page_ptr
+                    &&& manifest_4k.spec_index(va).addr == pg_ptr
                 }
             &&& page.iommu_mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty()
         }
@@ -247,14 +247,14 @@ pub open spec fn boot_page_array_ready(
 /// that links an L2 page is present.
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
-    raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize,
+    raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, prc_ptr: RwLockProcessPtr, kernel_l4_end: usize,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, root_container: RwLockContainerPtr, rev_maps: Ghost<BootRevMaps>,
     Tracked(l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
 ) -> (ret: (PageTableHigher<PT_TYPE>, Tracked<PageTableLower<PT_TYPE>>))
     requires
         page_ptr_valid(pagetable_ptr),
-        page_ptr_valid(process_ptr),
+        page_ptr_valid(prc_ptr),
         page_ptr_valid(raw_cr3),
         pei_valid(kernel_l4_end),
         kernel_entries.view().len() == kernel_l4_end,
@@ -270,7 +270,7 @@ pub fn adopt_boot_dom0_pagetable(
         l3_tables.dom().disjoint(l1_tables.dom()),
         l2_tables.dom().disjoint(l1_tables.dom()),
         boot_dom0_manifest_wf(manifest_4k.view(), root_container),
-        boot_dom0_pagetable_model(raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
+        boot_dom0_pagetable_model(raw_cr3, prc_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).wf(),
         forall|p: PageMapPtr, i: L2Index| #![trigger ret.1.view().l2_owner(p, i)] ret.1.view().l2_owner(p, i) is None,
@@ -284,7 +284,7 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
         ret.0.did is None,
-        ret.0.proc_ptr == process_ptr,
+        ret.0.proc_ptr == prc_ptr,
         ret.0.kernel_l4_end == kernel_l4_end,
         ret.0.kernel_entries == kernel_entries,
         ret.0.l4_table.view() == l4_tables,
@@ -298,7 +298,7 @@ pub fn adopt_boot_dom0_pagetable(
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr, table_stale_cpus: Ghost(Set::empty()),
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
     };
     (higher, Tracked::assume_new())
 }
@@ -342,27 +342,27 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(krnl: &KernelK, layo
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().allocator_ptr_4k == layout.allocator_4k,
         process_effective_quota_4k(krnl.prc_mp.spec_index(layout.root_process)) == 0,
-        thread_effective_quota_4k(krnl.thr_mp.spec_index(layout.root_thread)) == 0,
-        krnl.thr_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_4k.view() == 0,
+        thread_effective_quota_4k(krnl.thrd_mp.spec_index(layout.root_thread)) == 0,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_4k.view() == 0,
         krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().view() == krnl.allc_4k_mp.spec_index(layout.allocator_4k).total_free_pages.view(),
     ensures
-        container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp),
+        container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_4k_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
     let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
     let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
-    let process_value_4k = |process_ptr: RwLockProcessPtr| process_effective_quota_4k(krnl.prc_mp.spec_index(process_ptr));
-    let thread_value_4k = |thread_ptr: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_value_4k = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() as int;
-    let indirect_pending_value_4k = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(0) as int;
-    let process_fold_4k = |sum: int, process_ptr: RwLockProcessPtr| sum + process_value_4k(process_ptr);
-    let direct_process_fold_4k = |sum: int, process_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(krnl.prc_mp.spec_index(process_ptr));
-    let thread_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_value_4k(thread_ptr);
-    let direct_thread_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + direct_pending_value_4k(thread_ptr);
-    let direct_direct_pending_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view();
-    let indirect_pending_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + indirect_pending_value_4k(thread_ptr);
-    let direct_indirect_pending_fold_4k = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(0);
+    let process_value_4k = |prc_ptr: RwLockProcessPtr| process_effective_quota_4k(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_value_4k = |thrd_ptr: RwLockThreadPtr| thread_effective_quota_4k(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_value_4k = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() as int;
+    let indirect_pending_value_4k = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(0) as int;
+    let process_fold_4k = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_value_4k(prc_ptr);
+    let direct_process_fold_4k = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_value_4k(thrd_ptr);
+    let direct_thread_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + direct_pending_value_4k(thrd_ptr);
+    let direct_direct_pending_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view();
+    let indirect_pending_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + indirect_pending_value_4k(thrd_ptr);
+    let direct_indirect_pending_fold_4k = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(0);
     assert({
         &&& process_fold_4k =~= direct_process_fold_4k
         &&& thread_fold_4k =~= direct_thread_fold_4k
@@ -390,27 +390,27 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(krnl: &KernelK, layo
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().allocator_ptr_2m == layout.allocator_2m,
         process_effective_quota_2m(krnl.prc_mp.spec_index(layout.root_process)) == 0,
-        thread_effective_quota_2m(krnl.thr_mp.spec_index(layout.root_thread)) == 0,
-        krnl.thr_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_2m.view() == 0,
+        thread_effective_quota_2m(krnl.thrd_mp.spec_index(layout.root_thread)) == 0,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_2m.view() == 0,
         krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().view() == krnl.allc_2m_mp.spec_index(layout.allocator_2m).total_free_pages.view(),
     ensures
-        container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp),
+        container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_2m_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
     let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
     let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
-    let process_value_2m = |process_ptr: RwLockProcessPtr| process_effective_quota_2m(krnl.prc_mp.spec_index(process_ptr));
-    let thread_value_2m = |thread_ptr: RwLockThreadPtr| thread_effective_quota_2m(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_value_2m = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_2m.view() as int;
-    let indirect_pending_value_2m = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view().spec_index(0) as int;
-    let process_fold_2m = |sum: int, process_ptr: RwLockProcessPtr| sum + process_value_2m(process_ptr);
-    let direct_process_fold_2m = |sum: int, process_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(krnl.prc_mp.spec_index(process_ptr));
-    let thread_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_value_2m(thread_ptr);
-    let direct_thread_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + direct_pending_value_2m(thread_ptr);
-    let direct_direct_pending_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_2m.view();
-    let indirect_pending_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + indirect_pending_value_2m(thread_ptr);
-    let direct_indirect_pending_fold_2m = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view().spec_index(0);
+    let process_value_2m = |prc_ptr: RwLockProcessPtr| process_effective_quota_2m(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_value_2m = |thrd_ptr: RwLockThreadPtr| thread_effective_quota_2m(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_value_2m = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view() as int;
+    let indirect_pending_value_2m = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(0) as int;
+    let process_fold_2m = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_value_2m(prc_ptr);
+    let direct_process_fold_2m = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_value_2m(thrd_ptr);
+    let direct_thread_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + direct_pending_value_2m(thrd_ptr);
+    let direct_direct_pending_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view();
+    let indirect_pending_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + indirect_pending_value_2m(thrd_ptr);
+    let direct_indirect_pending_fold_2m = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(0);
     assert({
         &&& process_fold_2m =~= direct_process_fold_2m
         &&& thread_fold_2m =~= direct_thread_fold_2m
@@ -438,27 +438,27 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layo
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().allocator_ptr_1g == layout.allocator_1g,
         process_effective_quota_1g(krnl.prc_mp.spec_index(layout.root_process)) == 0,
-        thread_effective_quota_1g(krnl.thr_mp.spec_index(layout.root_thread)) == 0,
-        krnl.thr_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_1g.view() == 0,
+        thread_effective_quota_1g(krnl.thrd_mp.spec_index(layout.root_thread)) == 0,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().direct_free_quota_pending_1g.view() == 0,
         krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().view() == krnl.allc_1g_mp.spec_index(layout.allocator_1g).total_free_pages.view(),
     ensures
-        container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_1g_mp),
+        container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thrd_mp, krnl.allc_1g_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
     let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
     let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
-    let process_value_1g = |process_ptr: RwLockProcessPtr| process_effective_quota_1g(krnl.prc_mp.spec_index(process_ptr));
-    let thread_value_1g = |thread_ptr: RwLockThreadPtr| thread_effective_quota_1g(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_value_1g = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_1g.view() as int;
-    let indirect_pending_value_1g = |thread_ptr: RwLockThreadPtr| krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_1g.view().spec_index(0) as int;
-    let process_fold_1g = |sum: int, process_ptr: RwLockProcessPtr| sum + process_value_1g(process_ptr);
-    let direct_process_fold_1g = |sum: int, process_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(krnl.prc_mp.spec_index(process_ptr));
-    let thread_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_value_1g(thread_ptr);
-    let direct_thread_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thr_mp.spec_index(thread_ptr));
-    let direct_pending_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + direct_pending_value_1g(thread_ptr);
-    let direct_direct_pending_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_1g.view();
-    let indirect_pending_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + indirect_pending_value_1g(thread_ptr);
-    let direct_indirect_pending_fold_1g = |sum: int, thread_ptr: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_1g.view().spec_index(0);
+    let process_value_1g = |prc_ptr: RwLockProcessPtr| process_effective_quota_1g(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_value_1g = |thrd_ptr: RwLockThreadPtr| thread_effective_quota_1g(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_value_1g = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() as int;
+    let indirect_pending_value_1g = |thrd_ptr: RwLockThreadPtr| krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(0) as int;
+    let process_fold_1g = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_value_1g(prc_ptr);
+    let direct_process_fold_1g = |sum: int, prc_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(krnl.prc_mp.spec_index(prc_ptr));
+    let thread_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_value_1g(thrd_ptr);
+    let direct_thread_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thrd_mp.spec_index(thrd_ptr));
+    let direct_pending_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + direct_pending_value_1g(thrd_ptr);
+    let direct_direct_pending_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view();
+    let indirect_pending_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + indirect_pending_value_1g(thrd_ptr);
+    let direct_indirect_pending_fold_1g = |sum: int, thrd_ptr: RwLockThreadPtr| sum + krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(0);
     assert({
         &&& process_fold_1g =~= direct_process_fold_1g
         &&& thread_fold_1g =~= direct_thread_fold_1g
@@ -487,7 +487,7 @@ proof fn prove_boot_container_page_owner_wf(
         boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
         krnl.ctn_mp.dom() =~= set![layout.root_container],
         krnl.ctn_mp.spec_index(layout.root_container).view().owned_pages.view() =~= all_valid_pages,
-        forall|page_ptr: PagePtr| #![trigger all_valid_pages.contains(page_ptr)] all_valid_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger all_valid_pages.contains(pg_ptr)] all_valid_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
     ensures
         container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr),
 { reveal(container_page_owner_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); }
@@ -507,7 +507,7 @@ proof fn prove_boot_page_object_owner_wf(
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
         krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_endpoints.view() =~= set![layout.root_endpoint],
     ensures
-        page_object_owner_wf(krnl.pg_arr, krnl.ctn_mp, krnl.thr_mp),
+        page_object_owner_wf(krnl.pg_arr, krnl.ctn_mp, krnl.thrd_mp),
 { reveal(page_object_owner_wf); reveal(boot_page_array_ready); }
 
 /// Every boot page and the root process belong to the root container.
@@ -549,10 +549,10 @@ proof fn prove_boot_iommu_table_pages_wf(
 proof fn prove_boot_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKernelLayout, scheduler_node_addr: usize)
     requires
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view().scheduler == layout.scheduler,
-        krnl.thr_mp.dom() =~= set![layout.root_thread],
-        krnl.thr_mp.spec_index(layout.root_thread).view().state == (ThreadState::SCHEDULED { cpu_id: 0 }),
-        krnl.thr_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container,
-        krnl.thr_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr,
+        krnl.thrd_mp.dom() =~= set![layout.root_thread],
+        krnl.thrd_mp.spec_index(layout.root_thread).view().state == (ThreadState::SCHEDULED { cpu_id: 0 }),
+        krnl.thrd_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr,
         krnl.sched_mp.dom() =~= set![layout.scheduler],
         krnl.sched_mp.spec_index(layout.scheduler).owning_container == layout.root_container,
         forall|cpu_id: CpuId| #![trigger krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
@@ -562,7 +562,7 @@ proof fn prove_boot_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKe
             } else { Map::<usize, RwLockThreadPtr>::empty() }
         },
     ensures
-        container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp),
+        container_thread_scheduler_wf(krnl.ctn_mp, krnl.thrd_mp, krnl.sched_mp),
 {
     reveal(container_thread_scheduler_wf);
     let root_queue = krnl.sched_mp.spec_index(layout.scheduler).shard(0).queue;
@@ -579,17 +579,17 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
         krnl.prc_mp.spec_index(layout.root_process).view_rodata().view().container_depth == 0,
         krnl.prc_mp.spec_index(layout.root_process).view_rodata().view().depth == 0,
         krnl.prc_mp.spec_index(layout.root_process).view().pagetable == layout.cpu_pagetable,
-        krnl.thr_mp.dom() =~= set![layout.root_thread],
-        krnl.thr_mp.spec_index(layout.root_thread).view().owning_proc == layout.root_process,
-        krnl.thr_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container,
-        krnl.thr_mp.spec_index(layout.root_thread).view().container_depth == 0,
-        krnl.thr_mp.spec_index(layout.root_thread).view().process_depth == 0,
-        krnl.thr_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable,
-        krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr,
-        !krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init(),
-        !krnl.thr_mp.spec_index(layout.root_thread).being_killed(),
+        krnl.thrd_mp.dom() =~= set![layout.root_thread],
+        krnl.thrd_mp.spec_index(layout.root_thread).view().owning_proc == layout.root_process,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().container_depth == 0,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().process_depth == 0,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable,
+        krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr,
+        !krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init(),
+        !krnl.thrd_mp.spec_index(layout.root_thread).being_killed(),
     ensures
-        process_thread_wf(krnl.prc_mp, krnl.thr_mp),
+        process_thread_wf(krnl.prc_mp, krnl.thrd_mp),
 { reveal(process_thread_wf); krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.view().lemma_index_contains(0); }
 
 /// Operation summary of `finish_init_from_boot`: every field of the kernel object it assembles.
@@ -764,43 +764,43 @@ pub open spec fn boot_kernel_state(
         iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
     })
     &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
-    &&& krnl.thr_mp.perms_wf()
-    &&& krnl.thr_mp.dom() =~= set![layout.root_thread]
-    &&& krnl.thr_mp.spec_index(layout.root_thread).is_init()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).inv()
-    &&& !krnl.thr_mp.spec_index(layout.root_thread).being_killed()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).locking_thread() is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().state == (ThreadState::SCHEDULED { cpu_id: 0 })
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().last_cpu == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().container_depth == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().owning_proc == layout.root_process
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().process_depth == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(0) == Some(layout.root_endpoint)
-    &&& forall|endpoint_index: EndpointIdx| #![trigger krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(endpoint_index)]
-        edp_idx_valid(endpoint_index) && endpoint_index != 0 ==> krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(endpoint_index) is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().ipc_payload is Empty
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().error_code is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().caller is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().callee is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().trap_frame.is_some()
-    &&& *krnl.thr_mp.spec_index(layout.root_thread).view().trap_frame.get_some_0() == initial_regs
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().blocking_endpoint_ptr is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
-    &&& !krnl.thr_mp.spec_index(layout.root_thread).view_ghost().exited
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_4k == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_2m == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_1g == 0
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_linkedlist_node.is_init()
-    &&& !krnl.thr_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.is_init()
-    &&& !krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init()
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr
+    &&& krnl.thrd_mp.perms_wf()
+    &&& krnl.thrd_mp.dom() =~= set![layout.root_thread]
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).is_init()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).inv()
+    &&& !krnl.thrd_mp.spec_index(layout.root_thread).being_killed()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).locking_thread() is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().state == (ThreadState::SCHEDULED { cpu_id: 0 })
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().last_cpu == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().container_depth == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().owning_proc == layout.root_process
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().process_depth == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(0) == Some(layout.root_endpoint)
+    &&& forall|ep_idx: EndpointIdx| #![trigger krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx)]
+        edp_idx_valid(ep_idx) && ep_idx != 0 ==> krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(ep_idx) is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().ipc_payload is Empty
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().error_code is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().caller is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().callee is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.is_some()
+    &&& *krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.get_some_0() == initial_regs
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().blocking_endpoint_ptr is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
+    &&& !krnl.thrd_mp.spec_index(layout.root_thread).view_ghost().exited
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().quota_4k == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().quota_2m == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().quota_1g == 0
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_linkedlist_node.is_init()
+    &&& !krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.is_init()
+    &&& !krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init()
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr
     &&& krnl.ep_mp.perms_wf()
     &&& krnl.ep_mp.dom() =~= set![layout.root_endpoint]
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).is_init()
@@ -922,7 +922,7 @@ pub fn finish_init_from_boot(
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
         owned_pci_functions.view().len() == VTD_DOMAIN_COUNT,
-        forall|page_ptr: PagePtr| #![trigger owned_pages.view().contains(page_ptr)] owned_pages.view().contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|pg_ptr: PagePtr| #![trigger owned_pages.view().contains(pg_ptr)] owned_pages.view().contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.view().contains(bdf)] owned_pci_functions.view().contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         container_page_perm.is_init(),
         container_page_perm.addr() == layout.root_container,
@@ -957,7 +957,7 @@ pub fn finish_init_from_boot(
         ret.view().value().rt_ctn == layout.root_container,
         ret.view().value().ctn_mp.dom() =~= set![layout.root_container],
         ret.view().value().prc_mp.dom() =~= set![layout.root_process],
-        ret.view().value().thr_mp.dom() =~= set![layout.root_thread],
+        ret.view().value().thrd_mp.dom() =~= set![layout.root_thread],
         ret.view().value().ep_mp.dom() =~= set![layout.root_endpoint],
         ret.view().value().pt_mp.dom() =~= set![layout.cpu_pagetable],
         ret.view().value().it_mp.dom() =~= set![layout.iommu_table],
@@ -972,8 +972,8 @@ pub fn finish_init_from_boot(
     let (iommu_l4, Tracked(iommu_l4_perm)) = page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     let iommu_table = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
     let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint);
-    let mut thr_mp = ThreadLockedMap::new_empty();
-    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thr_mp, layout.root_thread, thread, initial_regs, Tracked(thread_page_perm));
+    let mut thrd_mp = ThreadLockedMap::new_empty();
+    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_page_perm));
     let process = Process::new_boot_root(layout.root_process, layout.cpu_pagetable, layout.iommu_table, layout.root_thread, process_node_addr, process_node_perm);
     let scheduler = Scheduler::new_boot_root(layout.root_container, layout.root_thread, scheduler_node_addr, scheduler_node_perm);
     let endpoint = Endpoint::new_root(layout.root_endpoint, layout.root_container, layout.root_thread);
@@ -1052,7 +1052,7 @@ pub fn finish_init_from_boot(
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
         pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
-        prc_mp, thr_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
+        prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
     };
     proof {
         boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,

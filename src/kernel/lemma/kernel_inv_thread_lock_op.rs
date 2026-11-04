@@ -63,11 +63,11 @@ pub proof fn thread_lock_op_preserves_invariant_fields(pre: ThreadLockedMap, pos
 pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
-        container_thread_wf(pre.ctn_mp, pre.thr_mp),
-        thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
-            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locking_thread() is Write && !pre.thr_mp.spec_index(t).view().temp_alloc_clean()
-                ==> post.thr_mp.spec_index(t).locking_thread() is Write && post.thr_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(t).locking_thread()->Write_thread_id,
+        container_thread_wf(pre.ctn_mp, pre.thrd_mp),
+        thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
+            pre.thrd_mp.dom().contains(t) && pre.thrd_mp.spec_index(t).locking_thread() is Write && !pre.thrd_mp.spec_index(t).view().temp_alloc_clean()
+                ==> post.thrd_mp.spec_index(t).locking_thread() is Write && post.thrd_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thrd_mp.spec_index(t).locking_thread()->Write_thread_id,
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
@@ -84,12 +84,12 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
     ensures
         post.memory_management_inv(),
 {
-    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp); };
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };
+    assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by {
         reveal(page_object_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
         broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
     };
@@ -98,13 +98,13 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
 pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
-        thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
-        process_thread_wf(post.prc_mp, post.thr_mp),
-        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
-        thread_dangling_chain_end_wf(post.thr_mp),
-        forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).killer_info()]
-            pre.thr_mp.dom().contains(t_ptr) && pre.thr_mp.spec_index(t_ptr).being_killed()
-                ==> post.thr_mp.spec_index(t_ptr).killer_info() == pre.thr_mp.spec_index(t_ptr).killer_info() && post.thr_mp.spec_index(t_ptr).locking_thread() == pre.thr_mp.spec_index(t_ptr).locking_thread(),
+        thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        process_thread_wf(post.prc_mp, post.thrd_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
+        thread_dangling_chain_end_wf(post.thrd_mp),
+        forall|t_ptr: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t_ptr).killer_info()]
+            pre.thrd_mp.dom().contains(t_ptr) && pre.thrd_mp.spec_index(t_ptr).being_killed()
+                ==> post.thrd_mp.spec_index(t_ptr).killer_info() == pre.thrd_mp.spec_index(t_ptr).killer_info() && post.thrd_mp.spec_index(t_ptr).locking_thread() == pre.thrd_mp.spec_index(t_ptr).locking_thread(),
         post.cpu_arr == pre.cpu_arr,
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,
@@ -117,14 +117,14 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     ensures
         post.process_management_inv(),
 {
-    thread_invariant_fields_unchanged_implies_process_management_fields(pre.thr_mp, post.thr_mp);
-    assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
-    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
-    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
-    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
-    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
-    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
+    thread_invariant_fields_unchanged_implies_process_management_fields(pre.thrd_mp, post.thrd_mp);
+    assert(thread_caller_callee_wf(post.thrd_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp); };
+    assert(thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+    assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.sched_mp); };
+    assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
+    assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.cpu_arr); };
 }
 
 pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>)

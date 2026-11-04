@@ -29,13 +29,13 @@ pub(super) struct NewProcessEntryLocked {
 #[verifier::spinoff_prover]
 fn new_process_lock_entry(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr,
-    range: usize, endpoint_index: Option<EndpointIdx>, with_iommu: bool, initial_regs: &Registers,
+    range: usize, ep_idx: Option<EndpointIdx>, with_iommu: bool, initial_regs: &Registers,
 ) -> (ret: Result<NewProcessEntryLocked, RetValueType>)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
-        with_iommu ==> endpoint_index is Some,
+        ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0),
+        with_iommu ==> ep_idx is Some,
         old(krnl).inv(),
         old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -50,41 +50,41 @@ fn new_process_lock_entry(
         ret is Err ==> ({
             let r = ret->Err_0;
             &&& new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
-                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, r)
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, r)
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
             &&& !(r is SuccessPairUsize || r is SuccessThreeUsize)
-            &&& !(new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success)
-            &&& r == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu)
+            &&& !(new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu) is Success)
+            &&& r == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu)
         }),
         ret is Ok ==> ({
             let x = ret->Ok_0;
             &&& *final(steps) == *old(steps)
             &&& x.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
-            &&& new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success
-            &&& new_process_enter_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, x.source_range, endpoint_index, with_iommu)
+            &&& new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu) is Success
+            &&& new_process_enter_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, x.source_range, ep_idx, with_iommu)
             &&& with_iommu ==> x.endpoint is Some
-            &&& (x.endpoint is Some) == (endpoint_index is Some)
-            &&& endpoint_index is Some ==> x.endpoint_slot == endpoint_index->Some_0
+            &&& (x.endpoint is Some) == (ep_idx is Some)
+            &&& ep_idx is Some ==> x.endpoint_slot == ep_idx->Some_0
             &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(x.current_thread_ptr)
             &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == x.container_ptr
-            &&& endpoint_index is Some ==> old(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.wf()
-            &&& endpoint_index is Some ==> x.endpoint == old(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index->Some_0)
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp,
+            &&& ep_idx is Some ==> old(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.wf()
+            &&& ep_idx is Some ==> x.endpoint == old(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.spec_index(ep_idx->Some_0)
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp,
                 ep_mp: final(krnl).ep_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, x.parent_ptr)
-            &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, x.current_thread_ptr)
+            &&& final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, x.current_thread_ptr)
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, x.source_pagetable_ptr)
             &&& final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(x.source_pagetable_ptr, final(krnl).pt_lower.view().spec_index(x.source_pagetable_ptr))
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr).lower.pagetable_window_locks
                 == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), x.source_pagetable_ptr).lower.pagetable_window_locks, x.source_range)
             &&& old(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None
             &&& old(krnl).prc_mp.spec_index(x.parent_ptr).locking_thread() is None
-            &&& old(krnl).thr_mp.spec_index(x.current_thread_ptr).locking_thread() is None
+            &&& old(krnl).thrd_mp.spec_index(x.current_thread_ptr).locking_thread() is None
             &&& x.endpoint is Some ==> old(krnl).ep_mp.spec_index(x.endpoint->Some_0).locking_thread() is None
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(x.current_thread_ptr)
@@ -126,21 +126,21 @@ fn new_process_lock_entry(
             &&& x.parent_lock_perm.view().state() is WriteLock
             &&& x.parent_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& x.parent_lock_perm.view().lock_id() == final(krnl).prc_mp.spec_index(x.parent_ptr).locking_thread()->Write_lock_id
-            &&& final(krnl).thr_mp.dom().contains(x.current_thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().owning_proc == x.parent_ptr
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().owning_container == x.container_ptr
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().proc_pagetable_ptr == x.source_pagetable_ptr
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().quota_4k >= (if with_iommu { 6int } else { 4int }) + 3 * x.source_range.len
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().temp_alloc_clean()
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thr_mp.spec_index(x.current_thread_ptr).view_ghost().exited
-            &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().free_quota_pending_clean()
+            &&& final(krnl).thrd_mp.dom().contains(x.current_thread_ptr)
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().owning_proc == x.parent_ptr
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().owning_container == x.container_ptr
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().proc_pagetable_ptr == x.source_pagetable_ptr
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().quota_4k >= (if with_iommu { 6int } else { 4int }) + 3 * x.source_range.len
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().temp_alloc_clean()
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().syscall_progress.view() is None
+            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view_ghost().exited
+            &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().free_quota_pending_clean()
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), x.current_thread_ptr, TypedLockMode::Write)
-            &&& !final(krnl).thr_mp.spec_index(x.current_thread_ptr).being_killed()
+            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).being_killed()
             &&& x.current_thread_lock_perm.view().state() is WriteLock
             &&& x.current_thread_lock_perm.view().thread_id() == final(lctx).thread_id()
-            &&& x.current_thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(x.current_thread_ptr).locking_thread()->Write_lock_id
+            &&& x.current_thread_lock_perm.view().lock_id() == final(krnl).thrd_mp.spec_index(x.current_thread_ptr).locking_thread()->Write_lock_id
             &&& final(krnl).pt_mp.dom().contains(x.source_pagetable_ptr)
             &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view() == old(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr).wf()
@@ -161,20 +161,20 @@ fn new_process_lock_entry(
             &&& final(lctx).thread_lock_map().dom() =~= set![x.current_thread_ptr]
             &&& x.endpoint is None ==> final(lctx).endpoint_lock_map().dom().is_empty()
             &&& x.endpoint is Some ==> {
-                let endpoint_ptr = x.endpoint->Some_0;
+                let ep_ptr = x.endpoint->Some_0;
                 &&& edp_idx_valid(x.endpoint_slot)
-                &&& final(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr]
-                &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.wf()
-                &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.spec_index(x.endpoint_slot) == x.endpoint
-                &&& final(krnl).ep_mp.dom().contains(endpoint_ptr)
-                &&& final(krnl).ep_mp.spec_index(endpoint_ptr).is_init()
-                &&& typed_lock_map_contains_mode(final(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write)
-                &&& !final(krnl).ep_mp.spec_index(endpoint_ptr).being_killed()
-                &&& final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((x.current_thread_ptr, x.endpoint_slot))
+                &&& final(lctx).endpoint_lock_map().dom() =~= set![ep_ptr]
+                &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.wf()
+                &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.spec_index(x.endpoint_slot) == x.endpoint
+                &&& final(krnl).ep_mp.dom().contains(ep_ptr)
+                &&& final(krnl).ep_mp.spec_index(ep_ptr).is_init()
+                &&& typed_lock_map_contains_mode(final(lctx).endpoint_lock_map(), ep_ptr, TypedLockMode::Write)
+                &&& !final(krnl).ep_mp.spec_index(ep_ptr).being_killed()
+                &&& final(krnl).ep_mp.spec_index(ep_ptr).view().owning_threads.view().contains((x.current_thread_ptr, x.endpoint_slot))
                 &&& x.endpoint_lock_perm.view() is Some
                 &&& x.endpoint_lock_perm.view()->Some_0.state() is WriteLock
                 &&& x.endpoint_lock_perm.view()->Some_0.thread_id() == final(lctx).thread_id()
-                &&& x.endpoint_lock_perm.view()->Some_0.lock_id() == final(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id
+                &&& x.endpoint_lock_perm.view()->Some_0.lock_id() == final(krnl).ep_mp.spec_index(ep_ptr).locking_thread()->Write_lock_id
             }
             &&& final(lctx).scheduler_lock_map().dom().is_empty()
             &&& final(lctx).pcid_allocator_lock_map().dom() =~= set![x.pcid_allocator_ptr]
@@ -213,12 +213,12 @@ fn new_process_lock_entry(
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == ret->Ok_0.source_pagetable_ptr && ret->Ok_0.source_window_perms.view().dom().contains(w)),
 {
     hide(Seq::contains);
-    let owner = match new_process_lock_cpu_owner(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, Ghost(*initial_regs)) {
+    let owner = match new_process_lock_cpu_owner(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, ep_idx, with_iommu, Ghost(*initial_regs)) {
         Ok(owner) => owner,
         Err(ret) => return Err(ret),
     };
     let NewProcessOwnerLocked {
-        container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_range, cpu_lock_perm, parent_lock_perm,
+        container_ptr: ctn_ptr, parent_ptr, current_thread_ptr: current_thrd_ptr, scheduler_ptr: sched_ptr, allocator_ptr: allc_ptr, pcid_allocator_ptr: pcid_allc_ptr, source_range, cpu_lock_perm, parent_lock_perm,
         current_thread_lock_perm, pcid_allocator_lock_perm,
     } = owner;
     let Tracked(cpu_lock_perm) = cpu_lock_perm;
@@ -226,36 +226,36 @@ fn new_process_lock_entry(
     let Tracked(current_thread_lock_perm) = current_thread_lock_perm;
     let Tracked(pcid_allocator_lock_perm) = pcid_allocator_lock_perm;
     let base_quota: usize = if with_iommu { 6usize } else { 4usize };
-    let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
+    let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allc_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
     let free_pcid = pcid_allocator.find_lowest_free_nonzero();
-    let thread_ref = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    let endpoint_option = match endpoint_index { Some(index) => *thread_ref.endpoint_descriptors.get(index), None => None };
+    let thread_ref = krnl.thrd_mp.borrow_typed(current_thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
+    let endpoint_option = match ep_idx { Some(index) => *thread_ref.endpoint_descriptors.get(index), None => None };
     let source_pagetable_ptr = thread_ref.proc_pagetable_ptr;
-    let endpoint_missing = endpoint_index.is_some() && endpoint_option.is_none();
+    let endpoint_missing = ep_idx.is_some() && endpoint_option.is_none();
     if free_pcid.is_none() || endpoint_missing || thread_ref.quota_4k < base_quota + 3 * range {
         let error = if free_pcid.is_none() { RetValueType::ErrorNoPcid } else if endpoint_missing { RetValueType::Error } else { RetValueType::ErrorNoQuota };
         new_process_unlock_and_stutter(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, None, None, Tracked(cpu_lock_perm), Tracked(parent_lock_perm),
-            Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(None), Tracked(None), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(endpoint_index),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thrd_ptr, pcid_allc_ptr, None, None, Tracked(cpu_lock_perm), Tracked(parent_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(None), Tracked(None), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(ep_idx),
             Ghost(with_iommu), Ghost(error),
         );
-        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, error, if free_pcid is Some { free_pcid->Some_0 } else { 0 }); }
+        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, ep_idx, with_iommu, error, if free_pcid is Some { free_pcid->Some_0 } else { 0 }); }
         return Err(error);
     }
     let pcid = free_pcid.unwrap();
-    let endpoint_ptr = match endpoint_option { Some(ptr) => ptr, None => 0 };
+    let ep_ptr = match endpoint_option { Some(ptr) => ptr, None => 0 };
     proof {
-        if endpoint_index is Some {
-            assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index->Some_0))) by {
-                thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index->Some_0);
+        if ep_idx is Some {
+            assert(krnl.ep_mp.dom().contains(ep_ptr) && krnl.ep_mp.spec_index(ep_ptr).view().owning_threads.view().contains((current_thrd_ptr, ep_idx->Some_0))) by {
+                thread_endpoint_ref_counter_wf_thread_at(krnl.thrd_mp, krnl.ep_mp, current_thrd_ptr, ep_idx->Some_0);
             };
         }
         assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
+            process_thread_wf_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
         };
     }
     let (endpoint_lock_perm_opt, source_pagetable_lock_perm) = new_process_lock_endpoint_and_source(
-        krnl, Tracked(&mut *lctx), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, endpoint_option, source_pagetable_ptr,
+        krnl, Tracked(&mut *lctx), cpu_id, parent_ptr, current_thrd_ptr, pcid_allc_ptr, endpoint_option, source_pagetable_ptr,
     );
     let Tracked(endpoint_lock_perm_opt) = endpoint_lock_perm_opt;
     let Tracked(source_pagetable_lock_perm) = source_pagetable_lock_perm;
@@ -266,11 +266,11 @@ fn new_process_lock_entry(
     if !source_ready {
         proof { assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(source_pagetable_ptr, krnl.pt_lower.view().spec_index(source_pagetable_ptr))); }
         new_process_unlock_and_stutter(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, endpoint_option, Some(source_pagetable_ptr),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thrd_ptr, pcid_allc_ptr, endpoint_option, Some(source_pagetable_ptr),
             Tracked(cpu_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(endpoint_lock_perm_opt),
-            Tracked(Some(source_pagetable_lock_perm)), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(endpoint_index), Ghost(with_iommu), Ghost(RetValueType::Error),
+            Tracked(Some(source_pagetable_lock_perm)), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(ep_idx), Ghost(with_iommu), Ghost(RetValueType::Error),
         );
-        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::Error, pcid); }
+        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, ep_idx, with_iommu, RetValueType::Error, pcid); }
         return Err(RetValueType::Error);
     }
     proof {
@@ -278,28 +278,28 @@ fn new_process_lock_entry(
         assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
-    proof { new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::Success, pcid); }
-    let (endpoint, endpoint_slot) = match endpoint_index { Some(index) => (Some(endpoint_ptr), index), None => (None, 0) };
+    proof { new_process_result_from_k(old(krnl), cpu_id, va, range, ep_idx, with_iommu, RetValueType::Success, pcid); }
+    let (endpoint, endpoint_slot) = match ep_idx { Some(index) => (Some(ep_ptr), index), None => (None, 0) };
     proof {
-        new_process_enter_step_pre_from_k(old(krnl), cpu_id, parent_ptr, current_thread_ptr, container_ptr, source_pagetable_ptr, endpoint, pcid_allocator_ptr, pcid, source_range,
-            endpoint_index, with_iommu);
+        new_process_enter_step_pre_from_k(old(krnl), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, source_pagetable_ptr, endpoint, pcid_allc_ptr, pcid, source_range,
+            ep_idx, with_iommu);
     }
     Ok(NewProcessEntryLocked {
-        container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid,
+        container_ptr: ctn_ptr, parent_ptr, current_thread_ptr: current_thrd_ptr, scheduler_ptr: sched_ptr, allocator_ptr: allc_ptr, pcid_allocator_ptr: pcid_allc_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid,
         source_range, cpu_lock_perm: Tracked(cpu_lock_perm), pcid_allocator_lock_perm: Tracked(pcid_allocator_lock_perm), parent_lock_perm: Tracked(parent_lock_perm),
         current_thread_lock_perm: Tracked(current_thread_lock_perm), source_pagetable_lock_perm: Tracked(source_pagetable_lock_perm),
         endpoint_lock_perm: Tracked(endpoint_lock_perm_opt), source_window_perms: Tracked(source_window_perms),
     })
 }
 
-/// Shared body of the new-process syscalls: `endpoint_index` seeds the child thread, `with_iommu` adds an empty IOMMU table.
+/// Shared body of the new-process syscalls: `ep_idx` seeds the child thread, `with_iommu` adds an empty IOMMU table.
 pub(super) fn syscall_new_process_shared_body(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: Option<EndpointIdx>, with_iommu: bool, initial_regs: &Registers) -> (ret: RetValueType)
+    cpu_id: CpuId, va: VAddr, range: usize, ep_idx: Option<EndpointIdx>, with_iommu: bool, initial_regs: &Registers) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
-        with_iommu ==> endpoint_index is Some,
+        ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0),
+        with_iommu ==> ep_idx is Some,
         old(krnl).inv(),
         old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -311,7 +311,7 @@ pub(super) fn syscall_new_process_shared_body(krnl: &mut KernelK, Tracked(lctx):
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
-            kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, ret),
+            kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
@@ -320,55 +320,55 @@ pub(super) fn syscall_new_process_shared_body(krnl: &mut KernelK, Tracked(lctx):
         ret is SuccessPairUsize ==> !with_iommu,
         ret is SuccessThreeUsize ==> with_iommu,
         ret is SuccessPairUsize || ret is SuccessThreeUsize ==> {
-            let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-            let container_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+            let current_thrd_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            let ctn_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
             let child_ptr = if with_iommu { ret->SuccessThreeUsize_value1 } else { ret->SuccessPairUsize_value1 };
-            let thread_ptr = if with_iommu { ret->SuccessThreeUsize_value3 } else { ret->SuccessPairUsize_value2 };
-            let descriptors = old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors;
-            let endpoint = if endpoint_index is Some { descriptors.spec_index(endpoint_index->Some_0) } else { None };
+            let thrd_ptr = if with_iommu { ret->SuccessThreeUsize_value3 } else { ret->SuccessPairUsize_value2 };
+            let descriptors = old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors;
+            let endpoint = if ep_idx is Some { descriptors.spec_index(ep_idx->Some_0) } else { None };
             let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             &&& range > 0
             &&& source_range.wf()
-            &&& endpoint_index is Some ==> descriptors.wf() && endpoint is Some
+            &&& ep_idx is Some ==> descriptors.wf() && endpoint is Some
             &&& with_iommu ==> final(krnl).prc_mp.dom().contains(child_ptr) && final(krnl).prc_mp.spec_index(child_ptr).view().iommu_table == Some(ret->SuccessThreeUsize_value2)
             &&& with_iommu ==> final(krnl).it_mp.dom().contains(ret->SuccessThreeUsize_value2) && final(krnl).it_mp.spec_index(ret->SuccessThreeUsize_value2).view().is_empty()
-            &&& final(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
-            &&& endpoint_index is Some ==> final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
-            &&& endpoint_index is Some ==> final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == endpoint
+            &&& final(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().state is SCHEDULED
+            &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == child_ptr
+            &&& ep_idx is Some ==> final(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.wf()
+            &&& ep_idx is Some ==> final(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(0) == endpoint
         },
-        (ret is SuccessPairUsize || ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success),
-        !(ret is SuccessPairUsize || ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu),
+        (ret is SuccessPairUsize || ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu) is Success),
+        !(ret is SuccessPairUsize || ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu),
 {
-    let entry = match new_process_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, initial_regs) {
+    let entry = match new_process_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, ep_idx, with_iommu, initial_regs) {
         Ok(entry) => entry,
         Err(ret) => return ret,
     };
     let NewProcessEntryLocked {
-        container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid,
+        container_ptr: ctn_ptr, parent_ptr, current_thread_ptr: current_thrd_ptr, scheduler_ptr: sched_ptr, allocator_ptr: allc_ptr, pcid_allocator_ptr: pcid_allc_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid,
         source_range, cpu_lock_perm, pcid_allocator_lock_perm, parent_lock_perm, current_thread_lock_perm, source_pagetable_lock_perm, endpoint_lock_perm,
         source_window_perms,
     } = entry;
     if with_iommu {
         let Tracked(endpoint_lock_perm_opt) = endpoint_lock_perm;
         let tracked endpoint_lock_perm = endpoint_lock_perm_opt.tracked_unwrap();
-        let (child_ptr, iommu_table_ptr, thread_ptr) = commit_new_process_with_iommu_and_endpoint(
-            krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr,
-            allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, endpoint.unwrap(), endpoint_slot, pcid, cpu_lock_perm, pcid_allocator_lock_perm,
+        let (child_ptr, iommu_table_ptr, thrd_ptr) = commit_new_process_with_iommu_and_endpoint(
+            krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, parent_ptr, current_thrd_ptr, sched_ptr,
+            allc_ptr, pcid_allc_ptr, source_pagetable_ptr, endpoint.unwrap(), endpoint_slot, pcid, cpu_lock_perm, pcid_allocator_lock_perm,
             parent_lock_perm, current_thread_lock_perm, source_pagetable_lock_perm, Tracked(endpoint_lock_perm), source_window_perms, initial_regs,
         );
-        let ret = RetValueType::SuccessThreeUsize { value1: child_ptr, value2: iommu_table_ptr, value3: thread_ptr };
-        proof { new_process_syscall_trace_from_commit(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, ret); }
+        let ret = RetValueType::SuccessThreeUsize { value1: child_ptr, value2: iommu_table_ptr, value3: thrd_ptr };
+        proof { new_process_syscall_trace_from_commit(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, ret); }
         ret
     } else {
-        let (child_ptr, thread_ptr) = commit_new_process(
-            krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr,
-            allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid, cpu_lock_perm, pcid_allocator_lock_perm,
+        let (child_ptr, thrd_ptr) = commit_new_process(
+            krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, parent_ptr, current_thrd_ptr, sched_ptr,
+            allc_ptr, pcid_allc_ptr, source_pagetable_ptr, endpoint, endpoint_slot, pcid, cpu_lock_perm, pcid_allocator_lock_perm,
             parent_lock_perm, current_thread_lock_perm, source_pagetable_lock_perm, endpoint_lock_perm, source_window_perms, initial_regs,
         );
-        let ret = RetValueType::SuccessPairUsize { value1: child_ptr, value2: thread_ptr };
-        proof { new_process_syscall_trace_from_commit(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, ret); }
+        let ret = RetValueType::SuccessPairUsize { value1: child_ptr, value2: thrd_ptr };
+        proof { new_process_syscall_trace_from_commit(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, ret); }
         ret
     }
 }

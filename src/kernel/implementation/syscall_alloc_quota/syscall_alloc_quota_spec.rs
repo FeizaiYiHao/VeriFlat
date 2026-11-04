@@ -24,21 +24,21 @@ pub open spec fn alloc_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, allo
 #[verifier::opaque]
 pub open spec fn alloc_quota_4k_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_amount: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let container_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
+    let ctn_ptr = cpu.owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
     &&& cpu.current_process is Some
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map.spec_index(container_ptr).lock_state is Unlocked
-    &&& !old_u.container_map.spec_index(container_ptr).killed
-    &&& !old_u.container_map.spec_index(container_ptr).zombie
-    &&& old_u.container_map.spec_index(container_ptr).quota_4k >= alloc_amount
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
-    &&& !old_u.process_map.spec_index(process_ptr).killed
-    &&& old_u.process_map.spec_index(process_ptr).quota_4k + alloc_amount <= usize::MAX
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
+    &&& !old_u.container_map.spec_index(ctn_ptr).killed
+    &&& !old_u.container_map.spec_index(ctn_ptr).zombie
+    &&& old_u.container_map.spec_index(ctn_ptr).quota_4k >= alloc_amount
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
+    &&& !old_u.process_map.spec_index(prc_ptr).killed
+    &&& old_u.process_map.spec_index(prc_ptr).quota_4k + alloc_amount <= usize::MAX
     &&& alloc_amount > 0
 }
 
@@ -81,21 +81,21 @@ pub open spec fn alloc_thread_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuI
 #[verifier::opaque]
 pub open spec fn alloc_thread_quota_4k_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_amount: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
-    &&& !old_u.process_map.spec_index(process_ptr).killed
-    &&& old_u.process_map.spec_index(process_ptr).quota_4k >= alloc_amount
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.thread_map.spec_index(thread_ptr).lock_state is Unlocked
-    &&& !old_u.thread_map.spec_index(thread_ptr).killed
-    &&& old_u.thread_map.spec_index(thread_ptr).quota_4k + alloc_amount <= usize::MAX
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
+    &&& !old_u.process_map.spec_index(prc_ptr).killed
+    &&& old_u.process_map.spec_index(prc_ptr).quota_4k >= alloc_amount
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& old_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
+    &&& !old_u.thread_map.spec_index(thrd_ptr).killed
+    &&& old_u.thread_map.spec_index(thrd_ptr).quota_4k + alloc_amount <= usize::MAX
     &&& alloc_amount > 0
 }
 
@@ -141,21 +141,21 @@ pub open spec fn alloc_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuId, allo
 #[verifier::opaque]
 pub open spec fn alloc_quota_2m_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_amount: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let container_ptr = cpu.owning_container;
+    let prc_ptr = cpu.current_process->Some_0;
+    let ctn_ptr = cpu.owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
     &&& cpu.current_process is Some
-    &&& old_u.container_map.dom().contains(container_ptr)
-    &&& old_u.container_map.spec_index(container_ptr).lock_state is Unlocked
-    &&& !old_u.container_map.spec_index(container_ptr).killed
-    &&& !old_u.container_map.spec_index(container_ptr).zombie
-    &&& old_u.container_map.spec_index(container_ptr).quota_2m >= alloc_amount
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
-    &&& !old_u.process_map.spec_index(process_ptr).killed
-    &&& old_u.process_map.spec_index(process_ptr).quota_2m + alloc_amount <= usize::MAX
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
+    &&& !old_u.container_map.spec_index(ctn_ptr).killed
+    &&& !old_u.container_map.spec_index(ctn_ptr).zombie
+    &&& old_u.container_map.spec_index(ctn_ptr).quota_2m >= alloc_amount
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
+    &&& !old_u.process_map.spec_index(prc_ptr).killed
+    &&& old_u.process_map.spec_index(prc_ptr).quota_2m + alloc_amount <= usize::MAX
     &&& alloc_amount > 0
 }
 
@@ -198,21 +198,21 @@ pub open spec fn alloc_thread_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuI
 #[verifier::opaque]
 pub open spec fn alloc_thread_quota_2m_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_amount: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let process_ptr = cpu.current_process->Some_0;
-    let thread_ptr = cpu.current_thread->Some_0;
+    let prc_ptr = cpu.current_process->Some_0;
+    let thrd_ptr = cpu.current_thread->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
-    &&& !old_u.process_map.spec_index(process_ptr).killed
-    &&& old_u.process_map.spec_index(process_ptr).quota_2m >= alloc_amount
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.thread_map.spec_index(thread_ptr).lock_state is Unlocked
-    &&& !old_u.thread_map.spec_index(thread_ptr).killed
-    &&& old_u.thread_map.spec_index(thread_ptr).quota_2m + alloc_amount <= usize::MAX
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
+    &&& !old_u.process_map.spec_index(prc_ptr).killed
+    &&& old_u.process_map.spec_index(prc_ptr).quota_2m >= alloc_amount
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& old_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
+    &&& !old_u.thread_map.spec_index(thrd_ptr).killed
+    &&& old_u.thread_map.spec_index(thrd_ptr).quota_2m + alloc_amount <= usize::MAX
     &&& alloc_amount > 0
 }
 

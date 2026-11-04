@@ -14,21 +14,21 @@ verus! {
         ensures process_perms.perms_wf()
     { reveal(process_perms_wf); }
 
-    pub proof fn process_perms_wf_at(process_perms: ProcessLockedMap, process_ptr: RwLockProcessPtr)
+    pub proof fn process_perms_wf_at(process_perms: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
         requires
             process_perms_wf(process_perms),
-            process_perms.dom().contains(process_ptr),
+            process_perms.dom().contains(prc_ptr),
         ensures
-            process_perms.view().spec_index(process_ptr).is_init(),
-            process_perms.view().spec_index(process_ptr).addr() == process_ptr,
-            process_perms.spec_index(process_ptr).inv(),
-            process_perms.spec_index(process_ptr).is_init(),
-            process_perms.spec_index(process_ptr).view().inv(),
-            process_perms.spec_index(process_ptr).view().owned_threads.view().no_duplicates(),
-            process_perms.spec_index(process_ptr).view().children.view().no_duplicates(),
-            process_perms.spec_index(process_ptr).view_ghost().uppertree_seq.view().no_duplicates(),
-            !process_perms.spec_index(process_ptr).view().children.view().contains(process_ptr),
-            process_perms.spec_index(process_ptr).view_ghost().uppertree_seq.view().len() == process_perms.spec_index(process_ptr).view_rodata().view().depth,
+            process_perms.view().spec_index(prc_ptr).is_init(),
+            process_perms.view().spec_index(prc_ptr).addr() == prc_ptr,
+            process_perms.spec_index(prc_ptr).inv(),
+            process_perms.spec_index(prc_ptr).is_init(),
+            process_perms.spec_index(prc_ptr).view().inv(),
+            process_perms.spec_index(prc_ptr).view().owned_threads.view().no_duplicates(),
+            process_perms.spec_index(prc_ptr).view().children.view().no_duplicates(),
+            process_perms.spec_index(prc_ptr).view_ghost().uppertree_seq.view().no_duplicates(),
+            !process_perms.spec_index(prc_ptr).view().children.view().contains(prc_ptr),
+            process_perms.spec_index(prc_ptr).view_ghost().uppertree_seq.view().len() == process_perms.spec_index(prc_ptr).view_rodata().view().depth,
     { reveal(process_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); }
 
     pub open spec fn process_tree_fields_wf(process_perms: ProcessLockedMap) -> bool {

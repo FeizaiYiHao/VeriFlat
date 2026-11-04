@@ -18,7 +18,7 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
-            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)
                 ==> held_cpu_set < cpu_set_ptr || old(self).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
             typed_lock_maps_aligned(old(self), old(lctx)),
@@ -72,7 +72,7 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
-            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)
                 ==> held_cpu_set < cpu_set_ptr || old(self).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
             typed_lock_maps_aligned(old(self), old(lctx)),
@@ -118,17 +118,17 @@ impl KernelK {
         ret
     }
 
-    /// Write-lock the cpu set `cpu_set_ptr` of the marked container `container_ptr`, which owns no process or thread, and
+    /// Write-lock the cpu set `cpu_set_ptr` of the marked container `ctn_ptr`, which owns no process or thread, and
     /// mark the set for the same killer, whose process this thread write-holds. The held entry moves to the sunk id a
     /// marked object reports.
-    pub fn wlock_cpu_set_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_cpu_set_and_mark_kill(&mut self, ctn_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
-            old(self).ctn_mp.dom().contains(container_ptr),
-            old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
-            old(self).ctn_mp.spec_index(container_ptr).killer_info() == Some(killer_info),
-            old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
-            old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().is_empty(),
+            old(self).ctn_mp.dom().contains(ctn_ptr),
+            old(self).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
+            old(self).ctn_mp.spec_index(ctn_ptr).killer_info() == Some(killer_info),
+            old(self).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
+            old(self).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
             typed_lock_map_contains_mode(old(lctx).process_lock_map(), killer_info.process, TypedLockMode::Write),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -139,7 +139,7 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
-            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -162,7 +162,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), TypedHeldLock { lock_id: final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), mode: TypedLockMode::Write }),
     {
         proof {
-            container_cpu_set_wf_container_at(old(self).ctn_mp, old(self).cpu_set_mp, container_ptr);
+            container_cpu_set_wf_container_at(old(self).ctn_mp, old(self).cpu_set_mp, ctn_ptr);
             assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { cpu_set_perms_wf_map(old(self).cpu_set_mp); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); };
             assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by {
                 old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), killer_info.process);
@@ -184,7 +184,7 @@ impl KernelK {
             lctx.update_lock_id(KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), self.cpu_set_mp.lock_id_by_key(cpu_set_ptr));
             map_insert_overwrite_lemma(old(lctx).cpu_set_lock_map(), cpu_set_ptr, entry, TypedHeldLock { lock_id: self.cpu_set_mp.lock_id_by_key(cpu_set_ptr), mode: TypedLockMode::Write });
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            mark_kill_cpu_set_eof(*old(self), *self, *old(lctx), container_ptr, cpu_set_ptr, killer_info);
+            mark_kill_cpu_set_eof(*old(self), *self, *old(lctx), ctn_ptr, cpu_set_ptr, killer_info);
         }
         ret
     }
@@ -243,7 +243,7 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
-            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)
                 ==> held_cpu_set < cpu_set_ptr || old(self).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
             typed_lock_maps_aligned(old(self), old(lctx)),

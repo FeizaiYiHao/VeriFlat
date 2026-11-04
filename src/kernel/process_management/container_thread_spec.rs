@@ -50,16 +50,16 @@ verus! {
             },
     { reveal(container_thread_wf); }
 
-    pub proof fn container_thread_wf_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    pub proof fn container_thread_wf_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             container_thread_wf(container_map, thread_map),
-            thread_map.dom().contains(thread_ptr),
+            thread_map.dom().contains(thrd_ptr),
         ensures
             ({
-                let container_ptr = thread_map.spec_index(thread_ptr).view().owning_container;
-                &&& container_map.dom().contains(container_ptr)
-                &&& container_map.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
-                &&& thread_map.spec_index(thread_ptr).view().container_depth == container_map.spec_index(container_ptr).view_rodata().view().depth
+                let ctn_ptr = thread_map.spec_index(thrd_ptr).view().owning_container;
+                &&& container_map.dom().contains(ctn_ptr)
+                &&& container_map.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)
+                &&& thread_map.spec_index(thrd_ptr).view().container_depth == container_map.spec_index(ctn_ptr).view_rodata().view().depth
             }),
     { reveal(container_thread_wf); }
 

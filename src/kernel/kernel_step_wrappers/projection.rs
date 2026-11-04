@@ -5,23 +5,23 @@ use crate::*;
 verus! {
 /// A section that write-holds one thread throughout, changes no non-lock field, and moves
 /// lock modes only on pages and allocator objects leaves the complete projection unchanged.
-pub proof fn kernel_thread_write_held_section_implies_u_eq(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thread_ptr: RwLockThreadPtr)
+pub proof fn kernel_thread_write_held_section_implies_u_eq(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thrd_ptr: RwLockThreadPtr)
     requires
         post.inv(),
-        pre.thr_mp.typed_lock_map_aligned(pre_lctx.thread_lock_map(), pre_lctx.thread_id()),
-        post.thr_mp.typed_lock_map_aligned(post_lctx.thread_lock_map(), post_lctx.thread_id()),
-        typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(post_lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        *post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre }),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        pre.thrd_mp.typed_lock_map_aligned(pre_lctx.thread_lock_map(), pre_lctx.thread_id()),
+        post.thrd_mp.typed_lock_map_aligned(post_lctx.thread_lock_map(), post_lctx.thread_id()),
+        typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(post_lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        *post == (KernelK { pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre }),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
     ensures
         kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
 {
     broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal;
-    pre.thr_mp.typed_lock_map_aligned_write_at(pre_lctx.thread_lock_map(), pre_lctx.thread_id(), thread_ptr);
-    post.thr_mp.typed_lock_map_aligned_write_at(post_lctx.thread_lock_map(), post_lctx.thread_id(), thread_ptr);
+    pre.thrd_mp.typed_lock_map_aligned_write_at(pre_lctx.thread_lock_map(), pre_lctx.thread_id(), thrd_ptr);
+    post.thrd_mp.typed_lock_map_aligned_write_at(post_lctx.thread_lock_map(), post_lctx.thread_id(), thrd_ptr);
     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre, post);
 }
 
@@ -68,10 +68,10 @@ pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
-        forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
-            post.thr_mp.dom().contains(p) && pre.thr_mp.dom().contains(p) ==> {
-                let before = pre.thr_mp.spec_index(p).locking_thread();
-                let after = post.thr_mp.spec_index(p).locking_thread();
+        forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
+                let before = pre.thrd_mp.spec_index(p).locking_thread();
+                let after = post.thrd_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
@@ -139,10 +139,10 @@ pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &Ke
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
-        forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
-            post.thr_mp.dom().contains(p) && pre.thr_mp.dom().contains(p) ==> {
-                let before = pre.thr_mp.spec_index(p).locking_thread();
-                let after = post.thr_mp.spec_index(p).locking_thread();
+        forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
+                let before = pre.thrd_mp.spec_index(p).locking_thread();
+                let after = post.thrd_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
@@ -269,10 +269,10 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
 proof fn kernel_lock_states_unchanged_implies_u_thread_map(pre: &KernelK, post: &KernelK)
     requires
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-        forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
-            post.thr_mp.dom().contains(p) && pre.thr_mp.dom().contains(p) ==> {
-                let before = pre.thr_mp.spec_index(p).locking_thread();
-                let after = post.thr_mp.spec_index(p).locking_thread();
+        forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
+                let before = pre.thrd_mp.spec_index(p).locking_thread();
+                let after = post.thrd_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
             },
@@ -282,7 +282,7 @@ proof fn kernel_lock_states_unchanged_implies_u_thread_map(pre: &KernelK, post: 
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(before.thread_map, after.thread_map, p => {
-        if pre.thr_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thr_mp.dom().contains(p) { kernel_thread_projection_at(post, p); }
+        if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     });
 }
@@ -356,9 +356,9 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
     }) by {
         reveal(kernel_context_switch_fields); kernel_cpu_user_projection_at(pre, cpu_id);
         if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
-        if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
-        if pre.prc_mp.dom().contains(pre.thr_mp.spec_index(next_thread).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thr_mp.spec_index(next_thread).view().owning_proc); }
-        if let Some(t) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } }
+        if pre.thrd_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
+        if pre.prc_mp.dom().contains(pre.thrd_mp.spec_index(next_thread).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thrd_mp.spec_index(next_thread).view().owning_proc); }
+        if let Some(t) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } }
         if let Some(p) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_process { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } }
     };
     kernel_context_switch_fields_implies_u_cpu_array(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
@@ -406,7 +406,7 @@ proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &
     hide(kernel_k_user_projection);
     reveal(kernel_context_switch_fields);
     kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
-    if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, cpu_id); }
+    if pre.thrd_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, cpu_id); }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let cpu = pre_u.cpu_array[cpu_id as int];
@@ -434,8 +434,8 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
 {
     hide(kernel_k_user_projection);
     reveal(kernel_context_switch_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
-    kernel_cpu_user_projection_at(pre, cpu_id); if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
-    if let Some(prev) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(prev) { kernel_thread_user_projection_at(pre, prev); } }
+    kernel_cpu_user_projection_at(pre, cpu_id); if pre.thrd_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
+    if let Some(prev) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thrd_mp.dom().contains(prev) { kernel_thread_user_projection_at(pre, prev); } }
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     let next = pre_u.thread_map.spec_index(next_thread);
@@ -447,7 +447,7 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
     };
     assert_maps_equal!(post_u.thread_map, requeued.insert(next_thread, ThreadU {
         state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next
-    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
+    }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
 }
 
 /// The context-switch fields leave the process map projection unchanged.
@@ -522,7 +522,7 @@ pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, p
     assert(kernel_u_rebalance_pull_changed(pre_u, post_u, cpu_id, victim, thread)) by {
         reveal(kernel_rebalance_pull_fields); kernel_cpu_user_projection_at(pre, cpu_id); kernel_cpu_user_projection_at(pre, victim);
         if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
-        if pre.thr_mp.dom().contains(thread) { kernel_thread_user_projection_at(pre, thread); }
+        if pre.thrd_mp.dom().contains(thread) { kernel_thread_user_projection_at(pre, thread); }
         let cpu = pre_u.cpu_array[cpu_id as int];
         let container = pre_u.container_map.spec_index(cpu.owning_container);
         let queues = container.scheduler;
@@ -535,7 +535,7 @@ pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, p
         }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } reveal(container_scheduler_wf); });
         assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread, ThreadU {
             state: ThreadState::SCHEDULED { cpu_id }, ..pre_u.thread_map.spec_index(thread)
-        }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
+        }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
     };
 }
 
@@ -551,7 +551,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         pre.prc_mp.dom().contains(process),
         !pre.prc_mp.spec_index(process).view().zombie,
         pre.prc_mp.spec_index(process).view().pagetable == pagetable,
-        *post == (KernelK { pt_mp: post.pt_mp, it_mp: post.it_mp, irt: post.irt, iommu_tlb: post.iommu_tlb, prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..*pre }),
+        *post == (KernelK { pt_mp: post.pt_mp, it_mp: post.it_mp, irt: post.irt, iommu_tlb: post.iommu_tlb, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ..*pre }),
         post.prc_mp.unchanged_except(&pre.prc_mp, process),
         post.prc_mp.spec_index(process).view() == (Process { state: post.prc_mp.spec_index(process).view().state, ..pre.prc_mp.spec_index(process).view() }),
         post.prc_mp.spec_index(process).view_rodata() == pre.prc_mp.spec_index(process).view_rodata(),
@@ -573,11 +573,11 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         pre.prc_mp.spec_index(process).view().iommu_table is Some && lock
             ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), pre.prc_mp.spec_index(process).view().iommu_table->Some_0, TypedLockMode::Write),
         pre.prc_mp.spec_index(process).view().iommu_table is Some && !lock ==> post.it_mp.spec_index(pre.prc_mp.spec_index(process).view().iommu_table->Some_0).locking_thread() is None,
-        pre.thr_mp.dom().contains(thread),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread),
-        post.thr_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress, ..pre.thr_mp.spec_index(thread).view() }),
-        post.thr_mp.spec_index(thread).locking_thread() == pre.thr_mp.spec_index(thread).locking_thread(),
-        post.thr_mp.spec_index(thread).being_killed() == pre.thr_mp.spec_index(thread).being_killed(),
+        pre.thrd_mp.dom().contains(thread),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
+        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, ..pre.thrd_mp.spec_index(thread).view() }),
+        post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),
+        post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
@@ -590,7 +590,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
             &&& a.iommu_root_table == pre.irt.view().user_view()
             &&& a.iommu_tlb == pre.iommu_tlb.view()
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
-                thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
+                thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
                 process_map: a.process_map.insert(process, ProcessU {
                     pagetable: Some(PageTableU { lock_state: state, ..process_u.pagetable->Some_0 }),
                     iommu_table: match process_u.iommu_table { Some(t) => Some(PageTableU { lock_state: state, ..t }), None => None },
@@ -651,11 +651,11 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
         },
         match thread {
             Some(p) => {
-                &&& post.thr_mp.unchanged_except(&pre.thr_mp, p)
-                &&& (post.thr_mp.spec_index(p).locking_thread() is Write) == (pre.thr_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.thr_mp.spec_index(p).locking_thread() is Read) == (pre.thr_mp.spec_index(p).locking_thread() is Read)
+                &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, p)
+                &&& (post.thrd_mp.spec_index(p).locking_thread() is Write) == (pre.thrd_mp.spec_index(p).locking_thread() is Write)
+                &&& (post.thrd_mp.spec_index(p).locking_thread() is Read) == (pre.thrd_mp.spec_index(p).locking_thread() is Read)
             },
-            None => post.thr_mp == pre.thr_mp,
+            None => post.thrd_mp == pre.thrd_mp,
         },
         match endpoint {
             Some(p) => {
@@ -706,25 +706,25 @@ pub proof fn kernel_container_root_published_implies_u_step(
             after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)) == before.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)),
         forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) ==>
             after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread() && after.cpu_set_mp.spec_index(p).being_killed() == before.cpu_set_mp.spec_index(p).being_killed(),
-        before.thr_mp.spec_index(thread).view().quota_4k >= 8 + funding,
-        after.thr_mp.unchanged_except(&before.thr_mp, thread),
-        after.thr_mp.spec_index(thread).being_killed() == before.thr_mp.spec_index(thread).being_killed(),
-        after.thr_mp.spec_index(thread).locking_thread() == before.thr_mp.spec_index(thread).locking_thread(),
-        after.thr_mp.spec_index(thread).view().state == before.thr_mp.spec_index(thread).view().state,
-        after.thr_mp.spec_index(thread).view().caller == before.thr_mp.spec_index(thread).view().caller,
-        after.thr_mp.spec_index(thread).view().callee == before.thr_mp.spec_index(thread).view().callee,
-        after.thr_mp.spec_index(thread).view().owning_container == before.thr_mp.spec_index(thread).view().owning_container,
-        after.thr_mp.spec_index(thread).view().owning_proc == before.thr_mp.spec_index(thread).view().owning_proc,
-        after.thr_mp.spec_index(thread).view().last_cpu == before.thr_mp.spec_index(thread).view().last_cpu,
-        after.thr_mp.spec_index(thread).view().quota_4k == before.thr_mp.spec_index(thread).view().quota_4k - 8 - funding,
-        after.thr_mp.spec_index(thread).view().quota_2m == before.thr_mp.spec_index(thread).view().quota_2m - 2,
-        after.thr_mp.spec_index(thread).view().quota_1g == before.thr_mp.spec_index(thread).view().quota_1g,
-        after.thr_mp.spec_index(thread).view().endpoint_descriptors.view() == before.thr_mp.spec_index(thread).view().endpoint_descriptors.view(),
-        after.thr_mp.spec_index(thread).view().blocking_endpoint_ptr == before.thr_mp.spec_index(thread).view().blocking_endpoint_ptr,
-        after.thr_mp.spec_index(thread).view().ipc_payload == before.thr_mp.spec_index(thread).view().ipc_payload,
-        after.thr_mp.spec_index(thread).view().error_code == before.thr_mp.spec_index(thread).view().error_code,
-        after.thr_mp.spec_index(thread).view().trap_frame == before.thr_mp.spec_index(thread).view().trap_frame,
-        after.thr_mp.spec_index(thread).view().syscall_progress.view() == progress,
+        before.thrd_mp.spec_index(thread).view().quota_4k >= 8 + funding,
+        after.thrd_mp.unchanged_except(&before.thrd_mp, thread),
+        after.thrd_mp.spec_index(thread).being_killed() == before.thrd_mp.spec_index(thread).being_killed(),
+        after.thrd_mp.spec_index(thread).locking_thread() == before.thrd_mp.spec_index(thread).locking_thread(),
+        after.thrd_mp.spec_index(thread).view().state == before.thrd_mp.spec_index(thread).view().state,
+        after.thrd_mp.spec_index(thread).view().caller == before.thrd_mp.spec_index(thread).view().caller,
+        after.thrd_mp.spec_index(thread).view().callee == before.thrd_mp.spec_index(thread).view().callee,
+        after.thrd_mp.spec_index(thread).view().owning_container == before.thrd_mp.spec_index(thread).view().owning_container,
+        after.thrd_mp.spec_index(thread).view().owning_proc == before.thrd_mp.spec_index(thread).view().owning_proc,
+        after.thrd_mp.spec_index(thread).view().last_cpu == before.thrd_mp.spec_index(thread).view().last_cpu,
+        after.thrd_mp.spec_index(thread).view().quota_4k == before.thrd_mp.spec_index(thread).view().quota_4k - 8 - funding,
+        after.thrd_mp.spec_index(thread).view().quota_2m == before.thrd_mp.spec_index(thread).view().quota_2m - 2,
+        after.thrd_mp.spec_index(thread).view().quota_1g == before.thrd_mp.spec_index(thread).view().quota_1g,
+        after.thrd_mp.spec_index(thread).view().endpoint_descriptors.view() == before.thrd_mp.spec_index(thread).view().endpoint_descriptors.view(),
+        after.thrd_mp.spec_index(thread).view().blocking_endpoint_ptr == before.thrd_mp.spec_index(thread).view().blocking_endpoint_ptr,
+        after.thrd_mp.spec_index(thread).view().ipc_payload == before.thrd_mp.spec_index(thread).view().ipc_payload,
+        after.thrd_mp.spec_index(thread).view().error_code == before.thrd_mp.spec_index(thread).view().error_code,
+        after.thrd_mp.spec_index(thread).view().trap_frame == before.thrd_mp.spec_index(thread).view().trap_frame,
+        after.thrd_mp.spec_index(thread).view().syscall_progress.view() == progress,
         after.ctn_mp.dom() == before.ctn_mp.dom().insert(child),
         forall|c: RwLockContainerPtr| #![trigger after.ctn_mp.spec_index(c)] before.ctn_mp.dom().contains(c) ==> {
             &&& after.ctn_mp.spec_index(c).view_rodata() == before.ctn_mp.spec_index(c).view_rodata()
@@ -810,7 +810,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
     ensures
         kernel_k_to_kernel_u(*before).thread_map.dom().contains(thread),
-        kernel_k_to_kernel_u(*before).thread_map[thread].syscall_progress == before.thr_mp.spec_index(thread).view().syscall_progress.view(),
+        kernel_k_to_kernel_u(*before).thread_map[thread].syscall_progress == before.thrd_mp.spec_index(thread).view().syscall_progress.view(),
         kernel_u_container_root_published(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), parent, child, process, thread, transfer_cpu, funding, process_quota, moved, thread_page, progress),
 {
     reveal(kernel_u_container_root_published);
@@ -848,25 +848,25 @@ proof fn kernel_container_root_published_implies_u_cpu_array(before: &KernelK, a
 /// Publishing a container root projects to the thread map with only `thread` charged the funding and given `progress`.
 proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, after: &KernelK, thread: RwLockThreadPtr, funding: usize, progress: Option<SyscallProgress>)
     requires
-        before.thr_mp.spec_index(thread).view().quota_4k >= 8 + funding,
-        after.thr_mp.unchanged_except(&before.thr_mp, thread),
-        after.thr_mp.spec_index(thread).being_killed() == before.thr_mp.spec_index(thread).being_killed(),
-        after.thr_mp.spec_index(thread).locking_thread() == before.thr_mp.spec_index(thread).locking_thread(),
-        after.thr_mp.spec_index(thread).view().state == before.thr_mp.spec_index(thread).view().state,
-        after.thr_mp.spec_index(thread).view().caller == before.thr_mp.spec_index(thread).view().caller,
-        after.thr_mp.spec_index(thread).view().callee == before.thr_mp.spec_index(thread).view().callee,
-        after.thr_mp.spec_index(thread).view().owning_container == before.thr_mp.spec_index(thread).view().owning_container,
-        after.thr_mp.spec_index(thread).view().owning_proc == before.thr_mp.spec_index(thread).view().owning_proc,
-        after.thr_mp.spec_index(thread).view().last_cpu == before.thr_mp.spec_index(thread).view().last_cpu,
-        after.thr_mp.spec_index(thread).view().quota_4k == before.thr_mp.spec_index(thread).view().quota_4k - 8 - funding,
-        after.thr_mp.spec_index(thread).view().quota_2m == before.thr_mp.spec_index(thread).view().quota_2m - 2,
-        after.thr_mp.spec_index(thread).view().quota_1g == before.thr_mp.spec_index(thread).view().quota_1g,
-        after.thr_mp.spec_index(thread).view().endpoint_descriptors.view() == before.thr_mp.spec_index(thread).view().endpoint_descriptors.view(),
-        after.thr_mp.spec_index(thread).view().blocking_endpoint_ptr == before.thr_mp.spec_index(thread).view().blocking_endpoint_ptr,
-        after.thr_mp.spec_index(thread).view().ipc_payload == before.thr_mp.spec_index(thread).view().ipc_payload,
-        after.thr_mp.spec_index(thread).view().error_code == before.thr_mp.spec_index(thread).view().error_code,
-        after.thr_mp.spec_index(thread).view().trap_frame == before.thr_mp.spec_index(thread).view().trap_frame,
-        after.thr_mp.spec_index(thread).view().syscall_progress.view() == progress,
+        before.thrd_mp.spec_index(thread).view().quota_4k >= 8 + funding,
+        after.thrd_mp.unchanged_except(&before.thrd_mp, thread),
+        after.thrd_mp.spec_index(thread).being_killed() == before.thrd_mp.spec_index(thread).being_killed(),
+        after.thrd_mp.spec_index(thread).locking_thread() == before.thrd_mp.spec_index(thread).locking_thread(),
+        after.thrd_mp.spec_index(thread).view().state == before.thrd_mp.spec_index(thread).view().state,
+        after.thrd_mp.spec_index(thread).view().caller == before.thrd_mp.spec_index(thread).view().caller,
+        after.thrd_mp.spec_index(thread).view().callee == before.thrd_mp.spec_index(thread).view().callee,
+        after.thrd_mp.spec_index(thread).view().owning_container == before.thrd_mp.spec_index(thread).view().owning_container,
+        after.thrd_mp.spec_index(thread).view().owning_proc == before.thrd_mp.spec_index(thread).view().owning_proc,
+        after.thrd_mp.spec_index(thread).view().last_cpu == before.thrd_mp.spec_index(thread).view().last_cpu,
+        after.thrd_mp.spec_index(thread).view().quota_4k == before.thrd_mp.spec_index(thread).view().quota_4k - 8 - funding,
+        after.thrd_mp.spec_index(thread).view().quota_2m == before.thrd_mp.spec_index(thread).view().quota_2m - 2,
+        after.thrd_mp.spec_index(thread).view().quota_1g == before.thrd_mp.spec_index(thread).view().quota_1g,
+        after.thrd_mp.spec_index(thread).view().endpoint_descriptors.view() == before.thrd_mp.spec_index(thread).view().endpoint_descriptors.view(),
+        after.thrd_mp.spec_index(thread).view().blocking_endpoint_ptr == before.thrd_mp.spec_index(thread).view().blocking_endpoint_ptr,
+        after.thrd_mp.spec_index(thread).view().ipc_payload == before.thrd_mp.spec_index(thread).view().ipc_payload,
+        after.thrd_mp.spec_index(thread).view().error_code == before.thrd_mp.spec_index(thread).view().error_code,
+        after.thrd_mp.spec_index(thread).view().trap_frame == before.thrd_mp.spec_index(thread).view().trap_frame,
+        after.thrd_mp.spec_index(thread).view().syscall_progress.view() == progress,
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
@@ -882,7 +882,7 @@ proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, 
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread, ThreadU {
         quota_4k: (pre.thread_map[thread].quota_4k - 8 - funding) as usize, quota_2m: (pre.thread_map[thread].quota_2m - 2) as usize,
         syscall_progress: progress, ..pre.thread_map[thread]
-    }), t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
+    }), t => { if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
 }
 
 /// Publishing a container root projects to the process map with only the new write-locked root `process` added.
@@ -1123,13 +1123,13 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
         after.inv(),
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, wake_cpu),
-        before.thr_mp.dom().contains(caller),
-        before.thr_mp.dom().contains(peer),
+        before.thrd_mp.dom().contains(caller),
+        before.thrd_mp.dom().contains(peer),
         caller != peer,
         before.ep_mp.dom().contains(endpoint),
-        !(before.thr_mp.spec_index(peer).view().state is SCHEDULED),
+        !(before.thrd_mp.spec_index(peer).view().state is SCHEDULED),
         descriptor matches Some((receiver, index)) ==> (receiver == caller || receiver == peer) && edp_idx_valid(index),
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
         kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
         forall|i: CpuId| #![trigger after.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> after.cpu_op.view().view()[i as int] == before.cpu_op.view().view()[i as int],
         kernel_process_nonlock_fields_unchanged(before.prc_mp, after.prc_mp),
@@ -1138,28 +1138,28 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
             after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==>
             after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)] before.thr_mp.dom().contains(t) ==> {
-            &&& after.thr_mp.spec_index(t).view().state == if t == peer { ThreadState::SCHEDULED { cpu_id: wake_cpu } } else { before.thr_mp.spec_index(t).view().state }
-            &&& after.thr_mp.spec_index(t).view().caller == before.thr_mp.spec_index(t).view().caller
-            &&& after.thr_mp.spec_index(t).view().callee == before.thr_mp.spec_index(t).view().callee
-            &&& after.thr_mp.spec_index(t).view().owning_container == before.thr_mp.spec_index(t).view().owning_container
-            &&& after.thr_mp.spec_index(t).view().owning_proc == before.thr_mp.spec_index(t).view().owning_proc
-            &&& after.thr_mp.spec_index(t).view().last_cpu == before.thr_mp.spec_index(t).view().last_cpu
-            &&& after.thr_mp.spec_index(t).view().quota_4k == before.thr_mp.spec_index(t).view().quota_4k
-            &&& after.thr_mp.spec_index(t).view().quota_2m == before.thr_mp.spec_index(t).view().quota_2m
-            &&& after.thr_mp.spec_index(t).view().quota_1g == before.thr_mp.spec_index(t).view().quota_1g
-            &&& after.thr_mp.spec_index(t).view().endpoint_descriptors.view() == if descriptor is Some && t == descriptor->Some_0.0 {
-                before.thr_mp.spec_index(t).view().endpoint_descriptors.view().update(descriptor->Some_0.1 as int, Some(endpoint))
-            } else { before.thr_mp.spec_index(t).view().endpoint_descriptors.view() }
-            &&& after.thr_mp.spec_index(t).view().blocking_endpoint_ptr == if t == peer { None } else { before.thr_mp.spec_index(t).view().blocking_endpoint_ptr }
-            &&& after.thr_mp.spec_index(t).view().ipc_payload == if t == peer { IPCPayLoad::Empty } else { before.thr_mp.spec_index(t).view().ipc_payload }
-            &&& after.thr_mp.spec_index(t).view().error_code == if t == peer { Some(result) } else { before.thr_mp.spec_index(t).view().error_code }
-            &&& after.thr_mp.spec_index(t).view().trap_frame == before.thr_mp.spec_index(t).view().trap_frame
-            &&& t != caller ==> after.thr_mp.spec_index(t).view().syscall_progress == before.thr_mp.spec_index(t).view().syscall_progress
-            &&& after.thr_mp.spec_index(t).being_killed() == before.thr_mp.spec_index(t).being_killed()
-            &&& if t == caller || t == peer { after.thr_mp.spec_index(t).locking_thread() is None }
-                else { after.thr_mp.spec_index(t).locking_thread() == before.thr_mp.spec_index(t).locking_thread() }
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)] before.thrd_mp.dom().contains(t) ==> {
+            &&& after.thrd_mp.spec_index(t).view().state == if t == peer { ThreadState::SCHEDULED { cpu_id: wake_cpu } } else { before.thrd_mp.spec_index(t).view().state }
+            &&& after.thrd_mp.spec_index(t).view().caller == before.thrd_mp.spec_index(t).view().caller
+            &&& after.thrd_mp.spec_index(t).view().callee == before.thrd_mp.spec_index(t).view().callee
+            &&& after.thrd_mp.spec_index(t).view().owning_container == before.thrd_mp.spec_index(t).view().owning_container
+            &&& after.thrd_mp.spec_index(t).view().owning_proc == before.thrd_mp.spec_index(t).view().owning_proc
+            &&& after.thrd_mp.spec_index(t).view().last_cpu == before.thrd_mp.spec_index(t).view().last_cpu
+            &&& after.thrd_mp.spec_index(t).view().quota_4k == before.thrd_mp.spec_index(t).view().quota_4k
+            &&& after.thrd_mp.spec_index(t).view().quota_2m == before.thrd_mp.spec_index(t).view().quota_2m
+            &&& after.thrd_mp.spec_index(t).view().quota_1g == before.thrd_mp.spec_index(t).view().quota_1g
+            &&& after.thrd_mp.spec_index(t).view().endpoint_descriptors.view() == if descriptor is Some && t == descriptor->Some_0.0 {
+                before.thrd_mp.spec_index(t).view().endpoint_descriptors.view().update(descriptor->Some_0.1 as int, Some(endpoint))
+            } else { before.thrd_mp.spec_index(t).view().endpoint_descriptors.view() }
+            &&& after.thrd_mp.spec_index(t).view().blocking_endpoint_ptr == if t == peer { None } else { before.thrd_mp.spec_index(t).view().blocking_endpoint_ptr }
+            &&& after.thrd_mp.spec_index(t).view().ipc_payload == if t == peer { IPCPayLoad::Empty } else { before.thrd_mp.spec_index(t).view().ipc_payload }
+            &&& after.thrd_mp.spec_index(t).view().error_code == if t == peer { Some(result) } else { before.thrd_mp.spec_index(t).view().error_code }
+            &&& after.thrd_mp.spec_index(t).view().trap_frame == before.thrd_mp.spec_index(t).view().trap_frame
+            &&& t != caller ==> after.thrd_mp.spec_index(t).view().syscall_progress == before.thrd_mp.spec_index(t).view().syscall_progress
+            &&& after.thrd_mp.spec_index(t).being_killed() == before.thrd_mp.spec_index(t).being_killed()
+            &&& if t == caller || t == peer { after.thrd_mp.spec_index(t).locking_thread() is None }
+                else { after.thrd_mp.spec_index(t).locking_thread() == before.thrd_mp.spec_index(t).locking_thread() }
         },
         after.ep_mp.dom() == before.ep_mp.dom(),
         forall|e: RwLockEndpointPtr| #![trigger after.ep_mp.spec_index(e)] before.ep_mp.dom().contains(e) ==> {
@@ -1172,13 +1172,13 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
         },
         after.sched_mp.dom() == before.sched_mp.dom(),
         forall|s: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(s)] before.sched_mp.dom().contains(s) ==>
-            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thr_mp.spec_index(peer).view().owning_container).view_rodata().view().scheduler {
+            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thrd_mp.spec_index(peer).view().owning_container).view_rodata().view().scheduler {
                 scheduler_shards_of(before.sched_mp.spec_index(s)).update(wake_cpu as int, scheduler_shards_of(before.sched_mp.spec_index(s))[wake_cpu as int].push(peer))
             } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
     ensures
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_kernel_u(*before).thread_map.dom().contains(caller),
-        kernel_k_to_kernel_u(*before).thread_map[caller].syscall_progress == before.thr_mp.spec_index(caller).view().syscall_progress.view(),
+        kernel_k_to_kernel_u(*before).thread_map[caller].syscall_progress == before.thrd_mp.spec_index(caller).view().syscall_progress.view(),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
@@ -1194,7 +1194,7 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
                     ..pre.container_map[container]
                 }),
                 thread_map: threads.insert(caller, ThreadU {
-                    lock_state: LockStateU::Unlocked, syscall_progress: after.thr_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
+                    lock_state: LockStateU::Unlocked, syscall_progress: after.thrd_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
                 }).insert(peer, ThreadU {
                     lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
                 }),
@@ -1251,7 +1251,7 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_process_map(
     wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
 )
     requires
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
         kernel_process_nonlock_fields_unchanged(before.prc_mp, after.prc_mp),
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==>
             after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
@@ -1269,16 +1269,16 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_container_map(
     wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
 )
     requires
-        container_thread_wf(after.ctn_mp, after.thr_mp),
+        container_thread_wf(after.ctn_mp, after.thrd_mp),
         container_scheduler_wf(after.ctn_mp, after.sched_mp),
         index_valid(NUM_CPUS, wake_cpu),
-        before.thr_mp.dom().contains(peer),
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        after.thr_mp.spec_index(peer).view().owning_container == before.thr_mp.spec_index(peer).view().owning_container,
+        before.thrd_mp.dom().contains(peer),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        after.thrd_mp.spec_index(peer).view().owning_container == before.thrd_mp.spec_index(peer).view().owning_container,
         after.sched_mp.dom() == before.sched_mp.dom(),
         forall|s: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(s)] before.sched_mp.dom().contains(s) ==>
-            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thr_mp.spec_index(peer).view().owning_container).view_rodata().view().scheduler {
+            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thrd_mp.spec_index(peer).view().owning_container).view_rodata().view().scheduler {
                 scheduler_shards_of(before.sched_mp.spec_index(s)).update(wake_cpu as int, scheduler_shards_of(before.sched_mp.spec_index(s))[wake_cpu as int].push(peer))
             } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
     ensures
@@ -1309,32 +1309,32 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
     wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
 )
     requires
-        before.thr_mp.dom().contains(caller),
-        before.thr_mp.dom().contains(peer),
+        before.thrd_mp.dom().contains(caller),
+        before.thrd_mp.dom().contains(peer),
         caller != peer,
         descriptor matches Some((receiver, index)) ==> (receiver == caller || receiver == peer) && edp_idx_valid(index),
-        after.thr_mp.dom() == before.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)] before.thr_mp.dom().contains(t) ==> {
-            &&& after.thr_mp.spec_index(t).view().state == if t == peer { ThreadState::SCHEDULED { cpu_id: wake_cpu } } else { before.thr_mp.spec_index(t).view().state }
-            &&& after.thr_mp.spec_index(t).view().caller == before.thr_mp.spec_index(t).view().caller
-            &&& after.thr_mp.spec_index(t).view().callee == before.thr_mp.spec_index(t).view().callee
-            &&& after.thr_mp.spec_index(t).view().owning_container == before.thr_mp.spec_index(t).view().owning_container
-            &&& after.thr_mp.spec_index(t).view().owning_proc == before.thr_mp.spec_index(t).view().owning_proc
-            &&& after.thr_mp.spec_index(t).view().last_cpu == before.thr_mp.spec_index(t).view().last_cpu
-            &&& after.thr_mp.spec_index(t).view().quota_4k == before.thr_mp.spec_index(t).view().quota_4k
-            &&& after.thr_mp.spec_index(t).view().quota_2m == before.thr_mp.spec_index(t).view().quota_2m
-            &&& after.thr_mp.spec_index(t).view().quota_1g == before.thr_mp.spec_index(t).view().quota_1g
-            &&& after.thr_mp.spec_index(t).view().endpoint_descriptors.view() == if descriptor is Some && t == descriptor->Some_0.0 {
-                before.thr_mp.spec_index(t).view().endpoint_descriptors.view().update(descriptor->Some_0.1 as int, Some(endpoint))
-            } else { before.thr_mp.spec_index(t).view().endpoint_descriptors.view() }
-            &&& after.thr_mp.spec_index(t).view().blocking_endpoint_ptr == if t == peer { None } else { before.thr_mp.spec_index(t).view().blocking_endpoint_ptr }
-            &&& after.thr_mp.spec_index(t).view().ipc_payload == if t == peer { IPCPayLoad::Empty } else { before.thr_mp.spec_index(t).view().ipc_payload }
-            &&& after.thr_mp.spec_index(t).view().error_code == if t == peer { Some(result) } else { before.thr_mp.spec_index(t).view().error_code }
-            &&& after.thr_mp.spec_index(t).view().trap_frame == before.thr_mp.spec_index(t).view().trap_frame
-            &&& t != caller ==> after.thr_mp.spec_index(t).view().syscall_progress == before.thr_mp.spec_index(t).view().syscall_progress
-            &&& after.thr_mp.spec_index(t).being_killed() == before.thr_mp.spec_index(t).being_killed()
-            &&& if t == caller || t == peer { after.thr_mp.spec_index(t).locking_thread() is None }
-                else { after.thr_mp.spec_index(t).locking_thread() == before.thr_mp.spec_index(t).locking_thread() }
+        after.thrd_mp.dom() == before.thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)] before.thrd_mp.dom().contains(t) ==> {
+            &&& after.thrd_mp.spec_index(t).view().state == if t == peer { ThreadState::SCHEDULED { cpu_id: wake_cpu } } else { before.thrd_mp.spec_index(t).view().state }
+            &&& after.thrd_mp.spec_index(t).view().caller == before.thrd_mp.spec_index(t).view().caller
+            &&& after.thrd_mp.spec_index(t).view().callee == before.thrd_mp.spec_index(t).view().callee
+            &&& after.thrd_mp.spec_index(t).view().owning_container == before.thrd_mp.spec_index(t).view().owning_container
+            &&& after.thrd_mp.spec_index(t).view().owning_proc == before.thrd_mp.spec_index(t).view().owning_proc
+            &&& after.thrd_mp.spec_index(t).view().last_cpu == before.thrd_mp.spec_index(t).view().last_cpu
+            &&& after.thrd_mp.spec_index(t).view().quota_4k == before.thrd_mp.spec_index(t).view().quota_4k
+            &&& after.thrd_mp.spec_index(t).view().quota_2m == before.thrd_mp.spec_index(t).view().quota_2m
+            &&& after.thrd_mp.spec_index(t).view().quota_1g == before.thrd_mp.spec_index(t).view().quota_1g
+            &&& after.thrd_mp.spec_index(t).view().endpoint_descriptors.view() == if descriptor is Some && t == descriptor->Some_0.0 {
+                before.thrd_mp.spec_index(t).view().endpoint_descriptors.view().update(descriptor->Some_0.1 as int, Some(endpoint))
+            } else { before.thrd_mp.spec_index(t).view().endpoint_descriptors.view() }
+            &&& after.thrd_mp.spec_index(t).view().blocking_endpoint_ptr == if t == peer { None } else { before.thrd_mp.spec_index(t).view().blocking_endpoint_ptr }
+            &&& after.thrd_mp.spec_index(t).view().ipc_payload == if t == peer { IPCPayLoad::Empty } else { before.thrd_mp.spec_index(t).view().ipc_payload }
+            &&& after.thrd_mp.spec_index(t).view().error_code == if t == peer { Some(result) } else { before.thrd_mp.spec_index(t).view().error_code }
+            &&& after.thrd_mp.spec_index(t).view().trap_frame == before.thrd_mp.spec_index(t).view().trap_frame
+            &&& t != caller ==> after.thrd_mp.spec_index(t).view().syscall_progress == before.thrd_mp.spec_index(t).view().syscall_progress
+            &&& after.thrd_mp.spec_index(t).being_killed() == before.thrd_mp.spec_index(t).being_killed()
+            &&& if t == caller || t == peer { after.thrd_mp.spec_index(t).locking_thread() is None }
+                else { after.thrd_mp.spec_index(t).locking_thread() == before.thrd_mp.spec_index(t).locking_thread() }
         },
     ensures
         ({
@@ -1344,7 +1344,7 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
                 None => pre.thread_map,
             };
             kernel_k_to_kernel_u(*after).thread_map == threads.insert(caller, ThreadU {
-                lock_state: LockStateU::Unlocked, syscall_progress: after.thr_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
+                lock_state: LockStateU::Unlocked, syscall_progress: after.thrd_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
             }).insert(peer, ThreadU {
                 lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
             })
@@ -1358,10 +1358,10 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
         None => pre.thread_map,
     };
     assert_maps_equal!(post.thread_map, threads.insert(caller, ThreadU {
-        lock_state: LockStateU::Unlocked, syscall_progress: after.thr_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
+        lock_state: LockStateU::Unlocked, syscall_progress: after.thrd_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
     }).insert(peer, ThreadU {
         lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
-    }), t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
+    }), t => { if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
 }
 
 } // verus!

@@ -46,7 +46,7 @@ impl KernelK {
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+                ==> old(self).thrd_mp.spec_index(held_thread).being_killed() || !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root,
             old(lctx).pagetable_lock_map().dom().contains(root),
             big.thread_id() == old(lctx).thread_id(),
@@ -168,7 +168,7 @@ impl KernelK {
                 forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(self.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
                 forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> self.pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
                 forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread)
-                    ==> self.thr_mp.spec_index(held_thread).being_killed() || !(self.thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+                    ==> self.thrd_mp.spec_index(held_thread).being_killed() || !(self.thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
                 forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root,
                 lctx.pagetable_lock_map().dom().contains(root),
                 big.thread_id() == lctx.thread_id(),
@@ -421,7 +421,7 @@ impl KernelK {
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+                ==> old(self).thrd_mp.spec_index(held_thread).being_killed() || !(old(self).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root,
             old(lctx).pagetable_lock_map().dom().contains(root),
             big.thread_id() == old(lctx).thread_id(),
@@ -545,7 +545,7 @@ impl KernelK {
                 forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(self.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
                 forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> self.pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
                 forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread)
-                    ==> self.thr_mp.spec_index(held_thread).being_killed() || !(self.thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+                    ==> self.thrd_mp.spec_index(held_thread).being_killed() || !(self.thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
                 forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root,
                 lctx.pagetable_lock_map().dom().contains(root),
                 big.thread_id() == lctx.thread_id(),

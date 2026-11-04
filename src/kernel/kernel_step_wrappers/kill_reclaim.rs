@@ -88,28 +88,28 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
     kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
-/// Returning the whole `size` quota of the process `process_ptr` to the `size` allocator of its container grows only that
+/// Returning the whole `size` quota of the process `prc_ptr` to the `size` allocator of its container grows only that
 /// container's `size` quota and clears only that process's `size` quota in the complete projection.
-pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, size: PageSize)
+pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, size: PageSize)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
-        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container),
         *post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom(),
-        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
-        post.prc_mp.spec_index(process_ptr).view() == match size {
-            PageSize::SZ4k => Process { quota_4k: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
-            PageSize::SZ2m => Process { quota_2m: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
-            PageSize::SZ1g => Process { quota_1g: 0, ..pre.prc_mp.spec_index(process_ptr).view() },
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != prc_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
+        post.prc_mp.spec_index(prc_ptr).view() == match size {
+            PageSize::SZ4k => Process { quota_4k: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
+            PageSize::SZ2m => Process { quota_2m: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
+            PageSize::SZ1g => Process { quota_1g: 0, ..pre.prc_mp.spec_index(prc_ptr).view() },
         },
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() == pre.prc_mp.spec_index(process_ptr).locking_thread(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() == pre.prc_mp.spec_index(prc_ptr).locking_thread(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
         container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
         ({
-            let container = pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view();
-            let process = pre.prc_mp.spec_index(process_ptr).view();
+            let container = pre.ctn_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container).view_rodata().view();
+            let process = pre.prc_mp.spec_index(prc_ptr).view();
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
                 pre.allc_4k_mp.dom().contains(a) && a != container.allocator_ptr_4k ==> post.allc_4k_mp.spec_index(a).quota.view().view() == pre.allc_4k_mp.spec_index(a).quota.view().view()
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a)]
@@ -126,10 +126,10 @@ pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
+            let process = a.process_map[prc_ptr];
             let container = a.container_map[process.owning_container];
-            &&& a.process_map.dom().contains(process_ptr)
-            &&& process.owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
+            &&& a.process_map.dom().contains(prc_ptr)
+            &&& process.owning_container == pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container
             &&& a.container_map.dom().contains(process.owning_container)
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
                 container_map: a.container_map.insert(process.owning_container, match size {
@@ -137,7 +137,7 @@ pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &
                     PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + process.quota_2m) as usize, ..container },
                     PageSize::SZ1g => ContainerU { quota_1g: (container.quota_1g + process.quota_1g) as usize, ..container },
                 }),
-                process_map: a.process_map.insert(process_ptr, match size {
+                process_map: a.process_map.insert(prc_ptr, match size {
                     PageSize::SZ4k => ProcessU { quota_4k: 0, ..process },
                     PageSize::SZ2m => ProcessU { quota_2m: 0, ..process },
                     PageSize::SZ1g => ProcessU { quota_1g: 0, ..process },
@@ -147,53 +147,53 @@ pub proof fn kernel_process_quota_returned_implies_u_step(pre: &KernelK, post: &
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container);
-    kernel_process_quota_returned_implies_u_container_map(pre, post, process_ptr, size);
-    kernel_process_quota_returned_implies_u_process_map(pre, post, process_ptr, size);
+    kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
+    kernel_process_quota_returned_implies_u_container_map(pre, post, prc_ptr, size);
+    kernel_process_quota_returned_implies_u_process_map(pre, post, prc_ptr, size);
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
-/// Making the live process `process_ptr` a zombie, while its container's PCID allocator `allocator_ptr` releases its PCID,
+/// Making the live process `prc_ptr` a zombie, while its container's PCID allocator `allc_ptr` releases its PCID,
 /// hides its tables in the process projection and adds the PCID to its container's free PCIDs.
-pub proof fn kernel_process_zombified_implies_u_step(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPcidAllocatorPtr)
+pub proof fn kernel_process_zombified_implies_u_step(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPcidAllocatorPtr)
     requires
-        pre.prc_mp.dom().contains(process_ptr),
-        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.ctn_mp.dom().contains(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container),
         container_pcid_allocator_wf(pre.ctn_mp, pre.pcid_allc_mp),
-        pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator == allocator_ptr,
-        pre.pcid_allc_mp.dom().contains(allocator_ptr),
-        pre.pcid_allc_mp.spec_index(allocator_ptr).view().ref_counters.wf(),
-        pcid_valid(pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid),
-        pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid != KERNEL_DEFAULT_PCID,
+        pre.ctn_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator == allc_ptr,
+        pre.pcid_allc_mp.dom().contains(allc_ptr),
+        pre.pcid_allc_mp.spec_index(allc_ptr).view().ref_counters.wf(),
+        pcid_valid(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid != KERNEL_DEFAULT_PCID,
         *post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom(),
-        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
-        post.prc_mp.spec_index(process_ptr).view() == (Process { zombie: true, state: post.prc_mp.spec_index(process_ptr).view().state, ..pre.prc_mp.spec_index(process_ptr).view() }),
-        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
-        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
-        post.prc_mp.spec_index(process_ptr).locking_thread() == pre.prc_mp.spec_index(process_ptr).locking_thread(),
-        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
-        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allocator_ptr),
-        post.pcid_allc_mp.spec_index(allocator_ptr).view().release_ensures(&pre.pcid_allc_mp.spec_index(allocator_ptr).view(), process_ptr, pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid),
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != prc_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
+        post.prc_mp.spec_index(prc_ptr).view() == (Process { zombie: true, state: post.prc_mp.spec_index(prc_ptr).view().state, ..pre.prc_mp.spec_index(prc_ptr).view() }),
+        post.prc_mp.spec_index(prc_ptr).view_rodata() == pre.prc_mp.spec_index(prc_ptr).view_rodata(),
+        post.prc_mp.spec_index(prc_ptr).view_ghost() == pre.prc_mp.spec_index(prc_ptr).view_ghost(),
+        post.prc_mp.spec_index(prc_ptr).locking_thread() == pre.prc_mp.spec_index(prc_ptr).locking_thread(),
+        post.prc_mp.spec_index(prc_ptr).being_killed() == pre.prc_mp.spec_index(prc_ptr).being_killed(),
+        post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allc_ptr),
+        post.pcid_allc_mp.spec_index(allc_ptr).view().release_ensures(&pre.pcid_allc_mp.spec_index(allc_ptr).view(), prc_ptr, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let process = a.process_map[process_ptr];
+            let process = a.process_map[prc_ptr];
             let container = a.container_map[process.owning_container];
-            &&& a.process_map.dom().contains(process_ptr)
-            &&& process.owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
+            &&& a.process_map.dom().contains(prc_ptr)
+            &&& process.owning_container == pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container
             &&& a.container_map.dom().contains(process.owning_container)
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
                 container_map: a.container_map.insert(process.owning_container, ContainerU { free_pcids: container.free_pcids.insert(process.pcid), ..container }),
-                process_map: a.process_map.insert(process_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..process }),
+                process_map: a.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..process }),
                 ..a
             })
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container);
-    kernel_process_zombified_implies_u_container_map(pre, post, process_ptr, allocator_ptr);
-    kernel_process_zombified_implies_u_process_map(pre, post, process_ptr);
+    kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
+    kernel_process_zombified_implies_u_container_map(pre, post, prc_ptr, allc_ptr);
+    kernel_process_zombified_implies_u_process_map(pre, post, prc_ptr);
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 } // verus!

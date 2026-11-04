@@ -69,13 +69,13 @@ pub(super) proof fn new_container_page_positions(pages: Seq<PagePtr>)
         bootstrap_seq.to_set_ensures(); thread_seq.to_set_ensures();
         assert_sets_equal!(
             pages.to_set() == bootstrap_pages.union(thread_pages),
-            page_ptr => {
-                if pages.to_set().contains(page_ptr) {
-                    pages.index_of_first_ensures(page_ptr);
-                    let i = pages.index_of_first(page_ptr).unwrap();
+            pg_ptr => {
+                if pages.to_set().contains(pg_ptr) {
+                    pages.index_of_first_ensures(pg_ptr);
+                    let i = pages.index_of_first(pg_ptr).unwrap();
                     if i == 7 { thread_seq.lemma_index_contains(0); }
                 }
-                if bootstrap_pages.union(thread_pages).contains(page_ptr) { if bootstrap_pages.contains(page_ptr) { bootstrap_seq.index_of_first_ensures(page_ptr); } }
+                if bootstrap_pages.union(thread_pages).contains(pg_ptr) { if bootstrap_pages.contains(pg_ptr) { bootstrap_seq.index_of_first_ensures(pg_ptr); } }
             }
         );
     };
@@ -83,22 +83,22 @@ pub(super) proof fn new_container_page_positions(pages: Seq<PagePtr>)
 
 pub(super) proof fn new_container_staged_pages_disjoint(
     krnl: &KernelK, lctx: &LocalContext, pages_4k: &ArrayVec<PagePtr, 9>, funding_pages: Seq<PagePtr>,
-    page_4k_lock_perms: Map<PagePtr, LockPerm>, funding_page_lock_perms: Map<PagePtr, LockPerm>, current_thread_ptr: RwLockThreadPtr,
-    parent_container_ptr: RwLockContainerPtr, container_page: PagePtr, pcid_allocator_page: PagePtr,
+    page_4k_lock_perms: Map<PagePtr, LockPerm>, funding_page_lock_perms: Map<PagePtr, LockPerm>, current_thrd_ptr: RwLockThreadPtr,
+    parent_ctn_ptr: RwLockContainerPtr, container_page: PagePtr, pcid_allocator_page: PagePtr,
 )
     requires
         krnl.inv(),
         pages_4k.wf(),
         pages_4k.len() == 9,
         page_4k_lock_perms.dom() == pages_4k.view().to_set(),
-        allocated_4k_page_lock_perms_wf(page_4k_lock_perms, krnl, lctx, current_thread_ptr, parent_container_ptr),
+        allocated_4k_page_lock_perms_wf(page_4k_lock_perms, krnl, lctx, current_thrd_ptr, parent_ctn_ptr),
         funding_page_lock_perms.dom() == funding_pages.to_set(),
-        allocated_4k_page_lock_perms_wf(funding_page_lock_perms, krnl, lctx, current_thread_ptr, parent_container_ptr),
+        allocated_4k_page_lock_perms_wf(funding_page_lock_perms, krnl, lctx, current_thrd_ptr, parent_ctn_ptr),
         funding_pages.to_set().disjoint(pages_4k.view().to_set()),
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
-        krnl.pg_arr.spec_index(page_ptr2page_index(container_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr }),
-        krnl.pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr }),
+        krnl.pg_arr.spec_index(page_ptr2page_index(container_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thrd_ptr }),
+        krnl.pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thrd_ptr }),
         lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()).union(page_ptrs_to_indices(funding_pages)),
         pages_4k.view().no_duplicates(),
         funding_pages.no_duplicates(),
@@ -123,10 +123,10 @@ pub(super) proof fn new_container_staged_pages_disjoint(
         let page_ptrs = pages_4k.view().to_set();
         let region = page_2m_all_ptrs(page_ptr2page_index(container_page));
         assert(page_ptrs.intersect(region) =~= Set::<PagePtr>::empty()) by {
-            assert_sets_equal!(page_ptrs.intersect(region) == Set::<PagePtr>::empty(), page_ptr => {
-                if page_ptrs.contains(page_ptr) && region.contains(page_ptr) {
-                    assert(page_4k_lock_perms.dom().contains(page_ptr)) by { pages_4k.view().to_set_ensures(); };
-                    owned_4k_page_not_in_2m_region(krnl, page_ptr, page_ptr2page_index(container_page));
+            assert_sets_equal!(page_ptrs.intersect(region) == Set::<PagePtr>::empty(), pg_ptr => {
+                if page_ptrs.contains(pg_ptr) && region.contains(pg_ptr) {
+                    assert(page_4k_lock_perms.dom().contains(pg_ptr)) by { pages_4k.view().to_set_ensures(); };
+                    owned_4k_page_not_in_2m_region(krnl, pg_ptr, page_ptr2page_index(container_page));
                 }
             });
         };
@@ -136,9 +136,9 @@ pub(super) proof fn new_container_staged_pages_disjoint(
         let page_ptrs = pages_4k.view().to_set();
         let region = page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page),);
         assert(page_ptrs.intersect(region) =~= Set::<PagePtr>::empty()) by {
-            assert_sets_equal!(page_ptrs.intersect(region) == Set::<PagePtr>::empty(), page_ptr => {
-                if page_ptrs.contains(page_ptr) && region.contains(page_ptr) {
-                    owned_4k_page_not_in_2m_region(krnl, page_ptr, page_ptr2page_index(pcid_allocator_page));
+            assert_sets_equal!(page_ptrs.intersect(region) == Set::<PagePtr>::empty(), pg_ptr => {
+                if page_ptrs.contains(pg_ptr) && region.contains(pg_ptr) {
+                    owned_4k_page_not_in_2m_region(krnl, pg_ptr, page_ptr2page_index(pcid_allocator_page));
                 }
             });
         };
@@ -147,24 +147,24 @@ pub(super) proof fn new_container_staged_pages_disjoint(
     let allocator_4k_page = pages_4k.view().spec_index(0);
     let allocator_2m_page = pages_4k.view().spec_index(1);
     let allocator_1g_page = pages_4k.view().spec_index(2);
-    let child_scheduler_ptr = pages_4k.view().spec_index(3);
+    let child_sched_ptr = pages_4k.view().spec_index(3);
     let cpu_set_page = pages_4k.view().spec_index(8);
-    let child_process_ptr = pages_4k.view().spec_index(4);
+    let child_prc_ptr = pages_4k.view().spec_index(4);
     let child_pagetable_ptr = pages_4k.view().spec_index(5);
     let l4_page = pages_4k.view().spec_index(6);
     let funding_page_set = funding_pages.to_set();
-    let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, cpu_set_page, child_process_ptr, child_pagetable_ptr, l4_page);
+    let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, child_sched_ptr, cpu_set_page, child_prc_ptr, child_pagetable_ptr, l4_page);
     assert(funding_page_set.intersect(moved_pages) =~= Set::<PagePtr>::empty()) by {
-        assert_sets_equal!(funding_page_set.intersect(moved_pages) == Set::<PagePtr>::empty(), page_ptr => {
-            if funding_page_set.contains(page_ptr) && moved_pages.contains(page_ptr) {
+        assert_sets_equal!(funding_page_set.intersect(moved_pages) == Set::<PagePtr>::empty(), pg_ptr => {
+            if funding_page_set.contains(pg_ptr) && moved_pages.contains(pg_ptr) {
                 assert({
-                    &&& page_ptr_valid(page_ptr)
-                    &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k
+                    &&& page_ptr_valid(pg_ptr)
+                    &&& krnl.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Owned4k
                 });
-                owned_4k_page_not_in_2m_region(krnl, page_ptr, page_ptr2page_index(container_page));
-                owned_4k_page_not_in_2m_region(krnl, page_ptr, page_ptr2page_index(pcid_allocator_page));
-                if new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, cpu_set_page, child_process_ptr, child_pagetable_ptr, l4_page).contains(page_ptr) {
-                    assert(pages_4k.view().to_set().contains(page_ptr)) by { reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
+                owned_4k_page_not_in_2m_region(krnl, pg_ptr, page_ptr2page_index(container_page));
+                owned_4k_page_not_in_2m_region(krnl, pg_ptr, page_ptr2page_index(pcid_allocator_page));
+                if new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_sched_ptr, cpu_set_page, child_prc_ptr, child_pagetable_ptr, l4_page).contains(pg_ptr) {
+                    assert(pages_4k.view().to_set().contains(pg_ptr)) by { reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
                 }
                 reveal(new_container_moved_pages);
             }
@@ -173,7 +173,7 @@ pub(super) proof fn new_container_staged_pages_disjoint(
     vstd::set_lib::lemma_set_disjoint_iff_empty_intersection(funding_page_set, moved_pages);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    assert(new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, cpu_set_page, child_process_ptr, child_pagetable_ptr, l4_page)
+    assert(new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_sched_ptr, cpu_set_page, child_prc_ptr, child_pagetable_ptr, l4_page)
         .subset_of(pages_4k.view().to_set())) by { reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
     assert(moved_pages.union(funding_page_set).len() == 2 * 512 + 8 + funding_pages.len()) by {
         reveal(new_container_moved_pages); new_container_page_positions(pages_4k.view()); funding_pages.unique_seq_to_set();
@@ -187,22 +187,22 @@ pub(super) proof fn new_container_staged_pages_disjoint(
         assert(locked_indices.intersect(page_tails) =~= Set::<PageIndex>::empty()) by {
             assert_sets_equal!(
                 locked_indices.intersect(page_tails) == Set::<PageIndex>::empty(),
-                page_index => {
-                    if locked_indices.contains(page_index) && page_tails.contains(page_index) {
-                        let pages_indices = pages_4k.view().map_values(|page_ptr: PagePtr| { page_ptr2page_index(page_ptr) });
-                        let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| { page_ptr2page_index(page_ptr) });
-                        let page_ptr = if pages_indices.to_set().contains(page_index) {
-                            pages_indices.to_set_ensures(); pages_indices.index_of_first_ensures(page_index);
-                            let i = pages_indices.index_of_first(page_index).unwrap();
+                pg_idx => {
+                    if locked_indices.contains(pg_idx) && page_tails.contains(pg_idx) {
+                        let pages_indices = pages_4k.view().map_values(|pg_ptr: PagePtr| { page_ptr2page_index(pg_ptr) });
+                        let funding_indices = funding_pages.map_values(|pg_ptr: PagePtr| { page_ptr2page_index(pg_ptr) });
+                        let pg_ptr = if pages_indices.to_set().contains(pg_idx) {
+                            pages_indices.to_set_ensures(); pages_indices.index_of_first_ensures(pg_idx);
+                            let i = pages_indices.index_of_first(pg_idx).unwrap();
                             assert(pages_4k.view().to_set().contains(pages_4k.view().spec_index(i))) by { pages_4k.view().to_set_ensures(); };
                             pages_4k.view().spec_index(i)
                         } else {
-                            funding_indices.to_set_ensures(); funding_indices.index_of_first_ensures(page_index);
-                            let i = funding_indices.index_of_first(page_index).unwrap();
+                            funding_indices.to_set_ensures(); funding_indices.index_of_first_ensures(pg_idx);
+                            let i = funding_indices.index_of_first(pg_idx).unwrap();
                             assert(funding_pages.to_set().contains(funding_pages.spec_index(i))) by { funding_pages.to_set_ensures(); };
                             funding_pages.spec_index(i)
                         };
-                        owned_4k_page_not_in_2m_tail(krnl, page_ptr, container_head); owned_4k_page_not_in_2m_tail(krnl, page_ptr, pcid_allocator_head);
+                        owned_4k_page_not_in_2m_tail(krnl, pg_ptr, container_head); owned_4k_page_not_in_2m_tail(krnl, pg_ptr, pcid_allocator_head);
                     }
                 }
             );

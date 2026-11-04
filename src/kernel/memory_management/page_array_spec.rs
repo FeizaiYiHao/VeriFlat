@@ -10,15 +10,15 @@ verus! {
             index_valid(NUM_PAGES, p_i) ==> page_array.spec_index(p_i).view().inv() && page_array.spec_index(p_i).view().view().addr == page_index2page_ptr(p_i)
     }
 
-    pub proof fn page_array_wf_at(page_array: PageLockedArray, page_index: PageIndex)
+    pub proof fn page_array_wf_at(page_array: PageLockedArray, pg_idx: PageIndex)
         requires
             page_array_wf(page_array),
-            index_valid(NUM_PAGES, page_index),
+            index_valid(NUM_PAGES, pg_idx),
         ensures
-            page_array.spec_index(page_index).view().inv(),
-            page_array.spec_index(page_index).view().is_init(),
-            page_array.spec_index(page_index).view().view().inv(),
-            page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index),
+            page_array.spec_index(pg_idx).view().inv(),
+            page_array.spec_index(pg_idx).view().is_init(),
+            page_array.spec_index(pg_idx).view().view().inv(),
+            page_array.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx),
     { reveal(page_array_wf); }
 
     pub proof fn page_array_wf_map(page_array: PageLockedArray)

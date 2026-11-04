@@ -22,30 +22,30 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn allocator_free_page_ptrs_wf<const SIZE: usize>(allocator_map: PageAllocatorUnLockedMap<SIZE>) -> bool {
-        &&& forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
-            #![trigger allocator_map.dom().contains(alloc_ptr), page_ptr_valid(page_ptr)]
-            #![trigger allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
-            allocator_map.dom().contains(alloc_ptr) && allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr)
-        &&& forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
-            #![trigger allocator_map.dom().contains(alloc_ptr), index_valid(NUM_CPUS, cpu_i), page_ptr_valid(page_ptr)]
-            #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
-            allocator_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) && allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr)
+        &&& forall|alloc_ptr:RwLockPageAllocatorPtr, pg_ptr: PagePtr|
+            #![trigger allocator_map.dom().contains(alloc_ptr), page_ptr_valid(pg_ptr)]
+            #![trigger allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(pg_ptr)]
+            allocator_map.dom().contains(alloc_ptr) && allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(pg_ptr) ==> page_ptr_valid(pg_ptr)
+        &&& forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, pg_ptr: PagePtr|
+            #![trigger allocator_map.dom().contains(alloc_ptr), index_valid(NUM_CPUS, cpu_i), page_ptr_valid(pg_ptr)]
+            #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(pg_ptr)]
+            allocator_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) && allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(pg_ptr) ==> page_ptr_valid(pg_ptr)
     }
 
     /// A page in allocator `alloc_ptr`'s global pool has a valid page pointer.
-    pub proof fn allocator_free_page_ptrs_wf_global_at<const SIZE: usize>(allocator_map: PageAllocatorUnLockedMap<SIZE>, alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr)
+    pub proof fn allocator_free_page_ptrs_wf_global_at<const SIZE: usize>(allocator_map: PageAllocatorUnLockedMap<SIZE>, alloc_ptr: RwLockPageAllocatorPtr, pg_ptr: PagePtr)
         requires
             allocator_free_page_ptrs_wf(allocator_map),
             allocator_map.dom().contains(alloc_ptr),
-        ensures allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        ensures allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
     { reveal(allocator_free_page_ptrs_wf); }
 
     /// A page in allocator `alloc_ptr`'s CPU `cpu_i` cache has a valid page pointer.
-    pub proof fn allocator_free_page_ptrs_wf_cache_at<const SIZE: usize>(allocator_map: PageAllocatorUnLockedMap<SIZE>, alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr)
+    pub proof fn allocator_free_page_ptrs_wf_cache_at<const SIZE: usize>(allocator_map: PageAllocatorUnLockedMap<SIZE>, alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, pg_ptr: PagePtr)
         requires
             allocator_free_page_ptrs_wf(allocator_map),
             allocator_map.dom().contains(alloc_ptr),
             index_valid(NUM_CPUS, cpu_i),
-        ensures allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        ensures allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
     { reveal(allocator_free_page_ptrs_wf); }
 }

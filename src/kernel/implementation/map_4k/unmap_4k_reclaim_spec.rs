@@ -6,17 +6,17 @@ verus! {
 /// cache, and increments the owning thread's pending free-quota counter.
 #[verifier::opaque]
 pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
-    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
-    depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
+    depth: usize, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
-    let page_index = page_ptr2page_index(page_ptr);
-    let old_page = pre.pg_arr.spec_index(page_index).view();
-    let new_page = post.pg_arr.spec_index(page_index).view();
-    let old_thread = pre.thr_mp.spec_index(thread_ptr);
-    let new_thread = post.thr_mp.spec_index(thread_ptr);
-    let old_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
-    let new_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
-    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    let old_page = pre.pg_arr.spec_index(pg_idx).view();
+    let new_page = post.pg_arr.spec_index(pg_idx).view();
+    let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
+    let new_thread = post.thrd_mp.spec_index(thrd_ptr);
+    let old_allocator = pre.allc_4k_mp.spec_index(allc_ptr);
+    let new_allocator = post.allc_4k_mp.spec_index(allc_ptr);
+    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
@@ -47,18 +47,18 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& post.pt_mp.spec_index(pagetable).view().cr3 == pre.pt_mp.spec_index(pagetable).view().cr3
     &&& post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr
     &&& post.pt_mp.spec_index(pagetable).view().pcid_value() == pre.pt_mp.spec_index(pagetable).view().pcid_value()
-    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|
         #![trigger pre.pg_arr.spec_index(i).view().view().state]
         #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
-            &&& post.pg_arr.spec_index(i).view().view().state == if i == page_index {
-                PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }
+            &&& post.pg_arr.spec_index(i).view().view().state == if i == pg_idx {
+                PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }
             } else {
                 pre.pg_arr.spec_index(i).view().view().state
             }
             &&& post.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(i).view().view().owning_container
-            &&& (i != page_index ==> post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings())
+            &&& (i != pg_idx ==> post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings())
         }
     &&& new_page.is_init() == old_page.is_init()
     &&& new_page.view_rodata() == old_page.view_rodata()
@@ -67,20 +67,20 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& new_page.being_killed() == old_page.being_killed()
     &&& new_page.view().free_list_node_storage.addr() == node_addr
     &&& new_page.view() == (Page {
-        state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
+        state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
         mappings: Ghost(old_page.view().mappings().remove((pagetable, va))), ref_count: 0, free_list_node_storage: new_page.view().free_list_node_storage, ..old_page.view()
     })
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
     &&& forall|t: RwLockThreadPtr|
-        #![trigger pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k]
-        #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_4k]
-        #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_2m]
-        #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_1g]
-        pre.thr_mp.dom().contains(t) ==> {
-            &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k
-            &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m
-            &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g
+        #![trigger pre.thrd_mp.spec_index(t).view().temp_alloc_cache_4k]
+        #![trigger post.thrd_mp.spec_index(t).view().temp_alloc_cache_4k]
+        #![trigger post.thrd_mp.spec_index(t).view().temp_alloc_cache_2m]
+        #![trigger post.thrd_mp.spec_index(t).view().temp_alloc_cache_1g]
+        pre.thrd_mp.dom().contains(t) ==> {
+            &&& post.thrd_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_4k
+            &&& post.thrd_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_2m
+            &&& post.thrd_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thrd_mp.spec_index(t).view().temp_alloc_cache_1g
         }
     &&& new_thread.is_init() == old_thread.is_init()
     &&& new_thread.view_rodata() == old_thread.view_rodata()
@@ -94,25 +94,25 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& new_thread.view().direct_free_quota_pending_4k.view() == old_thread.view().direct_free_quota_pending_4k.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }
     &&& new_thread.view().indirect_free_quota_pending_4k.view() == if depth < old_thread.view().container_depth { old_thread.view().indirect_free_quota_pending_4k.view().update(depth as int, new_counter) } else { old_thread.view().indirect_free_quota_pending_4k.view() }
     &&& forall|t: RwLockThreadPtr|
-        #![trigger pre.thr_mp.spec_index(t).view().direct_free_quota_pending_2m]
-        #![trigger post.thr_mp.spec_index(t).view().direct_free_quota_pending_2m]
-        #![trigger thread_effective_quota_1g(pre.thr_mp.spec_index(t))]
-        #![trigger pre.thr_mp.spec_index(t).view().direct_free_quota_pending_1g]
-        #![trigger pre.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g]
-        pre.thr_mp.dom().contains(t) ==> {
-            &&& post.thr_mp.spec_index(t).view().quota_2m == pre.thr_mp.spec_index(t).view().quota_2m
-            &&& post.thr_mp.spec_index(t).view().quota_1g == pre.thr_mp.spec_index(t).view().quota_1g
-            &&& post.thr_mp.spec_index(t).view().direct_free_quota_pending_2m == pre.thr_mp.spec_index(t).view().direct_free_quota_pending_2m
-            &&& post.thr_mp.spec_index(t).view().direct_free_quota_pending_1g == pre.thr_mp.spec_index(t).view().direct_free_quota_pending_1g
-            &&& post.thr_mp.spec_index(t).view().indirect_free_quota_pending_2m == pre.thr_mp.spec_index(t).view().indirect_free_quota_pending_2m
-            &&& post.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g == pre.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g
+        #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m]
+        #![trigger post.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m]
+        #![trigger thread_effective_quota_1g(pre.thrd_mp.spec_index(t))]
+        #![trigger pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_1g]
+        #![trigger pre.thrd_mp.spec_index(t).view().indirect_free_quota_pending_1g]
+        pre.thrd_mp.dom().contains(t) ==> {
+            &&& post.thrd_mp.spec_index(t).view().quota_2m == pre.thrd_mp.spec_index(t).view().quota_2m
+            &&& post.thrd_mp.spec_index(t).view().quota_1g == pre.thrd_mp.spec_index(t).view().quota_1g
+            &&& post.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m == pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_2m
+            &&& post.thrd_mp.spec_index(t).view().direct_free_quota_pending_1g == pre.thrd_mp.spec_index(t).view().direct_free_quota_pending_1g
+            &&& post.thrd_mp.spec_index(t).view().indirect_free_quota_pending_2m == pre.thrd_mp.spec_index(t).view().indirect_free_quota_pending_2m
+            &&& post.thrd_mp.spec_index(t).view().indirect_free_quota_pending_1g == pre.thrd_mp.spec_index(t).view().indirect_free_quota_pending_1g
         }
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator_ptr)
+    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allc_ptr)
     &&& new_allocator.quota == old_allocator.quota
     &&& new_allocator.total_free_pages.view() == old_allocator.total_free_pages.view() + 1
-    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().view() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().view().insert(0, page_ptr)
-    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().map() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, page_ptr)
+    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().view() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().view().insert(0, pg_ptr)
+    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().map() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, pg_ptr)
     &&& new_allocator.cpu_caches.entries_unchanged_except(&old_allocator.cpu_caches, cpu_id)
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread() == old_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread()
     &&& new_allocator.global_pool == old_allocator.global_pool

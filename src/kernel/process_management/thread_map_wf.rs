@@ -27,84 +27,84 @@ verus! {
         &&& forall|thread_p:RwLockThreadPtr| #![trigger thread_map.dom().contains(thread_p)] thread_map.dom().contains(thread_p) ==> thread_map.spec_index(thread_p).inv()
     }
 
-    pub proof fn thread_perms_wf_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    pub proof fn thread_perms_wf_at(thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             thread_perms_wf(thread_map),
-            thread_map.dom().contains(thread_ptr),
+            thread_map.dom().contains(thrd_ptr),
         ensures
-            thread_map.view().spec_index(thread_ptr).is_init(),
-            thread_map.view().spec_index(thread_ptr).addr() == thread_ptr,
-            thread_map.spec_index(thread_ptr).inv(),
-            thread_map.spec_index(thread_ptr).is_init(),
-            thread_map.spec_index(thread_ptr).view().inv(),
+            thread_map.view().spec_index(thrd_ptr).is_init(),
+            thread_map.view().spec_index(thrd_ptr).addr() == thrd_ptr,
+            thread_map.spec_index(thrd_ptr).inv(),
+            thread_map.spec_index(thrd_ptr).is_init(),
+            thread_map.spec_index(thrd_ptr).view().inv(),
     { reveal(thread_perms_wf); }
 
     /// A killed thread is write-held.
     pub open spec fn thread_killed_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger thread_map.spec_index(thread_ptr).view().state]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().state is KILLED ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+        forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thrd_ptr).view().state]
+            thread_map.dom().contains(thrd_ptr) && thread_map.spec_index(thrd_ptr).view().state is KILLED ==> thread_map.spec_index(thrd_ptr).locking_thread() is Write
     }
 
     /// A thread in IPC transit is write-held and unmarked, and its partner is a running thread whose rendezvous names it as its peer.
     #[verifier::opaque]
     pub open spec fn thread_ipc_transit_wf(thread_map: ThreadLockedMap) -> bool {
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger thread_map.spec_index(thread_ptr).view().state]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().state is IPC_TRANSIT ==> {
-                let partner_ptr = thread_map.spec_index(thread_ptr).view().state->IPC_TRANSIT_partner;
-                &&& thread_map.spec_index(thread_ptr).locking_thread() is Write
-                &&& !thread_map.spec_index(thread_ptr).being_killed()
+        forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thrd_ptr).view().state]
+            thread_map.dom().contains(thrd_ptr) && thread_map.spec_index(thrd_ptr).view().state is IPC_TRANSIT ==> {
+                let partner_ptr = thread_map.spec_index(thrd_ptr).view().state->IPC_TRANSIT_partner;
+                &&& thread_map.spec_index(thrd_ptr).locking_thread() is Write
+                &&& !thread_map.spec_index(thrd_ptr).being_killed()
                 &&& thread_map.dom().contains(partner_ptr)
                 &&& thread_map.spec_index(partner_ptr).view().state is RUNNING
-                &&& progress_peer_of(thread_map.spec_index(partner_ptr).view().syscall_progress.view()) == Some(thread_ptr)
+                &&& progress_peer_of(thread_map.spec_index(partner_ptr).view().syscall_progress.view()) == Some(thrd_ptr)
             }
     }
 
-    /// Thread `thread_ptr` in IPC transit is write-held and unmarked, and its running partner's rendezvous names it as its peer.
-    pub proof fn thread_ipc_transit_wf_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    /// Thread `thrd_ptr` in IPC transit is write-held and unmarked, and its running partner's rendezvous names it as its peer.
+    pub proof fn thread_ipc_transit_wf_at(thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             thread_perms_wf(thread_map),
-            thread_map.dom().contains(thread_ptr),
+            thread_map.dom().contains(thrd_ptr),
         ensures
-            thread_map.spec_index(thread_ptr).view().state is IPC_TRANSIT ==> {
-                let partner_ptr = thread_map.spec_index(thread_ptr).view().state->IPC_TRANSIT_partner;
-                &&& thread_map.spec_index(thread_ptr).locking_thread() is Write
-                &&& !thread_map.spec_index(thread_ptr).being_killed()
+            thread_map.spec_index(thrd_ptr).view().state is IPC_TRANSIT ==> {
+                let partner_ptr = thread_map.spec_index(thrd_ptr).view().state->IPC_TRANSIT_partner;
+                &&& thread_map.spec_index(thrd_ptr).locking_thread() is Write
+                &&& !thread_map.spec_index(thrd_ptr).being_killed()
                 &&& thread_map.dom().contains(partner_ptr)
                 &&& thread_map.spec_index(partner_ptr).view().state is RUNNING
-                &&& progress_peer_of(thread_map.spec_index(partner_ptr).view().syscall_progress.view()) == Some(thread_ptr)
+                &&& progress_peer_of(thread_map.spec_index(partner_ptr).view().syscall_progress.view()) == Some(thrd_ptr)
             },
     { reveal(thread_perms_wf); reveal(thread_ipc_transit_wf); }
 
     #[verifier::opaque]
     pub open spec fn thread_syscall_progress_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger thread_map.spec_index(thread_ptr).view().syscall_progress]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().syscall_progress.view() is Some ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+        forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thrd_ptr).view().syscall_progress]
+            thread_map.dom().contains(thrd_ptr) && thread_map.spec_index(thrd_ptr).view().syscall_progress.view() is Some ==> thread_map.spec_index(thrd_ptr).locking_thread() is Write
     }
 
     /// An exited thread stays write-held by its exiting syscall until it is destroyed.
     #[verifier::opaque]
     pub open spec fn thread_exited_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger thread_map.spec_index(thread_ptr).view_ghost()]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view_ghost().exited ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+        forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thrd_ptr).view_ghost()]
+            thread_map.dom().contains(thrd_ptr) && thread_map.spec_index(thrd_ptr).view_ghost().exited ==> thread_map.spec_index(thrd_ptr).locking_thread() is Write
     }
 
-    /// Exited thread `thread_ptr` is write-held.
-    pub proof fn thread_exited_only_when_wlocked_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    /// Exited thread `thrd_ptr` is write-held.
+    pub proof fn thread_exited_only_when_wlocked_at(thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             thread_perms_wf(thread_map),
-            thread_map.dom().contains(thread_ptr),
-        ensures thread_map.spec_index(thread_ptr).view_ghost().exited ==> thread_map.spec_index(thread_ptr).locking_thread() is Write,
+            thread_map.dom().contains(thrd_ptr),
+        ensures thread_map.spec_index(thrd_ptr).view_ghost().exited ==> thread_map.spec_index(thrd_ptr).locking_thread() is Write,
     { reveal(thread_perms_wf); reveal(thread_exited_only_when_wlocked); }
 
-    /// Killed thread `thread_ptr` is write-held.
-    pub proof fn thread_killed_only_when_wlocked_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+    /// Killed thread `thrd_ptr` is write-held.
+    pub proof fn thread_killed_only_when_wlocked_at(thread_map: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
         requires
             thread_perms_wf(thread_map),
-            thread_map.dom().contains(thread_ptr),
-        ensures thread_map.spec_index(thread_ptr).view().state is KILLED ==> thread_map.spec_index(thread_ptr).locking_thread() is Write,
+            thread_map.dom().contains(thrd_ptr),
+        ensures thread_map.spec_index(thrd_ptr).view().state is KILLED ==> thread_map.spec_index(thrd_ptr).locking_thread() is Write,
     { reveal(thread_perms_wf); }
 }

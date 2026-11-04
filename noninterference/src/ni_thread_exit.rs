@@ -257,9 +257,9 @@ pub proof fn thread_exit_release_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
     reveal(thread_exit_drop_step_pre); reveal(thread_exit_release_step); reveal(kernel_u_endpoint_released); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
     let thread = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let index = new_u.thread_map[thread].syscall_progress->Some_0->ThreadExit_next - 1;
-    let endpoint_ptr = old_u.thread_map[thread].endpoint_descriptors[index]->Some_0;
+    let ep_ptr = old_u.thread_map[thread].endpoint_descriptors[index]->Some_0;
     assert forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] old_u.container_map.dom().contains(c) && in_domain(old_u, b, c) implies new_u.container_map[c] == old_u.container_map[c] by {
-        if old_u.container_map[c].owned_pages.contains(endpoint_ptr) { reveal(kernel_u_object_page_owner_wf); }
+        if old_u.container_map[c].owned_pages.contains(ep_ptr) { reveal(kernel_u_object_page_owner_wf); }
     };
 }
 
@@ -452,9 +452,9 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_quota_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map[thread_ptr];
-    assert(old_u.thread_map.dom().contains(thread_ptr) && old_u.process_map.dom().contains(thread.owning_proc) && old_u.container_map.dom().contains(thread.owning_container)) by { reveal(thread_exit_quota_step_pre); };
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map[thrd_ptr];
+    assert(old_u.thread_map.dom().contains(thrd_ptr) && old_u.process_map.dom().contains(thread.owning_proc) && old_u.container_map.dom().contains(thread.owning_container)) by { reveal(thread_exit_quota_step_pre); };
     assert(new_u.process_map.dom() =~= old_u.process_map.dom() && forall|q: RwLockProcessPtr| #![trigger new_u.process_map[q]] {
         &&& new_u.process_map[q].owning_container == old_u.process_map[q].owning_container
         &&& new_u.process_map[q].pagetable == old_u.process_map[q].pagetable

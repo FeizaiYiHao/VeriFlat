@@ -13,19 +13,19 @@ pub proof fn hide_user_l4_entries_hide_step_pre_from_k(pre: &KernelK, post: &Ker
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
-    let process_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let prc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(*pre, *post, pagetable, l4i);
     process_pagetable_match_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
-    process_perms_wf_at(pre.prc_mp, process_ptr);
-    process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, process_ptr);
+    process_perms_wf_at(pre.prc_mp, prc_ptr);
+    process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, prc_ptr);
     pagetable_no_1g_leaf_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
-    kernel_process_projection_at(post, process_ptr);
-    if pre.prc_mp.spec_index(process_ptr).view().zombie {
+    kernel_process_projection_at(post, prc_ptr);
+    if pre.prc_mp.spec_index(prc_ptr).view().zombie {
         assert(new_c.mapping_4k() =~= old_c.mapping_4k()); assert(new_c.mapping_2m() =~= old_c.mapping_2m()); assert(new_c.mapping_1g() =~= old_c.mapping_1g());
     }
-    assert(kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post) || pre.prc_mp.spec_index(process_ptr).view().zombie
+    assert(kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post) || pre.prc_mp.spec_index(prc_ptr).view().zombie
         ==> kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())) by { reveal(kernel_pagetable_nonlock_fields_unchanged); };
 }
 
@@ -38,12 +38,12 @@ pub proof fn hide_user_l4_entries_hide_step_from_k(pre: &KernelK, post: &KernelK
     ensures
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let process_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
-            let table = old_u.process_map[process_ptr].pagetable->Some_0;
-            &&& old_u.process_map.dom().contains(process_ptr)
+            let prc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let table = old_u.process_map[prc_ptr].pagetable->Some_0;
+            &&& old_u.process_map.dom().contains(prc_ptr)
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
-                process_map: old_u.process_map.insert(process_ptr, ProcessU {
-                    pagetable: if old_u.process_map[process_ptr].pagetable is Some {
+                process_map: old_u.process_map.insert(prc_ptr, ProcessU {
+                    pagetable: if old_u.process_map[prc_ptr].pagetable is Some {
                         Some(PageTableU {
                             mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
                             mapping_2m: table.mapping_2m.remove_keys(table.mapping_2m.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
@@ -54,7 +54,7 @@ pub proof fn hide_user_l4_entries_hide_step_from_k(pre: &KernelK, post: &KernelK
                     } else {
                         None
                     },
-                    ..old_u.process_map[process_ptr]
+                    ..old_u.process_map[prc_ptr]
                 }),
                 ..old_u
             })
@@ -80,12 +80,12 @@ pub proof fn hide_user_l4_entries_steps_from_k(steps: Seq<KernelStep>, start: in
     ensures
         forall|k: int| #![trigger hidden[k]] 0 <= k < count ==> {
             let step = steps[start + k];
-            let process_ptr = hidden[k].1.pt_mp.spec_index(pagetable).view().proc_ptr;
-            let table = step.old_u.process_map[process_ptr].pagetable->Some_0;
-            &&& step.old_u.process_map.dom().contains(process_ptr)
+            let prc_ptr = hidden[k].1.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let table = step.old_u.process_map[prc_ptr].pagetable->Some_0;
+            &&& step.old_u.process_map.dom().contains(prc_ptr)
             &&& step.new_u == (KernelU {
-                process_map: step.old_u.process_map.insert(process_ptr, ProcessU {
-                    pagetable: if step.old_u.process_map[process_ptr].pagetable is Some {
+                process_map: step.old_u.process_map.insert(prc_ptr, ProcessU {
+                    pagetable: if step.old_u.process_map[prc_ptr].pagetable is Some {
                         Some(PageTableU {
                             mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == hidden[k].0)),
                             mapping_2m: table.mapping_2m.remove_keys(table.mapping_2m.dom().filter(|va: VAddr| spec_v2l4index(va) == hidden[k].0)),
@@ -96,7 +96,7 @@ pub proof fn hide_user_l4_entries_steps_from_k(steps: Seq<KernelStep>, start: in
                     } else {
                         None
                     },
-                    ..step.old_u.process_map[process_ptr]
+                    ..step.old_u.process_map[prc_ptr]
                 }),
                 ..step.old_u
             })

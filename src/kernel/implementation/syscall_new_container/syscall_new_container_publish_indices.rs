@@ -125,7 +125,7 @@ pub(super) fn new_container_publish_staging_heads(
                 page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
                 page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
             ])) == set![page_ptr2page_index(thread_page)],
-            page_index => { reveal(Seq::contains); page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); }
+            pg_idx => { reveal(Seq::contains); page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); }
         );
     }
     (container_head, pcid_allocator_head)

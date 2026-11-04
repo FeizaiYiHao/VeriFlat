@@ -16,12 +16,12 @@ use super::syscall_kill_container_retire_eof_entry::kill_container_retire_eof_ta
 
 verus! {
 /// With every lock `kill_container_retire_held_locks` names write-held, retire the marked childless container
-/// `container_ptr`, which owns no process or thread and whose quotas, scheduler queues, and allocator caches are
+/// `ctn_ptr`, which owns no process or thread and whose quotas, scheduler queues, and allocator caches are
 /// empty: it leaves its parent `parent_ptr`, the killer's container `owner_ptr` takes over its pages, its kernel
 /// objects leave their maps, their pages join `owner_ptr`'s global pools with their quota, and every lock taken for it
 /// is released. The caller ends the step.
 pub(crate) fn kill_container_retire_commit(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
     Tracked(container_perm): Tracked<LockPerm>, Tracked(parent_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>, Tracked(cpu_set_perm): Tracked<LockPerm>,
     Tracked(flag_perms): Tracked<Map<CpuId, LockPerm>>, Tracked(pcid_perm): Tracked<LockPerm>, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>,
     Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_1g): Tracked<Map<CpuId, LockPerm>>,
@@ -33,12 +33,12 @@ pub(crate) fn kill_container_retire_commit(
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
-        kill_container_retire_held_locks(*old(krnl), *old(lctx), container_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g, pools_4k,
+        kill_container_retire_held_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g, pools_4k,
             pools_2m, pool_1g, quotas_4k, quotas_2m, quota_1g, page_perms, tails_container, tails_pcid),
         ({
-            let target = old(krnl).ctn_mp.spec_index(container_ptr);
+            let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
-            &&& owner_ptr != container_ptr
+            &&& owner_ptr != ctn_ptr
             &&& target.view_ghost().retire_ready
             &&& ro.parent == Some(parent_ptr)
             &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
@@ -47,9 +47,9 @@ pub(crate) fn kill_container_retire_commit(
             &&& forall|i: CpuId| #![trigger old(krnl).sched_mp.spec_index(ro.scheduler).shards.spec_index(i)]
                 index_valid(NUM_CPUS, i) ==> old(krnl).sched_mp.spec_index(ro.scheduler).shards.spec_index(i).view().view().queue.view().len() == 0
         }),
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write),
         container_perm.state() is WriteLock && container_perm.thread_id() == old(lctx).thread_id(),
-        container_perm.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
+        container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
         old(krnl).ctn_mp.dom().contains(parent_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_ptr, TypedLockMode::Write),
         parent_perm.state() is WriteLock && parent_perm.thread_id() == old(lctx).thread_id(),
@@ -63,8 +63,8 @@ pub(crate) fn kill_container_retire_commit(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).container_lock_map() == old(lctx).container_lock_map().remove(container_ptr),
-        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map().remove(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
+        final(lctx).container_lock_map() == old(lctx).container_lock_map().remove(ctn_ptr),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map().remove(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -84,34 +84,34 @@ pub(crate) fn kill_container_retire_commit(
         *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, sched_mp: final(krnl).sched_mp, cpu_set_mp: final(krnl).cpu_set_mp, pcid_allc_mp: final(krnl).pcid_allc_mp,
             cpu_offline_mp: final(krnl).cpu_offline_mp, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, allc_1g_mp: final(krnl).allc_1g_mp,
             pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
-        final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom().remove(container_ptr),
+        final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom().remove(ctn_ptr),
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)] final(krnl).ctn_mp.dom().contains(c) ==> {
             let old_c = old(krnl).ctn_mp.spec_index(c);
             let new_c = final(krnl).ctn_mp.spec_index(c);
-            let target = old(krnl).ctn_mp.spec_index(container_ptr);
+            let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             &&& new_c.view_rodata() == old_c.view_rodata()
             &&& new_c.locking_thread() == old_c.locking_thread()
             &&& new_c.control() == old_c.control()
             &&& new_c.view().zombie == old_c.view().zombie
             &&& new_c.view().root_process == old_c.view().root_process
-            &&& new_c.view().children.view() == if c == parent_ptr { old_c.view().children.view().remove_value(container_ptr) } else { old_c.view().children.view() }
+            &&& new_c.view().children.view() == if c == parent_ptr { old_c.view().children.view().remove_value(ctn_ptr) } else { old_c.view().children.view() }
             &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
             &&& new_c.view_ghost().uppertree_seq == old_c.view_ghost().uppertree_seq
             &&& new_c.view_ghost().subtree_set.view() == if target.view_ghost().uppertree_seq.view().contains(c) {
-                old_c.view_ghost().subtree_set.view().remove(container_ptr)
+                old_c.view_ghost().subtree_set.view().remove(ctn_ptr)
             } else { old_c.view_ghost().subtree_set.view() }
             &&& new_c.view_ghost().owned_processes == old_c.view_ghost().owned_processes
             &&& new_c.view_ghost().owned_threads == old_c.view_ghost().owned_threads
             &&& new_c.view_ghost().owned_endpoints == old_c.view_ghost().owned_endpoints
         },
         ({
-            let ro = old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view();
+            let ro = old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view();
             let owner_ro = old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view();
             &&& final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom().remove(ro.scheduler)
             &&& forall|s: RwLockSchedulerPtr| #![trigger final(krnl).sched_mp.spec_index(s)] final(krnl).sched_mp.dom().contains(s) ==> final(krnl).sched_mp.spec_index(s) == old(krnl).sched_mp.spec_index(s)
             &&& final(krnl).cpu_set_mp.dom() == old(krnl).cpu_set_mp.dom().remove(ro.cpu_set)
             &&& forall|s: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(s)] final(krnl).cpu_set_mp.dom().contains(s) ==> final(krnl).cpu_set_mp.spec_index(s) == old(krnl).cpu_set_mp.spec_index(s)
-            &&& final(krnl).cpu_offline_mp.dom() == old(krnl).cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(container_ptr))
+            &&& final(krnl).cpu_offline_mp.dom() == old(krnl).cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(ctn_ptr))
             &&& forall|f: RwLockCpuOfflineFlagsPtr| #![trigger final(krnl).cpu_offline_mp.spec_index(f)]
                 final(krnl).cpu_offline_mp.dom().contains(f) ==> final(krnl).cpu_offline_mp.spec_index(f) == old(krnl).cpu_offline_mp.spec_index(f)
             &&& final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom().remove(ro.pcid_allocator)
@@ -131,10 +131,10 @@ pub(crate) fn kill_container_retire_commit(
         }),
 {
     let ghost entry = *krnl;
-    let ghost ro = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view();
+    let ghost ro = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let ghost owner_ro = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view();
     proof {
-        container_kill_retire_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
+        container_kill_retire_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner_ptr); lemma_container_allocator_2m_quota_bounded(&*krnl, owner_ptr);
         page_array_wf_map(krnl.pg_arr); page_ptr_roundtrip();
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
@@ -146,33 +146,33 @@ pub(crate) fn kill_container_retire_commit(
         container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, owner_ro.allocator_ptr_4k, ro.allocator_ptr_4k);
         container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, owner_ro.allocator_ptr_4k, ro.allocator_ptr_2m);
         container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, owner_ro.allocator_ptr_4k, ro.allocator_ptr_1g);
-        container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, owner_ro.allocator_ptr_2m, container_ptr);
+        container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, owner_ro.allocator_ptr_2m, ctn_ptr);
         container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, owner_ro.allocator_ptr_2m, ro.pcid_allocator);
-        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
-        container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
-        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr);
-        container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr);
+        container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr);
+        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
+        container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
-        let (ps, hs) = (kill_container_retire_pages_4k(ro), kill_container_retire_heads(container_ptr, ro));
+        let (ps, hs) = (kill_container_retire_pages_4k(ro), kill_container_retire_heads(ctn_ptr, ro));
         assert(page_perms.dom().contains(hs[0]) && page_perms.dom().contains(hs[1]));
         assert(page_perms.dom().contains(ps[0]) && page_perms.dom().contains(ps[1]) && page_perms.dom().contains(ps[2]) && page_perms.dom().contains(ps[3]) && page_perms.dom().contains(ps[4]));
     }
-    let a4 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-    let a2 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-    let a1 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g;
-    let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
-    let cpu_set_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().cpu_set;
-    let pcid_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;
+    let a4 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
+    let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
+    let a1 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_1g;
+    let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
+    let cpu_set_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().cpu_set;
+    let pcid_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().pcid_allocator;
     let o4 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_4k;
     let o2 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_2m;
     let tracked mut pools_4k = pools_4k;
     let tracked mut pools_2m = pools_2m;
     let tracked mut quotas_4k = quotas_4k;
     let tracked mut quotas_2m = quotas_2m;
-    let Tracked(objects) = kill_container_retire_detach(krnl, Tracked(&mut *lctx), container_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
+    let Tracked(objects) = kill_container_retire_detach(krnl, Tracked(&mut *lctx), ctn_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
         Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms), Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(&mut pools_4k),
         Tracked(&mut pools_2m), Tracked(pool_1g), Tracked(&mut quotas_4k), Tracked(&mut quotas_2m), Tracked(quota_1g), Tracked(&page_perms), Tracked(&tails_container), Tracked(&tails_pcid));
     let tracked (container_page, pcid_page, page_objects) = objects;
@@ -182,22 +182,22 @@ pub(crate) fn kill_container_retire_commit(
     }
     // Their pages join the killer's container's global pools with their quota.
     let mut pages = ArrayVec::<PageIndex, 5>::new();
-    pages.push(page_ptr2page_index(scheduler_ptr));
+    pages.push(page_ptr2page_index(sched_ptr));
     pages.push(page_ptr2page_index(cpu_set_ptr));
     pages.push(page_ptr2page_index(a4));
     pages.push(page_ptr2page_index(a2));
     pages.push(page_ptr2page_index(a1));
     proof { assert(pages.view() =~= kill_container_retire_pages_4k(ro)); }
-    let container_head = page_ptr2page_index(container_ptr);
+    let container_head = page_ptr2page_index(ctn_ptr);
     let pcid_head = page_ptr2page_index(pcid_ptr);
     kill_container_retire_fill_pools(krnl, Tracked(&mut *lctx), o4, o2, owner_ptr, &pages, Tracked(page_objects), container_head, Tracked(container_page), pcid_head, Tracked(pcid_page),
         Tracked(&page_perms), Tracked(&tails_container), Tracked(&tails_pcid), Tracked(pools_4k.tracked_borrow(o4)), Tracked(quotas_4k.tracked_borrow(o4)), Tracked(pools_2m.tracked_borrow(o2)),
         Tracked(quotas_2m.tracked_borrow(o2)));
     let ghost mid = *krnl;
     proof {
-        assert(kill_container_retire_eof_transition_framing(entry, mid, container_ptr, parent_ptr, owner_ptr)) by { reveal(kill_container_retire_eof_transition_framing); };
-        assert(kill_container_retire_eof_target_empty(entry, container_ptr, parent_ptr, owner_ptr));
-        kill_container_retire_eof(entry, mid, container_ptr, parent_ptr, owner_ptr);
+        assert(kill_container_retire_eof_transition_framing(entry, mid, ctn_ptr, parent_ptr, owner_ptr)) by { reveal(kill_container_retire_eof_transition_framing); };
+        assert(kill_container_retire_eof_target_empty(entry, ctn_ptr, parent_ptr, owner_ptr));
+        kill_container_retire_eof(entry, mid, ctn_ptr, parent_ptr, owner_ptr);
     }
     kill_container_retire_unlock(krnl, Tracked(&mut *lctx), o4, o2, container_head, pcid_head, &pages, Tracked(pools_4k), Tracked(pools_2m), Tracked(quotas_4k),
         Tracked(quotas_2m), Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid));
@@ -205,11 +205,11 @@ pub(crate) fn kill_container_retire_commit(
 }
 
 /// With every lock `kill_container_retire_held_locks` names write-held, detach the marked childless container
-/// `container_ptr` from its parent `parent_ptr` and every ancestor's subtree, hand the pages it owns to the killer's
+/// `ctn_ptr` from its parent `parent_ptr` and every ancestor's subtree, hand the pages it owns to the killer's
 /// container `owner_ptr`, and retire its kernel objects, whose locks leave `lctx` and whose pages it returns: its
 /// container and PCID allocator pages and its five 4K object pages.
 fn kill_container_retire_detach(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
     Tracked(container_perm): Tracked<LockPerm>, Tracked(parent_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>, Tracked(cpu_set_perm): Tracked<LockPerm>,
     Tracked(flag_perms): Tracked<Map<CpuId, LockPerm>>, Tracked(pcid_perm): Tracked<LockPerm>, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>,
     Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_1g): Tracked<Map<CpuId, LockPerm>>,
@@ -221,12 +221,12 @@ fn kill_container_retire_detach(
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
-        kill_container_retire_held_locks(*old(krnl), *old(lctx), container_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g,
+        kill_container_retire_held_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g,
             *old(pools_4k), *old(pools_2m), pool_1g, *old(quotas_4k), *old(quotas_2m), quota_1g, *page_perms, *tails_container, *tails_pcid),
         ({
-            let target = old(krnl).ctn_mp.spec_index(container_ptr);
+            let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
-            &&& owner_ptr != container_ptr
+            &&& owner_ptr != ctn_ptr
             &&& target.being_killed()
             &&& target.view().children.view().len() == 0
             &&& target.view_ghost().owned_processes.view() == Set::<RwLockProcessPtr>::empty()
@@ -247,9 +247,9 @@ fn kill_container_retire_detach(
             &&& forall|i: CpuId| #![trigger old(krnl).allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.spec_index(i)]
                 index_valid(NUM_CPUS, i) ==> old(krnl).allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0
         }),
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write),
         container_perm.state() is WriteLock && container_perm.thread_id() == old(lctx).thread_id(),
-        container_perm.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
+        container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
         old(krnl).ctn_mp.dom().contains(parent_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_ptr, TypedLockMode::Write),
         parent_perm.state() is WriteLock && parent_perm.thread_id() == old(lctx).thread_id(),
@@ -272,7 +272,7 @@ fn kill_container_retire_detach(
         final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
-        final(lctx).container_lock_map() == old(lctx).container_lock_map().remove(container_ptr),
+        final(lctx).container_lock_map() == old(lctx).container_lock_map().remove(ctn_ptr),
         final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         final(lctx).scheduler_lock_map().dom().is_empty(),
         final(lctx).pcid_allocator_lock_map().dom().is_empty(),
@@ -280,7 +280,7 @@ fn kill_container_retire_detach(
         *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, sched_mp: final(krnl).sched_mp, cpu_set_mp: final(krnl).cpu_set_mp, pcid_allc_mp: final(krnl).pcid_allc_mp,
             cpu_offline_mp: final(krnl).cpu_offline_mp, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
         ({
-            let target = old(krnl).ctn_mp.spec_index(container_ptr);
+            let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
             let (a4, a2) = (ro.allocator_ptr_4k, ro.allocator_ptr_2m);
             &&& final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map().remove(ro.cpu_set)
@@ -292,7 +292,7 @@ fn kill_container_retire_detach(
             &&& final(lctx).allocator_cache_2m_lock_map().dom().is_empty()
             &&& *final(pools_4k) == old(pools_4k).remove(a4) && *final(quotas_4k) == old(quotas_4k).remove(a4)
             &&& *final(pools_2m) == old(pools_2m).remove(a2) && *final(quotas_2m) == old(quotas_2m).remove(a2)
-            &&& ret.view().0.is_init() && ret.view().0.addr() == container_ptr
+            &&& ret.view().0.is_init() && ret.view().0.addr() == ctn_ptr
             &&& ret.view().1.is_init() && ret.view().1.addr() == ro.pcid_allocator
             &&& forall|k: int| #![trigger kill_container_retire_pages_4k(ro)[k]] 0 <= k < 5 ==> {
                 &&& ret.view().2.dom().contains(kill_container_retire_pages_4k(ro)[k])
@@ -300,7 +300,7 @@ fn kill_container_retire_detach(
                 &&& ret.view().2[kill_container_retire_pages_4k(ro)[k]].addr() == page_index2page_ptr(kill_container_retire_pages_4k(ro)[k])
             }
             &&& final(krnl).ctn_mp.perms_wf()
-            &&& final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom().remove(container_ptr)
+            &&& final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom().remove(ctn_ptr)
             &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().inv() && final(krnl).ctn_mp.spec_index(parent_ptr).view().children.view().no_duplicates()
             &&& forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)] final(krnl).ctn_mp.dom().contains(c) ==> {
                 let old_c = old(krnl).ctn_mp.spec_index(c);
@@ -315,9 +315,9 @@ fn kill_container_retire_detach(
                 &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
                 &&& new_c.view_ghost() == (ContainerGhost { subtree_set: new_c.view_ghost().subtree_set, ..old_c.view_ghost() })
                 &&& new_c.view_ghost().subtree_set.view()
-                    == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(container_ptr) } else { old_c.view_ghost().subtree_set.view() }
+                    == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
             }
-            &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().children.view() == old(krnl).ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(container_ptr)
+            &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().children.view() == old(krnl).ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(ctn_ptr)
             &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().children.map() == old(krnl).ctn_mp.spec_index(parent_ptr).view().children.map().remove(target.view().parent_linkedlist_node.addr())
             &&& final(krnl).sched_mp.perms_wf()
             &&& final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom().remove(ro.scheduler)
@@ -330,7 +330,7 @@ fn kill_container_retire_detach(
             &&& final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom().remove(ro.pcid_allocator)
             &&& forall|a: RwLockPcidAllocatorPtr| #![trigger final(krnl).pcid_allc_mp.spec_index(a)] final(krnl).pcid_allc_mp.dom().contains(a) ==> final(krnl).pcid_allc_mp.spec_index(a) == old(krnl).pcid_allc_mp.spec_index(a)
             &&& final(krnl).cpu_offline_mp.perms_wf()
-            &&& final(krnl).cpu_offline_mp.dom() == old(krnl).cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(container_ptr))
+            &&& final(krnl).cpu_offline_mp.dom() == old(krnl).cpu_offline_mp.dom().remove(cpu_offline_flags_ptr(ctn_ptr))
             &&& forall|f: RwLockCpuOfflineFlagsPtr| #![trigger final(krnl).cpu_offline_mp.spec_index(f)]
                 final(krnl).cpu_offline_mp.dom().contains(f) ==> final(krnl).cpu_offline_mp.spec_index(f) == old(krnl).cpu_offline_mp.spec_index(f)
             &&& final(krnl).allc_4k_mp.perms_wf()
@@ -345,25 +345,25 @@ fn kill_container_retire_detach(
         }),
 {
     let ghost entry = *krnl;
-    let ghost ro = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view();
+    let ghost ro = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let ghost owner_ro = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view();
-    let ghost ancestors = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
+    let ghost ancestors = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
-        container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, container_ptr, owner_ptr); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, container_ptr);
-        container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, container_ptr); containers_linkedlist_wf_at(krnl.rt_ctn, krnl.ctn_mp, container_ptr);
+        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr, owner_ptr); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
+        container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); containers_linkedlist_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         container_perms_wf_at(krnl.ctn_mp, parent_ptr);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
-        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr);
-        container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr);
-        container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
+        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
+        container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr);
+        container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, ctn_ptr);
         scheduler_perms_wf_map(krnl.sched_mp); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, ro.cpu_set); pcid_allocator_perms_wf_map(krnl.pcid_allc_mp);
         pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, ro.pcid_allocator); cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_map(krnl.allc_1g_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, ro.allocator_ptr_2m); allocator_perms_wf_at(krnl.allc_1g_mp, ro.allocator_ptr_1g);
         allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, container_ptr);
+        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, ctn_ptr);
         krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).global_pool.view().linked_list.wf_implies_view_len_eq_len();
@@ -376,22 +376,22 @@ fn kill_container_retire_detach(
         allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, ro.allocator_ptr_1g);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
     }
-    let a4 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-    let a2 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-    let a1 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g;
-    let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
-    let cpu_set_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().cpu_set;
-    let pcid_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;
+    let a4 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
+    let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
+    let a1 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_1g;
+    let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
+    let cpu_set_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().cpu_set;
+    let pcid_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().pcid_allocator;
     // The container leaves its parent and every ancestor's subtree, and the killer's container takes over its pages.
-    let Tracked(node_perm) = container_map_unlink_child(&mut krnl.ctn_mp, parent_ptr, container_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_perm), Tracked(&container_perm));
+    let Tracked(node_perm) = container_map_unlink_child(&mut krnl.ctn_mp, parent_ptr, ctn_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_perm), Tracked(&container_perm));
     proof { container_perms_wf_at(krnl.ctn_mp, parent_ptr); }
     {
         let owner = krnl.ctn_mp.borrow_mut_typed(owner_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(owner_perm));
-        owner.owned_pages = Ghost(owner.owned_pages.view().union(entry.ctn_mp.spec_index(container_ptr).view().owned_pages.view()));
+        owner.owned_pages = Ghost(owner.owned_pages.view().union(entry.ctn_mp.spec_index(ctn_ptr).view().owned_pages.view()));
     }
     // Its kernel objects leave their maps.
-    let Tracked(container_page) = kill_container_retire_container_object(krnl, Tracked(&mut *lctx), container_ptr, Tracked(node_perm), Tracked(container_perm), Tracked(flag_perms));
-    let Tracked(scheduler_page) = kill_container_retire_scheduler_object(krnl, Tracked(&mut *lctx), scheduler_ptr, Tracked(shard_perms));
+    let Tracked(container_page) = kill_container_retire_container_object(krnl, Tracked(&mut *lctx), ctn_ptr, Tracked(node_perm), Tracked(container_perm), Tracked(flag_perms));
+    let Tracked(scheduler_page) = kill_container_retire_scheduler_object(krnl, Tracked(&mut *lctx), sched_ptr, Tracked(shard_perms));
     let Tracked(cpu_set_page) = kill_container_retire_cpu_set_object(krnl, Tracked(&mut *lctx), cpu_set_ptr, Tracked(cpu_set_perm));
     let Tracked(pcid_page) = kill_container_retire_pcid_allocator_object(krnl, Tracked(&mut *lctx), pcid_ptr, Tracked(pcid_perm));
     let tracked pool = pools_4k.tracked_remove(a4);
@@ -403,7 +403,7 @@ fn kill_container_retire_detach(
     let Tracked(a1_page) = kill_container_retire_allocator_1g_object(krnl, Tracked(&mut *lctx), a1, Tracked(caches_1g), Tracked(pool_1g), Tracked(quota_1g));
     let tracked mut page_objects: Map<PageIndex, PagePerm4k> = Map::tracked_empty();
     proof {
-        page_objects.tracked_insert(page_ptr2page_index(scheduler_ptr), scheduler_page); page_objects.tracked_insert(page_ptr2page_index(cpu_set_ptr), cpu_set_page);
+        page_objects.tracked_insert(page_ptr2page_index(sched_ptr), scheduler_page); page_objects.tracked_insert(page_ptr2page_index(cpu_set_ptr), cpu_set_page);
         page_objects.tracked_insert(page_ptr2page_index(a4), a4_page); page_objects.tracked_insert(page_ptr2page_index(a2), a2_page); page_objects.tracked_insert(page_ptr2page_index(a1), a1_page);
     }
     Tracked((container_page, pcid_page, page_objects))
@@ -451,17 +451,17 @@ fn kill_container_retire_fill_pools(
         pages.view().len() == 5,
         pages.view().no_duplicates(),
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> {
-            let page_index = pages.view()[k];
-            &&& index_valid(NUM_PAGES, page_index)
-            &&& old(krnl).pg_arr.spec_index(page_index).view().view().state is Allocated4k
-            &&& !old(krnl).allc_4k_mp.spec_index(o4).global_pool.view().view().contains(page_index2page_ptr(page_index))
+            let pg_idx = pages.view()[k];
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& old(krnl).pg_arr.spec_index(pg_idx).view().view().state is Allocated4k
+            &&& !old(krnl).allc_4k_mp.spec_index(o4).global_pool.view().view().contains(page_index2page_ptr(pg_idx))
         },
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> {
-            let page_index = pages.view()[k];
-            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write)
-            &&& page_perms.dom().contains(page_index)
-            &&& page_perms[page_index].state() is WriteLock && page_perms[page_index].thread_id() == old(lctx).thread_id()
-            &&& page_perms[page_index].lock_id() == old(krnl).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id
+            let pg_idx = pages.view()[k];
+            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), pg_idx, TypedLockMode::Write)
+            &&& page_perms.dom().contains(pg_idx)
+            &&& page_perms[pg_idx].state() is WriteLock && page_perms[pg_idx].thread_id() == old(lctx).thread_id()
+            &&& page_perms[pg_idx].lock_id() == old(krnl).pg_arr.spec_index(pg_idx).view().locking_thread()->Write_lock_id
         },
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> {
             &&& page_objects.dom().contains(pages.view()[k])

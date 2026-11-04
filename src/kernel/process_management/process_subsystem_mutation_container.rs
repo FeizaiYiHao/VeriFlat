@@ -4,24 +4,24 @@ use crate::*;
 use super::process_subsystem_mutation_eof::*;
 
 verus! {
-pub proof fn container_map_add_owned_process(tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)
+pub proof fn container_map_add_owned_process(tracked container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)
     requires
         container_perms_wf(*old(container_map)),
-        old(container_map).dom().contains(container_ptr),
+        old(container_map).dom().contains(ctn_ptr),
     ensures
         container_perms_wf(*final(container_map)),
         final(container_map).perms_wf(),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
         final(container_map).dom() == old(container_map).dom(),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
-        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
-        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost { owned_processes: final(container_map).spec_index(container_ptr).view_ghost().owned_processes,
-            ..old(container_map).spec_index(container_ptr).view_ghost() }),
-        final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().insert(process_ptr),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).spec_index(container_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).view() == old(container_map).spec_index(ctn_ptr).view(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == (ContainerGhost { owned_processes: final(container_map).spec_index(ctn_ptr).view_ghost().owned_processes,
+            ..old(container_map).spec_index(ctn_ptr).view_ghost() }),
+        final(container_map).spec_index(ctn_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(ctn_ptr).view_ghost().owned_processes.view().insert(prc_ptr),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).spec_index(ctn_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
             old(container_map).dom().contains(ptr) ==> {
@@ -29,32 +29,32 @@ pub proof fn container_map_add_owned_process(tracked container_map: &mut Contain
                 &&& final(container_map).view().spec_index(ptr).addr() == old(container_map).view().spec_index(ptr).addr()
             },
 {
-    assert(container_map.perms_wf() && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_map(*container_map); container_perms_wf_at(*container_map, container_ptr); };
-    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
-    container_map.update_ghost(container_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().insert(process_ptr)), ..pre_ghost });
+    assert(container_map.perms_wf() && container_map.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(*container_map); container_perms_wf_at(*container_map, ctn_ptr); };
+    let ghost pre_ghost = container_map.spec_index(ctn_ptr).view_ghost();
+    container_map.update_ghost(ctn_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().insert(prc_ptr)), ..pre_ghost });
     assert(container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 
-/// Removes `process_ptr` from the ghost process set of `container_ptr`; nothing else changes.
-pub proof fn container_map_remove_owned_process(tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)
+/// Removes `prc_ptr` from the ghost process set of `ctn_ptr`; nothing else changes.
+pub proof fn container_map_remove_owned_process(tracked container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)
     requires
         container_perms_wf(*old(container_map)),
-        old(container_map).dom().contains(container_ptr),
+        old(container_map).dom().contains(ctn_ptr),
     ensures
         container_perms_wf(*final(container_map)),
         final(container_map).perms_wf(),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
         final(container_map).dom() == old(container_map).dom(),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
-        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
-        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost { owned_processes: final(container_map).spec_index(container_ptr).view_ghost().owned_processes,
-            ..old(container_map).spec_index(container_ptr).view_ghost() }),
-        final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().remove(process_ptr),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).spec_index(container_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).view() == old(container_map).spec_index(ctn_ptr).view(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == (ContainerGhost { owned_processes: final(container_map).spec_index(ctn_ptr).view_ghost().owned_processes,
+            ..old(container_map).spec_index(ctn_ptr).view_ghost() }),
+        final(container_map).spec_index(ctn_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(prc_ptr),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).spec_index(ctn_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
             old(container_map).dom().contains(ptr) ==> {
@@ -62,24 +62,24 @@ pub proof fn container_map_remove_owned_process(tracked container_map: &mut Cont
                 &&& final(container_map).view().spec_index(ptr).addr() == old(container_map).view().spec_index(ptr).addr()
             },
 {
-    assert(container_map.perms_wf() && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_map(*container_map); container_perms_wf_at(*container_map, container_ptr); };
-    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
-    container_map.update_ghost(container_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().remove(process_ptr)), ..pre_ghost });
+    assert(container_map.perms_wf() && container_map.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(*container_map); container_perms_wf_at(*container_map, ctn_ptr); };
+    let ghost pre_ghost = container_map.spec_index(ctn_ptr).view_ghost();
+    container_map.update_ghost(ctn_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().remove(prc_ptr)), ..pre_ghost });
     assert(container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 
 pub proof fn add_thread_to_container_sets(
-    tracked container_map: &mut ContainerLockedMap, direct_container_ptr: RwLockContainerPtr,
+    tracked container_map: &mut ContainerLockedMap, direct_ctn_ptr: RwLockContainerPtr,
     t_ptr: RwLockThreadPtr, uppers: Seq<RwLockContainerPtr>, thread_map: ThreadLockedMap,
     scheduler_map: SchedulerUnLockedMap, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId,
 )
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(direct_container_ptr),
+        old(container_map).dom().contains(direct_ctn_ptr),
         uppers.to_set().subset_of(old(container_map).dom()),
         uppers.no_duplicates(),
-        !uppers.to_set().contains(direct_container_ptr),
+        !uppers.to_set().contains(direct_ctn_ptr),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id),
         container_thread_scheduler_wf(*old(container_map), thread_map, scheduler_map),
         forall|t: RwLockThreadPtr| #![trigger thread_map.dom().contains(t)] thread_map.dom().contains(t) ==> old(container_map).dom().contains(thread_map.spec_index(t).view().owning_container),
@@ -102,7 +102,7 @@ pub proof fn add_thread_to_container_sets(
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
-                    owned_threads: if c == direct_container_ptr { Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().insert(t_ptr)) }
+                    owned_threads: if c == direct_ctn_ptr { Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().insert(t_ptr)) }
                         else { old(container_map).spec_index(c).view_ghost().owned_threads },
                     owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(old(container_map).spec_index(c).view_ghost().owned_indirect_threads.view().insert(t_ptr)) }
                         else { old(container_map).spec_index(c).view_ghost().owned_indirect_threads },
@@ -115,8 +115,8 @@ pub proof fn add_thread_to_container_sets(
         let c0 = uppers.spec_index(0);
         assert(uppers.to_set().contains(c0)) by { uppers.to_set_ensures(); };
         assert(uppers.drop_first().to_set().subset_of(container_map.dom())) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
-        assert(!uppers.drop_first().to_set().contains(direct_container_ptr)) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
-        add_thread_to_container_sets(container_map, direct_container_ptr, t_ptr, uppers.drop_first(), thread_map, scheduler_map, held_locks, thread_id);
+        assert(!uppers.drop_first().to_set().contains(direct_ctn_ptr)) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
+        add_thread_to_container_sets(container_map, direct_ctn_ptr, t_ptr, uppers.drop_first(), thread_map, scheduler_map, held_locks, thread_id);
         container_map.update_ghost(c0, ContainerGhost { uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq, subtree_set: container_map.spec_index(c0).view_ghost().subtree_set,
             owned_processes: container_map.spec_index(c0).view_ghost().owned_processes, owned_threads: container_map.spec_index(c0).view_ghost().owned_threads,
             owned_indirect_threads: Ghost(container_map.spec_index(c0).view_ghost().owned_indirect_threads.view().insert(t_ptr)),
@@ -127,11 +127,11 @@ pub proof fn add_thread_to_container_sets(
             &&& uppers.to_set() =~= uppers.drop_first().to_set().insert(c0)
         }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
     } else {
-        container_map.update_ghost(direct_container_ptr, ContainerGhost { uppertree_seq: container_map.spec_index(direct_container_ptr).view_ghost().uppertree_seq,
-            subtree_set: container_map.spec_index(direct_container_ptr).view_ghost().subtree_set, owned_processes: container_map.spec_index(direct_container_ptr).view_ghost().owned_processes,
-            owned_threads: Ghost(container_map.spec_index(direct_container_ptr).view_ghost().owned_threads.view().insert(t_ptr)),
-            owned_indirect_threads: container_map.spec_index(direct_container_ptr).view_ghost().owned_indirect_threads,
-            owned_endpoints: container_map.spec_index(direct_container_ptr).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(direct_container_ptr).view_ghost().retire_ready });
+        container_map.update_ghost(direct_ctn_ptr, ContainerGhost { uppertree_seq: container_map.spec_index(direct_ctn_ptr).view_ghost().uppertree_seq,
+            subtree_set: container_map.spec_index(direct_ctn_ptr).view_ghost().subtree_set, owned_processes: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_processes,
+            owned_threads: Ghost(container_map.spec_index(direct_ctn_ptr).view_ghost().owned_threads.view().insert(t_ptr)),
+            owned_indirect_threads: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_indirect_threads,
+            owned_endpoints: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(direct_ctn_ptr).view_ghost().retire_ready });
         assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -140,15 +140,15 @@ pub proof fn add_thread_to_container_sets(
 
 /// Ghost removal of an exiting thread from its direct container and from every upper container.
 pub proof fn remove_thread_from_container_sets(
-    tracked container_map: &mut ContainerLockedMap, direct_container_ptr: RwLockContainerPtr, t_ptr: RwLockThreadPtr, uppers: Seq<RwLockContainerPtr>,
+    tracked container_map: &mut ContainerLockedMap, direct_ctn_ptr: RwLockContainerPtr, t_ptr: RwLockThreadPtr, uppers: Seq<RwLockContainerPtr>,
     held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId,
 )
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(direct_container_ptr),
+        old(container_map).dom().contains(direct_ctn_ptr),
         uppers.to_set().subset_of(old(container_map).dom()),
         uppers.no_duplicates(),
-        !uppers.to_set().contains(direct_container_ptr),
+        !uppers.to_set().contains(direct_ctn_ptr),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id),
     ensures
         final(container_map).perms_wf(),
@@ -166,7 +166,7 @@ pub proof fn remove_thread_from_container_sets(
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
-                    owned_threads: if c == direct_container_ptr { Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().remove(t_ptr)) }
+                    owned_threads: if c == direct_ctn_ptr { Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().remove(t_ptr)) }
                         else { old(container_map).spec_index(c).view_ghost().owned_threads },
                     owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(old(container_map).spec_index(c).view_ghost().owned_indirect_threads.view().remove(t_ptr)) }
                         else { old(container_map).spec_index(c).view_ghost().owned_indirect_threads },
@@ -179,8 +179,8 @@ pub proof fn remove_thread_from_container_sets(
         let c0 = uppers.spec_index(0);
         assert(uppers.to_set().contains(c0)) by { uppers.to_set_ensures(); };
         assert(uppers.drop_first().to_set().subset_of(container_map.dom())) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
-        assert(!uppers.drop_first().to_set().contains(direct_container_ptr)) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
-        remove_thread_from_container_sets(container_map, direct_container_ptr, t_ptr, uppers.drop_first(), held_locks, thread_id);
+        assert(!uppers.drop_first().to_set().contains(direct_ctn_ptr)) by { uppers.to_set_ensures(); uppers.drop_first().to_set_ensures(); broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
+        remove_thread_from_container_sets(container_map, direct_ctn_ptr, t_ptr, uppers.drop_first(), held_locks, thread_id);
         container_map.update_ghost(c0, ContainerGhost { uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq, subtree_set: container_map.spec_index(c0).view_ghost().subtree_set,
             owned_processes: container_map.spec_index(c0).view_ghost().owned_processes, owned_threads: container_map.spec_index(c0).view_ghost().owned_threads,
             owned_indirect_threads: Ghost(container_map.spec_index(c0).view_ghost().owned_indirect_threads.view().remove(t_ptr)),
@@ -191,144 +191,144 @@ pub proof fn remove_thread_from_container_sets(
             &&& uppers.to_set() =~= uppers.drop_first().to_set().insert(c0)
         }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
     } else {
-        container_map.update_ghost(direct_container_ptr, ContainerGhost { uppertree_seq: container_map.spec_index(direct_container_ptr).view_ghost().uppertree_seq,
-            subtree_set: container_map.spec_index(direct_container_ptr).view_ghost().subtree_set, owned_processes: container_map.spec_index(direct_container_ptr).view_ghost().owned_processes,
-            owned_threads: Ghost(container_map.spec_index(direct_container_ptr).view_ghost().owned_threads.view().remove(t_ptr)),
-            owned_indirect_threads: container_map.spec_index(direct_container_ptr).view_ghost().owned_indirect_threads,
-            owned_endpoints: container_map.spec_index(direct_container_ptr).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(direct_container_ptr).view_ghost().retire_ready });
+        container_map.update_ghost(direct_ctn_ptr, ContainerGhost { uppertree_seq: container_map.spec_index(direct_ctn_ptr).view_ghost().uppertree_seq,
+            subtree_set: container_map.spec_index(direct_ctn_ptr).view_ghost().subtree_set, owned_processes: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_processes,
+            owned_threads: Ghost(container_map.spec_index(direct_ctn_ptr).view_ghost().owned_threads.view().remove(t_ptr)),
+            owned_indirect_threads: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_indirect_threads,
+            owned_endpoints: container_map.spec_index(direct_ctn_ptr).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(direct_ctn_ptr).view_ghost().retire_ready });
         assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
 }
 
 pub fn container_map_insert_new_2m(
-    container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, container_value: Container,
+    container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, container_value: Container,
     container_rodata: ReadOnlyNode<ContainerRO>, container_ghost: ContainerGhost, Tracked(page_perm): Tracked<PagePerm2m>,
     Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<LockPerm>)
     requires
         old(container_map).perms_wf(),
-        !old(container_map).dom().contains(container_ptr),
+        !old(container_map).dom().contains(ctn_ptr),
         old(container_map).typed_lock_map_aligned(old(lctx).container_lock_map(), old(lctx).thread_id()),
         old(lctx).kernel_view_locking_state() is Acquire,
         container_value.inv(),
         page_perm.is_init(),
-        page_perm.addr() == container_ptr,
+        page_perm.addr() == ctn_ptr,
     ensures
         final(container_map).perms_wf(),
-        final(container_map).dom() =~= old(container_map).dom().insert(container_ptr),
+        final(container_map).dom() =~= old(container_map).dom().insert(ctn_ptr),
         forall|ptr: RwLockContainerPtr| #![trigger final(container_map).spec_index(ptr)] old(container_map).dom().contains(ptr) ==> final(container_map).spec_index(ptr) == old(container_map).spec_index(ptr),
-        final(container_map).spec_index(container_ptr).view() == container_value,
-        final(container_map).spec_index(container_ptr).view_rodata() == container_rodata,
-        final(container_map).spec_index(container_ptr).view_ghost() == container_ghost,
-        final(container_map).spec_index(container_ptr).is_init(),
-        final(container_map).spec_index(container_ptr).inv(),
-        final(container_map).spec_index(container_ptr).control() == LockControl::DynamicProcess(LockOwnerId::Some(0)),
-        final(container_map).lock_id_by_key(container_ptr) == dynamic_container_lock_id(container_ptr, container_rodata.view().depth, LockOwnerId::Some(0)),
-        final(container_map).spec_index(container_ptr).wlocked_by(final(lctx)),
-        final(container_map).spec_index(container_ptr).write_lock_perm_match(&ret.view()),
+        final(container_map).spec_index(ctn_ptr).view() == container_value,
+        final(container_map).spec_index(ctn_ptr).view_rodata() == container_rodata,
+        final(container_map).spec_index(ctn_ptr).view_ghost() == container_ghost,
+        final(container_map).spec_index(ctn_ptr).is_init(),
+        final(container_map).spec_index(ctn_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).control() == LockControl::DynamicProcess(LockOwnerId::Some(0)),
+        final(container_map).lock_id_by_key(ctn_ptr) == dynamic_container_lock_id(ctn_ptr, container_rodata.view().depth, LockOwnerId::Some(0)),
+        final(container_map).spec_index(ctn_ptr).wlocked_by(final(lctx)),
+        final(container_map).spec_index(ctn_ptr).write_lock_perm_match(&ret.view()),
         final(container_map).typed_lock_map_aligned(final(lctx).container_lock_map(), final(lctx).thread_id()),
-        typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id: final(container_map).lock_id_by_key(container_ptr), mode: TypedLockMode::Write }),
+        typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(ctn_ptr), TypedHeldLock { lock_id: final(container_map).lock_id_by_key(ctn_ptr), mode: TypedLockMode::Write }),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         ret.view().state() is WriteLock,
         ret.view().thread_id() == final(lctx).thread_id(),
-        ret.view().ordering_lock_id() == final(container_map).lock_id_by_key(container_ptr),
+        ret.view().ordering_lock_id() == final(container_map).lock_id_by_key(ctn_ptr),
 {
-    proof { assert(lctx.typed_lock_entry(KernelObjId::Container(container_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
-    let lock_perm = container_map.retype_2m_and_insert(container_ptr, container_value, container_rodata, Ghost(container_ghost), Tracked(page_perm),
-        Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)), LockControl::DynamicProcess(LockOwnerId::Some(0)));
+    proof { assert(lctx.typed_lock_entry(KernelObjId::Container(ctn_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+    let lock_perm = container_map.retype_2m_and_insert(ctn_ptr, container_value, container_rodata, Ghost(container_ghost), Tracked(page_perm),
+        Tracked(&mut *lctx), Ghost(KernelObjId::Container(ctn_ptr)), LockControl::DynamicProcess(LockOwnerId::Some(0)));
     proof { assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     lock_perm
 }
 
-pub fn container_map_take_parent_node(container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(container_lock_perm): Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockContainerPtr>>>))
+pub fn container_map_take_parent_node(container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(container_lock_perm): Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockContainerPtr>>>))
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(container_ptr),
-        old(container_map).spec_index(container_ptr).inv(),
+        old(container_map).dom().contains(ctn_ptr),
+        old(container_map).spec_index(ctn_ptr).inv(),
         old(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
         container_lock_perm.state() is WriteLock,
         container_lock_perm.thread_id() == lctx.thread_id(),
-        container_lock_perm.lock_id() == old(container_map).spec_index(container_ptr).locking_thread()->Write_lock_id,
-        old(container_map).spec_index(container_ptr).view().parent_linkedlist_node.is_init(),
+        container_lock_perm.lock_id() == old(container_map).spec_index(ctn_ptr).locking_thread()->Write_lock_id,
+        old(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node.is_init(),
     ensures
         final(container_map).perms_wf(),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
         final(container_map).dom() == old(container_map).dom(),
         final(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        final(container_map).spec_index(container_ptr).inv(),
-        final(container_map).spec_index(container_ptr).view() == (Container { parent_linkedlist_node: final(container_map).spec_index(container_ptr).view().parent_linkedlist_node, ..old(container_map).spec_index(container_ptr).view() }),
-        !final(container_map).spec_index(container_ptr).view().parent_linkedlist_node.is_init(),
-        final(container_map).spec_index(container_ptr).view().parent_linkedlist_node.addr() == old(container_map).spec_index(container_ptr).view().parent_linkedlist_node.addr(),
-        final(container_map).spec_index(container_ptr).view().parent_linkedlist_node.addr() == ret.0,
+        final(container_map).spec_index(ctn_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).view() == (Container { parent_linkedlist_node: final(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node, ..old(container_map).spec_index(ctn_ptr).view() }),
+        !final(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node.is_init(),
+        final(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node.addr() == old(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node.addr(),
+        final(container_map).spec_index(ctn_ptr).view().parent_linkedlist_node.addr() == ret.0,
         ret.1.view().is_init(),
         ret.1.view().addr() == ret.0,
-        ret.1.view().value().view() == container_ptr,
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
+        ret.1.view().value().view() == ctn_ptr,
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == old(container_map).spec_index(ctn_ptr).view_ghost(),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).lock_id_by_key(ctn_ptr) == old(container_map).lock_id_by_key(ctn_ptr),
 {
-    let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
+    let container = container_map.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
     let (node_addr, mut node_perm) = container.parent_linkedlist_node.take();
-    node_update_value(node_addr, &mut node_perm, container_ptr);
+    node_update_value(node_addr, &mut node_perm, ctn_ptr);
     proof {
         assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+            && old(container_map).view().spec_index(ctn_ptr).is_init()
+            && container_map.view().spec_index(ctn_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     (node_addr, node_perm)
 }
 
 pub fn container_map_push_child(
-    container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr,
+    container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr,
     node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockContainerPtr>>>,
     Tracked(lctx): Tracked<&LocalContext>, Tracked(container_lock_perm): Tracked<&LockPerm>,
 )
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(container_ptr),
-        old(container_map).spec_index(container_ptr).inv(),
+        old(container_map).dom().contains(ctn_ptr),
+        old(container_map).spec_index(ctn_ptr).inv(),
         old(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
         container_lock_perm.state() is WriteLock,
         container_lock_perm.thread_id() == lctx.thread_id(),
-        container_lock_perm.lock_id() == old(container_map).spec_index(container_ptr).locking_thread()->Write_lock_id,
+        container_lock_perm.lock_id() == old(container_map).spec_index(ctn_ptr).locking_thread()->Write_lock_id,
         node_perm.view().is_init(),
         node_perm.view().addr() == node_addr,
         node_perm.view().value().view() == child_ptr,
-        !old(container_map).spec_index(container_ptr).view().children.view().contains(child_ptr),
-        old(container_map).spec_index(container_ptr).view().children.length != usize::MAX,
+        !old(container_map).spec_index(ctn_ptr).view().children.view().contains(child_ptr),
+        old(container_map).spec_index(ctn_ptr).view().children.length != usize::MAX,
     ensures
         final(container_map).perms_wf(),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
         final(container_map).dom() == old(container_map).dom(),
         final(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        final(container_map).spec_index(container_ptr).inv(),
-        final(container_map).spec_index(container_ptr).view() == (Container { children: final(container_map).spec_index(container_ptr).view().children, ..old(container_map).spec_index(container_ptr).view() }),
-        final(container_map).spec_index(container_ptr).view().children.wf(),
-        final(container_map).spec_index(container_ptr).view().children.view() == old(container_map).spec_index(container_ptr).view().children.view().push(child_ptr),
-        final(container_map).spec_index(container_ptr).view().children.map() == old(container_map).spec_index(container_ptr).view().children.map().insert(node_addr, child_ptr),
-        final(container_map).spec_index(container_ptr).view().children.dom() == old(container_map).spec_index(container_ptr).view().children.dom().insert(node_addr),
-        final(container_map).spec_index(container_ptr).view().children.length == old(container_map).spec_index(container_ptr).view().children.length + 1,
-        !old(container_map).spec_index(container_ptr).view().children.dom().contains(node_addr),
-        !old(container_map).spec_index(container_ptr).view().children.map().dom().contains(node_addr),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
+        final(container_map).spec_index(ctn_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).view() == (Container { children: final(container_map).spec_index(ctn_ptr).view().children, ..old(container_map).spec_index(ctn_ptr).view() }),
+        final(container_map).spec_index(ctn_ptr).view().children.wf(),
+        final(container_map).spec_index(ctn_ptr).view().children.view() == old(container_map).spec_index(ctn_ptr).view().children.view().push(child_ptr),
+        final(container_map).spec_index(ctn_ptr).view().children.map() == old(container_map).spec_index(ctn_ptr).view().children.map().insert(node_addr, child_ptr),
+        final(container_map).spec_index(ctn_ptr).view().children.dom() == old(container_map).spec_index(ctn_ptr).view().children.dom().insert(node_addr),
+        final(container_map).spec_index(ctn_ptr).view().children.length == old(container_map).spec_index(ctn_ptr).view().children.length + 1,
+        !old(container_map).spec_index(ctn_ptr).view().children.dom().contains(node_addr),
+        !old(container_map).spec_index(ctn_ptr).view().children.map().dom().contains(node_addr),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == old(container_map).spec_index(ctn_ptr).view_ghost(),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).lock_id_by_key(ctn_ptr) == old(container_map).lock_id_by_key(ctn_ptr),
 {
-    let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
+    let container = container_map.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
     container.children.push_tail(node_addr, node_perm);
     proof {
         assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+            && old(container_map).view().spec_index(ctn_ptr).is_init()
+            && container_map.view().spec_index(ctn_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 
@@ -405,93 +405,93 @@ pub fn container_map_unlink_child(
     node_perm
 }
 
-pub fn container_map_remove_owned_pages(container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, Ghost(pages): Ghost<Set<PagePtr>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(container_lock_perm): Tracked<&LockPerm>)
+pub fn container_map_remove_owned_pages(container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, Ghost(pages): Ghost<Set<PagePtr>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(container_lock_perm): Tracked<&LockPerm>)
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(container_ptr),
-        old(container_map).spec_index(container_ptr).inv(),
+        old(container_map).dom().contains(ctn_ptr),
+        old(container_map).spec_index(ctn_ptr).inv(),
         old(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
         container_lock_perm.state() is WriteLock,
         container_lock_perm.thread_id() == lctx.thread_id(),
-        container_lock_perm.lock_id() == old(container_map).spec_index(container_ptr).locking_thread()->Write_lock_id,
+        container_lock_perm.lock_id() == old(container_map).spec_index(ctn_ptr).locking_thread()->Write_lock_id,
     ensures
         final(container_map).perms_wf(),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
         final(container_map).dom() == old(container_map).dom(),
         final(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        final(container_map).spec_index(container_ptr).inv(),
-        final(container_map).spec_index(container_ptr).view() == (Container { owned_pages: Ghost(old(container_map).spec_index(container_ptr).view().owned_pages.view().difference(pages)),
-            ..old(container_map).spec_index(container_ptr).view() }),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
+        final(container_map).spec_index(ctn_ptr).inv(),
+        final(container_map).spec_index(ctn_ptr).view() == (Container { owned_pages: Ghost(old(container_map).spec_index(ctn_ptr).view().owned_pages.view().difference(pages)),
+            ..old(container_map).spec_index(ctn_ptr).view() }),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == old(container_map).spec_index(ctn_ptr).view_ghost(),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).lock_id_by_key(ctn_ptr) == old(container_map).lock_id_by_key(ctn_ptr),
 {
-    let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
+    let container = container_map.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
     container.owned_pages = Ghost(container.owned_pages.view().difference(pages));
     proof {
         assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+            && old(container_map).view().spec_index(ctn_ptr).is_init()
+            && container_map.view().spec_index(ctn_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 
-/// Ghost insertion of `endpoint_ptr` into the endpoint set of `container_ptr`; nothing else changes.
+/// Ghost insertion of `ep_ptr` into the endpoint set of `ctn_ptr`; nothing else changes.
 pub proof fn insert_endpoint_into_container_set(
-    tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, endpoint_ptr: RwLockEndpointPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>,
+    tracked container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, ep_ptr: RwLockEndpointPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>,
     thread_id: LockThreadId,
 )
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(container_ptr),
+        old(container_map).dom().contains(ctn_ptr),
     ensures
         final(container_map).perms_wf(),
         final(container_map).dom() == old(container_map).dom(),
         container_perms_wf(*old(container_map)) ==> container_perms_wf(*final(container_map)),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
-        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost {
-            owned_endpoints: Ghost(old(container_map).spec_index(container_ptr).view_ghost().owned_endpoints.view().insert(endpoint_ptr)), ..old(container_map).spec_index(container_ptr).view_ghost()
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
+        final(container_map).spec_index(ctn_ptr).view() == old(container_map).spec_index(ctn_ptr).view(),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
+            owned_endpoints: Ghost(old(container_map).spec_index(ctn_ptr).view_ghost().owned_endpoints.view().insert(ep_ptr)), ..old(container_map).spec_index(ctn_ptr).view_ghost()
         }),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).lock_id_by_key(ctn_ptr) == old(container_map).lock_id_by_key(ctn_ptr),
 {
-    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
-    container_map.update_ghost(container_ptr, ContainerGhost { owned_endpoints: Ghost(pre_ghost.owned_endpoints.view().insert(endpoint_ptr)), ..pre_ghost });
+    let ghost pre_ghost = container_map.spec_index(ctn_ptr).view_ghost();
+    container_map.update_ghost(ctn_ptr, ContainerGhost { owned_endpoints: Ghost(pre_ghost.owned_endpoints.view().insert(ep_ptr)), ..pre_ghost });
     assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 
-/// Ghost removal of `endpoint_ptr` from the endpoint set of `container_ptr`; nothing else changes.
+/// Ghost removal of `ep_ptr` from the endpoint set of `ctn_ptr`; nothing else changes.
 pub proof fn remove_endpoint_from_container_set(
-    tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, endpoint_ptr: RwLockEndpointPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>,
+    tracked container_map: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, ep_ptr: RwLockEndpointPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>,
     thread_id: LockThreadId,
 )
     requires
         old(container_map).perms_wf(),
-        old(container_map).dom().contains(container_ptr),
+        old(container_map).dom().contains(ctn_ptr),
     ensures
         final(container_map).perms_wf(),
         final(container_map).dom() == old(container_map).dom(),
         container_perms_wf(*old(container_map)) ==> container_perms_wf(*final(container_map)),
         old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
-        final(container_map).unchanged_except(old(container_map), container_ptr),
-        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
-        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost {
-            owned_endpoints: Ghost(old(container_map).spec_index(container_ptr).view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..old(container_map).spec_index(container_ptr).view_ghost()
+        final(container_map).unchanged_except(old(container_map), ctn_ptr),
+        final(container_map).spec_index(ctn_ptr).view() == old(container_map).spec_index(ctn_ptr).view(),
+        final(container_map).spec_index(ctn_ptr).view_rodata() == old(container_map).spec_index(ctn_ptr).view_rodata(),
+        final(container_map).spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
+            owned_endpoints: Ghost(old(container_map).spec_index(ctn_ptr).view_ghost().owned_endpoints.view().remove(ep_ptr)), ..old(container_map).spec_index(ctn_ptr).view_ghost()
         }),
-        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
-        final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
+        final(container_map).spec_index(ctn_ptr).locking_thread() == old(container_map).spec_index(ctn_ptr).locking_thread(),
+        final(container_map).spec_index(ctn_ptr).control() == old(container_map).spec_index(ctn_ptr).control(),
+        final(container_map).lock_id_by_key(ctn_ptr) == old(container_map).lock_id_by_key(ctn_ptr),
 {
-    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
-    container_map.update_ghost(container_ptr, ContainerGhost { owned_endpoints: Ghost(pre_ghost.owned_endpoints.view().remove(endpoint_ptr)), ..pre_ghost });
+    let ghost pre_ghost = container_map.spec_index(ctn_ptr).view_ghost();
+    container_map.update_ghost(ctn_ptr, ContainerGhost { owned_endpoints: Ghost(pre_ghost.owned_endpoints.view().remove(ep_ptr)), ..pre_ghost });
     assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }

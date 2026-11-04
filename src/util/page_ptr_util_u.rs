@@ -406,7 +406,7 @@ pub proof fn page_ptr_seq_indices_no_duplicates(pages: Seq<PagePtr>)
         pages.no_duplicates(),
         forall|i: int| #![trigger pages.spec_index(i)] 0 <= i < pages.len() ==> page_ptr_valid(pages.spec_index(i)),
     ensures
-        pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).no_duplicates(),
+        pages.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).no_duplicates(),
 {
     page_ptr2page_index_injective();
 }
@@ -417,13 +417,13 @@ pub proof fn page_ptr_seq_indices_excludes_page(pages: Seq<PagePtr>, excluded_pa
         forall|i: int| #![trigger page_ptr_valid(pages.spec_index(i))] 0 <= i < pages.len() ==> page_ptr_valid(pages.spec_index(i)),
         !pages.to_set().contains(excluded_page),
     ensures
-        !pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set().contains(page_ptr2page_index(excluded_page)),
+        !pages.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).to_set().contains(page_ptr2page_index(excluded_page)),
 {
     pages.to_set_ensures();
     let page_ptr_set = pages.to_set();
-    let mapped = pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
+    let mapped = pages.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).to_set();
     if mapped.contains(page_ptr2page_index(excluded_page)) {
-        page_ptr_set.lemma_map_by_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index), page_ptr2page_index(excluded_page));
+        page_ptr_set.lemma_map_by_contains(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr), |index: PageIndex| spec_page_index2page_ptr(index), page_ptr2page_index(excluded_page));
         page_ptr_roundtrip();
     }
 }

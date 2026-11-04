@@ -2,24 +2,24 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The write-held thread `victim_ptr`, waiting for a reply or killed, leaves the write-held marked process `process_ptr`,
+/// The write-held thread `victim_ptr`, waiting for a reply or killed, leaves the write-held marked process `prc_ptr`,
 /// which absorbs its quota, and takes back its process node; a thread waiting for a reply becomes a dangling thread, and it
 /// and its dangling callers `callers` record the end of its call chain.
 #[verifier::opaque]
 pub(crate) open spec fn kill_leave_process_eof_transition_framing(
-    pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>,
+    pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>,
 ) -> bool {
-    let process = pre.prc_mp.spec_index(process_ptr);
-    let victim = pre.thr_mp.spec_index(victim_ptr);
-    let callee = pre.thr_mp.spec_index(victim.view().callee.unwrap());
+    let process = pre.prc_mp.spec_index(prc_ptr);
+    let victim = pre.thrd_mp.spec_index(victim_ptr);
+    let callee = pre.thrd_mp.spec_index(victim.view().callee.unwrap());
     let end = if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { victim.view().callee.unwrap() };
     let node_addr = victim.view().proc_linkedlist_node.addr();
-    let after_process = post.prc_mp.spec_index(process_ptr);
-    let after_victim = post.thr_mp.spec_index(victim_ptr);
-    &&& post == (KernelK { prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..pre })
-    &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
+    let after_process = post.prc_mp.spec_index(prc_ptr);
+    let after_victim = post.thrd_mp.spec_index(victim_ptr);
+    &&& post == (KernelK { prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ..pre })
+    &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p).view().owned_threads.view()]
-        pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
+        pre.prc_mp.dom().contains(p) && p != prc_ptr ==> post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
     &&& after_process.is_init() == process.is_init()
     &&& after_process.view_rodata() == process.view_rodata()
     &&& after_process.view_ghost() == process.view_ghost()
@@ -33,13 +33,13 @@ pub(crate) open spec fn kill_leave_process_eof_transition_framing(
     &&& after_process.view().owned_threads.view() == process.view().owned_threads.view().remove_value(victim_ptr)
     &&& after_process.view().owned_threads.dom() == process.view().owned_threads.dom().remove(node_addr)
     &&& after_process.view().owned_threads.map() == process.view().owned_threads.map().remove(node_addr)
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
-        pre.thr_mp.dom().contains(t) && t != victim_ptr && !callers.contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
-    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
+        pre.thrd_mp.dom().contains(t) && t != victim_ptr && !callers.contains(t) ==> post.thrd_mp.spec_index(t) == pre.thrd_mp.spec_index(t)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
         callers.contains(t) && t != victim_ptr ==> {
-            &&& update_ghost_ensures(pre.thr_mp.spec_index(t), post.thr_mp.spec_index(t), ThreadGhost { chain_end: Some(end), ..pre.thr_mp.spec_index(t).view_ghost() })
-            &&& post.thr_mp.spec_index(t).being_killed() == pre.thr_mp.spec_index(t).being_killed()
+            &&& update_ghost_ensures(pre.thrd_mp.spec_index(t), post.thrd_mp.spec_index(t), ThreadGhost { chain_end: Some(end), ..pre.thrd_mp.spec_index(t).view_ghost() })
+            &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
         }
     &&& victim.view().state is KILLED ==> callers == Set::<RwLockThreadPtr>::empty()
     &&& after_victim.is_init() == victim.is_init()
@@ -56,17 +56,17 @@ pub(crate) open spec fn kill_leave_process_eof_transition_framing(
     &&& after_victim.view().proc_linkedlist_node.addr() == node_addr
 }
 
-/// The write-held marked thread `victim_ptr` scheduled on shard `shard` of `scheduler_ptr` leaves the shard and becomes
+/// The write-held marked thread `victim_ptr` scheduled on shard `shard` of `sched_ptr` leaves the shard and becomes
 /// killed.
 #[verifier::opaque]
-pub(crate) open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
-    let victim = pre.thr_mp.spec_index(victim_ptr);
-    let after_victim = post.thr_mp.spec_index(victim_ptr);
+pub(crate) open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, sched_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
+    let victim = pre.thrd_mp.spec_index(victim_ptr);
+    let after_victim = post.thrd_mp.spec_index(victim_ptr);
     let node_addr = victim.view().scheduler_linkedlist_node.addr();
-    let before = pre.sched_mp.spec_index(scheduler_ptr);
-    let after = post.sched_mp.spec_index(scheduler_ptr);
-    &&& post == (KernelK { sched_mp: post.sched_mp, thr_mp: post.thr_mp, ..pre })
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
+    let before = pre.sched_mp.spec_index(sched_ptr);
+    let after = post.sched_mp.spec_index(sched_ptr);
+    &&& post == (KernelK { sched_mp: post.sched_mp, thrd_mp: post.thrd_mp, ..pre })
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
     &&& after_victim.view_ghost() == victim.view_ghost()
@@ -76,7 +76,7 @@ pub(crate) open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: Kerne
     &&& after_victim.view() == (Thread { state: ThreadState::KILLED, error_code: None, scheduler_linkedlist_node: after_victim.view().scheduler_linkedlist_node, ..victim.view() })
     &&& after_victim.view().scheduler_linkedlist_node.is_init()
     &&& after_victim.view().scheduler_linkedlist_node.addr() == node_addr
-    &&& post.sched_mp.unchanged_except(&pre.sched_mp, scheduler_ptr)
+    &&& post.sched_mp.unchanged_except(&pre.sched_mp, sched_ptr)
     &&& after.owning_container == before.owning_container
     &&& after.shards.entries_unchanged_except(&before.shards, shard)
     &&& after.shards.spec_index(shard).view().locking_thread() == before.shards.spec_index(shard).view().locking_thread()
@@ -87,17 +87,17 @@ pub(crate) open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: Kerne
     &&& scheduler_shards_of(after) == scheduler_shards_of(before).update(shard as int, scheduler_shards_of(before)[shard as int].remove_value(victim_ptr))
 }
 
-/// The write-held marked thread `victim_ptr` waiting in the queue of the write-held endpoint `endpoint_ptr` leaves the
+/// The write-held marked thread `victim_ptr` waiting in the queue of the write-held endpoint `ep_ptr` leaves the
 /// queue and becomes killed.
 #[verifier::opaque]
-pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr) -> bool {
-    let victim = pre.thr_mp.spec_index(victim_ptr);
-    let after_victim = post.thr_mp.spec_index(victim_ptr);
+pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr) -> bool {
+    let victim = pre.thrd_mp.spec_index(victim_ptr);
+    let after_victim = post.thrd_mp.spec_index(victim_ptr);
     let node_addr = victim.view().endpoint_linkedlist_node.addr();
-    let before = pre.ep_mp.spec_index(endpoint_ptr);
-    let after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& post == (KernelK { ep_mp: post.ep_mp, thr_mp: post.thr_mp, ..pre })
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
+    let before = pre.ep_mp.spec_index(ep_ptr);
+    let after = post.ep_mp.spec_index(ep_ptr);
+    &&& post == (KernelK { ep_mp: post.ep_mp, thrd_mp: post.thrd_mp, ..pre })
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
     &&& after_victim.view_ghost() == victim.view_ghost()
@@ -109,7 +109,7 @@ pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: Kernel
     })
     &&& after_victim.view().endpoint_linkedlist_node.is_init()
     &&& after_victim.view().endpoint_linkedlist_node.addr() == node_addr
-    &&& post.ep_mp.unchanged_except(&pre.ep_mp, endpoint_ptr)
+    &&& post.ep_mp.unchanged_except(&pre.ep_mp, ep_ptr)
     &&& after.is_init() == before.is_init()
     &&& after.view_rodata() == before.view_rodata()
     &&& after.view_ghost() == before.view_ghost()
@@ -128,13 +128,13 @@ pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: Kernel
 /// thread becomes killed.
 #[verifier::opaque]
 pub(crate) open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
-    let victim = pre.thr_mp.spec_index(victim_ptr);
-    let after_victim = post.thr_mp.spec_index(victim_ptr);
+    let victim = pre.thrd_mp.spec_index(victim_ptr);
+    let after_victim = post.thrd_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();
     let after = post.cpu_arr.spec_index(remote).view();
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, thr_mp: post.thr_mp, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, thrd_mp: post.thrd_mp, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(remote as int, CpuOpState::Idle)
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
     &&& after_victim.view_ghost() == victim.view_ghost()

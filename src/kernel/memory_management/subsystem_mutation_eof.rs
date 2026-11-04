@@ -1538,259 +1538,259 @@ pub(super) proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: 
     reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
 }
 
-/// S of `page_array_retype_owned_4k`: only page `page_index` changes, by retyping the owned 4K page to a kernel object; it stays well formed at its address.
+/// S of `page_array_retype_owned_4k`: only page `pg_idx` changes, by retyping the owned 4K page to a kernel object; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retype_owned_4k_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_4k_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retype_owned_4k`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retype_owned_4k_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_4k_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retype_owned_4k_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retype_owned_4k_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retype_owned_4k_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_remove_4k_mapping_without_free`: only page `page_index` changes, by removing one mapping of the still-referenced 4K page; it stays well formed at its address.
+/// S of `page_array_remove_4k_mapping_without_free`: only page `pg_idx` changes, by removing one mapping of the still-referenced 4K page; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_remove_4k_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_4k_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_remove_4k_mapping_without_free`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_remove_4k_mapping_without_free_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_4k_mapping_without_free_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_4k_mapping_without_free_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_remove_last_4k_mapping_to_cache`: only page `page_index` changes, by removing the last mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
+/// S of `page_array_remove_last_4k_mapping_to_cache`: only page `pg_idx` changes, by removing the last mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_remove_last_4k_mapping_to_cache`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_remove_last_4k_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_last_4k_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_last_4k_mapping_to_cache_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_remove_last_2m_mapping_to_cache`: only page `page_index` changes, by removing the last mapping of the 2M page and freeing it to a cpu cache; it stays well formed at its address.
+/// S of `page_array_remove_last_2m_mapping_to_cache`: only page `pg_idx` changes, by removing the last mapping of the 2M page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_remove_last_2m_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_last_2m_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_remove_last_2m_mapping_to_cache`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_remove_last_2m_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_last_2m_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_remove_last_2m_mapping_to_cache_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_last_2m_mapping_to_cache_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_last_2m_mapping_to_cache_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_remove_4k_iommu_mapping_without_free`: only page `page_index` changes, by removing one IOMMU mapping of the still-referenced 4K page; it stays well formed at its address.
+/// S of `page_array_remove_4k_iommu_mapping_without_free`: only page `pg_idx` changes, by removing one IOMMU mapping of the still-referenced 4K page; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_remove_4k_iommu_mapping_without_free`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_remove_4k_iommu_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_4k_iommu_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_remove_last_4k_iommu_mapping_to_cache`: only page `page_index` changes, by removing the last IOMMU mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
+/// S of `page_array_remove_last_4k_iommu_mapping_to_cache`: only page `pg_idx` changes, by removing the last IOMMU mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_remove_last_4k_iommu_mapping_to_cache`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_remove_last_4k_iommu_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_last_4k_iommu_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_retire_kernel_object_4k_to_cache`: only page `page_index` changes, by retiring the 4K kernel object page to a cpu cache; it stays well formed at its address.
+/// S of `page_array_retire_kernel_object_4k_to_cache`: only page `pg_idx` changes, by retiring the 4K kernel object page to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retire_kernel_object_4k_to_cache`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retire_kernel_object_4k_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_4k_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retire_kernel_object_4k_to_cache_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_retire_kernel_object_2m_to_global`: only page `page_index` changes, by retiring the 2M kernel object page to a global pool; it stays well formed at its address.
+/// S of `page_array_retire_kernel_object_2m_to_global`: only page `pg_idx` changes, by retiring the 2M kernel object page to a global pool; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retire_kernel_object_2m_to_global`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retire_kernel_object_2m_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_2m_to_global_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retire_kernel_object_2m_to_global_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_retire_kernel_object_4k_to_global`: only page `page_index` changes, by retiring the 4K kernel object page to a global pool; it stays well formed at its address.
+/// S of `page_array_retire_kernel_object_4k_to_global`: only page `pg_idx` changes, by retiring the 4K kernel object page to a global pool; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retire_kernel_object_4k_to_global`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retire_kernel_object_4k_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_4k_to_global_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retire_kernel_object_4k_to_global_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_move_free_4k_to_global_list`: only page `page_index` changes, by moving the free 4K page to a global list; it stays well formed at its address.
+/// S of `page_array_move_free_4k_to_global_list`: only page `pg_idx` changes, by moving the free 4K page to a global list; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_move_free_4k_to_global_list_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_move_free_4k_to_global_list_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_move_free_4k_to_global_list`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_move_free_4k_to_global_list_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_move_free_4k_to_global_list_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_move_free_4k_to_global_list_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_move_free_4k_to_global_list_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_move_free_4k_to_global_list_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_move_free_4k_to_cpu_cache`: only page `page_index` changes, by moving the free 4K page to a cpu cache; it stays well formed at its address.
+/// S of `page_array_move_free_4k_to_cpu_cache`: only page `pg_idx` changes, by moving the free 4K page to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_move_free_4k_to_cpu_cache`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_move_free_4k_to_cpu_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_move_free_4k_to_cpu_cache_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_move_free_4k_to_cpu_cache_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_retype_owned_4k_for_container`: only page `page_index` changes, by retyping the owned 4K page to a kernel object of a child container; it stays well formed at its address.
+/// S of `page_array_retype_owned_4k_for_container`: only page `pg_idx` changes, by retyping the owned 4K page to a kernel object of a child container; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retype_owned_4k_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_4k_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retype_owned_4k_for_container`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retype_owned_4k_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_4k_for_container_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retype_owned_4k_for_container_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retype_owned_4k_for_container_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retype_owned_4k_for_container_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_retype_owned_2m_for_container`: only page `page_index` changes, by retyping the owned 2M page to a kernel object of a child container; it stays well formed at its address.
+/// S of `page_array_retype_owned_2m_for_container`: only page `pg_idx` changes, by retyping the owned 2M page to a kernel object of a child container; it stays well formed at its address.
 #[verifier::opaque]
-pub(super) open spec fn page_array_retype_owned_2m_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_2m_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
 }
 
 /// EOF closure of `page_array_retype_owned_2m_for_container`: the page array stays well formed when one page changes in place.
-pub(super) proof fn page_array_retype_owned_2m_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_2m_for_container_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_retype_owned_2m_for_container_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_retype_owned_2m_for_container_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_retype_owned_2m_for_container_eof_transition_framing); reveal(page_array_wf); }
 
-/// S of `page_array_add_4k_mapping`: only page `page_index` changes, by recording one more mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
+/// S of `page_array_add_4k_mapping`: only page `pg_idx` changes, by recording one more mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
 #[verifier::opaque]
-pub(super) open spec fn page_array_add_4k_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_add_4k_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
-    &&& post.spec_index(page_index).view().view().state == pre.spec_index(page_index).view().view().state
-    &&& post.spec_index(page_index).view().view().owning_container == pre.spec_index(page_index).view().view().owning_container
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
+    &&& post.spec_index(pg_idx).view().view().state == pre.spec_index(pg_idx).view().view().state
+    &&& post.spec_index(pg_idx).view().view().owning_container == pre.spec_index(pg_idx).view().view().owning_container
 }
 
 /// EOF closure of `page_array_add_4k_mapping`: the page array and the huge-page invariants after one page changes outside every page state.
-pub(super) proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
         hugepage_2m_wf(pre),
         hugepage_1g_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_add_4k_mapping_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_add_4k_mapping_eof_transition_framing(pre, post, pg_idx),
     ensures
         page_array_wf(post),
         hugepage_2m_wf(post),
@@ -1800,25 +1800,25 @@ pub(super) proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: Pa
     hugepage_2m_wf_preserved_for_page_state_eq(pre, post); hugepage_1g_wf_preserved_for_page_state_eq(pre, post);
 }
 
-/// S of `page_array_add_4k_iommu_mapping`: only page `page_index` changes, by recording one more IOMMU mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
+/// S of `page_array_add_4k_iommu_mapping`: only page `pg_idx` changes, by recording one more IOMMU mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
 #[verifier::opaque]
-pub(super) open spec fn page_array_add_4k_iommu_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_add_4k_iommu_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
     &&& post.inv()
-    &&& post.entries_unchanged_except(&pre, page_index)
-    &&& post.spec_index(page_index).view().inv()
-    &&& post.spec_index(page_index).view().view().addr == pre.spec_index(page_index).view().view().addr
-    &&& post.spec_index(page_index).view().view().state == pre.spec_index(page_index).view().view().state
-    &&& post.spec_index(page_index).view().view().owning_container == pre.spec_index(page_index).view().view().owning_container
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
+    &&& post.spec_index(pg_idx).view().view().state == pre.spec_index(pg_idx).view().view().state
+    &&& post.spec_index(pg_idx).view().view().owning_container == pre.spec_index(pg_idx).view().view().owning_container
 }
 
 /// EOF closure of `page_array_add_4k_iommu_mapping`: the page array and the huge-page invariants after one page changes outside every page state.
-pub(super) proof fn page_array_add_4k_iommu_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_add_4k_iommu_mapping_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
     requires
         page_array_wf(pre),
         hugepage_2m_wf(pre),
         hugepage_1g_wf(pre),
-        index_valid(NUM_PAGES, page_index),
-        page_array_add_4k_iommu_mapping_eof_transition_framing(pre, post, page_index),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_add_4k_iommu_mapping_eof_transition_framing(pre, post, pg_idx),
     ensures
         page_array_wf(post),
         hugepage_2m_wf(post),

@@ -5,7 +5,7 @@ verus! {
 pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
-        container_thread_wf(pre.ctn_mp, pre.thr_mp),
+        container_thread_wf(pre.ctn_mp, pre.thrd_mp),
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
@@ -19,40 +19,40 @@ pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(p
         post.allc_1g_mp == pre.allc_1g_mp,
         post.ep_mp.dom() =~= pre.ep_mp.dom(),
         post.sched_mp.dom() =~= pre.sched_mp.dom(),
-        thread_quota_4k_fields_unchanged(pre.thr_mp, post.thr_mp),
-        thread_quota_2m_fields_unchanged(pre.thr_mp, post.thr_mp),
-        thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp),
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger pre.thr_mp.spec_index(thread_ptr)]
-            #![trigger post.thr_mp.spec_index(thread_ptr)]
-            pre.thr_mp.dom().contains(thread_ptr) ==> {
-                &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k
-                &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m
-                &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g
-                &&& post.thr_mp.spec_index(thread_ptr).view().owning_container == pre.thr_mp.spec_index(thread_ptr).view().owning_container
+        thread_quota_4k_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        thread_quota_2m_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        thread_quota_1g_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        forall|thrd_ptr: RwLockThreadPtr|
+            #![trigger pre.thrd_mp.spec_index(thrd_ptr)]
+            #![trigger post.thrd_mp.spec_index(thrd_ptr)]
+            pre.thrd_mp.dom().contains(thrd_ptr) ==> {
+                &&& post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k == pre.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k
+                &&& post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m == pre.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m
+                &&& post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g == pre.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g
+                &&& post.thrd_mp.spec_index(thrd_ptr).view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container
             },
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
-            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locking_thread() is Write && !pre.thr_mp.spec_index(t).view().temp_alloc_clean()
-                ==> post.thr_mp.spec_index(t).locking_thread() is Write && post.thr_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(t).locking_thread()->Write_thread_id,
+        forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
+            pre.thrd_mp.dom().contains(t) && pre.thrd_mp.spec_index(t).locking_thread() is Write && !pre.thrd_mp.spec_index(t).view().temp_alloc_clean()
+                ==> post.thrd_mp.spec_index(t).locking_thread() is Write && post.thrd_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thrd_mp.spec_index(t).locking_thread()->Write_thread_id,
     ensures
         post.memory_management_inv(),
 {
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+    assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by {
         reveal(page_object_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
         broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
     };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by {
+        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
     };
-    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
-        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
-        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
+    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp);
+        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
+        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
     };
 }
 }

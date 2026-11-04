@@ -1744,8 +1744,8 @@ pub extern "C" fn _start() -> ! {
     check("alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(cost) });
     let ip = container_child as *const () as usize;
     let sp = (&raw const CONTAINER_STACK) as usize + 64 * 1024 - 8;
-    let new_container = |transfer_cpu, endpoint_index| unsafe {
-        sys_new_container_with_endpoint(image, pages, CONTAINER_FUNDING, CONTAINER_PROCESS_QUOTA, transfer_cpu, endpoint_index, ip, sp).rax
+    let new_container = |transfer_cpu, ep_idx| unsafe {
+        sys_new_container_with_endpoint(image, pages, CONTAINER_FUNDING, CONTAINER_PROCESS_QUOTA, transfer_cpu, ep_idx, ip, sp).rax
     };
     expect_error("new_container_with_endpoint with an empty descriptor", new_container(2, 7), "Error");
     expect_error("new_container_with_endpoint with an online cpu", new_container(1, ENDPOINT), "ErrorIpcCpuNotOff");

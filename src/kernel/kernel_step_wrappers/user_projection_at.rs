@@ -8,7 +8,7 @@ pub proof fn kernel_u_user_domains_projection(krnl: &KernelK)
         kernel_k_user_projection(*krnl).cpu_array.len() == NUM_CPUS,
         kernel_k_user_projection(*krnl).container_map.dom() == krnl.ctn_mp.dom(),
         kernel_k_user_projection(*krnl).process_map.dom() == krnl.prc_mp.dom(),
-        kernel_k_user_projection(*krnl).thread_map.dom() == krnl.thr_mp.dom(),
+        kernel_k_user_projection(*krnl).thread_map.dom() == krnl.thrd_mp.dom(),
         kernel_k_user_projection(*krnl).endpoint_map.dom() == krnl.ep_mp.dom(),
         kernel_k_user_projection(*krnl).iommu_root_table == krnl.irt.view().user_view(),
         kernel_k_user_projection(*krnl).cpu_tlb == krnl.cpu_tlb.view(),
@@ -92,11 +92,11 @@ pub proof fn kernel_process_user_projection_at(krnl: &KernelK, ptr: RwLockProces
 
 /// One thread entry of the unwrapped user projection, without unfolding the other projected maps.
 pub proof fn kernel_thread_user_projection_at(krnl: &KernelK, ptr: RwLockThreadPtr)
-    requires krnl.thr_mp.dom().contains(ptr),
+    requires krnl.thrd_mp.dom().contains(ptr),
     ensures
         kernel_k_user_projection(*krnl).thread_map.dom().contains(ptr),
         ({
-            let thread = krnl.thr_mp.spec_index(ptr);
+            let thread = krnl.thrd_mp.spec_index(ptr);
             let t = thread.view();
             kernel_k_user_projection(*krnl).thread_map[ptr] == (ThreadU {
                 lock_state: thread.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee,

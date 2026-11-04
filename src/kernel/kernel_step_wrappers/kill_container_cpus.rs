@@ -3,30 +3,30 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
-/// Write-locking and marking the cpu set of the container `container_ptr` changes only that container's cpu-set lock
+/// Write-locking and marking the cpu set of the container `ctn_ptr` changes only that container's cpu-set lock
 /// mode and mark in the projection.
-pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, container_ptr: RwLockContainerPtr)
+pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         container_cpu_set_wf(before.ctn_mp, before.cpu_set_mp),
         *after == (KernelK { cpu_set_mp: after.cpu_set_mp, ..*before }),
-        before.ctn_mp.dom().contains(container_ptr),
-        after.cpu_set_mp.unchanged_except(&before.cpu_set_mp, before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
-        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is Write,
-        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
+        before.ctn_mp.dom().contains(ctn_ptr),
+        after.cpu_set_mp.unchanged_except(&before.cpu_set_mp, before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
+        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Write,
+        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
     ensures
-        kernel_k_to_kernel_u(*before).container_map.dom().contains(container_ptr),
+        kernel_k_to_kernel_u(*before).container_map.dom().contains(ctn_ptr),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                container_map: pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[container_ptr] }), ..pre
+                container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
             })
         }),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, container_ptr);
-    assert_maps_equal!(post.container_map, pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[container_ptr] }), c => {
+    container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, ctn_ptr);
+    assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), c => {
         if before.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, c);
         }
@@ -93,19 +93,19 @@ pub proof fn kernel_cpu_moved_to_container_implies_u_step(before: &KernelK, afte
     assert(post.cpu_array[cpu_id as int].owning_container != pre.cpu_array[cpu_id as int].owning_container) by { kernel_cpu_projection_at(before, cpu_id); kernel_cpu_projection_at(after, cpu_id); };
 }
 
-/// With no cpu in the cpu set of the container `container_ptr`, no cpu of the projection belongs to that container.
-pub proof fn kernel_container_without_cpus_implies_u(krnl: &KernelK, container_ptr: RwLockContainerPtr)
+/// With no cpu in the cpu set of the container `ctn_ptr`, no cpu of the projection belongs to that container.
+pub proof fn kernel_container_without_cpus_implies_u(krnl: &KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
-        forall|i: CpuId| #![trigger krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(i)]
-            index_valid(NUM_CPUS, i) ==> !krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(i),
+        forall|i: CpuId| #![trigger krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(i)]
+            index_valid(NUM_CPUS, i) ==> !krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).view().owned_cpus.view().contains(i),
     ensures
-        forall|i: int| #![trigger kernel_k_to_kernel_u(*krnl).cpu_array[i]] 0 <= i < NUM_CPUS ==> kernel_k_to_kernel_u(*krnl).cpu_array[i].owning_container != container_ptr,
+        forall|i: int| #![trigger kernel_k_to_kernel_u(*krnl).cpu_array[i]] 0 <= i < NUM_CPUS ==> kernel_k_to_kernel_u(*krnl).cpu_array[i].owning_container != ctn_ptr,
 {
     let u = kernel_k_to_kernel_u(*krnl);
-    let other: RwLockContainerPtr = if container_ptr == 0usize { 1usize } else { 0usize };
+    let other: RwLockContainerPtr = if ctn_ptr == 0usize { 1usize } else { 0usize };
     kernel_u_domains_projection(krnl);
-    assert_seqs_equal!(u.cpu_array == Seq::new(NUM_CPUS as nat, |i: int| if u.cpu_array[i].owning_container == container_ptr { CpuU { owning_container: other, ..u.cpu_array[i] } } else { u.cpu_array[i] }), i => {
+    assert_seqs_equal!(u.cpu_array == Seq::new(NUM_CPUS as nat, |i: int| if u.cpu_array[i].owning_container == ctn_ptr { CpuU { owning_container: other, ..u.cpu_array[i] } } else { u.cpu_array[i] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(krnl, i as usize); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, i as usize); }
     });
 }

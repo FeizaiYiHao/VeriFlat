@@ -103,9 +103,9 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
-            let state = old(krnl).thr_mp.spec_index(held_thread).view().state;
+            let state = old(krnl).thrd_mp.spec_index(held_thread).view().state;
             &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
-            &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
+            &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> old(krnl).thrd_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
         },
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> {
             let page = old(krnl).pg_arr.spec_index(held_page).view().view();
@@ -225,9 +225,9 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             lctx.holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> {
-                let state = krnl.thr_mp.spec_index(held_thread).view().state;
+                let state = krnl.thrd_mp.spec_index(held_thread).view().state;
                 &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
-                &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> krnl.thr_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
+                &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> krnl.thrd_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
             },
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -270,13 +270,13 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             },
         decreases sorted.view().len() - k,
     {
-        let page_index = *sorted.get(k);
-        let Tracked(perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
+        let pg_idx = *sorted.get(k);
+        let Tracked(perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
         proof {
-            perms.tracked_insert(page_index, perm);
-            assert(sorted.view().subrange(0, k + 1).to_set() == sorted.view().subrange(0, k as int).to_set().insert(page_index)) by {
-                assert(sorted.view().subrange(0, k + 1) =~= sorted.view().subrange(0, k as int).push(page_index));
-                sorted.view().subrange(0, k as int).lemma_push_to_set_commute(page_index);
+            perms.tracked_insert(pg_idx, perm);
+            assert(sorted.view().subrange(0, k + 1).to_set() == sorted.view().subrange(0, k as int).to_set().insert(pg_idx)) by {
+                assert(sorted.view().subrange(0, k + 1) =~= sorted.view().subrange(0, k as int).push(pg_idx));
+                sorted.view().subrange(0, k as int).lemma_push_to_set_commute(pg_idx);
             };
         }
         k = k + 1;
@@ -394,13 +394,13 @@ pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
             },
         decreases pages.view().len() - k,
     {
-        let page_index = *pages.get(k);
-        let tracked perm = perms.tracked_remove(page_index);
-        krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(perm));
+        let pg_idx = *pages.get(k);
+        let tracked perm = perms.tracked_remove(pg_idx);
+        krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(perm));
         proof {
-            assert(pages.view().subrange(0, k + 1).to_set() == pages.view().subrange(0, k as int).to_set().insert(page_index)) by {
-                assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(page_index));
-                pages.view().subrange(0, k as int).lemma_push_to_set_commute(page_index);
+            assert(pages.view().subrange(0, k + 1).to_set() == pages.view().subrange(0, k as int).to_set().insert(pg_idx)) by {
+                assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(pg_idx));
+                pages.view().subrange(0, k as int).lemma_push_to_set_commute(pg_idx);
             };
         }
         k = k + 1;
@@ -414,10 +414,10 @@ pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
 }
 
 /// Retires the write-held `Allocated4k` pages `pages`, whose kernel objects were removed with their permissions in
-/// `page_perms`, through their free-list nodes into shard `cpu_id` of the 4K allocator `allocator_ptr`, during Release.
+/// `page_perms`, through their free-list nodes into shard `cpu_id` of the 4K allocator `allc_ptr`, during Release.
 /// The quota is left to the caller.
 pub(crate) fn kill_retire_pages_to_cache(
-    krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(page_perms): Tracked<Map<PageIndex, PagePerm4k>>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(page_perms): Tracked<Map<PageIndex, PagePerm4k>>, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(cache_lock_perm): Tracked<&LockPerm>,
 )
     requires
@@ -425,30 +425,30 @@ pub(crate) fn kill_retire_pages_to_cache(
         old(lctx).kernel_view_locking_state() is Release,
         page_array_wf(old(krnl).pg_arr),
         old(krnl).allc_4k_mp.perms_wf(),
-        old(krnl).allc_4k_mp.dom().contains(allocator_ptr),
-        old(krnl).allc_4k_mp.spec_index(allocator_ptr).wf(),
+        old(krnl).allc_4k_mp.dom().contains(allc_ptr),
+        old(krnl).allc_4k_mp.spec_index(allc_ptr).wf(),
         index_valid(NUM_CPUS, cpu_id),
-        typed_lock_map_contains_mode(old(lctx).allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).allocator_cache_4k_lock_map(), (allc_ptr, cpu_id), TypedLockMode::Write),
         cache_lock_perm.state() is WriteLock,
         cache_lock_perm.thread_id() == old(lctx).thread_id(),
-        cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() + pages.view().len() <= ALLOCATOR_MAX_WATERMARK,
-        old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
+        cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() + pages.view().len() <= ALLOCATOR_MAX_WATERMARK,
+        old(krnl).allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
         pages.wf(),
         pages.view().no_duplicates(),
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> {
-            let page_index = pages.view()[k];
-            &&& index_valid(NUM_PAGES, page_index)
-            &&& old(krnl).pg_arr.spec_index(page_index).view().view().state is Allocated4k
-            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write)
-            &&& page_lock_perms.dom().contains(page_index)
-            &&& page_lock_perms.spec_index(page_index).state() is WriteLock
-            &&& page_lock_perms.spec_index(page_index).thread_id() == old(lctx).thread_id()
-            &&& page_lock_perms.spec_index(page_index).lock_id() == old(krnl).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id
-            &&& page_perms.dom().contains(page_index)
-            &&& page_perms.spec_index(page_index).is_init()
-            &&& page_perms.spec_index(page_index).addr() == page_index2page_ptr(page_index)
-            &&& !old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
+            let pg_idx = pages.view()[k];
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& old(krnl).pg_arr.spec_index(pg_idx).view().view().state is Allocated4k
+            &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), pg_idx, TypedLockMode::Write)
+            &&& page_lock_perms.dom().contains(pg_idx)
+            &&& page_lock_perms.spec_index(pg_idx).state() is WriteLock
+            &&& page_lock_perms.spec_index(pg_idx).thread_id() == old(lctx).thread_id()
+            &&& page_lock_perms.spec_index(pg_idx).lock_id() == old(krnl).pg_arr.spec_index(pg_idx).view().locking_thread()->Write_lock_id
+            &&& page_perms.dom().contains(pg_idx)
+            &&& page_perms.spec_index(pg_idx).is_init()
+            &&& page_perms.spec_index(pg_idx).addr() == page_index2page_ptr(pg_idx)
+            &&& !old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(pg_idx))
         },
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -457,7 +457,7 @@ pub(crate) fn kill_retire_pages_to_cache(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         page_array_wf(final(krnl).pg_arr),
         final(krnl).allc_4k_mp.perms_wf(),
-        final(krnl).allc_4k_mp.spec_index(allocator_ptr).wf(),
+        final(krnl).allc_4k_mp.spec_index(allc_ptr).wf(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom(),
         forall|i: PageIndex| #![trigger final(lctx).page_lock_map().index(i)] old(lctx).page_lock_map().dom().contains(i) ==> final(lctx).page_lock_map().index(i)
@@ -489,14 +489,14 @@ pub(crate) fn kill_retire_pages_to_cache(
             &&& post_page.locking_thread() == pre_page.locking_thread()
             &&& post_page.being_killed() == pre_page.being_killed()
             &&& post_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
-            &&& post_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
+            &&& post_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
                 free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
         },
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-        final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_ptr),
+        final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allc_ptr),
         ({
-            let pre_allocator = old(krnl).allc_4k_mp.spec_index(allocator_ptr);
-            let post_allocator = final(krnl).allc_4k_mp.spec_index(allocator_ptr);
+            let pre_allocator = old(krnl).allc_4k_mp.spec_index(allc_ptr);
+            let post_allocator = final(krnl).allc_4k_mp.spec_index(allc_ptr);
             let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
             let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
             &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + pages.view().len()
@@ -530,28 +530,28 @@ pub(crate) fn kill_retire_pages_to_cache(
             typed_lock_maps_aligned(krnl, &*lctx),
             page_array_wf(krnl.pg_arr),
             krnl.allc_4k_mp.perms_wf(),
-            typed_lock_map_contains_mode(lctx.allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedLockMode::Write),
+            typed_lock_map_contains_mode(lctx.allocator_cache_4k_lock_map(), (allc_ptr, cpu_id), TypedLockMode::Write),
             cache_lock_perm.state() is WriteLock,
             cache_lock_perm.thread_id() == lctx.thread_id(),
-            cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() + pages.view().len() <= ALLOCATOR_MAX_WATERMARK,
-            old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
+            cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() + pages.view().len() <= ALLOCATOR_MAX_WATERMARK,
+            old(krnl).allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() + pages.view().len() < usize::MAX,
             forall|j: int| #![trigger pages.view()[j]] 0 <= j < pages.view().len() ==> {
-                let page_index = pages.view()[j];
-                &&& index_valid(NUM_PAGES, page_index)
-                &&& old(krnl).pg_arr.spec_index(page_index).view().view().state is Allocated4k
-                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write)
-                &&& page_lock_perms.dom().contains(page_index)
-                &&& page_lock_perms.spec_index(page_index).state() is WriteLock
-                &&& page_lock_perms.spec_index(page_index).thread_id() == old(lctx).thread_id()
-                &&& page_lock_perms.spec_index(page_index).lock_id() == old(krnl).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id
-                &&& !old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
+                let pg_idx = pages.view()[j];
+                &&& index_valid(NUM_PAGES, pg_idx)
+                &&& old(krnl).pg_arr.spec_index(pg_idx).view().view().state is Allocated4k
+                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), pg_idx, TypedLockMode::Write)
+                &&& page_lock_perms.dom().contains(pg_idx)
+                &&& page_lock_perms.spec_index(pg_idx).state() is WriteLock
+                &&& page_lock_perms.spec_index(pg_idx).thread_id() == old(lctx).thread_id()
+                &&& page_lock_perms.spec_index(pg_idx).lock_id() == old(krnl).pg_arr.spec_index(pg_idx).view().locking_thread()->Write_lock_id
+                &&& !old(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(pg_idx))
             },
             forall|j: int| #![trigger pages.view()[j]] k <= j < pages.view().len() ==> {
-                let page_index = pages.view()[j];
-                &&& page_perms.dom().contains(page_index)
-                &&& page_perms.spec_index(page_index).is_init()
-                &&& page_perms.spec_index(page_index).addr() == page_index2page_ptr(page_index)
+                let pg_idx = pages.view()[j];
+                &&& page_perms.dom().contains(pg_idx)
+                &&& page_perms.spec_index(pg_idx).is_init()
+                &&& page_perms.spec_index(pg_idx).addr() == page_index2page_ptr(pg_idx)
             },
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom(),
             forall|i: PageIndex| #![trigger lctx.page_lock_map().index(i)] old(lctx).page_lock_map().dom().contains(i) ==> lctx.page_lock_map().index(i)
@@ -584,14 +584,14 @@ pub(crate) fn kill_retire_pages_to_cache(
                 &&& cur_page.locking_thread() == pre_page.locking_thread()
                 &&& cur_page.being_killed() == pre_page.being_killed()
                 &&& cur_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
-                &&& cur_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
+                &&& cur_page.view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
                     free_list_node_storage: cur_page.view().free_list_node_storage, perm_4k: cur_page.view().perm_4k, ..pre_page.view() })
             },
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-            krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_ptr),
+            krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allc_ptr),
             ({
-                let pre_allocator = old(krnl).allc_4k_mp.spec_index(allocator_ptr);
-                let cur_allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
+                let pre_allocator = old(krnl).allc_4k_mp.spec_index(allc_ptr);
+                let cur_allocator = krnl.allc_4k_mp.spec_index(allc_ptr);
                 let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
                 let cur_cache = cur_allocator.cpu_caches.spec_index(cpu_id).view();
                 &&& cur_allocator.wf()
@@ -614,18 +614,18 @@ pub(crate) fn kill_retire_pages_to_cache(
         decreases pages.view().len() - k,
     {
         broadcast use vstd::seq_lib::lemma_seq_concat_contains_all_elements, vstd::seq_lib::lemma_seq_contains_after_push;
-        let page_index = *pages.get(k);
-        let ghost cur_cache = krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view();
-        let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
-        proof { page_array_wf_at(krnl.pg_arr, page_index); }
-        let tracked page_perm = page_perms.tracked_remove(page_index);
-        let tracked page_lock_perm = page_lock_perms.tracked_borrow(page_index);
-        let (node_addr, node_perm) = page_array_retire_kernel_object_4k_to_cache(&mut krnl.pg_arr, page_index, Tracked(page_perm), allocator_ptr, cpu_id, Tracked(&*lctx), Tracked(page_lock_perm));
-        proof { lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index)); }
-        krnl.allc_4k_mp.push_cache_page_typed(allocator_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
+        let pg_idx = *pages.get(k);
+        let ghost cur_cache = krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view();
+        let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
+        proof { page_array_wf_at(krnl.pg_arr, pg_idx); }
+        let tracked page_perm = page_perms.tracked_remove(pg_idx);
+        let tracked page_lock_perm = page_lock_perms.tracked_borrow(pg_idx);
+        let (node_addr, node_perm) = page_array_retire_kernel_object_4k_to_cache(&mut krnl.pg_arr, pg_idx, Tracked(page_perm), allc_ptr, cpu_id, Tracked(&*lctx), Tracked(page_lock_perm));
+        proof { lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx)); }
+        krnl.allc_4k_mp.push_cache_page_typed(allc_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
             Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(cache_lock_perm));
         proof {
-            assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(page_index));
+            assert(pages.view().subrange(0, k + 1) =~= pages.view().subrange(0, k as int).push(pg_idx));
             assert(cur_cache.subrange(0, cur_cache.len() as int) =~= cur_cache);
         }
         k = k + 1;

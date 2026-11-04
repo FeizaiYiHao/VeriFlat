@@ -71,12 +71,12 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(pre_thread_map:
                 &&& post_thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node == pre_thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node
             },
         pre_endpoint_map.dom() =~= post_endpoint_map.dom(),
-        forall|endpoint_ptr: RwLockEndpointPtr|
-            #![trigger pre_endpoint_map.spec_index(endpoint_ptr).view().queue]
-            #![trigger post_endpoint_map.spec_index(endpoint_ptr).view().queue]
-            pre_endpoint_map.dom().contains(endpoint_ptr) ==> {
-                &&& post_endpoint_map.spec_index(endpoint_ptr).view().queue == pre_endpoint_map.spec_index(endpoint_ptr).view().queue
-                &&& post_endpoint_map.spec_index(endpoint_ptr).view().queue_state == pre_endpoint_map.spec_index(endpoint_ptr).view().queue_state
+        forall|ep_ptr: RwLockEndpointPtr|
+            #![trigger pre_endpoint_map.spec_index(ep_ptr).view().queue]
+            #![trigger post_endpoint_map.spec_index(ep_ptr).view().queue]
+            pre_endpoint_map.dom().contains(ep_ptr) ==> {
+                &&& post_endpoint_map.spec_index(ep_ptr).view().queue == pre_endpoint_map.spec_index(ep_ptr).view().queue
+                &&& post_endpoint_map.spec_index(ep_ptr).view().queue_state == pre_endpoint_map.spec_index(ep_ptr).view().queue_state
             },
     ensures
         thread_endpoint_queue_wf(post_thread_map, post_endpoint_map),

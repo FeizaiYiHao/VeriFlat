@@ -47,7 +47,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         ret is Ok ==> ({
             let e = ret->Ok_0;
             let cpu = final(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
-            let thread = final(krnl).thr_mp.spec_index(e.thread_ptr).view();
+            let thread = final(krnl).thrd_mp.spec_index(e.thread_ptr).view();
             &&& thread_exit_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == RetValueType::CpuIdle
             &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(lctx).kernel_view_locking_state() is Acquire
@@ -81,14 +81,14 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& e.process_lock_perm.view().lock_id() == final(krnl).prc_mp.spec_index(e.process_ptr).locking_thread()->Write_lock_id
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), e.thread_ptr, TypedLockMode::Write)
             &&& e.thread_lock_perm.view().state() is WriteLock && e.thread_lock_perm.view().thread_id() == final(lctx).thread_id()
-            &&& e.thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(e.thread_ptr).locking_thread()->Write_lock_id
+            &&& e.thread_lock_perm.view().lock_id() == final(krnl).thrd_mp.spec_index(e.thread_ptr).locking_thread()->Write_lock_id
             &&& cpu.state is Running && cpu.current_process == Some(e.process_ptr) && cpu.current_thread == Some(e.thread_ptr) && cpu.owning_container == e.container_ptr
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
             &&& final(krnl).ctn_mp.dom().contains(e.container_ptr) && !final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed()
             &&& final(krnl).prc_mp.dom().contains(e.process_ptr) && !final(krnl).prc_mp.spec_index(e.process_ptr).being_killed()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
-            &&& final(krnl).thr_mp.dom().contains(e.thread_ptr) && !final(krnl).thr_mp.spec_index(e.thread_ptr).being_killed()
+            &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.caller is None && thread.callee is None && thread.temp_alloc_clean() && thread.free_quota_pending_clean()
             &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 })
@@ -99,24 +99,24 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         Ok(e) => e,
         Err(r) => { return Err(r); },
     };
-    let container_ptr = locked.container_ptr;
-    let process_ptr = locked.process_ptr;
-    let thread_ptr = locked.thread_ptr;
+    let ctn_ptr = locked.container_ptr;
+    let prc_ptr = locked.process_ptr;
+    let thrd_ptr = locked.thread_ptr;
     let Tracked(cpu_lock_perm) = locked.cpu_lock_perm;
     let Tracked(container_lock_perm) = locked.container_lock_perm;
     let Tracked(process_lock_perm) = locked.process_lock_perm;
     let Tracked(thread_lock_perm) = locked.thread_lock_perm;
     proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm),
+    let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(&thread_lock_perm),
         Ghost(*old(krnl)));
     if entered.is_none() {
-        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
             thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
         }
         return Err(RetValueType::ErrorIpcPeerKilled);
@@ -126,21 +126,21 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     if let Some(dangling_ptr) = dangling {
         let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
-        thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, dangling_ptr, Tracked(dangling_perm),
+        thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, dangling_ptr, Tracked(dangling_perm),
             Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(*old(krnl))));
     }
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     Ok(ThreadExitEntered {
-        container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
+        container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
         process_lock_perm: Tracked(process_lock_perm), thread_lock_perm: Tracked(thread_lock_perm),
     })
 }
 
-/// Reclaims the dangling thread `dangling_ptr` of the running `thread_ptr`'s container, taken over from the killed caller of
-/// `thread_ptr`, and every killed caller it takes over, extending the partial trace that starts at `start`.
+/// Reclaims the dangling thread `dangling_ptr` of the running `thrd_ptr`'s container, taken over from the killed caller of
+/// `thrd_ptr`, and every killed caller it takes over, extending the partial trace that starts at `start`.
 fn thread_exit_reclaim_dangling_caller(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
-    process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, Tracked(dangling_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr,
+    prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, Tracked(dangling_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>,
     Ghost(pre): Ghost<KernelU>,
 )
     requires
@@ -151,33 +151,33 @@ fn thread_exit_reclaim_dangling_caller(
         cpu_id == old(lctx).cpu_id(),
         old(steps).snapshot_k() == *old(krnl),
         killed_thread_reclaim_lock_context(*old(krnl), *old(lctx)),
-        old(lctx).thread_lock_map().dom() =~= set![thread_ptr, dangling_ptr],
-        old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.dom().contains(dangling_ptr),
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().state is KILLED,
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().owning_container == container_ptr,
+        old(lctx).thread_lock_map().dom() =~= set![thrd_ptr, dangling_ptr],
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.dom().contains(dangling_ptr),
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().state is KILLED,
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().owning_container == ctn_ptr,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), dangling_ptr, TypedLockMode::Write),
         dangling_lock_perm.state() is WriteLock,
         dangling_lock_perm.thread_id() == old(lctx).thread_id(),
-        dangling_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(dangling_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().callee is None,
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_4k == 0,
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_2m == 0,
-        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_1g == 0,
+        dangling_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(dangling_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().callee is None,
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().quota_4k == 0,
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().quota_2m == 0,
+        old(krnl).thrd_mp.spec_index(dangling_ptr).view().quota_1g == 0,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
-        old(krnl).prc_mp.dom().contains(process_ptr),
-        old(krnl).thr_mp.dom().contains(thread_ptr),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 }),
+        typed_lock_map_contains_mode(old(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
+        old(krnl).prc_mp.dom().contains(prc_ptr),
+        old(krnl).thrd_mp.dom().contains(thrd_ptr),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 }),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
         old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
@@ -201,15 +201,15 @@ fn thread_exit_reclaim_dangling_caller(
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
         },
         typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(dangling_ptr)),
-        held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![dangling_ptr]),
+        held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![dangling_ptr]),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
 {
     let ghost reclaim_before = steps.view();
     proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
     reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, dangling_ptr, Tracked(dangling_lock_perm));
     assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-        thread_exit_drop_step_pre_from_k(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, 0);
-        thread_exit_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(*old(krnl)), cpu_id, container_ptr, process_ptr);
+        thread_exit_drop_step_pre_from_k(old(krnl), old(lctx), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, 0);
+        thread_exit_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(*old(krnl)), cpu_id, ctn_ptr, prc_ptr);
     };
 }
 } // verus!

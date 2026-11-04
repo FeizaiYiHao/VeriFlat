@@ -148,76 +148,76 @@ pub proof fn kernel_container_free_2m_page_moved_implies_u_step(pre: &KernelK, p
 /// A container whose 4K and 2M allocators hold no quota and whose 1G allocator holds exactly its free pages as quota has
 /// no quota of any size in the projection: a free 1G page could only start at page index 0, the only 1G-aligned page,
 /// and would then merge the page that holds the container's 1G allocator.
-pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, container_ptr: RwLockContainerPtr)
+pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         krnl.inv(),
-        krnl.ctn_mp.dom().contains(container_ptr),
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value == 0,
-        krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value == 0,
-        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value
-            == krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view(),
+        krnl.ctn_mp.dom().contains(ctn_ptr),
+        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value == 0,
+        krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value == 0,
+        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value
+            == krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view(),
     ensures
-        kernel_k_to_kernel_u(*krnl).container_map.dom().contains(container_ptr),
-        kernel_k_to_kernel_u(*krnl).container_map[container_ptr].quota_4k == 0,
-        kernel_k_to_kernel_u(*krnl).container_map[container_ptr].quota_2m == 0,
-        kernel_k_to_kernel_u(*krnl).container_map[container_ptr].quota_1g == 0,
+        kernel_k_to_kernel_u(*krnl).container_map.dom().contains(ctn_ptr),
+        kernel_k_to_kernel_u(*krnl).container_map[ctn_ptr].quota_4k == 0,
+        kernel_k_to_kernel_u(*krnl).container_map[ctn_ptr].quota_2m == 0,
+        kernel_k_to_kernel_u(*krnl).container_map[ctn_ptr].quota_1g == 0,
         ({
-            let allocator = krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g);
+            let allocator = krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g);
             &&& allocator.quota.view().value == 0
             &&& forall|i: CpuId| #![trigger allocator.cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i) ==> allocator.cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0
         }),
 {
-    let allocator_ptr = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g;
-    let allocator = krnl.allc_1g_mp.spec_index(allocator_ptr);
+    let allc_ptr = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g;
+    let allocator = krnl.allc_1g_mp.spec_index(allc_ptr);
     let pool = allocator.global_pool.view().view();
-    kernel_container_projection_at(krnl, container_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
-    allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
+    kernel_container_projection_at(krnl, ctn_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
+    allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
     assert(pool.len() == 0) by {
         if pool.len() > 0 {
-            let page_ptr = pool[0];
-            let i = page_ptr2page_index(page_ptr);
-            let j = page_ptr2page_index(allocator_ptr);
-            assert(pool.contains(page_ptr));
-            allocator_free_page_ptrs_wf_global_at(krnl.allc_1g_mp, allocator_ptr, page_ptr); container_allocator_free_1g_page_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, allocator_ptr, page_ptr);
-            page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allocator_ptr);
+            let pg_ptr = pool[0];
+            let i = page_ptr2page_index(pg_ptr);
+            let j = page_ptr2page_index(allc_ptr);
+            assert(pool.contains(pg_ptr));
+            allocator_free_page_ptrs_wf_global_at(krnl.allc_1g_mp, allc_ptr, pg_ptr); container_allocator_free_1g_page_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, pg_ptr);
+            page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allc_ptr);
             hugepage_1g_wf_head_at(krnl.pg_arr, i); hugepage_1g_wf_tail_forward_at(krnl.pg_arr, i, j);
         }
     };
-    lemma_free_1g_cache_len_fold_zero(krnl, allocator_ptr, NUM_CPUS as int);
+    lemma_free_1g_cache_len_fold_zero(krnl, allc_ptr, NUM_CPUS as int);
     assert(allocator.cpu_caches.view().take(NUM_CPUS as int) =~= allocator.cpu_caches.view());
 }
 
-/// The first `n` 1G caches of the 1G allocator `allocator_ptr` hold no page: a free 1G page could only start at page index
+/// The first `n` 1G caches of the 1G allocator `allc_ptr` hold no page: a free 1G page could only start at page index
 /// 0, the only 1G-aligned page, and would then merge the page that holds the allocator itself.
-proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allocator_ptr: RwLockPageAllocatorPtr, n: int)
+proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allc_ptr: RwLockPageAllocatorPtr, n: int)
     requires
         krnl.inv(),
-        krnl.allc_1g_mp.dom().contains(allocator_ptr),
+        krnl.allc_1g_mp.dom().contains(allc_ptr),
         0 <= n <= NUM_CPUS,
     ensures
-        krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.view().take(n)
+        krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.view().take(n)
             .fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == 0,
-        forall|i: CpuId| #![trigger krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.spec_index(i)]
-            i < n ==> krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0,
+        forall|i: CpuId| #![trigger krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.spec_index(i)]
+            i < n ==> krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0,
     decreases n,
 {
-    let caches = krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches;
+    let caches = krnl.allc_1g_mp.spec_index(allc_ptr).cpu_caches;
     if n > 0 {
-        lemma_free_1g_cache_len_fold_zero(krnl, allocator_ptr, n - 1);
-        allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr);
+        lemma_free_1g_cache_len_fold_zero(krnl, allc_ptr, n - 1);
+        allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr);
         assert(caches.view().take(n).drop_last() =~= caches.view().take(n - 1));
         caches.view_index_eq_element_value();
         let cache = caches.spec_index((n - 1) as usize).view().view();
         cache.linked_list.wf_implies_view_len_eq_len();
         assert(cache.view().len() == 0) by {
             if cache.view().len() > 0 {
-                let page_ptr = cache.view()[0];
-                let i = page_ptr2page_index(page_ptr);
-                let j = page_ptr2page_index(allocator_ptr);
-                assert(caches.spec_index((n - 1) as usize).view().view().view().contains(page_ptr));
-                allocator_free_page_ptrs_wf_cache_at(krnl.allc_1g_mp, allocator_ptr, (n - 1) as usize, page_ptr);
-                container_allocator_free_1g_page_wf_cache_at(krnl.allc_1g_mp, krnl.pg_arr, allocator_ptr, (n - 1) as usize, page_ptr);
-                page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allocator_ptr);
+                let pg_ptr = cache.view()[0];
+                let i = page_ptr2page_index(pg_ptr);
+                let j = page_ptr2page_index(allc_ptr);
+                assert(caches.spec_index((n - 1) as usize).view().view().view().contains(pg_ptr));
+                allocator_free_page_ptrs_wf_cache_at(krnl.allc_1g_mp, allc_ptr, (n - 1) as usize, pg_ptr);
+                container_allocator_free_1g_page_wf_cache_at(krnl.allc_1g_mp, krnl.pg_arr, allc_ptr, (n - 1) as usize, pg_ptr);
+                page_ptr_valid_imply_page_index_valid(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allc_ptr);
                 hugepage_1g_wf_head_at(krnl.pg_arr, i); hugepage_1g_wf_tail_forward_at(krnl.pg_arr, i, j);
             }
         };

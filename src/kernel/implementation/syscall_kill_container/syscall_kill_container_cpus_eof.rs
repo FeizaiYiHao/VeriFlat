@@ -146,7 +146,7 @@ proof fn kill_container_cpus_eof_process_management_inv(
     assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
+    assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }
 
 proof fn kill_container_cpus_eof_memory_and_tlb(

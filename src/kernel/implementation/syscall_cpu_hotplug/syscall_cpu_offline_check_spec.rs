@@ -21,12 +21,12 @@ pub open spec fn cpu_offline_check_flushed_default_pcid(pre: KernelK, cpu_id: Cp
 }
 
 /// Operation-state summary of the committed offline of `cpu_id` under every lock the check acquired: the
-/// running thread, if any, is requeued at the tail of shard `cpu_id` of `scheduler_ptr`, the cpu publishes the default page
+/// running thread, if any, is requeued at the tail of shard `cpu_id` of `sched_ptr`, the cpu publishes the default page
 /// table and goes Off with an empty dirty map, its TLB entries are flushed, its slot in `cpu_set_ptr` is
 /// closed, and its request cell in `flags_ptr` is cleared.
 #[verifier::opaque]
 pub(super) open spec fn cpu_went_off_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr,
     cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers,
 ) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
@@ -35,8 +35,8 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
     let new_cpu = cpu_after.view().view();
     let previous = old_cpu.current_thread;
     let flush_default = old_cpu.state is Running && pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush;
-    let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);
-    let scheduler_after = post.sched_mp.spec_index(scheduler_ptr);
+    let scheduler_before = pre.sched_mp.spec_index(sched_ptr);
+    let scheduler_after = post.sched_mp.spec_index(sched_ptr);
     let shard_before = scheduler_before.shards.spec_index(cpu_id).view();
     let shard_after = scheduler_after.shards.spec_index(cpu_id).view();
     let queue_before = shard_before.view().queue;
@@ -51,7 +51,7 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
     let cell_after = table_after.flags.spec_index(cpu_id).view();
     &&& post == (KernelK {
         cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_tlb: post.cpu_tlb,
-        sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
+        sched_mp: post.sched_mp, thrd_mp: post.thrd_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
     })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
@@ -67,12 +67,12 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
         current_pcid: KERNEL_DEFAULT_PCID, tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
     })
     &&& (forall|pcid: Pcid| #![trigger cpu_after.view().tlb_dirty_bitmap().spec_index(pcid)] pcid_valid(pcid) ==> cpu_after.view().tlb_dirty_bitmap().spec_index(pcid) is None)
-    &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(ptr)] #![trigger post.thr_mp.spec_index(ptr)] pre.thr_mp.dom().contains(ptr) ==> {
-        let before = pre.thr_mp.spec_index(ptr);
-        let after = post.thr_mp.spec_index(ptr);
-        &&& post.thr_mp.view().spec_index(ptr).is_init() == pre.thr_mp.view().spec_index(ptr).is_init()
-        &&& post.thr_mp.view().spec_index(ptr).addr() == pre.thr_mp.view().spec_index(ptr).addr()
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(ptr)] #![trigger post.thrd_mp.spec_index(ptr)] pre.thrd_mp.dom().contains(ptr) ==> {
+        let before = pre.thrd_mp.spec_index(ptr);
+        let after = post.thrd_mp.spec_index(ptr);
+        &&& post.thrd_mp.view().spec_index(ptr).is_init() == pre.thrd_mp.view().spec_index(ptr).is_init()
+        &&& post.thrd_mp.view().spec_index(ptr).addr() == pre.thrd_mp.view().spec_index(ptr).addr()
         &&& (previous != Some(ptr) ==> after == before)
         &&& (previous == Some(ptr) ==> {
             &&& after.is_init() == before.is_init()
@@ -87,7 +87,7 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
             &&& *after.view().trap_frame.get_some_0() == entry_regs
         })
     })
-    &&& post.sched_mp.unchanged_except(&pre.sched_mp, scheduler_ptr)
+    &&& post.sched_mp.unchanged_except(&pre.sched_mp, sched_ptr)
     &&& scheduler_after.owning_container == scheduler_before.owning_container
     &&& scheduler_after.shards.entries_unchanged_except(&scheduler_before.shards, cpu_id)
     &&& shard_after.is_init() == shard_before.is_init()
@@ -97,8 +97,8 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
     &&& shard_after.locking_thread() == shard_before.locking_thread()
     &&& queue_after.view() == match previous { Some(prev) => queue_before.view().push(prev), None => queue_before.view() }
     &&& queue_after.length as int == queue_before.length as int + if previous is Some { 1int } else { 0int }
-    &&& queue_after.map() == match previous { Some(prev) => queue_before.map().insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev), None => queue_before.map() }
-    &&& queue_after.dom() == match previous { Some(prev) => queue_before.dom().insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr()), None => queue_before.dom() }
+    &&& queue_after.map() == match previous { Some(prev) => queue_before.map().insert(pre.thrd_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev), None => queue_before.map() }
+    &&& queue_after.dom() == match previous { Some(prev) => queue_before.dom().insert(pre.thrd_mp.spec_index(prev).view().scheduler_linkedlist_node.addr()), None => queue_before.dom() }
     &&& needflush_after.view().index() == needflush_before.view().index()
     &&& needflush_after.is_init() == needflush_before.is_init()
     &&& needflush_after.view_rodata() == needflush_before.view_rodata()

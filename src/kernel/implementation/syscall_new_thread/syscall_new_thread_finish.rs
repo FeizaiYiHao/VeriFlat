@@ -12,8 +12,8 @@ verus! {
 /// Creates the scheduled thread on the staged page, releases every held lock, and ends the finish step of the trace that
 /// starts at `start` on `pre`.
 pub(super) fn finish_new_thread_commit(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    current_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, page_ptr: PagePtr, Tracked(page_lock_perm): Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
+    current_thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, pg_ptr: PagePtr, Tracked(page_lock_perm): Tracked<LockPerm>,
     Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
     Tracked(scheduler_lock_perm): Tracked<LockPerm>, initial_regs: &Registers, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -31,53 +31,53 @@ pub(super) fn finish_new_thread_commit(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).ctn_mp.dom().contains(container_ptr),
-        old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
-        old(krnl).sched_mp.dom().contains(scheduler_ptr),
-        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write),
+        old(krnl).ctn_mp.dom().contains(ctn_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
+        old(krnl).sched_mp.dom().contains(sched_ptr),
+        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, cpu_id), TypedLockMode::Write),
         scheduler_lock_perm.state() is WriteLock && scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
-        scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).prc_mp.dom().contains(process_ptr),
-        typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
-        !old(krnl).prc_mp.spec_index(process_ptr).being_killed(),
-        old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running,
-        old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
+        scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        old(krnl).prc_mp.dom().contains(prc_ptr),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write),
+        !old(krnl).prc_mp.spec_index(prc_ptr).being_killed(),
+        old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running,
+        old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         process_lock_perm.state() is WriteLock && process_lock_perm.thread_id() == old(lctx).thread_id(),
-        process_lock_perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.dom().contains(current_thread_ptr),
-        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
-        !old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewThread { regs: *initial_regs, endpoint_index: None }),
-        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().len() == 0,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1,
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
+        process_lock_perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == prc_ptr,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewThread { regs: *initial_regs, endpoint_index: None }),
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_2m.view().len() == 0,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_1g.view().len() == 0,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 1,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         current_thread_lock_perm.state() is WriteLock && current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-        current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
-        page_ptr_valid(page_ptr),
-        !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
+        current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
+        page_ptr_valid(pg_ptr),
+        !old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed(),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: current_thrd_ptr }),
+        old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pg_ptr), TypedLockMode::Write),
         page_lock_perm.state() is WriteLock && page_lock_perm.thread_id() == old(lctx).thread_id(),
-        page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
-        old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(page_ptr)],
+        page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread()->Write_lock_id,
+        old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(pg_ptr)],
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
-        old(lctx).process_lock_map().dom() =~= set![process_ptr],
-        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).process_lock_map().dom() =~= set![prc_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thrd_ptr],
         old(lctx).endpoint_lock_map().dom().is_empty(),
-        old(lctx).scheduler_lock_map().dom() =~= set![(scheduler_ptr, cpu_id)],
+        old(lctx).scheduler_lock_map().dom() =~= set![(sched_ptr, cpu_id)],
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
@@ -99,22 +99,22 @@ pub(super) fn finish_new_thread_commit(
         new_thread_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, None, true),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
 {
-    proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, None, *initial_regs, None); }
-    let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
-        krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
+    proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, None, *initial_regs, None); }
+    let (new_thrd_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
+        krnl, pg_ptr, prc_ptr, current_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
         Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
     );
     release_new_thread_locks(
-        krnl, Tracked(&mut *lctx), Ghost(steps.snapshot_k()), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, new_thread_ptr, Ghost(*initial_regs),
+        krnl, Tracked(&mut *lctx), Ghost(steps.snapshot_k()), cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, sched_ptr, new_thrd_ptr, Ghost(*initial_regs),
         Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(new_thread_lock_perm), Tracked(page_lock_perm), Tracked(scheduler_lock_perm),
     );
     proof {
         let ghost finish_k = steps.snapshot_k();
         let ghost finish_before = steps.view();
-        steps.end_kernel_step_new_thread(&*krnl, &*lctx, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, None, None);
+        steps.end_kernel_step_new_thread(&*krnl, &*lctx, prc_ptr, current_thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, *initial_regs, None, None);
         assert(new_thread_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None, true)) by {
-            kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, None, None, None);
-            new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, None, *initial_regs, None);
+            kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, new_thrd_ptr, *initial_regs, None, None, None);
+            new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, new_thrd_ptr, None, *initial_regs, None);
             new_thread_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None);
         };
     }

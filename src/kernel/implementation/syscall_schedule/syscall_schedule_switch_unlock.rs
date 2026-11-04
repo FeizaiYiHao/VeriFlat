@@ -2,10 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// With the `(cpu_id, pcid)` needflush cell, `next_thread`, shard `cpu_id` of `scheduler_ptr`, the live `current_thread` and
+/// With the `(cpu_id, pcid)` needflush cell, `next_thread`, shard `cpu_id` of `sched_ptr`, the live `current_thread` and
 /// `current_process`, if any, and `cpu_id` write-held after the context switch: releases them all in that order.
 pub(super) fn schedule_switch_release_locks(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
     current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid, process_lock_perm: Option<Tracked<LockPerm>>,
     current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>, Tracked(next_lock_perm): Tracked<LockPerm>,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<LockPerm>,
@@ -17,35 +17,35 @@ pub(super) fn schedule_switch_release_locks(
         old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         pcid_valid(pcid),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(krnl).sched_mp.dom().contains(scheduler_ptr),
+        old(krnl).sched_mp.dom().contains(sched_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
-        old(krnl).thr_mp.dom().contains(next_thread),
-        !old(krnl).thr_mp.spec_index(next_thread).being_killed(),
-        old(krnl).thr_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
-        old(krnl).thr_mp.spec_index(next_thread).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(next_thread).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !old(krnl).thr_mp.spec_index(next_thread).view_ghost().exited,
+        old(krnl).thrd_mp.dom().contains(next_thread),
+        !old(krnl).thrd_mp.spec_index(next_thread).being_killed(),
+        old(krnl).thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
+        old(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
+        old(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
+        !old(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
         current_process is Some == process_lock_perm is Some,
         current_thread is Some == current_thread_lock_perm is Some,
         current_thread is Some ==> current_thread.unwrap() != next_thread,
         current_process is Some ==> {
-            let process_ptr = current_process.unwrap();
-            &&& old(krnl).prc_mp.dom().contains(process_ptr)
-            &&& !old(krnl).prc_mp.spec_index(process_ptr).being_killed()
-            &&& old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie
+            let prc_ptr = current_process.unwrap();
+            &&& old(krnl).prc_mp.dom().contains(prc_ptr)
+            &&& !old(krnl).prc_mp.spec_index(prc_ptr).being_killed()
+            &&& old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie
         },
         current_thread is Some ==> {
-            let thread_ptr = current_thread.unwrap();
-            &&& old(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).being_killed()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::SCHEDULED { cpu_id })
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
-            &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
+            let thrd_ptr = current_thread.unwrap();
+            &&& old(krnl).thrd_mp.dom().contains(thrd_ptr)
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::SCHEDULED { cpu_id })
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
+            &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
         },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -60,7 +60,7 @@ pub(super) fn schedule_switch_release_locks(
             None => set![next_thread],
         },
         old(lctx).endpoint_lock_map().dom().is_empty(),
-        old(lctx).scheduler_lock_map().dom() =~= set![(scheduler_ptr, cpu_id)],
+        old(lctx).scheduler_lock_map().dom() =~= set![(sched_ptr, cpu_id)],
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
@@ -86,29 +86,29 @@ pub(super) fn schedule_switch_release_locks(
         needflush_perm.thread_id() == old(lctx).thread_id(),
         needflush_perm.lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
         current_process is Some ==> {
-            let process_ptr = current_process.unwrap();
+            let prc_ptr = current_process.unwrap();
             let perm = process_lock_perm.unwrap().view();
-            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)
+            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id
         },
         current_thread is Some ==> {
-            let thread_ptr = current_thread.unwrap();
+            let thrd_ptr = current_thread.unwrap();
             let perm = current_thread_lock_perm.unwrap().view();
-            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
+            &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
+            &&& perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },
-        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (sched_ptr, cpu_id), TypedLockMode::Write),
         scheduler_lock_perm.state() is WriteLock,
         scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
-        scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), next_thread, TypedLockMode::Write),
         next_lock_perm.state() is WriteLock,
         next_lock_perm.thread_id() == old(lctx).thread_id(),
-        next_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(next_thread).locking_thread()->Write_lock_id,
+        next_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(next_thread).locking_thread()->Write_lock_id,
     ensures
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -117,7 +117,7 @@ pub(super) fn schedule_switch_release_locks(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, pcid_needflush: final(krnl).pcid_needflush, sched_mp: final(krnl).sched_mp, thr_mp: final(krnl).thr_mp, prc_mp: final(krnl).prc_mp, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, pcid_needflush: final(krnl).pcid_needflush, sched_mp: final(krnl).sched_mp, thrd_mp: final(krnl).thrd_mp, prc_mp: final(krnl).prc_mp, ..*old(krnl) }),
         final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
@@ -133,18 +133,18 @@ pub(super) fn schedule_switch_release_locks(
             old(krnl).prc_mp.dom().contains(p) ==> if current_process == Some(p) {
                 wunlock_ensures(old(krnl).prc_mp.spec_index(p), final(krnl).prc_mp.spec_index(p))
             } else { final(krnl).prc_mp.spec_index(p) == old(krnl).prc_mp.spec_index(p) },
-        final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(t)]
-            old(krnl).thr_mp.dom().contains(t) ==> if current_thread == Some(t) || t == next_thread {
-                wunlock_ensures(old(krnl).thr_mp.spec_index(t), final(krnl).thr_mp.spec_index(t))
-            } else { final(krnl).thr_mp.spec_index(t) == old(krnl).thr_mp.spec_index(t) },
+        final(krnl).thrd_mp.dom() == old(krnl).thrd_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger final(krnl).thrd_mp.spec_index(t)]
+            old(krnl).thrd_mp.dom().contains(t) ==> if current_thread == Some(t) || t == next_thread {
+                wunlock_ensures(old(krnl).thrd_mp.spec_index(t), final(krnl).thrd_mp.spec_index(t))
+            } else { final(krnl).thrd_mp.spec_index(t) == old(krnl).thrd_mp.spec_index(t) },
         final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom(),
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
     krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
     krnl.wunlock_thread(next_thread, Tracked(&mut *lctx), Tracked(next_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+    krnl.wunlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     if let Some(perm) = current_thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }
     if let Some(perm) = process_lock_perm { krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm); }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

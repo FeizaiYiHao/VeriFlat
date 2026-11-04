@@ -10,12 +10,12 @@ verus! {
 /// The result of `syscall_new_container` from the state at entry, in the implementation's check order: malformed
 /// arguments or funding, a cpu no longer Running or marked by a killer, a killed parent container, a parent write-held
 /// by a live dynamic owner below the caller's process, a zombie parent container, a parent at the maximum tree depth, a
-/// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K or 2M quota, a source range
+/// killed process or caller, an empty `ep_idx` descriptor, too little caller 4K or 2M quota, a source range
 /// below the first user L4 index or with a page that has no present 4K leaf, and a transfer cpu that the parent
 /// container does not own or that is not Off. `Success` stands for `SuccessThreeUsize`, whose fresh container, process,
 /// and thread pointers the state does not determine.
 pub open spec fn new_container_syscall_result(
-    pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId, endpoint_index: Option<EndpointIdx>,
+    pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId, ep_idx: Option<EndpointIdx>,
 ) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let parent = pre.container_map[thread.owning_container];
@@ -33,7 +33,7 @@ pub open spec fn new_container_syscall_result(
     else if parent.depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
-    else if endpoint_index is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] is None { RetValueType::Error }
+    else if ep_idx is Some && thread.endpoint_descriptors[ep_idx->Some_0 as int] is None { RetValueType::Error }
     else if thread.quota_4k < 9 + funding_page_count + 3 * range || thread.quota_2m < 2 { RetValueType::ErrorNoQuota }
     else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present) {
         RetValueType::Error
@@ -46,18 +46,18 @@ pub open spec fn new_container_syscall_result(
 /// maximum container depth; the thread has no syscall in progress; `range` is a nonempty well-formed user
 /// range whose every page the process maps; `process_quota <= funding`, and the thread's quotas pay
 /// for the child's pages, `funding`, and three directory pages per shared page; `transfer_cpu` is an
-/// Off cpu of the container; a present `endpoint_index` names a live descriptor. The cpu, the container
+/// Off cpu of the container; a present `ep_idx` names a live descriptor. The cpu, the container
 /// and its cpu set, the process, the thread, and that endpoint are unlocked, and the page table is not
 /// write-locked.
 #[verifier::opaque]
-pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, endpoint_index: Option<EndpointIdx>) -> bool {
+pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, ep_idx: Option<EndpointIdx>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread = old_u.thread_map[cpu.current_thread->Some_0];
     let container = old_u.container_map[thread.owning_container];
     let process = old_u.process_map[thread.owning_proc];
     let pagetable = process.pagetable->Some_0;
     let transfer = old_u.cpu_array[transfer_cpu as int];
-    let endpoint_ptr = thread.endpoint_descriptors[endpoint_index->Some_0 as int]->Some_0;
+    let ep_ptr = thread.endpoint_descriptors[ep_idx->Some_0 as int]->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& cpu.state is Running
@@ -87,26 +87,26 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     &&& index_valid(NUM_CPUS, transfer_cpu)
     &&& transfer.state is Off
     &&& transfer.owning_container == thread.owning_container
-    &&& endpoint_index is Some ==> {
-        &&& edp_idx_valid(endpoint_index->Some_0)
-        &&& thread.endpoint_descriptors[endpoint_index->Some_0 as int] is Some
-        &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
-        &&& old_u.endpoint_map[endpoint_ptr].lock_state is Unlocked
+    &&& ep_idx is Some ==> {
+        &&& edp_idx_valid(ep_idx->Some_0)
+        &&& thread.endpoint_descriptors[ep_idx->Some_0 as int] is Some
+        &&& old_u.endpoint_map.dom().contains(ep_ptr)
+        &&& old_u.endpoint_map[ep_ptr].lock_state is Unlocked
     }
 }
 
 /// Entering write-locks the cpu, the container (for the process's depth as its dynamic owner) and its cpu set, the
-/// process, the thread, and the endpoint at `endpoint_index`, read-locks the process's page table, write-locks its
+/// process, the thread, and the endpoint at `ep_idx`, read-locks the process's page table, write-locks its
 /// existing windows over `range`, and records the call's arguments in the thread's progress.
 #[verifier::opaque]
 pub open spec fn new_container_enter_step(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>,
+    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread_ptr = cpu.current_thread->Some_0;
-    let thread = old_u.thread_map[thread_ptr];
+    let thrd_ptr = cpu.current_thread->Some_0;
+    let thread = old_u.thread_map[thrd_ptr];
     let process = old_u.process_map[thread.owning_proc];
-    let progress = SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index, child_container: None });
+    let progress = SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index: ep_idx, child_container: None });
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
@@ -118,8 +118,8 @@ pub open spec fn new_container_enter_step(
                 ..process.pagetable->Some_0
             }), ..process
         }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
-        endpoint_map: match endpoint_index {
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        endpoint_map: match ep_idx {
             Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
             None => old_u.endpoint_map,
         },
@@ -162,14 +162,14 @@ pub open spec fn new_container_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -
 /// range into the root process.
 #[verifier::opaque]
 pub open spec fn new_container_publish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map[thread_ptr];
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map[thrd_ptr];
     let progress = thread.syscall_progress->Some_0;
     let child = new_u.container_map[thread.owning_container].children.last();
     let range = progress->NewContainer_0.range;
     let origin = Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child), ..progress->NewContainer_0 });
     let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
-    kernel_u_container_root_created(old_u, new_u, thread.owning_container, child, new_u.container_map[child].root_process, thread_ptr,
+    kernel_u_container_root_created(old_u, new_u, thread.owning_container, child, new_u.container_map[child].root_process, thrd_ptr,
         progress->NewContainer_0.transfer_cpu, progress->NewContainer_0.funding, progress->NewContainer_0.process_quota, Some(sharing))
 }
 
@@ -185,8 +185,8 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     let child = progress->Share4k_origin->NewContainer_0.child_container->Some_0;
     let parent = old_u.process_map[thread.owning_proc];
     let root = old_u.process_map[old_u.container_map[child].root_process];
-    let endpoint_index = progress->Share4k_origin->NewContainer_0.endpoint_index;
-    let endpoint_ptr = thread.endpoint_descriptors[endpoint_index->Some_0 as int]->Some_0;
+    let ep_idx = progress->Share4k_origin->NewContainer_0.endpoint_index;
+    let ep_ptr = thread.endpoint_descriptors[ep_idx->Some_0 as int]->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.current_thread is Some
@@ -210,10 +210,10 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& root.pagetable is Some
     &&& root.pagetable->Some_0.lock_state is WriteLocked
     &&& root.owning_container == child
-    &&& endpoint_index is Some ==> {
-        &&& edp_idx_valid(endpoint_index->Some_0)
-        &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
-        &&& old_u.endpoint_map[endpoint_ptr].lock_state is WriteLocked
+    &&& ep_idx is Some ==> {
+        &&& edp_idx_valid(ep_idx->Some_0)
+        &&& old_u.endpoint_map.dom().contains(ep_ptr)
+        &&& old_u.endpoint_map[ep_ptr].lock_state is WriteLocked
     }
 }
 
@@ -223,8 +223,8 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
 #[verifier::opaque]
 pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread_ptr = cpu.current_thread->Some_0;
-    let thread = old_u.thread_map[thread_ptr];
+    let thrd_ptr = cpu.current_thread->Some_0;
+    let thread = old_u.thread_map[thrd_ptr];
     let origin = thread.syscall_progress->Some_0->Share4k_origin;
     let container = thread.owning_container;
     let child = origin->NewContainer_0.child_container->Some_0;
@@ -249,40 +249,40 @@ pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_i
                 lock_state: LockStateU::Unlocked, pagetable_window_locks: pagetable_window_locks_after_unlocking_range(root_table.pagetable_window_locks, range), ..root_table
             }), ..old_u.process_map[root]
         }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..thread }),
         endpoint_map: match endpoint { Some(e) => old_u.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..old_u.endpoint_map[e] }), None => old_u.endpoint_map },
         ..old_u
-    }, new_u, root, thread_ptr, child, cpu_id, new_u.process_map[root].owned_threads.last(), origin->NewContainer_0.regs, endpoint, None)
+    }, new_u, root, thrd_ptr, child, cpu_id, new_u.process_map[root].owned_threads.last(), origin->NewContainer_0.regs, endpoint, None)
 }
 
 /// The partial trace after entering: one enter step from `pre`.
 #[verifier::opaque]
-pub open spec fn new_container_trace_after_enter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>) -> bool {
+pub open spec fn new_container_trace_after_enter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& trace.len() == 1
     &&& trace[0].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index)
-    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index)
+    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
+    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
 }
 
 /// The partial trace after publishing: the enter step from `pre` and the publish step.
 #[verifier::opaque]
-pub open spec fn new_container_trace_after_publish(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>) -> bool {
+pub open spec fn new_container_trace_after_publish(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& trace.len() == 2
     &&& trace[0].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index)
-    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index)
+    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
+    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& new_container_publish_step_pre(trace[1].old_u, cpu_id)
     &&& new_container_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
 }
 
 /// The steps from `start` after sharing: enter from `pre`, publish, and then only share steps.
 #[verifier::opaque]
-pub open spec fn new_container_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>) -> bool {
+pub open spec fn new_container_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& 0 <= start
     &&& start + range.len + 2 <= trace.len() <= start + 4 * range.len + 2
     &&& trace[start].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index)
-    &&& new_container_enter_step(pre, trace[start].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index)
+    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
+    &&& new_container_enter_step(pre, trace[start].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& new_container_publish_step_pre(trace[start + 1].old_u, cpu_id)
     &&& new_container_publish_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id)
     &&& forall|j: int| #![trigger trace[j]] start + 2 <= j < trace.len() ==> share_4k_range_step(trace[j], cpu_id)
@@ -290,11 +290,11 @@ pub open spec fn new_container_trace_after_share(trace: Seq<KernelStep>, start: 
 
 /// The steps of a successful call: enter, publish, the share steps, and finish.
 #[verifier::opaque]
-pub open spec fn new_container_commit_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>) -> bool {
+pub open spec fn new_container_commit_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& range.len + 3 <= trace.len() <= 4 * range.len + 3
     &&& trace[0].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index)
-    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index)
+    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
+    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& new_container_publish_step_pre(trace[1].old_u, cpu_id)
     &&& new_container_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
     &&& forall|j: int| #![trigger trace[j]] 2 <= j < trace.len() - 1 ==> share_4k_range_step(trace[j], cpu_id)
@@ -306,11 +306,11 @@ pub open spec fn new_container_commit_trace(trace: Seq<KernelStep>, pre: KernelU
 #[verifier::opaque]
 pub open spec fn new_container_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize,
-    process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>, result: RetValueType,
+    process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, result: RetValueType,
 ) -> bool {
     let range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if result is SuccessThreeUsize {
-        &&& new_container_commit_trace(trace, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index)
+        &&& new_container_commit_trace(trace, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
         &&& trace.last().new_u == post
     } else { trace.len() == 0 && post == pre }
 }

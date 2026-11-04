@@ -90,14 +90,14 @@ pub open spec fn mmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
 /// first page.
 #[verifier::opaque]
 pub open spec fn mmap_2m_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange2M, phase: Mmap2mPhase) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::Mmap2m { range, mapped: 0, directory: Mmap2mDirectory::None, phase };
     let table_lock = if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked };
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU {
                 lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range.covering_4k_range()),
@@ -139,10 +139,10 @@ pub open spec fn mmap_2m_hold_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaR
 /// fill.
 #[verifier::opaque]
 pub open spec fn mmap_2m_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thread_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     })
 }
@@ -164,10 +164,10 @@ pub open spec fn mmap_2m_release_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool
 /// nothing else, when the fill section rejected the range.
 #[verifier::opaque]
 pub open spec fn mmap_2m_release_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(thread_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     })
 }
@@ -188,13 +188,13 @@ pub open spec fn mmap_2m_downgrade_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 /// phase with no directory installed.
 #[verifier::opaque]
 pub open spec fn mmap_2m_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = thread.syscall_progress->Some_0;
     let filled = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Filled };
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
@@ -220,8 +220,8 @@ pub open spec fn mmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 /// mapping reaches.
 #[verifier::opaque]
 pub open spec fn mmap_2m_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
     let progress = thread.syscall_progress->Some_0;
@@ -241,7 +241,7 @@ pub open spec fn mmap_2m_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         old_u.process_map.dom().contains(p) && old_u.process_map[p].iommu_table is Some && old_u.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
         ==> !(entry.addr <= old_u.process_map[p].iommu_table->Some_0.mapping_4k[v].addr < entry.addr + 0x200000)
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_2m: (thread.quota_2m - 1) as usize, syscall_progress: mmap_2m_progress_after_leaf(thread.syscall_progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_2m: (thread.quota_2m - 1) as usize, syscall_progress: mmap_2m_progress_after_leaf(thread.syscall_progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_2m: pagetable.mapping_2m.insert(va, entry), ..pagetable }), ..process }),
         ..old_u
     })
@@ -265,14 +265,14 @@ pub open spec fn mmap_2m_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 /// which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn mmap_2m_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU {
                 lock_state: table_lock,
@@ -353,8 +353,8 @@ pub open spec fn mmap_2m_syscall_failure_trace(trace: Seq<KernelStep>, cpu_id: C
 
 /// A successful mmap maps every page of the requested range in the current process's pagetable.
 pub open spec fn mmap_2m_syscall_success_mapped(post: &KernelK, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
-    let process_ptr = post.cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
-    let pagetable_ptr = post.prc_mp.spec_index(process_ptr).view().pagetable;
+    let prc_ptr = post.cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
+    let pagetable_ptr = post.prc_mp.spec_index(prc_ptr).view().pagetable;
     &&& range > 0
     &&& va_2m_valid(va)
     &&& post.pt_mp.dom().contains(pagetable_ptr)

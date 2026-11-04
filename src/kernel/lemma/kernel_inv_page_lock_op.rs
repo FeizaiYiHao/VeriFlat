@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 /// Kernel invariants read page payloads, never the current page lock owner.
 pub open spec fn page_invariant_fields_unchanged(pre: PageLockedArray, post: PageLockedArray) -> bool {
-    forall|page_index: PageIndex| #![trigger pre.spec_index(page_index)] #![trigger post.spec_index(page_index)] index_valid(NUM_PAGES, page_index) ==> post.spec_index(page_index).view().view() == pre.spec_index(page_index).view().view()
+    forall|pg_idx: PageIndex| #![trigger pre.spec_index(pg_idx)] #![trigger post.spec_index(pg_idx)] index_valid(NUM_PAGES, pg_idx) ==> post.spec_index(pg_idx).view().view() == pre.spec_index(pg_idx).view().view()
 }
 
 pub proof fn page_lock_op_preserves_invariant_fields(pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
@@ -29,7 +29,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
         post.pcid_allc_mp == pre.pcid_allc_mp,
         post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
-        post.thr_mp == pre.thr_mp,
+        post.thrd_mp == pre.thrd_mp,
         post.ep_mp == pre.ep_mp,
         post.allc_4k_mp == pre.allc_4k_mp,
         post.allc_2m_mp == pre.allc_2m_mp,
@@ -44,7 +44,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
     assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
@@ -55,13 +55,13 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
+    assert(thread_staged_pages_4k_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
+    assert(thread_staged_pages_2m_wf(post.thrd_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_1g_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(allocator_free_page_ptrs_wf);
@@ -96,7 +96,7 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
                 &&& post.pcid_allc_mp == pre.pcid_allc_mp
                 &&& post.cpu_set_mp == pre.cpu_set_mp
                 &&& post.prc_mp == pre.prc_mp
-                &&& post.thr_mp == pre.thr_mp
+                &&& post.thrd_mp == pre.thrd_mp
                 &&& post.ep_mp == pre.ep_mp
                 &&& post.allc_4k_mp == pre.allc_4k_mp
                 &&& post.allc_2m_mp == pre.allc_2m_mp
@@ -113,7 +113,7 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
             &&& post.pcid_allc_mp == pre.pcid_allc_mp
             &&& post.cpu_set_mp == pre.cpu_set_mp
             &&& post.prc_mp == pre.prc_mp
-            &&& post.thr_mp == pre.thr_mp
+            &&& post.thrd_mp == pre.thrd_mp
             &&& post.ep_mp == pre.ep_mp
             &&& post.allc_4k_mp == pre.allc_4k_mp
             &&& post.allc_2m_mp == pre.allc_2m_mp

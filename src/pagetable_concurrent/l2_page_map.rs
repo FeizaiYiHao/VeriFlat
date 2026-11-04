@@ -195,14 +195,14 @@ pub fn l2_entry_set_published_unlocked(pptr: &PPtr<L2PageMap>, Tracked(perm): Tr
 
 /// TCB: retype a free 4K page into an L2 page whose 512 entries are empty, unlocked and own no L1 page.
 #[verifier::external_body]
-pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<L2PageMap>>)
+pub fn page_perm_to_l2_page_map(pg_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<L2PageMap>>)
     requires
         page_perm.is_init(),
-        page_perm.addr() == page_ptr,
+        page_perm.addr() == pg_ptr,
     ensures
-        ret.view().addr() == page_ptr,
+        ret.view().addr() == pg_ptr,
         ret.view().is_init(),
-        ret.view().value().addr() == page_ptr,
+        ret.view().value().addr() == pg_ptr,
         ret.view().value().wf(),
         forall|i: L2Index| #![trigger ret.view().value().entry_lock(i)] pei_valid(i) ==> {
             &&& ret.view().value().entry_lock(i).view().is_empty()
@@ -210,7 +210,7 @@ pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<P
             &&& ret.view().value().entry_lock(i).l1() is None
         },
 {
-    unsafe { core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K); }
+    unsafe { core::ptr::write_bytes(pg_ptr as *mut u8, 0u8, PAGE_SZ_4K); }
     Tracked::assume_new()
 }
 

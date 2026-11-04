@@ -4,23 +4,23 @@ use crate::*;
 use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
 
 verus! {
-/// Publishes the staged 4K page `page_ptr` of `thread_ptr` at `va` in the window half of `pagetable_ptr`: the page becomes mapped
+/// Publishes the staged 4K page `pg_ptr` of `thrd_ptr` at `va` in the window half of `pagetable_ptr`: the page becomes mapped
 /// once, the thread consumes it from its 4K cache and quota and advances its mmap progress; every other kernel field is unchanged.
 #[verifier::opaque]
-pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, post: KernelK, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
-    let page_index = page_ptr2page_index(page_ptr);
+pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, post: KernelK, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
+    let pg_idx = page_ptr2page_index(pg_ptr);
     let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
     let new_pt = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
-    let old_page = pre.pg_arr.spec_index(page_index).view();
-    let new_page = post.pg_arr.spec_index(page_index).view();
-    let old_thread = pre.thr_mp.spec_index(thread_ptr);
-    let new_thread = post.thr_mp.spec_index(thread_ptr);
-    &&& post == (KernelK { pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..pre })
+    let old_page = pre.pg_arr.spec_index(pg_idx).view();
+    let new_page = post.pg_arr.spec_index(pg_idx).view();
+    let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
+    let new_thread = post.thrd_mp.spec_index(thrd_ptr);
+    &&& post == (KernelK { pt_lower: post.pt_lower, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, ..pre })
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr))
     &&& forall|other_pagetable: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
-    &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { addr: page_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
+    &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.page_closure() == old_pt.page_closure()
     &&& new_pt.lower.window_stale_cpus == old_pt.lower.window_stale_cpus
@@ -32,8 +32,8 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_held_2m_l2(l4i, l3i, l2i)]
         old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_held_2m_l2(l4i, l3i, l2i) == old_pt.spec_held_2m_l2(l4i, l3i, l2i)
     &&& new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
-    &&& new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == page_ptr
-    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
+    &&& new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
     &&& new_page.being_killed() == old_page.being_killed()
@@ -41,7 +41,7 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     &&& new_page.view_ghost() == old_page.view_ghost()
     &&& new_page.view() == (Page { state: PageState::Mapped4k, mappings: new_page.view().mappings, ref_count: 1, ..old_page.view() })
     &&& new_page.view().mappings() == Set::empty().insert((pagetable_ptr, va))
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
+    &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
     &&& new_thread.is_init()
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.being_killed() == old_thread.being_killed()
@@ -51,27 +51,27 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     &&& new_thread.view() == (Thread {
         temp_alloc_cache_4k: new_thread.view().temp_alloc_cache_4k, quota_4k: new_thread.view().quota_4k, syscall_progress: new_thread.view().syscall_progress, ..old_thread.view()
     })
-    &&& new_thread.view().temp_alloc_cache_4k.view() == old_thread.view().temp_alloc_cache_4k.view().remove(page_ptr)
+    &&& new_thread.view().temp_alloc_cache_4k.view() == old_thread.view().temp_alloc_cache_4k.view().remove(pg_ptr)
     &&& new_thread.view().quota_4k == old_thread.view().quota_4k - 1
     &&& new_thread.view().syscall_progress.view() == mmap_4k_progress_after_leaf(old_thread.view().syscall_progress.view())
 }
 
 /// The published 4K leaf, the consumed staged page, and the charged thread quota keep the kernel invariant.
-pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
+pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
-        map_owned_4k_page_eof_transition_framing(pre, post, page_ptr, thread_ptr, pagetable_ptr, va),
-        page_ptr_valid(page_ptr),
+        map_owned_4k_page_eof_transition_framing(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va),
+        page_ptr_valid(pg_ptr),
         va_4k_valid(va),
-        pre.thr_mp.dom().contains(thread_ptr),
-        !thread_is_dangling(pre.thr_mp.spec_index(thread_ptr)),
-        !pre.thr_mp.spec_index(thread_ptr).view_ghost().exited,
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
+        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
         pre.pt_mp.dom().contains(pagetable_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr }),
-        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == pre.thr_mp.spec_index(thread_ptr).view().owning_container,
-        pre.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
-        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
-        pre.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        pre.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().contains(pg_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 1,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va) == false,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
@@ -82,19 +82,19 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr:
         pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         post.pg_arr.inv(),
-        post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() is Write,
-        post.thr_mp.perms_wf(),
-        post.thr_mp.spec_index(thread_ptr).inv(),
-        post.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() is Write,
+        post.thrd_mp.perms_wf(),
+        post.thrd_mp.spec_index(thrd_ptr).inv(),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
     ensures post.inv(),
 {
     reveal(map_owned_4k_page_eof_transition_framing);
-    let page_index = page_ptr2page_index(page_ptr);
-    assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by {
         assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
-        assert(thread_perms_wf(post.thr_mp)) by {
+        assert(thread_perms_wf(post.thrd_mp)) by {
             reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
             reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
         };
@@ -115,56 +115,56 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr:
             old_pt.wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
             old_pt.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
             old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
-            page_pagetable_wf_preserved_for_4k_mapping_insert(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pagetable_ptr, page_ptr, va);
+            page_pagetable_wf_preserved_for_4k_mapping_insert(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pagetable_ptr, pg_ptr, va);
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
-            process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr); reveal(process_pagetable_match);
-            container_process_page_pagetable_wf_preserved_for_4k_mapping_insert(post.ctn_mp, post.prc_mp, pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr, pagetable_ptr, page_ptr, va);
+            process_thread_wf_at(pre.prc_mp, pre.thrd_mp, thrd_ptr); reveal(process_pagetable_match);
+            container_process_page_pagetable_wf_preserved_for_4k_mapping_insert(post.ctn_mp, post.prc_mp, pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr, pagetable_ptr, pg_ptr, va);
         };
-        assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_array_wf_at(pre.pg_arr, page_index); reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
+        assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_array_wf_at(pre.pg_arr, pg_idx); reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thrd_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
         assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-        assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
+        assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by {
             reveal(thread_staged_pages_4k_wf);
-            thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-            thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+            thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
+            thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         };
         assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
         assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_match); };
         assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
         assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-            reveal(process_emptied_tables_wf); reveal(process_pagetable_match); process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr);
-            process_perms_wf_at(pre.prc_mp, pre.thr_mp.spec_index(thread_ptr).view().owning_proc);
-            process_emptied_threads_wf_at(pre.prc_mp, pre.thr_mp, pre.thr_mp.spec_index(thread_ptr).view().owning_proc, thread_ptr);
+            reveal(process_emptied_tables_wf); reveal(process_pagetable_match); process_thread_wf_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
+            process_perms_wf_at(pre.prc_mp, pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc);
+            process_emptied_threads_wf_at(pre.prc_mp, pre.thrd_mp, pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc, thrd_ptr);
         };
-        assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-            container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
-            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
-            container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
+        assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+            container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp);
+            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
+            container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
         };
-        assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_index); };
-        assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, page_index); };
-        assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
+        assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, pg_idx); };
+        assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, pg_idx); };
+        assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, pg_idx); };
     };
     assert(post.process_management_inv()) by {
-        assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
-        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
-        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
-        assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
-        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
-        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
+        assert(thread_caller_callee_wf(post.thrd_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp); };
+        assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
+        assert(thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.ep_mp); };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thrd_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp, post.sched_mp); };
+        assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thrd_mp, post.thrd_mp); };
+        assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.cpu_arr); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {

@@ -26,7 +26,7 @@ pub proof fn kernel_container_quota_2m_changed_implies_u_step(pre: &KernelK, pos
         quota_2m: (before.container_map[container].quota_2m as int + delta) as usize, ..before.container_map[container]
     }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); } });
     assert_maps_equal!(after.thread_map, before.thread_map, t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
     });
     assert_seqs_equal!(after.cpu_array == before.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
     assert_maps_equal!(after.process_map, before.process_map, p => {
@@ -38,25 +38,25 @@ pub proof fn kernel_container_quota_2m_changed_implies_u_step(pre: &KernelK, pos
 }
 
 impl KernelK {
-    /// Records the step that returns `delta` 2M quota to `container_ptr`, an ancestor of `origin` or `origin` itself.
-    pub proof fn kernel_step_boundary_container_quota_2m_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, container_ptr: RwLockContainerPtr, delta: int, origin: RwLockContainerPtr)
+    /// Records the step that returns `delta` 2M quota to `ctn_ptr`, an ancestor of `origin` or `origin` itself.
+    pub proof fn kernel_step_boundary_container_quota_2m_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, ctn_ptr: RwLockContainerPtr, delta: int, origin: RwLockContainerPtr)
         requires
             old(self).inv(),
             delta > 0,
-            kernel_container_quota_2m_changed(&old(steps).snapshot_k(), old(self), container_ptr, delta),
+            kernel_container_quota_2m_changed(&old(steps).snapshot_k(), old(self), ctn_ptr, delta),
             old(steps).snapshot_k().ctn_mp.dom().contains(origin),
-            container_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(container_ptr),
+            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(ctn_ptr),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             kernel_u_container_quota_2m_increased(old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(self)), origin),
-            old(steps).snapshot_u().container_map.dom().contains(container_ptr),
-            kernel_k_to_kernel_u(*old(self)).container_map[container_ptr].quota_2m as int == old(steps).snapshot_u().container_map[container_ptr].quota_2m as int + delta,
+            old(steps).snapshot_u().container_map.dom().contains(ctn_ptr),
+            kernel_k_to_kernel_u(*old(self)).container_map[ctn_ptr].quota_2m as int == old(steps).snapshot_u().container_map[ctn_ptr].quota_2m as int + delta,
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-            kernel_k_to_kernel_u(*old(self)) == (KernelU { container_map: old(steps).snapshot_u().container_map.insert(container_ptr, ContainerU {
-                quota_2m: (old(steps).snapshot_u().container_map[container_ptr].quota_2m as int + delta) as usize,
-                ..old(steps).snapshot_u().container_map[container_ptr]
+            kernel_k_to_kernel_u(*old(self)) == (KernelU { container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU {
+                quota_2m: (old(steps).snapshot_u().container_map[ctn_ptr].quota_2m as int + delta) as usize,
+                ..old(steps).snapshot_u().container_map[ctn_ptr]
             }), ..old(steps).snapshot_u() }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
@@ -74,19 +74,19 @@ impl KernelK {
                 ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
     {
         use_type_invariant(&*steps);
-        assert(steps.snapshot_u().container_map.dom().contains(container_ptr)
-            && kernel_k_to_kernel_u(*self).container_map[container_ptr].quota_2m as int == steps.snapshot_u().container_map[container_ptr].quota_2m as int + delta
+        assert(steps.snapshot_u().container_map.dom().contains(ctn_ptr)
+            && kernel_k_to_kernel_u(*self).container_map[ctn_ptr].quota_2m as int == steps.snapshot_u().container_map[ctn_ptr].quota_2m as int + delta
             && kernel_k_to_kernel_u(*self) != steps.snapshot_u() && kernel_k_to_kernel_u(*self) == (KernelU {
-                container_map: steps.snapshot_u().container_map.insert(container_ptr, ContainerU {
-                    quota_2m: (steps.snapshot_u().container_map[container_ptr].quota_2m as int + delta) as usize, ..steps.snapshot_u().container_map[container_ptr]
+                container_map: steps.snapshot_u().container_map.insert(ctn_ptr, ContainerU {
+                    quota_2m: (steps.snapshot_u().container_map[ctn_ptr].quota_2m as int + delta) as usize, ..steps.snapshot_u().container_map[ctn_ptr]
                 }), ..steps.snapshot_u()
-            })) by { kernel_container_quota_2m_changed_implies_u_step(&steps.snapshot_k(), &*self, container_ptr, delta); };
+            })) by { kernel_container_quota_2m_changed_implies_u_step(&steps.snapshot_k(), &*self, ctn_ptr, delta); };
         assert(kernel_u_container_quota_2m_increased(steps.snapshot_u(), kernel_k_to_kernel_u(*self), origin)) by {
             reveal(kernel_u_container_quota_2m_increased);
             kernel_container_ancestry_projection_at(&steps.snapshot_k(), origin);
             let pre = steps.snapshot_u();
             let post = kernel_k_to_kernel_u(*self);
-            assert_sets_equal!(pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]), set![container_ptr]);
+            assert_sets_equal!(pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]), set![ctn_ptr]);
             assert_sets_equal!(post.container_map.dom(), pre.container_map.dom());
         };
         steps.end_kernel_step_raw(&*self, &*lctx);

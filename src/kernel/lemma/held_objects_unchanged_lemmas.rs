@@ -152,7 +152,7 @@ pub broadcast proof fn held_kernel_objects_unchanged_reflexive(k: &KernelK, lctx
     ensures
         held_containers_unchanged(k.ctn_mp, k.ctn_mp, lctx),
         held_processes_unchanged(k.prc_mp, k.prc_mp, lctx),
-        held_threads_unchanged(k.thr_mp, k.thr_mp, lctx),
+        held_threads_unchanged(k.thrd_mp, k.thrd_mp, lctx),
         held_endpoints_unchanged(k.ep_mp, k.ep_mp, lctx),
         held_schedulers_unchanged(k.sched_mp, k.sched_mp, lctx),
         held_pcid_allocators_unchanged(k.pcid_allc_mp, k.pcid_allc_mp, lctx),

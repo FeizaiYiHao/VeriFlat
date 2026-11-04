@@ -4,11 +4,11 @@ use crate::*;
 verus! {
     #[verifier::opaque]
     pub open spec fn endpoint_pages_wf(endpoint_map: EndpointLockedMap, page_array: PageLockedArray) -> bool {
-        &&& forall|page_index:PageIndex|
-            #![trigger page_array.spec_index(page_index)]
-            #![trigger endpoint_map.dom().contains(page_index2page_ptr(page_index))]
-            index_valid(NUM_PAGES, page_index) && {page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsEndpoint}}
-                ==> endpoint_map.dom().contains(page_index2page_ptr(page_index))
+        &&& forall|pg_idx:PageIndex|
+            #![trigger page_array.spec_index(pg_idx)]
+            #![trigger endpoint_map.dom().contains(page_index2page_ptr(pg_idx))]
+            index_valid(NUM_PAGES, pg_idx) && {page_array.spec_index(pg_idx).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsEndpoint}}
+                ==> endpoint_map.dom().contains(page_index2page_ptr(pg_idx))
         &&& forall|e_ptr:RwLockEndpointPtr|
             #![trigger page_array.spec_index(page_ptr2page_index(e_ptr))]
             #![trigger endpoint_map.dom().contains(e_ptr)]
