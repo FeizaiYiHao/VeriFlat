@@ -23,6 +23,7 @@ pub(super) open spec fn kill_container_move_free_page_2m_eof_transition_framing(
     &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)]
         page_2m_tail_indices(index).contains(i) ==> {
             &&& post.pg_arr.spec_index(i).view().view() == (Page { owning_container: dst, ..pre.pg_arr.spec_index(i).view().view() })
+            &&& post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings()
             &&& post.pg_arr.spec_index(i).view().is_init() == pre.pg_arr.spec_index(i).view().is_init()
             &&& post.pg_arr.spec_index(i).view().view_rodata() == pre.pg_arr.spec_index(i).view().view_rodata()
             &&& post.pg_arr.spec_index(i).view().view_ghost() == pre.pg_arr.spec_index(i).view().view_ghost()
@@ -141,9 +142,7 @@ proof fn kill_container_move_free_page_2m_eof_process_management(
         reveal(container_thread_wf); reveal(container_scheduler_wf); container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp);
     };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf);
-    };
+    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); };
 }
 
 /// A page pointer whose index lies in the 2M region at `head` is one of the region's page pointers.
@@ -189,12 +188,8 @@ proof fn kill_container_move_free_page_2m_eof_free_pages(
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by {
-        reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
-    };
-    assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by {
-        reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
-    };
+    assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
     reveal(container_allocator_free_2m_page_wf);
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
@@ -326,6 +321,10 @@ pub(super) proof fn kill_container_move_free_page_2m_eof(
         kill_container_move_free_page_2m_eof_page_object_owner(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
         assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
             reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf);
+        };
+        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+            assert(post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings());
+            reveal(process_emptied_tables_wf);
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };

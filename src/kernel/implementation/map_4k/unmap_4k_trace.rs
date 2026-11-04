@@ -106,10 +106,10 @@ pub proof fn unmap_4k_flush_step_pre_from_k(
 }
 
 /// While the caller write-holds its cpu, its held non-dangling thread keeps its `entry` object, and its page table, held in
-/// either mode, keeps its `entry` payload (and, while write-held, its lock owner and mappings), the caller's thread, process,
-/// and container `container_ptr` project in `snap_u`, which `krnl` extends by a TLB update and a read hold on the cpu set of
-/// that container, as each TLB-flush step of the range requires; a process or container that `held` write-locks keeps its
-/// lock.
+/// either mode, keeps its `entry` payload up to the table stale-CPU record (and, while write-held, its lock owner and
+/// mappings), the caller's thread, process, and container `container_ptr` project in `snap_u`, which `krnl` extends by a
+/// TLB update and a read hold on the cpu set of that container, as each TLB-flush step of the range requires; a process or
+/// container that `held` write-locks keeps its lock.
 pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
     krnl: &KernelK, entry: &KernelK, lctx: &LocalContext, held: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, snap_u: KernelU,
     container_ptr: RwLockContainerPtr,
@@ -139,7 +139,7 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
         held_threads_unchanged(entry.thr_mp, krnl.thr_mp, held),
         held_processes_unchanged(entry.prc_mp, krnl.prc_mp, held),
         krnl.pt_mp.dom().contains(pagetable),
-        krnl.pt_mp.spec_index(pagetable).view() == entry.pt_mp.spec_index(pagetable).view(),
+        krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view() }),
         typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> {
             &&& krnl.pt_mp.spec_index(pagetable).locking_thread() == entry.pt_mp.spec_index(pagetable).locking_thread()
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).mapping_4k()

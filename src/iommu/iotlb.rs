@@ -23,6 +23,8 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAI
 /// IOTLB entries are tagged by DID; each domain reuses the CPU `SingleTLB` shape keyed by IOVA.
 /// A context-cache key means a unit may cache that BDF's context entry; its value is the entry's second-level root and DID (`CAP.CM = 0`: not-present entries are never cached).
 /// The ATS/device-TLB is not state: every present context entry has translation type 0 (see `IommuRootTable::wf`).
+/// Paging-structure caches of the units are folded into the domain's `SingleTLB`: an attached IOMMU table never changes a
+/// present non-leaf entry, and a kill detaches the table before it invalidates the domain.
 pub struct IommuTLB {
     pub domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
     pub context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,

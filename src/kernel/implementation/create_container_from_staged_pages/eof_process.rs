@@ -318,12 +318,14 @@ pub(super) proof fn publish_staged_container_root_eof_direct_invariants(
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush,),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(container_cpu_wf); reveal(cpu_dirty_map_contains_container_processes); };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(cpu_dirty_map_proc_pcid_match); };
     assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
 pub(super) proof fn publish_staged_container_root_eof_iommu_invariants(
@@ -616,8 +618,12 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         allocator_quota_4k, process_quota_4k,
     );
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
+    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(process_emptied_tables_wf); reveal(process_pagetable_match);
+    };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
     publish_staged_container_root_eof_allocator_free_pages_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,

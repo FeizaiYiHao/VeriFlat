@@ -185,6 +185,7 @@ pub(super) fn publish_staged_process(
         final(krnl).pt_mp.spec_index(ret.1).view().proc_ptr == ret.0,
         final(krnl).pt_mp.spec_index(ret.1).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
+        final(krnl).pt_mp.spec_index(ret.1).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         ret.3.view().state() is WriteLock,
         ret.3.view().thread_id() == final(lctx).thread_id(),
         ret.3.view().lock_id() == final(krnl).pt_mp.spec_index(ret.1).locking_thread()->Write_lock_id,

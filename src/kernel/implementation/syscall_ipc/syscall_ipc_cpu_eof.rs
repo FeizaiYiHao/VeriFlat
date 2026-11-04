@@ -289,6 +289,7 @@ proof fn ipc_cpu_rendezvous_eof_rendezvous_fields(
         pre.irt.view().owners() == snapshot.irt.view().owners(),
         pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.cpu_tlb.structure_caches.view() == snapshot.cpu_tlb.structure_caches.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
         snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
@@ -387,6 +388,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         pre.irt.view().owners() == snapshot.irt.view().owners(),
         pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.cpu_tlb.structure_caches.view() == snapshot.cpu_tlb.structure_caches.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
         snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
@@ -437,7 +439,10 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
     };
     ipc_cpu_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     ipc_cpu_rendezvous_eof_process_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
-    assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
+    assert(post.inv()) by {
+        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+        reveal(tlb_wf_spec); reveal(structure_cache_wf_spec);
+    };
     ipc_cpu_rendezvous_eof_rendezvous_fields(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result,
         thread_id, snapshot, cpu_id, process_ptr, endpoint_index, waiting_state, cpu_transfer);
 }

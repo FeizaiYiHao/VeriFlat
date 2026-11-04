@@ -88,6 +88,8 @@ pub(super) fn publish_new_container_process_and_pagetable(
         pagetable_window_holders_hold_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_hidden_leaves_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
             ==> pagetable_hidden_leaves_only_when_locked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_hidden_l1_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
+            ==> pagetable_hidden_l1_only_when_locked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_window_stale_cpus_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
             ==> pagetable_window_stale_cpus_only_when_locked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_window_typed_lock_map_aligned(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id())
@@ -148,6 +150,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().pcid_value() == root_pcid,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().cr3 == l4_page,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == old(krnl).dflt_pt.view().kernel_l4_end,
+        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).page_closure() =~= set![l4_page],
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),

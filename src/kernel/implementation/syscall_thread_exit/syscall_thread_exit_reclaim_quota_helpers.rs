@@ -119,9 +119,9 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
 pub(super) fn thread_exit_reclaim_release_tables(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
     process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, iommu_table: Option<RwLockPageTableRoot>, Ghost(entry_lctx): Ghost<LocalContext>,
-    Ghost(table_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(it_entry): Ghost<TypedHeldLock>, Tracked(process_lock_perm): Tracked<&LockPerm>,
-    Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(iommu_table_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>,
-    Ghost(pre): Ghost<KernelU>,
+    Ghost(table_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
+    Ghost(emptied_pt): Ghost<WholePageTable<PT_TYPE>>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<LockPerm>,
+    Tracked(iommu_table_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
     requires
         old(krnl).inv(),
@@ -164,9 +164,26 @@ pub(super) fn thread_exit_reclaim_release_tables(
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g }),
         old(krnl).pt_mp.dom().contains(pagetable),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable) == emptied_pt,
+        emptied_pt.mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        emptied_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        emptied_pt.mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        emptied_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        emptied_pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        emptied_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        emptied_pt.lower.hidden_l1_tables_in_locked_windows(),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger emptied_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> emptied_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
+        forall|l4i: L4Index| #![trigger emptied_pt.spec_resolve_mapping_l4(l4i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> emptied_pt.spec_resolve_mapping_l4(l4i) is None,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+            #![trigger emptied_pt.spec_held_2m_l2(l4i, l3i, l2i)] #![trigger entry_pt.spec_held_2m_l2(l4i, l3i, l2i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> emptied_pt.spec_held_2m_l2(l4i, l3i, l2i) == entry_pt.spec_held_2m_l2(l4i, l3i, l2i),
+        entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        entry_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        entry_pt.wf_mapping_2m(),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger entry_pt.higher.spec_held_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && entry_pt.higher.spec_held_l3(l4i, l3i) is Some ==> entry_pt.higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         (iommu_table_lock_perm is Some) == (iommu_table is Some),
         iommu_table is Some ==> {
             let it = old(krnl).it_mp.spec_index(iommu_table->Some_0);
@@ -225,11 +242,12 @@ pub(super) fn thread_exit_reclaim_release_tables(
     proof {
         process_thread_wf_at(progressed.prc_mp, progressed.thr_mp, thread_ptr);
         assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, process_ptr, thread_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
-        thread_exit_tables_emptied_eof(progressed, *krnl, process_ptr, thread_ptr);
+        thread_exit_tables_emptied_eof(progressed, *krnl, process_ptr, thread_ptr, pagetable, entry_pt);
     }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
     }
+    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     proof {
         let unlocked_k = *krnl;

@@ -42,7 +42,8 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr:
         };
         assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
         assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+        assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
         assert({
             &&& container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)
             &&& container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)
@@ -73,9 +74,7 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.process_management_inv()) by {
         assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
-        assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-            per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf);
-        };
+        assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
@@ -85,12 +84,8 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
-            container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
-        };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp);
-        };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
             process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, process_ptr, victim_ptr);
@@ -113,15 +108,12 @@ proof fn kill_leave_process_eof_chain_callers(pre: KernelK, victim_ptr: RwLockTh
         pre.thr_mp.spec_index(victim_ptr).wlocked_by_thread(holder),
         forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).locking_thread()]
             pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed(),
-        pre.thr_mp.spec_index(victim_ptr).view().caller is Some && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap()))
-            ==> callers.contains(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap()),
+        pre.thr_mp.spec_index(victim_ptr).view().caller is Some && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap())) ==> callers.contains(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap()),
         forall|v: RwLockThreadPtr| #![trigger callers.contains(v)]
-            callers.contains(v) && pre.thr_mp.dom().contains(v) && pre.thr_mp.spec_index(v).view().caller is Some
-                && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(v).view().caller.unwrap())) ==> callers.contains(pre.thr_mp.spec_index(v).view().caller.unwrap()),
+            callers.contains(v) && pre.thr_mp.dom().contains(v) && pre.thr_mp.spec_index(v).view().caller is Some && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(v).view().caller.unwrap())) ==> callers.contains(pre.thr_mp.spec_index(v).view().caller.unwrap()),
     ensures
         forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).view_ghost()]
-            pre.thr_mp.dom().contains(t) && thread_is_dangling(pre.thr_mp.spec_index(t)) && !pre.thr_mp.spec_index(t).being_killed()
-                && pre.thr_mp.spec_index(t).view_ghost().chain_end == Some(victim_ptr) ==> callers.contains(t),
+            pre.thr_mp.dom().contains(t) && thread_is_dangling(pre.thr_mp.spec_index(t)) && !pre.thr_mp.spec_index(t).being_killed() && pre.thr_mp.spec_index(t).view_ghost().chain_end == Some(victim_ptr) ==> callers.contains(t),
 {
     reveal(thread_perms_wf);
     thread_dangling_chain_end_on_caller_chain(pre.thr_mp, victim_ptr, callers, pre.thr_mp.spec_index(victim_ptr).view().call_depth.view());
@@ -387,13 +379,9 @@ pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
-            container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
-        };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            reveal(scheduler_perms_wf); reveal(LinkedList::wf_map); reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
-        };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(scheduler_perms_wf); reveal(LinkedList::wf_map); reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -441,12 +429,8 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); reveal(LinkedList::wf_map); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
-            container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
-        };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp);
-        };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -516,12 +500,8 @@ pub(crate) proof fn kill_cpu_to_idle_eof(pre: KernelK, post: KernelK, victim_ptr
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
-            container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
-        };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp);
-        };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -536,5 +516,6 @@ pub(crate) proof fn kill_cpu_to_idle_eof(pre: KernelK, post: KernelK, victim_ptr
         reveal(container_cpu_wf);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 } // verus!

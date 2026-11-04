@@ -27,6 +27,14 @@ impl PageTableHigher<PT_TYPE> {
             window_wlock_ensures(old(lower).l2_page((WholePageTable { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i)).entry_lock(l2i),
                 final(lower).l2_page((WholePageTable { higher: *self, lower: *final(lower) }).window_l2_page(l4i, l3i)).entry_lock(l2i), window_lock_id(root, l4i, l3i, l2i), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), window_lock_id(root, l4i, l3i, l2i), window_obj_id(root, l4i, l3i, l2i)),
+            old(lower).hidden_l1_tables_in_locked_windows() ==> final(lower).hidden_l1_tables_in_locked_windows(),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4j, l3j, l2j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4j, l3j, l2j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4j, l3j, l2j),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j)
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4j, l3j, l2j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4j, l3j, l2j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4j, l3j, l2j),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };
         let l4_entry = self.get_entry_l4(l4i).unwrap();
@@ -42,6 +50,8 @@ impl PageTableHigher<PT_TYPE> {
             lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
             lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked);
             lock_window_eof(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
+            lock_window_eof_hidden_l1_tables_in_locked_windows(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
+            lock_window_eof_held_chain(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
         }
         ret
     }
@@ -63,6 +73,15 @@ impl PageTableHigher<PT_TYPE> {
             (WholePageTable { higher: *self, lower: *final(lower) }).wf(),
             unlock_window_eof_transition_framing(WholePageTable { higher: *self, lower: *old(lower) }, WholePageTable { higher: *self, lower: *final(lower) }, l4i, l3i, l2i),
             unlock_ensures(old(lctx), final(lctx), window_obj_id(root, l4i, l3i, l2i), window_lock_id(root, l4i, l3i, l2i)),
+            old(lower).hidden_l1_tables_in_locked_windows() && !old(lower).l2_entry_hides_l1((WholePageTable { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i), l2i)
+                ==> final(lower).hidden_l1_tables_in_locked_windows(),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4j, l3j, l2j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4j, l3j, l2j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4j, l3j, l2j),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j)
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4j, l3j, l2j, l1j),
+            forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4j, l3j, l2j)]
+                self.kernel_l4_end <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4j, l3j, l2j) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4j, l3j, l2j),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };
         let l4_entry = self.get_entry_l4(l4i).unwrap();
@@ -78,6 +97,8 @@ impl PageTableHigher<PT_TYPE> {
             lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
             lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::Unlocked);
             unlock_window_eof(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i);
+            unlock_window_eof_hidden_l1_tables_in_locked_windows(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i);
+            unlock_window_eof_held_chain(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i);
         }
     }
 }

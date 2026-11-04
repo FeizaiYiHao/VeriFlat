@@ -149,6 +149,7 @@ pub(super) fn commit_new_container_share_and_finish(
         child_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
         child_pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(child_pagetable_ptr).locking_thread()->Write_lock_id,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).is_empty(),
+        old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
@@ -172,6 +173,7 @@ pub(super) fn commit_new_container_share_and_finish(
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger entry_lctx.pagetable_window_lock_map().dom().contains((p, w))]
             entry_lctx.pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable_ptr && source_window_perms.dom().contains(w)),

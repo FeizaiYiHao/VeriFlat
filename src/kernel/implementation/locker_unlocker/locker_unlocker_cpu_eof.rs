@@ -42,6 +42,7 @@ pub(super) proof fn wlock_cpu_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, ho
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 
 /// Closes `inv()` after `wunlock_cpu`: the released remote slot was outside a kernel step, and its hardware cr3/pcid
@@ -78,6 +79,7 @@ pub(super) proof fn wunlock_cpu_eof(pre: KernelK, post: KernelK, cpu_id: CpuId)
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 
 /// Closes `inv()` after `wunlock_own_cpu`: the own cpu left its kernel step, so its running state is the resting state of
@@ -117,5 +119,6 @@ pub(super) proof fn wunlock_own_cpu_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 } // verus!

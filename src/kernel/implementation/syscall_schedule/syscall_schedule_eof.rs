@@ -429,5 +429,8 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thr_mp.spec_index(next_thread).view().owning_proc);
     };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thr_mp.spec_index(next_thread).view().owning_proc);
+    };
 }
 }

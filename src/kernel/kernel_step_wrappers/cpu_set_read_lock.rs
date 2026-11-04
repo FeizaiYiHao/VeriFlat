@@ -66,7 +66,7 @@ impl KernelK {
             old(self).cpu_tlb.view() == if flushed {
                 old(steps).snapshot_k().cpu_tlb.view().insert((cpu_id, pcid), old(self).cpu_tlb.spec_index((cpu_id, pcid)))
             } else { old(steps).snapshot_k().cpu_tlb.view() },
-            flushed ==> cpu_tlb_within_may_cache(*old(self), cpu_id, pcid, old(self).cpu_tlb.spec_index((cpu_id, pcid))),
+            flushed ==> cpu_tlb_within_may_cache(*old(self), cpu_id, pcid, old(self).cpu_tlb.spec_index((cpu_id, pcid)), old(self).cpu_tlb.structure_cache((cpu_id, pcid))),
             old(self).ctn_mp.dom().contains(container_ptr),
             old(self).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
             old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
@@ -118,7 +118,7 @@ impl KernelK {
         assert(locked != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(locked, kernel_k_to_kernel_u(*self), pcid)) by {
             reveal(kernel_u_cpu_tlb_cleared); kernel_u_domains_projection(&snap);
             if locked != kernel_k_to_kernel_u(*self) {
-                kernel_cpu_tlb_within_may_cache_projection(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)));
+                kernel_cpu_tlb_within_may_cache_projection(self, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)), self.cpu_tlb.structure_cache((cpu_id, pcid)));
                 assert(!locked.cpu_tlb.dom().contains((cpu_id, pcid)) || locked.cpu_tlb[(cpu_id, pcid)] != self.cpu_tlb.spec_index((cpu_id, pcid))) by {
                     if locked.cpu_tlb.dom().contains((cpu_id, pcid)) && locked.cpu_tlb[(cpu_id, pcid)] == self.cpu_tlb.spec_index((cpu_id, pcid)) {
                         assert_maps_equal!(locked.cpu_tlb, self.cpu_tlb.view(), key => {});

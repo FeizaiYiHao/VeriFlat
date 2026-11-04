@@ -42,7 +42,9 @@ pub(super) proof fn boot_subsystems_inv_eof(
         reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::wf_l3); reveal(PageTableHigher::wf_l4);
     };
     assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_table_stale_cpus_only_when_write_held(krnl.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
     assert(pagetable_lower_backup_wf(krnl.pt_mp, krnl.pt_lower.view()));
     assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
     assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
@@ -348,7 +350,11 @@ proof fn boot_memory_management_inv_eof_mappings(
 {
     assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-    assert(page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); };
+    assert(page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by {
+        reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
+        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); page_ptr_valid_imply_page_index_valid();
+        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq;
+    };
     assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
     assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(boot_page_array_ready); };
 }
@@ -415,8 +421,10 @@ pub(super) proof fn boot_memory_management_inv_eof(
     prove_boot_iommu_table_pages_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
     assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_no_1g_leaf_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(iommu_table_no_huge_leaf_wf(krnl.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(krnl.pt_mp, krnl.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
     prove_boot_process_kernel_pages_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_page_object_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_container_process_allocator_quota_4k_wf(krnl, layout);
@@ -543,5 +551,6 @@ pub(super) proof fn boot_kernel_inv_eof(
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 }

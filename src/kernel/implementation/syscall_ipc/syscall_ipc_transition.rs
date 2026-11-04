@@ -142,9 +142,7 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(current_thread_ptr), old_current_thread_lock_id, krnl.thr_mp.lock_id_by_key(current_thread_ptr));
             lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
-            assert(ipc_block_current_eof_transition_framing(locked_k, *krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3)) by {
-                reveal(ipc_block_current_eof_transition_framing);
-            };
+            assert(ipc_block_current_eof_transition_framing(locked_k, *krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3)) by { reveal(ipc_block_current_eof_transition_framing); };
             ipc_block_current_eof(locked_k, *krnl, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3);
         }
 
@@ -358,6 +356,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,

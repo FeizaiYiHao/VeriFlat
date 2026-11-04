@@ -399,9 +399,11 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.structure_caches.view() == if flush { pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))) } else { pre.cpu_tlb.structure_caches.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && !(flush && c == cpu_id && p == pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)))
     &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(post.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
+    &&& flush ==> single_structure_cache_subset_of_present_pagetable(post.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
 }
 
 /// Dequeues the caller at the queue head, parks it waiting for the reply of the running callee, and records
@@ -569,8 +571,10 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.structure_caches.view() == if flush { pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))) } else { pre.cpu_tlb.structure_caches.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && !(flush && c == cpu_id && p == pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)))
     &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(post.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
+    &&& flush ==> single_structure_cache_subset_of_present_pagetable(post.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
 }
 }

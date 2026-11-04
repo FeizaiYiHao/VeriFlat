@@ -106,9 +106,7 @@ pub(super) fn ipc_copy_endpoint_reference(
     }
 
     proof {
-        assert(ipc_copy_endpoint_reference_eof_transition_framing(*old(krnl), *krnl, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr)) by {
-            reveal(ipc_copy_endpoint_reference_eof_transition_framing);
-        };
+        assert(ipc_copy_endpoint_reference_eof_transition_framing(*old(krnl), *krnl, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr)) by { reveal(ipc_copy_endpoint_reference_eof_transition_framing); };
         ipc_copy_endpoint_reference_eof(*old(krnl), *krnl, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr);
         assert({
             &&& typed_lock_maps_aligned(krnl, lctx)
@@ -440,9 +438,7 @@ pub(super) fn ipc_finish_endpoint_transit(
             let owner = old(steps).snapshot_k().ep_mp.spec_index(payload_endpoint_ptr).view().owning_container;
             let container = old(steps).snapshot_k().thr_mp.spec_index(receiver_thread_ptr).view().owning_container;
             &&& old(steps).snapshot_k().ctn_mp.dom().contains(container)
-            &&& result == if owner == container || old(steps).snapshot_k().ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) {
-                RetValueType::Success
-            } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
+            &&& result == if owner == container || old(steps).snapshot_k().ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) { RetValueType::Success } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
         },
         *old(krnl) == (KernelK { thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, receiver_thread_ptr),
@@ -657,6 +653,7 @@ fn ipc_endpoint_check_slots(
         old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
         old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
@@ -861,6 +858,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
         old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,

@@ -38,14 +38,12 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, process_
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
     ensures
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
 {
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by {
-        reveal(process_emptied_tables_wf); reveal(process_iommu_table_match);
-    };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
         assert(pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function)) by (nonlinear_arith) requires pci_bdf_valid(bus, device, function);
@@ -90,12 +88,14 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, process_ptr: RwLo
     ensures
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
-        pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp),
+        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
+        iommu_table_no_huge_leaf_wf(post.it_mp),
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_kernel_pages_owner_wf); reveal(iommu_table_pages_wf); };
 }
 

@@ -543,6 +543,21 @@ pub open spec fn kernel_u_container_quota_4k_increased(pre: KernelU, post: Kerne
 }
 
 #[verifier::opaque]
+pub open spec fn kernel_u_container_quota_2m_increased(pre: KernelU, post: KernelU, container: RwLockContainerPtr) -> bool {
+    let changed = pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]);
+    &&& pre.container_map.dom().contains(container)
+    &&& post.container_map != pre.container_map
+    &&& post.container_map.dom() == pre.container_map.dom()
+    &&& changed.len() == 1
+    &&& forall|c: RwLockContainerPtr| #![trigger changed.contains(c)] #![trigger post.container_map[c]] changed.contains(c) ==> {
+        &&& c == container || pre.container_map[container].uppertree_seq.contains(c)
+        &&& post.container_map[c].quota_2m > pre.container_map[c].quota_2m
+        &&& post.container_map[c] == (ContainerU { quota_2m: post.container_map[c].quota_2m, ..pre.container_map[c] })
+    }
+    &&& post == (KernelU { container_map: post.container_map, ..pre })
+}
+
+#[verifier::opaque]
 pub open spec fn kernel_u_container_root_published(
     pre: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr,
     process: RwLockProcessPtr, thread: RwLockThreadPtr, transfer_cpu: CpuId, funding: usize, process_quota: usize,

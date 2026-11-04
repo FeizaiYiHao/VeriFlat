@@ -179,16 +179,20 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
     (page_ptr, Tracked::assume_new())
 }
 
-/// TCB: a table page that its page table no longer links is an ordinary 4K page again; its bytes stay as they are.
+/// TCB: a table page that its page table no longer links and that no usable paging-structure cache names is an ordinary
+/// 4K page again; its bytes stay as they are.
 #[verifier(external_body)]
-pub fn page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>) -> (ret: Tracked<PagePerm4k>)
+pub fn page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray, needflush: &PcidNeedFlushArray)
+    -> (ret: Tracked<PagePerm4k>)
     requires
         page_map_perm.is_init(),
         page_map_perm.addr() == page_map_ptr,
+        table_page_unreferenced_by_structure_caches(*cpu_tlb, *cpu_arr, *needflush, page_map_ptr),
     ensures
         ret.view().is_init(),
         ret.view().addr() == page_map_ptr,
 {
+    let _ = (cpu_tlb, cpu_arr, needflush);
     Tracked::assume_new()
 }
 } // verus!

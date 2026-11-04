@@ -165,11 +165,13 @@ pub open spec fn kill_retire_held_state(
     }
 }
 
-/// The page table of the zombie `target` and its IOMMU table, if any, hold only their root tables and map nothing.
+/// The page table of the zombie `target` and its IOMMU table, if any, hold only their root tables and map nothing; its
+/// page table lists no CPU stale.
 pub open spec fn kill_retire_tables_emptied(k: KernelK, target: RwLockProcessPtr) -> bool {
     let process = k.prc_mp.spec_index(target).view();
     let pt = whole_pagetable(k.pt_mp, k.pt_lower.view(), process.pagetable);
     &&& pt.page_closure() =~= set![pt.cr3()]
+    &&& pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& pt.mapping_4k().dom() =~= Set::<VAddr>::empty()
     &&& pt.mapping_2m().dom() =~= Set::<VAddr>::empty()
     &&& pt.mapping_1g().dom() =~= Set::<VAddr>::empty()

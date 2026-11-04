@@ -41,9 +41,7 @@ pub(crate) proof fn kill_container_retire_eof_container_tree(
     containers_linkedlist_wf_at(pre.rt_ctn, pre.ctn_mp, container_ptr); container_perms_wf_at(pre.ctn_mp, parent_ptr);
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
     assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
-    assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by {
-        reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>();
-    };
+    assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
     assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); };
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_wf); broadcast use kill_container_retire_eof_subtree_empty; };
@@ -83,9 +81,7 @@ pub(crate) proof fn kill_container_retire_eof_container_objects(
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
     assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by {
-        reveal(process_pcid_allocator_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf);
-    };
+    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
 }
 
@@ -113,9 +109,7 @@ pub(crate) proof fn kill_container_retire_eof_container_threads(
         reveal(container_thread_endpoint_wf); reveal(container_thread_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
         broadcast use kill_container_retire_eof_no_endpoint;
     };
-    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-        reveal(container_thread_scheduler_wf); reveal(container_thread_wf); reveal(container_scheduler_wf);
-    };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_scheduler_wf); reveal(container_thread_wf); reveal(container_scheduler_wf); };
 }
 
 /// Retiring the container, which owns no process and holds no kill mark of a remaining container, process, or cpu set,
@@ -158,8 +152,10 @@ pub(crate) proof fn kill_container_retire_eof_tlb(
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_container_retire_eof_transition_framing);
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, container_ptr);
     };

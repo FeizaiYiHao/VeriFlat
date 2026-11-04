@@ -66,6 +66,9 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
     &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..cpu_before.view().view() })
     &&& post.cpu_tlb.view() == if flush_before.view().needflush { pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.structure_caches.view() == if flush_before.view().needflush {
+        pre.cpu_tlb.structure_caches.view().insert((cpu_id, KERNEL_DEFAULT_PCID), post.cpu_tlb.structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
+    } else { pre.cpu_tlb.structure_caches.view() }
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush_before.view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID {
             SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }

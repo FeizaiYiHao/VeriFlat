@@ -186,6 +186,19 @@ pub open spec fn kernel_container_quota_4k_changed(pre: &KernelK, post: &KernelK
             == pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if c == container_ptr { delta } else { 0 }
 }
 
+#[verifier::opaque]
+pub open spec fn kernel_container_quota_2m_changed(pre: &KernelK, post: &KernelK, container_ptr: RwLockContainerPtr, delta: int) -> bool {
+    &&& *post == (KernelK { cpu_op: post.cpu_op, thr_mp: post.thr_mp, allc_2m_mp: post.allc_2m_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) ==>
+        post.thr_mp.spec_index(t).locking_thread() == pre.thr_mp.spec_index(t).locking_thread()
+    &&& kernel_thread_nonlock_fields_unchanged(pre.thr_mp, post.thr_mp)
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int
+            == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int + if c == container_ptr { delta } else { 0 }
+}
+
 /// One staging-thread quota funds a new scheduled thread of `process_ptr` and `container_ptr`,
 /// and the staging thread's progress becomes `staging_progress`. When the staging thread belongs to another process,
 /// the window locks of that process's and `process_ptr`'s page tables may change.

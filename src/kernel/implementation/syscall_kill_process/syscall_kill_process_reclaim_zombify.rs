@@ -16,7 +16,7 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(iommu_perm): Tracked<Option<LockPerm>>, Ghost(kernel_l4_end): Ghost<usize>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(iommu_perm): Tracked<Option<LockPerm>>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
@@ -30,11 +30,23 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
             iommu_table, pagetable_perm, iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == kernel_l4_end,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)] #![trigger entry_pt.spec_held_2m_l2(l4i, l3i, l2i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) == entry_pt.spec_held_2m_l2(l4i, l3i, l2i),
+        entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        entry_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        entry_pt.wf_mapping_2m(),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger entry_pt.higher.spec_held_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && entry_pt.higher.spec_held_l3(l4i, l3i) is Some ==> entry_pt.higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
@@ -69,7 +81,7 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
     kill_reclaim_return_quota(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Tracked(&iommu_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_unlock_table(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(kernel_l4_end), Ghost(start), Ghost(pre),
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(entry_pt), Ghost(start), Ghost(pre),
         Ghost(scope), Ghost(ctx));
     kill_reclaim_zombify(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
@@ -256,12 +268,9 @@ pub(crate) fn kill_reclaim_return_quota_under_lock(
                 old(krnl).allc_2m_mp.dom().contains(a) && a != container.allocator_ptr_2m ==> final(krnl).allc_2m_mp.spec_index(a).quota.view().view() == old(krnl).allc_2m_mp.spec_index(a).quota.view().view()
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
                 old(krnl).allc_1g_mp.dom().contains(a) && a != container.allocator_ptr_1g ==> final(krnl).allc_1g_mp.spec_index(a).quota.view().view() == old(krnl).allc_1g_mp.spec_index(a).quota.view().view()
-            &&& final(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int
-                == old(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int + if size is SZ4k { process.quota_4k as int } else { 0 }
-            &&& final(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int
-                == old(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int + if size is SZ2m { process.quota_2m as int } else { 0 }
-            &&& final(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int
-                == old(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int + if size is SZ1g { process.quota_1g as int } else { 0 }
+            &&& final(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int == old(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int + if size is SZ4k { process.quota_4k as int } else { 0 }
+            &&& final(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int == old(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int + if size is SZ2m { process.quota_2m as int } else { 0 }
+            &&& final(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int == old(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int + if size is SZ1g { process.quota_1g as int } else { 0 }
         }),
 {
     match size {
@@ -309,8 +318,7 @@ pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
             let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_4k;
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
                 old(krnl).allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_4k_mp.spec_index(a).quota.view().view() == old(krnl).allc_4k_mp.spec_index(a).quota.view().view()
-            &&& final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int
-                == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_4k as int
+            &&& final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_4k as int
         }),
 {
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
@@ -384,8 +392,7 @@ pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
             let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_2m;
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_2m_mp.spec_index(a)]
                 old(krnl).allc_2m_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_2m_mp.spec_index(a).quota.view().view() == old(krnl).allc_2m_mp.spec_index(a).quota.view().view()
-            &&& final(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int
-                == old(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_2m as int
+            &&& final(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int == old(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_2m as int
         }),
 {
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
@@ -459,8 +466,7 @@ pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
             let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_1g;
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
                 old(krnl).allc_1g_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_1g_mp.spec_index(a).quota.view().view() == old(krnl).allc_1g_mp.spec_index(a).quota.view().view()
-            &&& final(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int
-                == old(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_1g as int
+            &&& final(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int == old(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_1g as int
         }),
 {
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
@@ -501,7 +507,7 @@ pub(crate) fn kill_reclaim_unlock_table(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(iommu_perm): Tracked<Option<LockPerm>>, Ghost(kernel_l4_end): Ghost<usize>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(iommu_perm): Tracked<Option<LockPerm>>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
@@ -515,11 +521,23 @@ pub(crate) fn kill_reclaim_unlock_table(
             iommu_table, pagetable_perm, iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == kernel_l4_end,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)] #![trigger entry_pt.spec_held_2m_l2(l4i, l3i, l2i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) == entry_pt.spec_held_2m_l2(l4i, l3i, l2i),
+        entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        entry_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        entry_pt.wf_mapping_2m(),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger entry_pt.higher.spec_held_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && entry_pt.higher.spec_held_l3(l4i, l3i) is Some ==> entry_pt.higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
@@ -565,9 +583,6 @@ pub(crate) fn kill_reclaim_unlock_table(
     proof {
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); krnl.default_pagetable_wf_at(pagetable); broadcast use spec_va_4k_valid_index_roundtrip;
-        };
         if let Some(it) = iommu_table {
             assert(krnl.it_mp.spec_index(it).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
                 iommu_table_perms_wf_at(krnl.it_mp, it);
@@ -582,11 +597,12 @@ pub(crate) fn kill_reclaim_unlock_table(
     }
     proof {
         assert(kill_tables_emptied_eof_transition_framing(progressed, *krnl, target)) by { reveal(kill_tables_emptied_eof_transition_framing); };
-        kill_tables_emptied_eof(progressed, *krnl, target);
+        kill_tables_emptied_eof(progressed, *krnl, target, pagetable, entry_pt);
     }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_perm.tracked_unwrap()));
     }
+    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     proof {
         let unlocked_k = *krnl;

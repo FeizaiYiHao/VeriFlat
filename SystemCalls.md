@@ -2005,7 +2005,7 @@ children and no threads)
 - Refund: after the scans, one refund step
   (`kernel_u_container_quota_4k_increased`) returns any pending quota to the
   killer's container chain.
-- Blocked: unreachable; a zombie's tables map nothing (`process_emptied_tables_wf`, `pagetable_no_huge_leaf_wf`).
+- Blocked: unreachable; a zombie's tables map nothing (`process_emptied_tables_wf`, `pagetable_no_1g_leaf_wf`, `iommu_table_no_huge_leaf_wf`).
 - Retire (`kill_process_retire_step`): pre `Retire`, `L` has no children and
   no threads, `L.zombie`, `L` owns no function, `L.parent is Some`, and `C`
   present; effect: `L` leaves the process map, its parent's `children`, the
@@ -2288,7 +2288,7 @@ marks; `container_kill_retire_wf` for the Pages→Retire facts;
 lemma `container_without_children_and_processes_owns_no_threads`) for "no
 thread left"; `page_object_owner_wf` for the retired pages;
 `pagetable_window_stale_cpus_only_when_locked`, `process_emptied_tables_wf`,
-and `pagetable_no_huge_leaf_wf` for the table reclaim and retire as in §18.
+and `pagetable_no_1g_leaf_wf` and `iommu_table_no_huge_leaf_wf` for the table reclaim and retire as in §18.
 
 Trusted primitives (external_body; authorized TCB): those of §18, with
 `RwLock::try_wlock_and_mark_kill` also marking containers and cpu sets, and

@@ -10,16 +10,17 @@ pub open spec fn single_tlb_union(pre: SingleTLB, added: SingleTLB) -> SingleTLB
     SingleTLB { tlb_4k: pre.tlb_4k.union_prefer_right(added.tlb_4k), tlb_2m: pre.tlb_2m.union_prefer_right(added.tlb_2m), tlb_1g: pre.tlb_1g.union_prefer_right(added.tlb_1g) }
 }
 
-/// What CPU `cpu_id` may cache under `pcid` in state `k`: present leaves of the table it runs when `pcid` is its
-/// current PCID, nothing for another non-default PCID. The model does not track the default PCID.
-pub open spec fn cpu_tlb_within_may_cache(k: KernelK, cpu_id: CpuId, pcid: Pcid, tlb: SingleTLB) -> bool {
+/// What CPU `cpu_id` may cache under `pcid` in state `k`: present leaves and present non-leaf entries of the table it runs
+/// when `pcid` is its current PCID, nothing for another non-default PCID. The model does not track the default PCID.
+pub open spec fn cpu_tlb_within_may_cache(k: KernelK, cpu_id: CpuId, pcid: Pcid, tlb: SingleTLB, cache: PagingStructureCache) -> bool {
     let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
     if pcid == KERNEL_DEFAULT_PCID {
         true
     } else if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
-        single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, whole_pagetable(k.pt_mp, k.pt_lower.view(), cpu.current_pagetable->Some_0))
+        let table = whole_pagetable(k.pt_mp, k.pt_lower.view(), cpu.current_pagetable->Some_0);
+        single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, table) && single_structure_cache_subset_of_present_pagetable(cache, table)
     } else {
-        tlb.is_empty()
+        tlb.is_empty() && cache.is_empty()
     }
 }
 
@@ -79,15 +80,19 @@ pub open spec fn iommu_tlb_within_may_cache_u(u: KernelU, did: VtdDomainId, tlb:
     }
 }
 
-/// CPU `cpu_id` caches `added` under `pcid`; nothing else changes.
-pub open spec fn kernel_k_cpu_tlb_filled(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB) -> bool {
+/// CPU `cpu_id` caches translations `added` and paging-structure entries `added_cache` under `pcid`; nothing else changes.
+pub open spec fn kernel_k_cpu_tlb_filled(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache) -> bool {
+    let cache = pre.cpu_tlb.structure_cache((cpu_id, pcid));
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pcid_valid(pcid)
-    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, added)
+    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, added, added_cache)
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), single_tlb_union(pre.cpu_tlb.spec_index((cpu_id, pcid)), added))
-    &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] (c, p) != (cpu_id, pcid)
-        ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
+    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), PagingStructureCache {
+        pml4e: cache.pml4e.union_prefer_right(added_cache.pml4e), pdpte: cache.pdpte.union_prefer_right(added_cache.pdpte), pde: cache.pde.union_prefer_right(added_cache.pde) })
+    &&& forall|c: CpuId, p: Pcid|
+        #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.structure_cache((c, p))] #![trigger pre.cpu_tlb.structure_cache((c, p))]
+        (c, p) != (cpu_id, pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)) && post.cpu_tlb.structure_cache((c, p)) == pre.cpu_tlb.structure_cache((c, p))
 }
 
 /// The IOTLB caches `added` for domain `did`; nothing else changes.
@@ -155,18 +160,21 @@ pub open spec fn kernel_u_iommu_tlb_filled_step(old_u: KernelU, new_u: KernelU, 
 #[verifier::opaque]
 pub open spec fn kernel_u_iommu_context_cache_filled_step(old_u: KernelU, new_u: KernelU) -> bool { new_u == old_u }
 
-pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB)
+pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache)
     requires
         pre.inv(),
-        kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added),
+        kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added, added_cache),
     ensures post.inv(),
 {
     let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
     let filled = single_tlb_union(pre.cpu_tlb.spec_index((cpu_id, pcid)), added);
+    let cache = pre.cpu_tlb.structure_cache((cpu_id, pcid));
     if pcid != KERNEL_DEFAULT_PCID && !(cpu.current_pcid == pcid && cpu.current_pagetable is Some) {
         assert(filled.tlb_4k =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k);
         assert(filled.tlb_2m =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m);
         assert(filled.tlb_1g =~= pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_1g);
+        assert(cache.pml4e.union_prefer_right(added_cache.pml4e) =~= cache.pml4e && cache.pdpte.union_prefer_right(added_cache.pdpte) =~= cache.pdpte
+            && cache.pde.union_prefer_right(added_cache.pde) =~= cache.pde);
     }
     assert(post.cpu_tlb.inv()) by { reveal(CpuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
@@ -176,6 +184,11 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+        assert(filled.tlb_4k() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k().union_prefer_right(added.tlb_4k())
+            && filled.tlb_2m() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m()));
+    };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(structure_cache_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
 }
 
@@ -183,7 +196,10 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
     requires
         pre.inv(),
         kernel_k_iommu_tlb_filled(pre, post, did, added),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        forall|it: RwLockPageTableRoot| #![trigger iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, it)]
+            pre.it_mp.dom().contains(it) && iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, it) ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, it),
 {
     let anchor = pci_bdf_of_did(did);
     let filled = single_tlb_union(pre.iommu_tlb.spec_index(did), added);
@@ -195,6 +211,7 @@ pub proof fn kernel_k_iommu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
 }
 
 pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId))
@@ -289,14 +306,14 @@ pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK,
 }
 
 /// A CPU TLB fill stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, lctx: LocalContext)
+pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache, lctx: LocalContext)
     requires
         pre.inv(),
-        kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added),
+        kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added, added_cache),
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added); };
+    assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added, added_cache); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -311,11 +328,10 @@ pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: Ker
         typed_lock_maps_aligned(&pre, &lctx),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added); };
+    kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_page_owner_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-    reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
 }
 
 /// A context-cache fill stays within the step-boundary framing of a thread between its sections.

@@ -104,6 +104,50 @@ pub proof fn l2_entry_take_l1(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index
     unimplemented!()
 }
 
+/// TCB: ghost-only. Move the L1 page token out of the slot of entry `i` of the L2 page behind `perm` while no thread holds
+/// the entry's lock; the caller holds the table's big lock in write mode, which every window lock follows. No memory is
+/// touched.
+#[verifier::external_body]
+pub proof fn l2_entry_take_l1_unlocked(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index) -> (tracked ret: PointsTo<PageMap>)
+    requires
+        old(perm).is_init(),
+        pei_valid(i),
+        old(perm).value().entry_lock(i).locking_thread() is None,
+        old(perm).value().entry_lock(i).l1() is Some,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(perm).value().addr() == old(perm).value().addr(),
+        forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
+        final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
+        final(perm).value().entry_lock(i).l1() is None,
+        ret == old(perm).value().entry_lock(i).l1()->Some_0,
+{
+    unimplemented!()
+}
+
+/// TCB: ghost-only. Move the L1 page token `l1` into the slot of entry `i` of the L2 page behind `perm` while no thread
+/// holds the entry's lock; the caller holds the table's big lock in write mode, which every window lock follows. No memory
+/// is touched.
+#[verifier::external_body]
+pub proof fn l2_entry_put_l1_unlocked(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index, tracked l1: PointsTo<PageMap>)
+    requires
+        old(perm).is_init(),
+        pei_valid(i),
+        old(perm).value().entry_lock(i).locking_thread() is None,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(perm).value().addr() == old(perm).value().addr(),
+        forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
+        final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
+        final(perm).value().entry_lock(i).l1() == Some(l1),
+{
+    unimplemented!()
+}
+
 /// TCB: ghost-only. Move the L1 page token `l1` into the slot of entry `i` of the L2 page behind `perm` while this
 /// thread holds the entry's lock; no memory is touched.
 #[verifier::external_body]

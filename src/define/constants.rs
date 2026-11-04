@@ -50,6 +50,9 @@ pub const IOMMU_TYPE: PTType = false;
 pub const ALLOCATOR_MIN_WATERMARK: usize = 0;
 pub const ALLOCATOR_MAX_WATERMARK: usize = 4096;
 pub const ALLOCATOR_BATCH: usize = 64;
+/// Per-CPU 2M cache bound that triggers draining: 4096 cached 2M pages would hold 8 GiB.
+pub const ALLOCATOR_MAX_WATERMARK_2M: usize = 8;
+pub const ALLOCATOR_BATCH_2M: usize = 4;
 
 pub const NO_KILL_STATE: bool = false;
 pub const HAS_KILL_STATE: bool = true;

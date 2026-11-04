@@ -20,7 +20,7 @@ verus! {
         &&& forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
             index_valid(NUM_CPUS, cpu_i) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
-                && ((!needflush.spec_index(cpu_i, pcid).view().needflush && !tlb.spec_index((cpu_i, pcid)).is_empty()) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid)
+                && ((!needflush.spec_index(cpu_i, pcid).view().needflush && (!tlb.spec_index((cpu_i, pcid)).is_empty() || !tlb.structure_cache((cpu_i, pcid)).is_empty())) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid)
                 ==> container_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().owning_container).view_ghost().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr)
     }
 
@@ -30,7 +30,7 @@ verus! {
         &&& forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
             index_valid(NUM_CPUS, cpu_i) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
-                && ((!needflush.spec_index(cpu_i, pcid).view().needflush && !tlb.spec_index((cpu_i, pcid)).is_empty()) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid)
+                && ((!needflush.spec_index(cpu_i, pcid).view().needflush && (!tlb.spec_index((cpu_i, pcid)).is_empty() || !tlb.structure_cache((cpu_i, pcid)).is_empty())) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid)
                 ==> pagetable_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr)
                 && pagetable_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr).view().pcid_value() == pcid
     }
@@ -40,6 +40,9 @@ verus! {
         &&& forall|cpu_id:CpuId, pcid: Pcid|
             #![auto]
             index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && tlb.spec_index((cpu_id, pcid)).is_empty() == false ==> cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
+        &&& forall|cpu_id:CpuId, pcid: Pcid|
+            #![trigger tlb.structure_cache((cpu_id, pcid))]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !tlb.structure_cache((cpu_id, pcid)).is_empty() ==> cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
     }
 
     #[verifier::opaque]
@@ -50,7 +53,7 @@ verus! {
         &&& forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
             index_valid(NUM_CPUS, cpu_i) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
-            && ((!needflush.spec_index(cpu_i, pcid).view().needflush && !tlb.spec_index((cpu_i, pcid)).is_empty()) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid) ==> {
+            && ((!needflush.spec_index(cpu_i, pcid).view().needflush && (!tlb.spec_index((cpu_i, pcid)).is_empty() || !tlb.structure_cache((cpu_i, pcid)).is_empty())) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid) ==> {
                 &&& process_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr)
                 &&& process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr).view().pcid == pcid
                 &&& process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr).view().pagetable

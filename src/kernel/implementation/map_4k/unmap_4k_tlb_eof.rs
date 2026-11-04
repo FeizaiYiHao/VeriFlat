@@ -10,7 +10,8 @@ pub(super) open spec fn flush_remote_pcid_and_clear_eof_transition_framing(pre: 
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
     &&& new_entry.view() == (PcidNeedFlush { needflush: false, ..old_entry.view() })
@@ -42,6 +43,21 @@ pub(super) proof fn flush_remote_pcid_and_clear_eof(pre: KernelK, post: KernelK,
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
+    flush_remote_pcid_and_clear_eof_structure_cache_wf(pre, post, cpu_id, pcid);
+}
+
+/// EOF closure of `flush_remote_pcid_and_clear` for the paging-structure invariant: the refilled cache of `(cpu_id, pcid)`
+/// holds only present entries of the table the cpu runs under `pcid`, or nothing; every other cache is unchanged.
+proof fn flush_remote_pcid_and_clear_eof_structure_cache_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_remote_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+    ensures structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(flush_remote_pcid_and_clear_eof_transition_framing);
+    reveal(structure_cache_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
 }
 
 /// Flushes the calling cpu's current TLB for `pcid`, which keeps at most what the cpu may cache in `pre`, and clears its
@@ -63,7 +79,8 @@ pub(super) open spec fn flush_local_pcid_and_clear_eof_transition_framing(pre: K
     &&& new_cpu.view_rodata() == old_cpu.view_rodata()
     &&& new_cpu.view_ghost() == old_cpu.view_ghost()
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
     &&& new_entry.view() == (PcidNeedFlush { needflush: false, ..old_entry.view() })
@@ -141,6 +158,21 @@ proof fn flush_local_pcid_and_clear_eof_tlb_wf(pre: KernelK, post: KernelK, cpu_
     reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
 }
 
+/// EOF closure of `flush_local_pcid_and_clear` for the paging-structure invariant: the refilled cache of `(cpu_id, pcid)`
+/// holds only present entries of the table the calling cpu runs, or nothing; every other cache is unchanged.
+proof fn flush_local_pcid_and_clear_eof_structure_cache_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_local_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+    ensures structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    reveal(structure_cache_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+}
+
 pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
     requires
         pre.inv(),
@@ -158,5 +190,6 @@ pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, 
     flush_local_pcid_and_clear_eof_process_management_inv(pre, post, cpu_id, pcid);
     flush_local_pcid_and_clear_eof_cpu_dirty_map_wf(pre, post, cpu_id, pcid);
     flush_local_pcid_and_clear_eof_tlb_wf(pre, post, cpu_id, pcid);
+    flush_local_pcid_and_clear_eof_structure_cache_wf(pre, post, cpu_id, pcid);
 }
 }

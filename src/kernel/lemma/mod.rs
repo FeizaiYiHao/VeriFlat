@@ -11,6 +11,7 @@ pub mod process_kernel_pages_owner_eq;
 pub mod page_pagetable_wf_eq;
 pub mod page_iommu_table_wf_eq;
 pub mod tlb_wf_eq;
+pub mod structure_cache_wf_eq;
 pub mod pcid_allocator_inv_eq;
 pub mod kernel_inv_container_lock_op;
 pub mod kernel_inv_process_lock_op;
@@ -44,6 +45,7 @@ pub use page_pagetable_wf_eq::*;
 pub use page_iommu_table_wf_eq::*;
 
 pub use tlb_wf_eq::*;
+pub use structure_cache_wf_eq::*;
 pub use pcid_allocator_inv_eq::*;
 pub use kernel_inv_container_lock_op::*;
 pub use kernel_inv_process_lock_op::*;

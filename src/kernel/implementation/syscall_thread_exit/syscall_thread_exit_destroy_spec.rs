@@ -50,6 +50,9 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
         ..pre_cpu.view().view()
     })
     &&& post.cpu_tlb.view() == if flushed { pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), empty_tlb) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.structure_caches.view() == if flushed {
+        pre.cpu_tlb.structure_caches.view().insert((cpu_id, KERNEL_DEFAULT_PCID), post.cpu_tlb.structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
+    } else { pre.cpu_tlb.structure_caches.view() }
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flushed && c == cpu_id && p == KERNEL_DEFAULT_PCID { empty_tlb } else { pre.cpu_tlb.spec_index((c, p)) }
     &&& post_needflush.view() == (PcidNeedFlush { needflush: false, ..pre_needflush.view() })

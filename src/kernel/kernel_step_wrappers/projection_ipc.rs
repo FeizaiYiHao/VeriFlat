@@ -727,7 +727,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
-    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid))); }
+    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
 }
 
 #[verifier::spinoff_prover]
@@ -795,7 +795,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(endpoint_ptr, EndpointU {
         queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
     }), e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
-    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid))); }
+    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
 }
 
 /// The reply-handoff fields project to the cpu array with only `cpu_id` switched to the caller.

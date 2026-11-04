@@ -279,6 +279,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
                 &&& pt.lower.l2_owner(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: wp.index(w).thread_id(), lock_id: wp.index(w).lock_id() })
                 &&& pt.window_leaves_present(w)
                 &&& !pt.lower.window_stale_cpus.dom().contains((pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                &&& !pt.lower.l2_entry_hides_l1(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             }
             &&& *final(krnl) == (KernelK {
                 cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower,
@@ -409,9 +410,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     }
     if !success {
         if user_range { krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms)); }
-        proof {
-            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
-        }
+        proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks); }
         iommu_map_4k_unlock_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr, Tracked(iommu_table_lock_perm),
             Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
         return Err(ret);

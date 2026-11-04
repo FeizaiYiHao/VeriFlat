@@ -87,6 +87,7 @@ pub(super) fn commit_new_container(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((whole_pagetable(old(krnl).pt_mp,
                 old(krnl).pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable_ptr && source_window_perms.view().dom().contains(w)),
@@ -482,6 +483,7 @@ fn commit_new_container_publish(
         ret.8.view().thread_id() == final(lctx).thread_id(),
         ret.8.view().lock_id() == final(krnl).pt_mp.spec_index(ret.2).locking_thread()->Write_lock_id,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.2).is_empty(),
+        final(krnl).pt_mp.spec_index(ret.2).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
@@ -497,9 +499,7 @@ fn commit_new_container_publish(
     let (pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm)) =
         allocate_new_container_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(current_thread_lock_perm));
     let (funding_page_head, Ghost(funding_pages), Tracked(funding_page_lock_perms)) = allocate_staged_4k_page_chain(krnl, funding_page_count, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
-    proof {
-        page_ptr_sets_disjoint_from_index_disjoint(funding_pages, pages_4k.view());
-    }
+    proof { page_ptr_sets_disjoint_from_index_disjoint(funding_pages, pages_4k.view()); }
     let ret = commit_new_container_publish_staged(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), caller_cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr,
         source_range, funding_page_count, process_quota_4k, transfer_cpu_id, parent_cpu_set, endpoint, endpoint_index, &pages_4k, container_page,
@@ -799,6 +799,7 @@ fn commit_new_container_publish_staged(
         ret.8.view().thread_id() == final(lctx).thread_id(),
         ret.8.view().lock_id() == final(krnl).pt_mp.spec_index(ret.2).locking_thread()->Write_lock_id,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.2).is_empty(),
+        final(krnl).pt_mp.spec_index(ret.2).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),

@@ -88,8 +88,7 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let child_ptr = old_u.process_map[process_ptr].children[child_index as int];
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] })
-            .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
+        process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] }) .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
             lock_state: LockStateU::WriteLocked, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..old_u.thread_map[thread_ptr]
         }),
@@ -184,8 +183,7 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
     &&& kill_process_thread_step_pre(old_u, cpu_id)
     &&& !victim.state.is_reply_waiting()
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim })
-            .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Thread { thread: victim_ptr })),
+        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Thread { thread: victim_ptr })),
         ..old_u
     })
 }
@@ -266,8 +264,7 @@ pub open spec fn kill_process_unlink_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& victim.state is KILLED
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(process_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
-        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..victim })
-            .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Walk)),
+        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, process_ptr, KillStage::Walk)),
         ..old_u
     })
 }
@@ -348,21 +345,38 @@ pub open spec fn kill_process_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, st
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is WriteLocked
 }
 
-/// A leaf step removes exactly one valid user 4K mapping from the target's page table and keeps every other entry; the
-/// kernel chooses the VA (R1).
+/// `va` keys an entry of `o` in its 4K, 2M or 1G mappings or its window locks that `n` no longer keys.
+pub open spec fn kill_process_table_key_dropped(o: PageTableU, n: PageTableU, va: VAddr) -> bool {
+    ||| o.mapping_4k.dom().contains(va) && !n.mapping_4k.dom().contains(va)
+    ||| o.mapping_2m.dom().contains(va) && !n.mapping_2m.dom().contains(va)
+    ||| o.mapping_1g.dom().contains(va) && !n.mapping_1g.dom().contains(va)
+    ||| o.pagetable_window_locks.dom().contains(WindowVa { va }) && !n.pagetable_window_locks.dom().contains(WindowVa { va })
+}
+
+/// Hiding a root entry of the target's write-locked page table drops from that table every 4K, 2M and 1G mapping and every
+/// window lock under one root entry chosen by the kernel and keeps everything else: every dropped key shares one L4 index,
+/// and every key with that index is dropped.
 #[verifier::opaque]
-pub open spec fn kill_process_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let process_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[process_ptr];
-    let pagetable = target.pagetable->Some_0;
-    let kept = new_u.process_map[process_ptr].pagetable->Some_0.mapping_4k.dom();
-    let removed = pagetable.mapping_4k.dom().difference(kept);
+    let o = target.pagetable->Some_0;
+    let n = new_u.process_map[process_ptr].pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })
-    &&& kept.subset_of(pagetable.mapping_4k.dom())
-    &&& removed.len() == 1
-    &&& forall|va: VAddr| #![trigger removed.contains(va)] removed.contains(va) ==> spec_va_4k_valid(va) && old_u.kernel_l4_end <= spec_v2l4index(va)
+    &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
+    &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
+    &&& forall|a: VAddr, b: VAddr| #![trigger kill_process_table_key_dropped(o, n, a), kill_process_table_key_dropped(o, n, b)]
+        kill_process_table_key_dropped(o, n, a) && kill_process_table_key_dropped(o, n, b) ==> spec_v2l4index(a) == spec_v2l4index(b)
+    &&& forall|a: VAddr, b: VAddr| #![trigger kill_process_table_key_dropped(o, n, a), spec_v2l4index(b)]
+        kill_process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.restrict(kept), ..pagetable }), ..target }),
+        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+            pagetable: Some(PageTableU {
+                mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
+                pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
+            }),
+            ..target
+        }),
         ..old_u
     })
 }
@@ -526,52 +540,17 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// A step that write-locks at most one window of the target's page table and unlocks at most one other, and changes
-/// nothing else.
-#[verifier::opaque]
-pub open spec fn kill_process_pagetable_windows_changed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
-    let o = target.pagetable->Some_0.pagetable_window_locks;
-    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
-    let locked = o.dom().filter(|w: WindowVa| o[w] is Unlocked && n[w] is WriteLocked);
-    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
-    &&& target.pagetable is Some
-    &&& n.dom() == o.dom()
-    &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !locked.contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
-    &&& locked.len() <= 1
-    &&& unlocked.len() <= 1
-    &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..target.pagetable->Some_0 }), ..target }),
-        ..old_u
-    })
-}
-
-/// A refund grows the 4K quota of the target's container or of one of its ancestors and unlocks at most one window of
-/// the target's page table.
+/// A refund grows the 4K quota of the target's container or of one of its ancestors.
 #[verifier::opaque]
 pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[process_ptr];
-    let o = target.pagetable->Some_0.pagetable_window_locks;
-    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
-    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
-    &&& new_u.process_map == old_u.process_map || {
-        &&& target.pagetable is Some
-        &&& n.dom() == o.dom()
-        &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
-        &&& unlocked.len() <= 1
-        &&& new_u.process_map == old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..target.pagetable->Some_0 }), ..target })
-    }
-    &&& kernel_u_container_quota_4k_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, target.owning_container)
+    kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
 }
 
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, or unlinking a thread, forcing the cpu running a thread to idle, reclaiming killed threads of the target's
-/// container, and, for an empty target, reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's
-/// TLB for its PCID, recording the flush, removing one IOMMU 4K leaf, locking and unlocking windows of its page table, returning quota
-/// of freed pages to the target's container chain, returning one size of its quota, unlocking its tables, making it a zombie, or
-/// retiring it.
+/// container, and, for an empty target, reassigning its PCI functions, locking its tables, hiding one user root entry of its page
+/// table, flushing one cpu's TLB for its PCID, recording the flush, removing one IOMMU 4K leaf, returning quota of freed pages to the
+/// target's container chain, returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -588,11 +567,10 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
             old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_reassign_functions_step(old_u, new_u, cpu_id)
         ||| kill_process_lock_table_step(old_u, new_u, cpu_id)
-        ||| kill_process_leaf_step(old_u, new_u, cpu_id)
+        ||| kill_process_table_hidden_step(old_u, new_u, cpu_id)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)
-        ||| kill_process_pagetable_windows_changed_step(old_u, new_u, cpu_id)
         ||| kill_process_refund_step(old_u, new_u, cpu_id)
         ||| kill_process_quota_step(old_u, new_u, cpu_id)
         ||| kill_process_unlock_table_step(old_u, new_u, cpu_id)

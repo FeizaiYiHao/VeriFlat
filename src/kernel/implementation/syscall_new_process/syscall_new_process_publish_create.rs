@@ -150,6 +150,7 @@ pub(super) fn create_and_release_staged_process(
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)] old(krnl).pt_mp.dom().contains(p)
             ==> final(krnl).pt_mp.spec_index(p) == old(krnl).pt_mp.spec_index(p) && final(krnl).pt_lower.view().spec_index(p) == old(krnl).pt_lower.view().spec_index(p),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
+        final(krnl).pt_mp.spec_index(ret.1).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         final(krnl).pt_mp.spec_index(ret.1).view().proc_ptr == ret.0,
         final(krnl).it_mp == old(krnl).it_mp,
         final(lctx).page_lock_map().dom().is_empty(),

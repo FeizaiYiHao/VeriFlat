@@ -66,6 +66,7 @@ pub(super) fn mmap_4k_map_leaf_range(
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
             let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
             &&& table.window_leaves_present(w)
+            &&& !table.lower.l2_entry_hides_l1(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             &&& window_perms.dom().contains(w)
             &&& table.window_view(w).lock_state == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
@@ -108,6 +109,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             &&& post.window_view(w).lock_state == pre.window_view(w).lock_state
             &&& post.window_view(w).stale_cpus == pre.window_view(w).stale_cpus
             &&& post.window_leaves_present(w)
+            &&& !post.lower.l2_entry_hides_l1(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             let post = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr);
@@ -197,6 +199,7 @@ pub(super) fn mmap_4k_map_leaf_range(
                 &&& cur.window_view(w).stale_cpus == entry.window_view(w).stale_cpus
                 &&& cur.mapping_2m().dom().contains(w.va) == entry.mapping_2m().dom().contains(w.va)
                 &&& cur.window_leaves_present(w)
+                &&& !cur.lower.l2_entry_hides_l1(cur.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             },
             forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
                 old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && i <= j < range.len && spec_v2l4index(range.view()[j]) == spec_v2l4index(w.va)
@@ -227,6 +230,7 @@ pub(super) fn mmap_4k_map_leaf_range(
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(va), spec_va2index(last_va));
                 va_range_2m_windows_contains_window_of_every_va_in_range(*range);
             };
+            broadcast use spec_va_2m_valid_index_roundtrip;
         }
         map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, va, Ghost(*range), Ghost(i), Ghost(phase), Tracked(&mut *lctx),
             Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(win)));
@@ -308,6 +312,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
             &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             &&& table.window_leaves_present(w)
             &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !table.lower.l2_entry_hides_l1(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), va_range.view()[j]]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && 0 <= j < range && spec_v2l4index(va_range.view()[j]) == spec_v2l4index(w.va)

@@ -117,18 +117,35 @@ pub(super) open spec fn create_thread_from_staged_page_eof_transition_framing(
     &&& scheduler_shards_of(post_scheduler) == scheduler_shards_of(pre_scheduler).update(cpu_id as int, scheduler_shards_of(pre_scheduler)[cpu_id as int].push(page_ptr))
 }
 
-/// Only the owning process's thread list changes and it runs, so no process becomes emptied and every table link keeps its value.
-proof fn create_thread_from_staged_page_eof_process_emptied_tables_wf(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
+/// Only the owning process's thread list changes and it runs, so no process becomes emptied; every table link keeps its
+/// value and the one changed page is not mapped.
+proof fn create_thread_from_staged_page_eof_process_emptied_tables_wf(pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr)
     requires
-        process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp),
+        process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr),
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
         post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
         post.prc_mp.spec_index(process_ptr).view() == (Process { owned_threads: post.prc_mp.spec_index(process_ptr).view().owned_threads, state: Ghost(ProcessState::Running), ..pre.prc_mp.spec_index(process_ptr).view() }),
+        post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_ptr2page_index(page_ptr)),
+        !post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_mapped(),
     ensures
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 { reveal(process_emptied_tables_wf); }
+
+/// The owning process was creating or running and now runs and no table changes, so every live process keeps its held
+/// user roots resolvable.
+proof fn create_thread_from_staged_page_eof_hidden_roots(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
+    requires
+        pagetable_hidden_roots_only_when_write_held_or_emptied(pre.pt_mp, pre.prc_mp),
+        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        pre.prc_mp.spec_index(process_ptr).view().state.view() is Creating || pre.prc_mp.spec_index(process_ptr).view().state.view() is Running,
+        post.pt_mp == pre.pt_mp,
+        post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
+        post.prc_mp.spec_index(process_ptr).view().state.view() == ProcessState::Running,
+    ensures
+        pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
+{ reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); }
 
 proof fn create_thread_from_staged_page_eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
@@ -266,6 +283,7 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
         page_ptr_valid(page_ptr),
         pre.prc_mp.dom().contains(process_ptr),
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().state.view() is Creating || pre.prc_mp.spec_index(process_ptr).view().state.view() is Running,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         pre.thr_mp.dom().contains(staging_thread_ptr),
         !pre.thr_mp.dom().contains(page_ptr),
@@ -324,7 +342,8 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { create_thread_from_staged_page_eof_process_emptied_tables_wf(pre, post, process_ptr); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { create_thread_from_staged_page_eof_process_emptied_tables_wf(pre, post, page_ptr, process_ptr); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { create_thread_from_staged_page_eof_hidden_roots(pre, post, process_ptr); };
     create_thread_from_staged_page_eof_allocator_quota_wf(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
     create_thread_from_staged_page_eof_container_kill_retire_wf(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_index); };
@@ -589,6 +608,7 @@ pub(super) proof fn create_thread_from_staged_page_eof_inv(
         page_ptr_valid(page_ptr),
         pre.prc_mp.dom().contains(process_ptr),
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().state.view() is Creating || pre.prc_mp.spec_index(process_ptr).view().state.view() is Running,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         pre.thr_mp.dom().contains(staging_thread_ptr),
         !pre.thr_mp.dom().contains(page_ptr),

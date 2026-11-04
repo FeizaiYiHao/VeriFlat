@@ -4,7 +4,9 @@ use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 
 verus! {
-/// Paging-structure caches are folded in: every modeled invalidation is PCID- or domain-wide and also clears them; shared by the CPU TLBs and the IOTLB.
+/// Cached translations, shared by the CPU TLBs and the IOTLB. Only the IOTLB folds its paging-structure caches in; a CPU
+/// keeps them in `PagingStructureCache`. A 2M translation the hardware splits into 4K TLB entries is represented by its
+/// `tlb_2m` entry: every modeled invalidation is PCID- or domain-wide, so the split is not observable.
 pub ghost struct SingleTLB {
     pub tlb_4k: Map<VAddr, TLBEntry>,
     pub tlb_2m: Map<VAddr, TLBEntry>,
@@ -22,8 +24,28 @@ impl SingleTLB {
         &&& self.tlb_1g().dom() == Set::<VAddr>::empty()
     }
 }
+
+/// K only, never projected into U: the user-half directory entries the page walker of one `(cpu, pcid)` remembers.
+/// `pml4e` maps VA bits 47:39 to an L3 page, `pdpte` bits 47:30 to an L2 page, and `pde` bits 47:21, one 2M window, to
+/// an L1 page.
+pub ghost struct PagingStructureCache {
+    pub pml4e: Map<L4Index, PageMapPtr>,
+    pub pdpte: Map<(L4Index, L3Index), PageMapPtr>,
+    pub pde: Map<(L4Index, L3Index, L2Index), PageMapPtr>,
+}
+
+impl PagingStructureCache {
+    /// No directory entry is remembered.
+    pub open spec fn is_empty(&self) -> bool {
+        &&& self.pml4e.dom() == Set::<L4Index>::empty()
+        &&& self.pdpte.dom() == Set::<(L4Index, L3Index)>::empty()
+        &&& self.pde.dom() == Set::<(L4Index, L3Index, L2Index)>::empty()
+    }
+}
+
 pub struct CpuTLB {
     pub cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
+    pub structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
 }
 
 impl CpuTLB {
@@ -31,12 +53,16 @@ impl CpuTLB {
         ensures
             ret.inv(),
             forall|cpu_id: CpuId, pcid: Pcid| #![trigger ret.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.spec_index((cpu_id, pcid)).is_empty(),
+            forall|cpu_id: CpuId, pcid: Pcid| #![trigger ret.structure_cache((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.structure_cache((cpu_id, pcid)).is_empty(),
     {
         let ghost cpu_ids = Set::range(0usize, NUM_CPUS);
         let ghost pcids = Set::range(0usize, PCID_MAX);
         let ghost pcids_for_cpu = |cpu_id: CpuId| { pcids.map_by(|pcid: Pcid| (cpu_id, pcid), |key: (CpuId, Pcid)| key.1) };
         let ghost keys = cpu_ids.map_flatten_by(pcids_for_cpu, |key: (CpuId, Pcid)| key.0);
-        let ret = Self { cpu_tlbs: Ghost(Map::new(keys, |_key: (CpuId, Pcid)| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) };
+        let ret = Self {
+            cpu_tlbs: Ghost(Map::new(keys, |_key: (CpuId, Pcid)| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })),
+            structure_caches: Ghost(Map::new(keys, |_key: (CpuId, Pcid)| PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() })),
+        };
         assert(ret.inv()) by { reveal(CpuTLB::inv); };
         ret
     }
@@ -44,8 +70,8 @@ impl CpuTLB {
     /// PCIDE is enabled by boot. Non-default translations are non-global.
     /// The caller binds `cpu_id` to this executing CPU; kernel mappings stay
     /// accessible across the write. Bit 63 requests retention of translations.
-    /// The walker may refill a flushed `(cpu_id, pcid)` at once, but only with present leaves of `next_table`, the table of
-    /// `k` that `cr3` roots; a write naming no tracked table leaves it empty.
+    /// The walker may refill a flushed `(cpu_id, pcid)` at once, but only with present leaves and present directory entries
+    /// of `next_table`, the table of `k` that `cr3` roots; a write naming no tracked table leaves it empty.
     #[verifier::external_body]
     pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, hardware: &mut CpuCr3Pcid, Ghost(k): Ghost<KernelK>,
         Ghost(next_table): Ghost<Option<RwLockPageTableRoot>>, Tracked(lctx): Tracked<&LocalContext>)
@@ -67,12 +93,19 @@ impl CpuTLB {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(self).spec_index((other_cpu, other_pcid))]
                 #![trigger old(self).spec_index((other_cpu, other_pcid))]
+                #![trigger final(self).structure_cache((other_cpu, other_pcid))]
+                #![trigger old(self).structure_cache((other_cpu, other_pcid))]
                 index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
-                    ==> final(self).spec_index((other_cpu, other_pcid)) == old(self).spec_index((other_cpu, other_pcid)),
+                    ==> final(self).spec_index((other_cpu, other_pcid)) == old(self).spec_index((other_cpu, other_pcid))
+                    && final(self).structure_cache((other_cpu, other_pcid)) == old(self).structure_cache((other_cpu, other_pcid)),
             final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))) } else { old(self).view() },
+            final(self).structure_caches.view() == if flush {
+                old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid)))
+            } else { old(self).structure_caches.view() },
             flush ==> match next_table {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
-                None => final(self).spec_index((cpu_id, pcid)).is_empty(),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
+                    && single_structure_cache_subset_of_present_pagetable(final(self).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(self).spec_index((cpu_id, pcid)).is_empty() && final(self).structure_cache((cpu_id, pcid)).is_empty(),
             },
     {
         let value = cr3 | pcid | if flush { 0 } else { PCID_ENABLE_MASK };
@@ -80,6 +113,7 @@ impl CpuTLB {
         hardware.hardware = Ghost((cr3, pcid));
         if flush {
             self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
+            self.structure_caches = Ghost(self.structure_caches.view().insert((cpu_id, pcid), PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }));
         }
     }
 
@@ -91,9 +125,15 @@ impl CpuTLB {
     {
         self.view().spec_index((index.0, index.1))
     }
+
+    /// The paging-structure cache of `(cpu, pcid)`; K only.
+    #[verifier::inline]
+    pub open spec fn structure_cache(&self, index: (CpuId, Pcid)) -> PagingStructureCache { self.structure_caches.view().spec_index(index) }
+
     #[verifier::opaque]
     pub open spec fn inv(&self) -> bool {
         &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger self.view().dom().contains((cpu_id, pcid))] self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
+        &&& self.structure_caches.view().dom() == self.view().dom()
     }
 }
 }

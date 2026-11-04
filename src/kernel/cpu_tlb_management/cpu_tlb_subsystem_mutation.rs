@@ -75,8 +75,12 @@ pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut
         final(cpu_array).spec_index(cpu_id).view().view_ghost() == old(cpu_array).spec_index(cpu_id).view().view_ghost(),
         final(cpu_tlb).inv(),
         final(cpu_tlb).view() == old(cpu_tlb).view().insert((cpu_id, pcid), final(cpu_tlb).spec_index((cpu_id, pcid))),
-        cpu_tlb_within_may_cache(k, cpu_id, pcid, final(cpu_tlb).spec_index((cpu_id, pcid))),
-        forall|c: CpuId, p: Pcid| #![trigger final(cpu_tlb).spec_index((c, p))] #![trigger old(cpu_tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(cpu_tlb).spec_index((c, p)) == old(cpu_tlb).spec_index((c, p)),
+        final(cpu_tlb).structure_caches.view() == old(cpu_tlb).structure_caches.view().insert((cpu_id, pcid), final(cpu_tlb).structure_cache((cpu_id, pcid))),
+        cpu_tlb_within_may_cache(k, cpu_id, pcid, final(cpu_tlb).spec_index((cpu_id, pcid)), final(cpu_tlb).structure_cache((cpu_id, pcid))),
+        forall|c: CpuId, p: Pcid|
+            #![trigger final(cpu_tlb).spec_index((c, p))] #![trigger old(cpu_tlb).spec_index((c, p))] #![trigger final(cpu_tlb).structure_cache((c, p))] #![trigger old(cpu_tlb).structure_cache((c, p))]
+            index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+                ==> final(cpu_tlb).spec_index((c, p)) == old(cpu_tlb).spec_index((c, p)) && final(cpu_tlb).structure_cache((c, p)) == old(cpu_tlb).structure_cache((c, p)),
 {
     let cpu = cpu_array.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), Tracked(cpu_lock_perm));
     cpu.flush_current_tlb(cpu_id, cr3, pcid, cpu_tlb, Ghost(k), Tracked(lctx));

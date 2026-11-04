@@ -300,27 +300,28 @@ pub proof fn thread_exit_lock_table_step_iso(old_u: KernelU, new_u: KernelU, cpu
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_lock_table_step_pre); reveal(thread_exit_lock_table_step); }
 
-/// A reclaim leaf on a cpu of `a` removes one mapping of the exiting thread's process, a process of `a`.
-pub proof fn thread_exit_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// Hiding a root entry on a cpu of `a` drops only mappings and window locks of the page table of the exiting thread's
+/// process, a process of `a`.
+pub proof fn thread_exit_table_hidden_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_reclaim_step_pre(old_u, cpu_id, false),
-        thread_exit_leaf_step(old_u, new_u, cpu_id),
+        thread_exit_table_hidden_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step); reveal(kernel_u_cpu_ownership_wf); }
 
-/// The step of `thread_exit_leaf_step_lr` preserves isolation.
-pub proof fn thread_exit_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// The step of `thread_exit_table_hidden_step_lr` preserves isolation: the process's mappings only shrink.
+pub proof fn thread_exit_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_reclaim_step_pre(old_u, cpu_id, false),
-        thread_exit_leaf_step(old_u, new_u, cpu_id),
+        thread_exit_table_hidden_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_leaf_step); }
+{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step); }
 
 /// A reclaim TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
 /// domain view contains.
@@ -388,29 +389,6 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
         thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
-
-/// A window step on a cpu of `a` changes only window locks of the page table of the exiting thread's process, a process
-/// of `a`.
-pub proof fn thread_exit_pagetable_windows_changed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
-        thread_exit_pagetable_windows_changed_step(old_u, new_u, cpu_id),
-    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_pagetable_windows_changed_step); reveal(kernel_u_cpu_ownership_wf); }
-
-/// The step of `thread_exit_pagetable_windows_changed_step_lr` preserves isolation: it changes no mapping.
-pub proof fn thread_exit_pagetable_windows_changed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
-        thread_exit_pagetable_windows_changed_step(old_u, new_u, cpu_id),
-    ensures isolated(new_u, a, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_pagetable_windows_changed_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// Refunding 4K quota on a cpu of `a` may unlock a window of the exiting thread's process, a process of `a`, and raises
 /// the quota of the exiting thread's container, which lies in `a`, or of an ancestor of `a`, neither of which lies in `b`.

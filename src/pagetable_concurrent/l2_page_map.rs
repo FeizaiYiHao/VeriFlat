@@ -16,9 +16,10 @@ pub open spec fn l2_word_hw_equiv(a: usize, b: usize) -> bool { usize2page_entry
 /// One entry of an L2 page-table page; its word doubles as the spin lock of the entry's 2M window.
 ///
 /// `entry` is the decoded word and `locking_thread` the holder of the lock bit; the TCB word primitives keep both in
-/// step with `word`. `l1` owns the L1 page that a present non-huge entry links. Only the TCB primitives of
+/// step with `word`. `l1` owns the L1 page of a non-huge entry: the page it links, or, once `hide_l1_page` cleared the
+/// present bit, the page that waits in the locked window for `unlink_hidden_l1_page`. Only the TCB primitives of
 /// `l2_entry_lock_t` see `word`: it changes only through `l2_entry_lock`, `l2_entry_unlock` and
-/// `l2_entry_store_release`, and `l1` moves only through `l2_entry_take_l1` and `l2_entry_put_l1`.
+/// `l2_entry_store_release`, and `l1` moves only through `l2_entry_take_l1*` and `l2_entry_put_l1*`.
 #[repr(C)]
 pub struct L2EntryLock {
     pub(super) word: AtomicUsize,
@@ -39,11 +40,11 @@ impl L2EntryLock {
     pub closed spec fn locking_thread(&self) -> RwLockState { self.locking_thread.view() }
     pub closed spec fn l1(&self) -> Option<PointsTo<PageMap>> { self.l1.view() }
 
-    /// A kernel-present entry holds a valid frame, an owned L1 page is the one a present non-huge entry links, and the
+    /// A kernel-present entry holds a valid frame, an owned L1 page sits at the address of its non-huge entry, and the
     /// window lock is never read-held.
     pub open spec fn inv(&self) -> bool {
         &&& self.view().perm.kernel_present ==> mem_valid(self.view().addr)
-        &&& self.l1() is Some ==> self.l1()->Some_0.addr() == self.view().addr && self.view().perm.present && !self.view().perm.ps
+        &&& self.l1() is Some ==> self.l1()->Some_0.addr() == self.view().addr && !self.view().perm.ps
         &&& !(self.locking_thread() is Read)
     }
 
@@ -150,6 +151,48 @@ pub fn l2_entry_set_published_locked(pptr: &PPtr<L2PageMap>, Tracked(perm): Trac
     l2_entry_store_release(pptr, Tracked(&mut *perm), i, w);
 }
 
+/// Publish `value` in entry `i` of the L2 page at `pptr` while no thread holds the entry's lock (the caller holds the table's big
+/// lock in write mode); the stored word keeps the lock bit clear.
+pub fn l2_entry_set_published_unlocked(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsTo<L2PageMap>>, i: L2Index, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        pei_valid(i),
+        old(perm).value().entry_lock(i).locking_thread() is None,
+        mem_valid(value.addr),
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(perm).value().addr() == old(perm).value().addr(),
+        forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
+        final(perm).value().entry_lock(i).view() == value,
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
+        final(perm).value().entry_lock(i).l1() == old(perm).value().entry_lock(i).l1(),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+{
+    proof { lctx.enter_kernel_view_release(); }
+    let u = page_entry2usize(&value);
+    let w = u & !L2_ENTRY_LOCK_MASK;
+    assert({
+        &&& w & MEM_MASK as usize == u & MEM_MASK as usize
+        &&& (w & PAGE_ENTRY_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_PRESENT_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_PS_MASK as usize != 0) == (u & PAGE_ENTRY_PS_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_WRITE_MASK as usize != 0) == (u & PAGE_ENTRY_WRITE_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == (u & PAGE_ENTRY_EXECUTE_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_USER_MASK as usize != 0) == (u & PAGE_ENTRY_USER_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0)
+        &&& w & L2_ENTRY_LOCK_MASK == 0
+    }) by (bit_vector)
+        requires
+            w == u & !L2_ENTRY_LOCK_MASK,
+    ;
+    l2_entry_store_release(pptr, Tracked(&mut *perm), i, w);
+}
+
 /// TCB: retype a free 4K page into an L2 page whose 512 entries are empty, unlocked and own no L1 page.
 #[verifier::external_body]
 pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<L2PageMap>>)
@@ -171,18 +214,21 @@ pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<P
     Tracked::assume_new()
 }
 
-/// TCB: an unlocked L2 page that its page table no longer links and that owns no L1 page is an ordinary 4K page
-/// again; its bytes stay as they are, and the next retype zeroes them. The inverse of `page_perm_to_l2_page_map`.
+/// TCB: an unlocked L2 page that its page table no longer links, that owns no L1 page, and that no usable
+/// paging-structure cache names is an ordinary 4K page again; its bytes stay as they are, and the next retype zeroes
+/// them. The inverse of `page_perm_to_l2_page_map`.
 #[verifier::external_body]
-pub fn l2_page_map_to_page_perm(Tracked(perm): Tracked<PointsTo<L2PageMap>>) -> (ret: Tracked<PagePerm4k>)
+pub fn l2_page_map_to_page_perm(Tracked(perm): Tracked<PointsTo<L2PageMap>>, cpu_tlb: &CpuTLB, cpu_arr: &CpuLockedArray, needflush: &PcidNeedFlushArray) -> (ret: Tracked<PagePerm4k>)
     requires
         perm.is_init(),
         perm.value().addr() == perm.addr(),
         forall|i: L2Index| #![trigger perm.value().entry_lock(i)] pei_valid(i) ==> perm.value().entry_lock(i).locking_thread() is None && perm.value().entry_lock(i).l1() is None,
+        table_page_unreferenced_by_structure_caches(*cpu_tlb, *cpu_arr, *needflush, perm.addr()),
     ensures
         ret.view().is_init(),
         ret.view().addr() == perm.addr(),
 {
+    let _ = (cpu_tlb, cpu_arr, needflush);
     Tracked::assume_new()
 }
 } // verus!

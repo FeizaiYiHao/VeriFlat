@@ -13,7 +13,7 @@ verus! {
         &&& pagetables_inv(pagetable_perms)
     }
 
-    /// A page table that is not write-locked hides 4K leaves only inside locked 2M windows and hides no 2M or 1G leaf:
+    /// A page table that is not write-locked hides 4K and 2M leaves only inside locked 2M windows and hides no 1G leaf:
     /// unmap clears present bits and reclaims those leaves under the table's write lock or the leaf's window lock.
     #[verifier::opaque]
     pub open spec fn pagetable_hidden_leaves_only_when_locked(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
@@ -28,6 +28,22 @@ verus! {
             pt_mp.dom().contains(pagetable_ptr),
         ensures !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) ==> whole_pagetable(pt_mp, pt_lower, pagetable_ptr).hidden_leaves_in_locked_windows(),
     { reveal(pagetable_hidden_leaves_only_when_locked); }
+
+    /// A page table that is not write-locked hides L1 pages only inside locked 2M windows: an L2 entry that clears its
+    /// present bit keeps its L1 page only while its window is held, and the page is unlinked before the window is released.
+    #[verifier::opaque]
+    pub open spec fn pagetable_hidden_l1_only_when_locked(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
+        forall|pagetable_p: RwLockPageTableRoot|
+            #![trigger pt_mp.spec_index(pagetable_p).locking_thread()]
+            pt_mp.dom().contains(pagetable_p) && !(pt_mp.spec_index(pagetable_p).locking_thread() is Write) ==> whole_pagetable(pt_mp, pt_lower, pagetable_p).lower.hidden_l1_tables_in_locked_windows()
+    }
+
+    pub proof fn pagetable_hidden_l1_only_when_locked_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot)
+        requires
+            pagetable_hidden_l1_only_when_locked(pt_mp, pt_lower),
+            pt_mp.dom().contains(pagetable_ptr),
+        ensures !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) ==> whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
+    { reveal(pagetable_hidden_l1_only_when_locked); }
 
     /// A page table that is not write-locked lists stale CPUs only for locked 2M windows of its own L2 pages: unmap lists a
     /// window before it hides a leaf there and drops the entry before it releases the window.
@@ -55,6 +71,64 @@ verus! {
                 &&& whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.l2_owner(p, i) is Write
             },
     { reveal(pagetable_window_stale_cpus_only_when_locked); }
+
+    /// A page table that is not write-locked lists no CPU as stale for the whole table: kill and thread_exit list every CPU
+    /// under the write lock and drop each one, by a flush or by the drop obligation, before they release it.
+    #[verifier::opaque]
+    pub open spec fn pagetable_table_stale_cpus_only_when_write_held(pt_mp: PageTableLockedMap) -> bool {
+        forall|pagetable_p: RwLockPageTableRoot|
+            #![trigger pt_mp.spec_index(pagetable_p).locking_thread()]
+            pt_mp.dom().contains(pagetable_p) && !(pt_mp.spec_index(pagetable_p).locking_thread() is Write) ==> pt_mp.spec_index(pagetable_p).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    }
+
+    pub proof fn pagetable_table_stale_cpus_only_when_write_held_at(pt_mp: PageTableLockedMap, pagetable_ptr: RwLockPageTableRoot)
+        requires
+            pagetable_table_stale_cpus_only_when_write_held(pt_mp),
+            pt_mp.dom().contains(pagetable_ptr),
+        ensures
+            !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) ==> pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+    { reveal(pagetable_table_stale_cpus_only_when_write_held); }
+
+    /// A page table that is not write-locked hides a user root entry only once its process has emptied its tables: every
+    /// held user L4 entry and every held L3 entry under a user L4 entry of a live process's table resolves. Kill and
+    /// thread_exit hide the roots under the write lock.
+    // Proof dependency (for process-state changes): process_pagetable_match.
+    #[verifier::opaque]
+    pub open spec fn pagetable_hidden_roots_only_when_write_held_or_emptied(pt_mp: PageTableLockedMap, prc_mp: ProcessLockedMap) -> bool {
+        forall|pagetable_p: RwLockPageTableRoot|
+            #![trigger pt_mp.spec_index(pagetable_p).locking_thread()]
+            pt_mp.dom().contains(pagetable_p) && !(pt_mp.spec_index(pagetable_p).locking_thread() is Write)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_p).view().proc_ptr).view().state.view() is TablesEmptied)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_p).view().proc_ptr).view().state.view() is Zombie) ==> {
+                &&& forall|l4i: L4Index|
+                    #![trigger pt_mp.spec_index(pagetable_p).view().spec_held_l4(l4i)]
+                    pt_mp.spec_index(pagetable_p).view().kernel_l4_end <= l4i && pei_valid(l4i) && pt_mp.spec_index(pagetable_p).view().spec_held_l4(l4i) is Some
+                        ==> pt_mp.spec_index(pagetable_p).view().spec_resolve_mapping_l4(l4i) is Some
+                &&& forall|l4i: L4Index, l3i: L3Index|
+                    #![trigger pt_mp.spec_index(pagetable_p).view().spec_held_l3(l4i, l3i)]
+                    pt_mp.spec_index(pagetable_p).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pt_mp.spec_index(pagetable_p).view().spec_held_l3(l4i, l3i) is Some
+                        ==> pt_mp.spec_index(pagetable_p).view().spec_resolve_mapping_l3(l4i, l3i) is Some
+            }
+    }
+
+    pub proof fn pagetable_hidden_roots_only_when_write_held_or_emptied_at(pt_mp: PageTableLockedMap, prc_mp: ProcessLockedMap, pagetable_ptr: RwLockPageTableRoot)
+        requires
+            pagetable_hidden_roots_only_when_write_held_or_emptied(pt_mp, prc_mp),
+            pt_mp.dom().contains(pagetable_ptr),
+        ensures
+            !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i)]
+                pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i) is Some
+                    ==> pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
+            !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
+                && !(prc_mp.spec_index(pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
+                pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
+                    ==> pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+    { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); }
 
     /// Every page table has its window half, and the two halves together form a well-formed table.
     #[verifier::opaque]

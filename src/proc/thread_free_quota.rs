@@ -54,5 +54,57 @@ impl Thread {
             self.indirect_free_quota_pending_4k = Ghost(self.indirect_free_quota_pending_4k.view().update(depth as int, 0usize));
         }
     }
+
+    pub open spec fn free_quota_pending_2m_at_depth(&self, depth: usize) -> usize
+        recommends
+            self.inv(),
+            depth <= self.container_depth,
+    {
+        if depth == self.container_depth { self.direct_free_quota_pending_2m.view() }
+        else { self.indirect_free_quota_pending_2m.view().spec_index(depth as int) }
+    }
+
+    pub fn add_free_quota_pending_2m(&mut self, depth: usize, counter: &mut usize)
+        requires
+            old(self).inv(),
+            depth <= old(self).container_depth,
+            *old(counter) == old(self).free_quota_pending_2m_at_depth(depth),
+            *old(counter) < usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(counter) == *old(counter) + 1,
+            *final(counter) == final(self).free_quota_pending_2m_at_depth(depth),
+            final(self).direct_free_quota_pending_2m.view() == old(self).direct_free_quota_pending_2m.view() + if depth == old(self).container_depth { 1int } else { 0int },
+            final(self).indirect_free_quota_pending_2m.view() == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_2m.view().update(depth as int, *final(counter)) } else { old(self).indirect_free_quota_pending_2m.view() },
+            *final(self) == (Thread { direct_free_quota_pending_2m: final(self).direct_free_quota_pending_2m, indirect_free_quota_pending_2m: final(self).indirect_free_quota_pending_2m, ..*old(self) }),
+    {
+        *counter = *counter + 1;
+        if depth == self.container_depth {
+            self.direct_free_quota_pending_2m = Ghost(*counter);
+        } else {
+            self.indirect_free_quota_pending_2m = Ghost(self.indirect_free_quota_pending_2m.view().update(depth as int, *counter));
+        }
+    }
+
+    pub fn clear_free_quota_pending_2m(&mut self, depth: usize, counter: &mut usize)
+        requires
+            old(self).inv(),
+            depth <= old(self).container_depth,
+            *old(counter) == old(self).free_quota_pending_2m_at_depth(depth),
+        ensures
+            final(self).inv(),
+            *final(counter) == 0,
+            final(self).free_quota_pending_2m_at_depth(depth) == 0,
+            final(self).direct_free_quota_pending_2m.view() == if depth == old(self).container_depth { 0usize } else { old(self).direct_free_quota_pending_2m.view() },
+            final(self).indirect_free_quota_pending_2m.view() == if depth < old(self).container_depth { old(self).indirect_free_quota_pending_2m.view().update(depth as int, 0usize) } else { old(self).indirect_free_quota_pending_2m.view() },
+            *final(self) == (Thread { direct_free_quota_pending_2m: final(self).direct_free_quota_pending_2m, indirect_free_quota_pending_2m: final(self).indirect_free_quota_pending_2m, ..*old(self) }),
+    {
+        *counter = 0;
+        if depth == self.container_depth {
+            self.direct_free_quota_pending_2m = Ghost(0usize);
+        } else {
+            self.indirect_free_quota_pending_2m = Ghost(self.indirect_free_quota_pending_2m.view().update(depth as int, 0usize));
+        }
+    }
 }
 }

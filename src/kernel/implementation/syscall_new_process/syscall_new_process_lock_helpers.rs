@@ -184,9 +184,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
             &&& krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
-        }) by {
-            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-        };
+        }) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); };
     }
     let container_rodata = krnl.ctn_mp.borrow_rodata(container_ptr);
     let pcid_allocator_ptr = container_rodata.borrow().pcid_allocator;
@@ -575,6 +573,7 @@ pub(super) fn new_process_lock_source_windows(
                 == (RwLockState::Write { thread_id: ret.1.view().index(w).thread_id(), lock_id: ret.1.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_leaves_present(w)
             &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         ret.0 ==> forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == root && ret.1.view().dom().contains(w)),

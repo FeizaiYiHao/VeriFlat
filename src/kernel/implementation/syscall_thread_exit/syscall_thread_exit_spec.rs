@@ -243,20 +243,38 @@ pub open spec fn thread_exit_user_4k_unmapped(u: KernelU, pagetable: PageTableU)
     forall|va: VAddr| #![trigger pagetable.mapping_4k.dom().contains(va)] spec_va_4k_valid(va) && u.kernel_l4_end <= spec_v2l4index(va) ==> !pagetable.mapping_4k.dom().contains(va)
 }
 
-/// A leaf step removes exactly one valid user 4K mapping from the process's page table and keeps every other entry;
-/// the kernel chooses the VA (R1).
+/// `va` keys an entry of `o` in its 4K, 2M or 1G mappings or its window locks that `n` no longer keys.
+pub open spec fn thread_exit_table_key_dropped(o: PageTableU, n: PageTableU, va: VAddr) -> bool {
+    ||| o.mapping_4k.dom().contains(va) && !n.mapping_4k.dom().contains(va)
+    ||| o.mapping_2m.dom().contains(va) && !n.mapping_2m.dom().contains(va)
+    ||| o.mapping_1g.dom().contains(va) && !n.mapping_1g.dom().contains(va)
+    ||| o.pagetable_window_locks.dom().contains(WindowVa { va }) && !n.pagetable_window_locks.dom().contains(WindowVa { va })
+}
+
+/// A table-hidden step drops from the page table of the running thread's process every 4K, 2M and 1G mapping and every window
+/// lock under one root entry chosen by the kernel, and keeps everything else: every dropped key shares one L4 index, and every
+/// key with that index is dropped.
 #[verifier::opaque]
-pub open spec fn thread_exit_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    let process = old_u.process_map.spec_index(thread.owning_proc);
-    let pagetable = process.pagetable->Some_0;
-    let kept = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k.dom();
-    let removed = pagetable.mapping_4k.dom().difference(kept);
-    &&& kept.subset_of(pagetable.mapping_4k.dom())
-    &&& removed.len() == 1
-    &&& forall|va: VAddr| #![trigger removed.contains(va)] removed.contains(va) ==> spec_va_4k_valid(va) && old_u.kernel_l4_end <= spec_v2l4index(va)
+pub open spec fn thread_exit_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let process_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
+    let process = old_u.process_map.spec_index(process_ptr);
+    let o = process.pagetable->Some_0;
+    let n = new_u.process_map.spec_index(process_ptr).pagetable->Some_0;
+    &&& process.pagetable is Some
+    &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
+    &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
+    &&& forall|a: VAddr, b: VAddr| #![trigger thread_exit_table_key_dropped(o, n, a), thread_exit_table_key_dropped(o, n, b)]
+        thread_exit_table_key_dropped(o, n, a) && thread_exit_table_key_dropped(o, n, b) ==> spec_v2l4index(a) == spec_v2l4index(b)
+    &&& forall|a: VAddr, b: VAddr| #![trigger thread_exit_table_key_dropped(o, n, a), spec_v2l4index(b)]
+        thread_exit_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.restrict(kept), ..pagetable }), ..process }),
+        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+            pagetable: Some(PageTableU {
+                mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
+                pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
+            }),
+            ..process
+        }),
         ..old_u
     })
 }
@@ -412,27 +430,6 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// A step that write-locks at most one window of the page table of the running thread's process and unlocks at most one
-/// other, and changes nothing else.
-#[verifier::opaque]
-pub open spec fn thread_exit_pagetable_windows_changed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let process_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
-    let process = old_u.process_map[process_ptr];
-    let o = process.pagetable->Some_0.pagetable_window_locks;
-    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
-    let locked = o.dom().filter(|w: WindowVa| o[w] is Unlocked && n[w] is WriteLocked);
-    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
-    &&& process.pagetable is Some
-    &&& n.dom() == o.dom()
-    &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !locked.contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
-    &&& locked.len() <= 1
-    &&& unlocked.len() <= 1
-    &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..process.pagetable->Some_0 }), ..process }),
-        ..old_u
-    })
-}
-
 /// A refund grows the 4K quota of the running thread's container or of one of its ancestors and unlocks at most one window
 /// of the page table of the thread's process.
 #[verifier::opaque]
@@ -454,9 +451,9 @@ pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
-/// its last descriptor, or, for a process's last thread, locking the process's tables, clearing one user 4K leaf, flushing
-/// one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, locking and unlocking windows of
-/// the page table, refunding 4K quota to the thread's container chain, returning one size of quota, or unlocking the tables.
+/// its last descriptor, or, for a process's last thread, locking the process's tables, hiding one root entry of the page
+/// table, flushing one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, refunding 4K quota
+/// to the thread's container chain, returning one size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -466,11 +463,10 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_leaf_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_table_hidden_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_tlb_flush_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_pagetable_windows_changed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_refund_step(old_u, new_u, cpu_id)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)

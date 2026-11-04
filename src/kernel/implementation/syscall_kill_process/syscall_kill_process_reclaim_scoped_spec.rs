@@ -19,16 +19,15 @@ pub proof fn container_process_page_pagetable_wf_page_at(
             let page_owner = page_array.spec_index(p_i).view().view().owning_container;
             &&& process_map.dom().contains(proc_ptr)
             &&& container_map.dom().contains(page_owner)
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner
-                || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
+            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
         }),
 { reveal(container_process_page_pagetable_wf); }
 
-/// The final mapping of the page `page_ptr`, the hidden 4K leaf at `va` of the write-held page table `pagetable`, leaves the
-/// table, and the page returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K allocator
-/// `allocator_ptr` of its owner, whose quota grows by one.
+/// The final mapping of the page `page_ptr`, the held 4K leaf at `va` of the write-held page table `pagetable` whose root
+/// entry no longer resolves, leaves the table with its record, and the page returns through its free-list node at
+/// `node_addr` to shard `cpu_id` of the 4K allocator `allocator_ptr` of its owner, whose quota grows by one.
 #[verifier::opaque]
-pub(crate) open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
+pub(crate) open spec fn kill_reclaim_held_4k_page_scoped_eof_transition_framing(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
@@ -48,21 +47,17 @@ pub(crate) open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_fram
         pre.pt_mp.dom().contains(r) && r != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
-    &&& new_table.view_ghost() == post.pt_lower.view().spec_index(pagetable)
-    &&& new_c.mapping_4k() == old_c.mapping_4k().remove(va)
-    &&& new_c.mapping_2m() == old_c.mapping_2m()
-    &&& new_c.mapping_1g() == old_c.mapping_1g()
-    &&& new_c.page_closure() == old_c.page_closure()
-    &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks
-    &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
-    &&& new_table.view() == old_table.view()
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
-        old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
-    &&& new_table.view().kernel_entries == old_table.view().kernel_entries
-    &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
-    &&& new_table.view().cr3 == old_table.view().cr3
-    &&& new_table.view().proc_ptr == old_table.view().proc_ptr
-    &&& new_table.view().pcid_value() == old_table.view().pcid_value()
+    &&& new_c.higher == old_c.higher
+    &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
+    &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& new_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
@@ -98,7 +93,6 @@ pub(crate) open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_fram
     &&& new_allocator.quota.view_ghost() == old_allocator.quota.view_ghost()
     &&& new_allocator.quota.locking_thread() == old_allocator.quota.locking_thread()
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
-    &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
 }
 
 /// The owner of the mapped page `p_i` that the leaf at `iova` of the IOMMU table `it_ptr` maps is the container of that
@@ -118,8 +112,7 @@ pub proof fn page_iommu_table_wf_page_owner_at(
             let page_owner = page_array.spec_index(p_i).view().view().owning_container;
             &&& process_map.dom().contains(proc_ptr)
             &&& container_map.dom().contains(page_owner)
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner
-                || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
+            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
         }),
 { reveal(page_iommu_table_wf); }
 
@@ -245,6 +238,8 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
         &&& new_c.mapping_1g() == old_c.mapping_1g()
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
+        &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)]
+            old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && old_c.spec_resolve_mapping_l4(l4i) is None ==> new_c.spec_resolve_mapping_l4(l4i) is None
         &&& new_table.view().kernel_entries == old_table.view().kernel_entries
         &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
         &&& new_table.view().cr3 == old_table.view().cr3

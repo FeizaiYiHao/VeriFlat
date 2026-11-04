@@ -282,11 +282,16 @@ impl Cpu {
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
-            forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
+            forall|c: CpuId, p: Pcid|
+                #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] #![trigger final(tlb).structure_cache((c, p))] #![trigger old(tlb).structure_cache((c, p))]
+                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+                    ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)) && final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
+            final(tlb).structure_caches.view() == old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
             match old(self).view().current_pagetable {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
-                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
+                    && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty() && final(tlb).structure_cache((cpu_id, pcid)).is_empty(),
             },
     {
         self.cr3_pcid.flush_current(cpu_id, cr3, pcid, tlb, Ghost(k), Ghost(self.view().current_pagetable), Tracked(lctx));
@@ -530,6 +535,11 @@ impl CpuLockedArray {
                 index_valid(NUM_CPUS, c) && pcid_valid(p) ==>
                     final(tlb).spec_index((c, p)) == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
                     else { old(tlb).spec_index((c, p)) },
+            final(tlb).structure_caches.view() == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush {
+                old(tlb).structure_caches.view().insert((cpu_id, KERNEL_DEFAULT_PCID), final(tlb).structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
+            } else { old(tlb).structure_caches.view() },
+            forall|c: CpuId, p: Pcid| #![trigger final(tlb).structure_cache((c, p))] #![trigger old(tlb).structure_cache((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID)
+                ==> final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -710,14 +720,22 @@ impl CpuLockedArray {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(tlb).spec_index((other_cpu, other_pcid))]
                 #![trigger old(tlb).spec_index((other_cpu, other_pcid))]
+                #![trigger final(tlb).structure_cache((other_cpu, other_pcid))]
+                #![trigger old(tlb).structure_cache((other_cpu, other_pcid))]
                 index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
-                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid)),
+                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid))
+                    && final(tlb).structure_cache((other_cpu, other_pcid)) == old(tlb).structure_cache((other_cpu, other_pcid)),
             {
                 let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
                 let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
+                let table = whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable_ptr);
                 &&& (!flush ==> *final(tlb) == *old(tlb))
                 &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() }
-                &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable_ptr))
+                &&& final(tlb).structure_caches.view() == if flush {
+                    old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
+                } else { old(tlb).structure_caches.view() }
+                &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), table)
+                    && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), table)
             },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),

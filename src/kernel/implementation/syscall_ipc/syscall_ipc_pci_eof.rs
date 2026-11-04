@@ -195,12 +195,14 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-        assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+        assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+        assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
         assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
         assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
+        assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
+        assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
     };
 }
 
@@ -359,9 +361,7 @@ proof fn ipc_pci_rendezvous_eof_handoff(
             let sender_table = pre.prc_mp.spec_index(sender_proc).view().iommu_table;
             let attached = iommu_roots_attached(pre.irt.view().iommu_roots());
             let old_did = match sender_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
-            &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
-                pre.iommu_tlb.view().insert(old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
-            } else { pre.iommu_tlb.view() }
+            &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some { pre.iommu_tlb.view().insert(old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0)) } else { pre.iommu_tlb.view() }
             &&& attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some ==> iommu_tlb_within_may_cache(post, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
             &&& sender_table matches Some(t) ==> pci_handoff_table_did(pre.irt.view().owners(), attached, sender_proc, bdf, old_did, post.it_mp.spec_index(t).view().did)
             &&& post.it_mp.dom() == pre.it_mp.dom()
@@ -428,6 +428,7 @@ proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         pre.irt.view().owners() == snapshot.irt.view().owners(),
         pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.cpu_tlb.structure_caches.view() == snapshot.cpu_tlb.structure_caches.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
         snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
@@ -526,6 +527,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         pre.irt.view().owners() == snapshot.irt.view().owners(),
         pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.cpu_tlb.structure_caches.view() == snapshot.cpu_tlb.structure_caches.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
         snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,

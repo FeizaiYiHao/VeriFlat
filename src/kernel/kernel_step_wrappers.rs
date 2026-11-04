@@ -64,10 +64,12 @@ pub mod ipc_pages_tables;
 pub mod iommu_table_steps;
 /// K->U lemmas of hardware TLB, IOTLB, and context-cache fills and of the TLB contents a CPU or the IOTLB may hold.
 pub mod env_steps;
-/// K->U lemma of a step that changes only one live process's page-table window locks.
-pub mod pagetable_window_locks;
 /// K->U lemma and step boundary of a section that read-locks or keeps read-holding one container's cpu set.
 pub mod cpu_set_read_lock;
+/// K->U lemma and step boundary of a section that returns 2M quota to one container.
+pub mod container_quota_2m;
+/// K->U lemma of a step that hides one user root entry of a page table.
+pub mod table_hidden;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -98,8 +100,9 @@ pub use new_thread_finish_maps::*;
 pub use ipc_pages_tables::*;
 pub use iommu_table_steps::*;
 pub use env_steps::*;
-pub use pagetable_window_locks::*;
 pub use cpu_set_read_lock::*;
+pub use container_quota_2m::*;
+pub use table_hidden::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

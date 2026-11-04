@@ -32,6 +32,20 @@ pub ghost enum WindowStaleUpdate {
     ClearEmpty,
 }
 
+/// One update of a page table's table stale-CPU record by `KernelK::replace_table_stale_cpus`.
+pub ghost enum TableStaleUpdate {
+    Set { cpus: Set<CpuId> },
+    RemoveCpu { cpu_id: CpuId },
+}
+
+/// The table stale-CPU record `stale` after `update`.
+pub open spec fn table_stale_cpus_after(update: TableStaleUpdate, stale: Set<CpuId>) -> Set<CpuId> {
+    match update {
+        TableStaleUpdate::Set { cpus } => cpus,
+        TableStaleUpdate::RemoveCpu { cpu_id } => stale.remove(cpu_id),
+    }
+}
+
 /// The stale-CPU map of `table` after `update`, applied by thread `thread_id` that write-holds the table iff
 /// `root_write_held`; a `Set` records the window under its L2 page and entry, as `window_view` reads it.
 pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: WholePageTable<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
@@ -43,7 +57,7 @@ pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: Whole
 }
 
 /// S of `KernelK::replace_window_stale_cpus`: only the stale-CPU map of page table `root` moved, with a write-held table's
-/// ghost slot following; its big-lock payload, the rest of its window half, and every other table stay.
+/// ghost slot following; its big-lock payload, the rest of its window half, so its held 4K leaves, and every other table stay.
 #[verifier::opaque]
 pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot) -> bool {
     let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root);
@@ -68,6 +82,7 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
         #![trigger after.window_locked_by_thread(l4, l3, l2, t)]
         #![trigger before.window_locked_by_thread(l4, l3, l2, t)]
         after.window_locked_by_thread(l4, l3, l2, t) == before.window_locked_by_thread(l4, l3, l2, t)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
@@ -104,10 +119,23 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
                 || (pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
             || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root))
         }) || tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
+            ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
+            || structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        update is RemoveCpu ==> ({
+            let cpu_id = update->RemoveCpu_cpu_id;
+            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+            ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+            ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
+            ||| dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != root
+            ||| single_structure_cache_subset_of_present_pagetable(pre.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root))
+        }) || structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
     ensures
         post.inv(),
 {
     window_stale_cpus_update_eof_tlb_wf_new_map(pre, post, root, update, root_write_held, thread_id);
+    window_stale_cpus_update_eof_structure_cache_wf_new_map(pre, post, root, update, root_write_held, thread_id);
     reveal(window_stale_cpus_update_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -119,12 +147,17 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); };
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_table_stale_cpus_only_when_write_held(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
     assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
-    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
+    structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(KernelK { pt_lower: post.pt_lower, ..pre }, post);
     assert(post.memory_management_inv()) by {
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
@@ -234,6 +267,54 @@ proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK
         assert(tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush)) by { reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     } else if !tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush) {
         window_stale_cpus_update_eof_tlb_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), post.pt_lower.view(), root, pre.cpu_arr, pre.pcid_needflush);
+    }
+}
+
+/// EOF closure of `KernelK::replace_window_stale_cpus` for an update that keeps every listed CPU listed: the
+/// paging-structure invariant carries over to the new map.
+proof fn window_stale_cpus_update_eof_structure_cache_wf(
+    cpu_tlb: CpuTLB, pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, root: RwLockPageTableRoot, cpu_arr: CpuLockedArray, needflush: PcidNeedFlushArray,
+)
+    requires
+        structure_cache_wf_spec(cpu_tlb, pt_mp, pre_lower, cpu_arr, needflush),
+        post_lower =~= pre_lower.insert(root, PageTableLower { window_stale_cpus: post_lower.spec_index(root).window_stale_cpus, ..pre_lower.spec_index(root) }),
+        forall|k: (PageMapPtr, L2Index), c: CpuId|
+            #![trigger pre_lower.spec_index(root).window_stale_cpus.spec_index(k).contains(c)]
+            pre_lower.spec_index(root).window_stale_cpus.dom().contains(k) && pre_lower.spec_index(root).window_stale_cpus.spec_index(k).contains(c)
+                ==> post_lower.spec_index(root).window_stale_cpus.dom().contains(k) && post_lower.spec_index(root).window_stale_cpus.spec_index(k).contains(c),
+    ensures
+        structure_cache_wf_spec(cpu_tlb, pt_mp, post_lower, cpu_arr, needflush),
+{ reveal(structure_cache_wf_spec); }
+
+/// EOF closure of `KernelK::replace_window_stale_cpus` for the paging-structure invariant over the new stale-CPU map: a
+/// `RemoveCpu` drops only `cpu_id`, whose cached entries under the table's PCID are empty, exempt, kept for another table,
+/// or live in this one; any other CPU stays listed wherever it was.
+proof fn window_stale_cpus_update_eof_structure_cache_wf_new_map(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, update: WindowStaleUpdate, root_write_held: bool, thread_id: LockThreadId)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == window_stale_cpus_after(update, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), root_write_held, thread_id),
+        update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
+            ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
+            || structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        update is RemoveCpu ==> ({
+            let cpu_id = update->RemoveCpu_cpu_id;
+            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+            ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+            ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
+            ||| dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != root
+            ||| single_structure_cache_subset_of_present_pagetable(pre.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root))
+        }) || structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+    ensures
+        structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+{
+    reveal(window_stale_cpus_update_eof_transition_framing);
+    if update is RemoveCpu {
+        assert(structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush)) by { reveal(structure_cache_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+    } else if !structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush) {
+        window_stale_cpus_update_eof_structure_cache_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), post.pt_lower.view(), root, pre.cpu_arr, pre.pcid_needflush);
     }
 }
 } // verus!

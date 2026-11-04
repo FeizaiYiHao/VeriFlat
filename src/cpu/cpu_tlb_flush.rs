@@ -10,7 +10,8 @@ unsafe extern "C" {
 
 verus! {
 impl CpuTLB {
-    /// The remote cpu may refill `(cpu_id, pcid)` at once with what it may cache in `k`, the kernel state whose TLB this is.
+    /// The remote cpu may refill the TLB and paging-structure cache of `(cpu_id, pcid)` at once with what it may cache in `k`,
+    /// the kernel state whose TLB this is.
     #[verifier::external_body]
     pub fn flush_remote_pcid(&mut self, cpu_id: CpuId, pcid: Pcid, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
@@ -24,12 +25,16 @@ impl CpuTLB {
         ensures
             final(self).inv(),
             final(self).view() == old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))),
-            cpu_tlb_within_may_cache(k, cpu_id, pcid, final(self).spec_index((cpu_id, pcid))),
-            forall|c: CpuId, p: Pcid| #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))]
-                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)),
+            final(self).structure_caches.view() == old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
+            cpu_tlb_within_may_cache(k, cpu_id, pcid, final(self).spec_index((cpu_id, pcid)), final(self).structure_cache((cpu_id, pcid))),
+            forall|c: CpuId, p: Pcid|
+                #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
+                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+                    ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)) && final(self).structure_cache((c, p)) == old(self).structure_cache((c, p)),
     {
         unsafe { veriflat_remote_flush_pcid(cpu_id, pcid); }
         self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
+        self.structure_caches = Ghost(self.structure_caches.view().insert((cpu_id, pcid), PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }));
     }
 
     /// Invalidate every non-default PCID of the calling cpu before it goes Off; each may hold at once what the cpu may cache
@@ -45,15 +50,22 @@ impl CpuTLB {
         ensures
             final(self).inv(),
             final(self).view().dom() == old(self).view().dom(),
-            forall|p: Pcid| #![trigger final(self).spec_index((cpu_id, p))] pcid_valid(p) && p != KERNEL_DEFAULT_PCID ==> cpu_tlb_within_may_cache(k, cpu_id, p, final(self).spec_index((cpu_id, p))),
-            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] old(self).view().dom().contains(key) && (key.0 != cpu_id || key.1 == KERNEL_DEFAULT_PCID)
-                ==> final(self).view()[key] == old(self).view()[key],
-            forall|c: CpuId, p: Pcid| #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))]
-                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p == KERNEL_DEFAULT_PCID) ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)),
+            forall|p: Pcid| #![trigger final(self).spec_index((cpu_id, p))] #![trigger final(self).structure_cache((cpu_id, p))] pcid_valid(p) && p != KERNEL_DEFAULT_PCID
+                ==> cpu_tlb_within_may_cache(k, cpu_id, p, final(self).spec_index((cpu_id, p)), final(self).structure_cache((cpu_id, p))),
+            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] #![trigger final(self).structure_caches.view()[key]] old(self).view().dom().contains(key) && (key.0 != cpu_id || key.1 == KERNEL_DEFAULT_PCID)
+                ==> final(self).view()[key] == old(self).view()[key] && final(self).structure_caches.view()[key] == old(self).structure_caches.view()[key],
+            forall|c: CpuId, p: Pcid|
+                #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
+                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p == KERNEL_DEFAULT_PCID)
+                    ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)) && final(self).structure_cache((c, p)) == old(self).structure_cache((c, p)),
     {
         unsafe { veriflat_local_flush_all_pcids(); }
         let ghost old_tlbs = self.cpu_tlbs.view();
+        let ghost old_caches = self.structure_caches.view();
         self.cpu_tlbs = Ghost(Map::new(old_tlbs.dom(), |k: (CpuId, Pcid)| if k.0 == cpu_id && k.1 != KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old_tlbs.index(k) }));
+        self.structure_caches = Ghost(Map::new(old_caches.dom(), |k: (CpuId, Pcid)| if k.0 == cpu_id && k.1 != KERNEL_DEFAULT_PCID {
+            PagingStructureCache { pml4e: Map::empty(), pdpte: Map::empty(), pde: Map::empty() }
+        } else { old_caches.index(k) }));
     }
 }
 }

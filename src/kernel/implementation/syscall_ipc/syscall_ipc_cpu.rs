@@ -476,9 +476,7 @@ verus! {
         }
         if !transfer { return None; }
         let transfer_perm = krnl.wlock_off_cpu(transfer_cpu_id, source_cpu_set, Tracked(&mut *lctx));
-        proof {
-            assert(krnl.cpu_op.view().view()[transfer_cpu_id as int] is Off) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, transfer_cpu_id); };
-        }
+        proof { assert(krnl.cpu_op.view().view()[transfer_cpu_id as int] is Off) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, transfer_cpu_id); }; }
         ipc_transfer_closed_cpu_commit(krnl, Tracked(&*lctx), transfer_cpu_id, source_cpu_set, target_cpu_set, target_container, target_container_depth,
             Tracked(transfer_perm.borrow()), Tracked(source_cpu_set_lock_perm), Tracked(target_cpu_set_lock_perm));
         Some(transfer_perm)
@@ -845,6 +843,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
@@ -1117,6 +1116,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,

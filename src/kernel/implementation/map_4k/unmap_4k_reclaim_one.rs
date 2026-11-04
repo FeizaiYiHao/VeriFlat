@@ -9,7 +9,6 @@ verus! {
 /// and page, drop the mapping or free the page behind the last mapping, and unlock both. No step boundary follows: without
 /// a drain the steps keep their view and snapshot, and a drain records the user view of the returned window-locked state;
 /// the caller's next recorded step covers the rest, including the window unlock.
-#[verifier::spinoff_prover]
 pub fn reclaim_unmapped_4k_page(
     krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, pagetable_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
@@ -57,17 +56,17 @@ pub fn reclaim_unmapped_4k_page(
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
     ensures
         final(steps).view() == old(steps).view() && final(steps).snapshot_k() == old(steps).snapshot_k()
-            || final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(window_locked@)) && old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k())
-                && whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(window_locked@.pt_mp, window_locked@.pt_lower.view(), pagetable).lower.pagetable_window_locks,
-        window_locked@.inv(),
-        window_locked@ == (KernelK { pt_mp: window_locked@.pt_mp, pt_lower: window_locked@.pt_lower, ..*old(krnl) }),
-        window_locked@.pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
-        update_ghost_ensures(old(krnl).pt_mp.spec_index(pagetable), window_locked@.pt_mp.spec_index(pagetable), window_locked@.pt_lower.view().spec_index(pagetable)),
-        window_locked@.pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, window_locked@.pt_lower.view().spec_index(pagetable)),
-        whole_pagetable(window_locked@.pt_mp, window_locked@.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
-        whole_pagetable(window_locked@.pt_mp, window_locked@.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
-        whole_pagetable(window_locked@.pt_mp, window_locked@.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
-        whole_pagetable(window_locked@.pt_mp, window_locked@.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked),
+            || final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(window_locked.view())) && old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k())
+                && whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).lower.pagetable_window_locks,
+        window_locked.view().inv(),
+        window_locked.view() == (KernelK { pt_mp: window_locked.view().pt_mp, pt_lower: window_locked.view().pt_lower, ..*old(krnl) }),
+        window_locked.view().pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
+        update_ghost_ensures(old(krnl).pt_mp.spec_index(pagetable), window_locked.view().pt_mp.spec_index(pagetable), window_locked.view().pt_lower.view().spec_index(pagetable)),
+        window_locked.view().pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, window_locked.view().pt_lower.view().spec_index(pagetable)),
+        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
+        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(window_of(va)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks[window_of(va)] is Unlocked,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..final(steps).snapshot_k() }),
@@ -361,6 +360,8 @@ pub fn reclaim_unmapped_4k_page_in_window(
             &&& post.window_view(w).stale_cpus == pre.window_view(w).stale_cpus
             &&& post.mapping_2m().dom().contains(w.va) == pre.mapping_2m().dom().contains(w.va)
             &&& pre.mapping_2m().dom().contains(w.va) ==> post.mapping_2m().spec_index(w.va) == pre.mapping_2m().spec_index(w.va)
+            &&& pei_valid(spec_v2l2index(w.va)) && !pre.lower.l2_entry_hides_l1(pre.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                ==> !post.lower.l2_entry_hides_l1(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|w: WindowVa, v: VAddr|
             #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)), whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)]

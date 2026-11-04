@@ -65,6 +65,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,

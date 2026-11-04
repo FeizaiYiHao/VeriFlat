@@ -1,5 +1,6 @@
 pub mod cpu_array_spec;
 pub mod tlb_wf_spec;
+pub mod structure_cache_wf_spec;
 pub mod cpu_dirty_map_spec;
 pub mod pcid_needflush_spec;
 pub mod cpu_offline_flags_spec;
@@ -9,6 +10,7 @@ pub mod cpu_tlb_subsystem_mutation_eof;
 
 pub use cpu_array_spec::*;
 pub use tlb_wf_spec::*;
+pub use structure_cache_wf_spec::*;
 pub use cpu_dirty_map_spec::*;
 pub use pcid_needflush_spec::*;
 pub use cpu_offline_flags_spec::*;

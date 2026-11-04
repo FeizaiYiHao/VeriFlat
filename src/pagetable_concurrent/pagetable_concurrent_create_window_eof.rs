@@ -9,7 +9,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
-            pre.spec_resolve_mapping_l4(target_l4i) is None,
+            pre.spec_held_l4(target_l4i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
@@ -34,7 +34,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pei_valid(target_l3i),
             pre.spec_resolve_mapping_l4(target_l4i) is Some,
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
+            pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.page_closure().contains(page_map_ptr) == false,
             Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures

@@ -362,6 +362,7 @@ proof fn pop_stage_4k_page_eof_mappings(pre: KernelK, post: KernelK, allocator: 
         container_process_page_pagetable_wf(pre.ctn_mp, pre.prc_mp, pre.pt_mp, pre.pg_arr),
         page_iommu_table_wf(pre.ctn_mp, pre.prc_mp, pre.it_mp, pre.pg_arr),
         iommu_table_perms_wf(pre.it_mp),
+        process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr),
         pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
@@ -373,8 +374,13 @@ proof fn pop_stage_4k_page_eof_mappings(pre: KernelK, post: KernelK, allocator: 
         page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
     reveal(pop_stage_4k_page_eof_transition_framing);
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+        assert(post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings());
+        reveal(process_emptied_tables_wf);
+    };
     assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_nonmapped_page_change(pre.ctn_mp, pre.prc_mp, pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(page)); };

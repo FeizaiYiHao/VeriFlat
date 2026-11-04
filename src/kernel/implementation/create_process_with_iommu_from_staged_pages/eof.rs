@@ -60,7 +60,9 @@ proof fn create_process_with_iommu_from_staged_pages_eof_subsystems_inv(
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     create_process_with_iommu_from_staged_pages_eof_pagetable_window_holders_hold_pagetable(pre, post, pagetable_page_ptr);
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_table_stale_cpus_only_when_write_held(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_held); };
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); };
     create_process_with_iommu_from_staged_pages_eof_process_perms_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
@@ -193,15 +195,26 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations(
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
+        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
+        iommu_table_no_huge_leaf_wf(post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+        pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
 {
     hide(Seq::contains);
     create_process_with_iommu_from_staged_pages_eof_page_table_relations_pagetable(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     create_process_with_iommu_from_staged_pages_eof_page_table_relations_iommu(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); };
+    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
+    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+        assert(post.pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().view().mappings());
+        assert(post.pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().view().mappings());
+        assert(post.pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().view().mappings());
+        assert(post.pg_arr.spec_index(page_ptr2page_index(iommu_table_page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_page_ptr)).view().view().mappings());
+        assert(post.pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().view().mappings());
+        reveal(process_emptied_tables_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
 }
 
 /// The new page table and its root page close the page-table relations.
@@ -728,6 +741,7 @@ pub(super) proof fn create_process_with_iommu_from_staged_pages_eof_inv(
         reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
 }

@@ -140,6 +140,95 @@ pub fn thread_map_clear_free_quota_pending_4k(thread_map: &mut ThreadLockedMap, 
     }
 }
 
+pub fn thread_map_add_free_quota_pending_2m(thread_map: &mut ThreadLockedMap, thread_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thread_map)),
+        old(thread_map).dom().contains(thread_ptr),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        depth <= old(thread_map).spec_index(thread_ptr).view().container_depth,
+        *old(counter) == old(thread_map).spec_index(thread_ptr).view().free_quota_pending_2m_at_depth(depth),
+        *old(counter) < usize::MAX,
+    ensures
+        thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
+        final(thread_map).dom() == old(thread_map).dom(),
+        final(thread_map).unchanged_except(old(thread_map), thread_ptr),
+        final(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thread_map).lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr),
+        final(thread_map).spec_index(thread_ptr).is_init(),
+        final(thread_map).spec_index(thread_ptr).inv(),
+        final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
+        final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
+        final(thread_map).spec_index(thread_ptr).view_rodata() == old(thread_map).spec_index(thread_ptr).view_rodata(),
+        final(thread_map).spec_index(thread_ptr).view_ghost() == old(thread_map).spec_index(thread_ptr).view_ghost(),
+        final(thread_map).spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_2m: final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m,
+            indirect_free_quota_pending_2m: final(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m, ..old(thread_map).spec_index(thread_ptr).view() }),
+        *final(counter) == *old(counter) + 1,
+        final(thread_map).spec_index(thread_ptr).view().free_quota_pending_2m_at_depth(depth) == *final(counter),
+        final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m.view() == old(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m.view() + if depth == old(thread_map).spec_index(thread_ptr).view().container_depth { 1int } else { 0int },
+        final(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view()
+            == if depth < old(thread_map).spec_index(thread_ptr).view().container_depth { old(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view().update(depth as int, *final(counter)) }
+            else { old(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view() },
+{
+    assert(thread_map.perms_wf() && thread_map.spec_index(thread_ptr).is_init() && thread_map.spec_index(thread_ptr).inv()) by { thread_perms_wf_map(*thread_map); thread_perms_wf_at(*thread_map, thread_ptr); };
+    let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.add_free_quota_pending_2m(depth, counter);
+    proof {
+        thread_map_add_free_quota_pending_2m_eof_thread_perms_wf(*old(thread_map), *thread_map, thread_ptr);
+        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
+pub fn thread_map_clear_free_quota_pending_2m(thread_map: &mut ThreadLockedMap, thread_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thread_map)),
+        old(thread_map).dom().contains(thread_ptr),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        depth <= old(thread_map).spec_index(thread_ptr).view().container_depth,
+        *old(counter) == old(thread_map).spec_index(thread_ptr).view().free_quota_pending_2m_at_depth(depth),
+    ensures
+        thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
+        final(thread_map).dom() == old(thread_map).dom(),
+        final(thread_map).unchanged_except(old(thread_map), thread_ptr),
+        final(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thread_map).lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr),
+        final(thread_map).spec_index(thread_ptr).is_init(),
+        final(thread_map).spec_index(thread_ptr).inv(),
+        final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
+        final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
+        final(thread_map).spec_index(thread_ptr).view_rodata() == old(thread_map).spec_index(thread_ptr).view_rodata(),
+        final(thread_map).spec_index(thread_ptr).view_ghost() == old(thread_map).spec_index(thread_ptr).view_ghost(),
+        final(thread_map).spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_2m: final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m,
+            indirect_free_quota_pending_2m: final(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m, ..old(thread_map).spec_index(thread_ptr).view() }),
+        *final(counter) == 0,
+        final(thread_map).spec_index(thread_ptr).view().free_quota_pending_2m_at_depth(depth) == 0,
+        final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m.view() == if depth == old(thread_map).spec_index(thread_ptr).view().container_depth { 0usize } else { old(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_2m.view() },
+        final(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view()
+            == if depth < old(thread_map).spec_index(thread_ptr).view().container_depth { old(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view().update(depth as int, 0usize) }
+            else { old(thread_map).spec_index(thread_ptr).view().indirect_free_quota_pending_2m.view() },
+{
+    assert(thread_map.perms_wf() && thread_map.spec_index(thread_ptr).is_init() && thread_map.spec_index(thread_ptr).inv()) by { thread_perms_wf_map(*thread_map); thread_perms_wf_at(*thread_map, thread_ptr); };
+    let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.clear_free_quota_pending_2m(depth, counter);
+    proof {
+        thread_map_clear_free_quota_pending_2m_eof_thread_perms_wf(*old(thread_map), *thread_map, thread_ptr);
+        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
 pub fn process_map_add_owned_thread(process_map: &mut ProcessLockedMap, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(process_lock_perm): Tracked<&LockPerm>)
     requires
         process_perms_wf(*old(process_map)),

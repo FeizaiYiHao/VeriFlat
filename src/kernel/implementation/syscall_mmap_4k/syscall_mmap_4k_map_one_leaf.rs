@@ -66,6 +66,7 @@ pub(super) fn map_one_mmap_4k_page(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(window_of(va).va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va),
+        !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)),
     ensures
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
@@ -112,6 +113,7 @@ pub(super) fn map_one_mmap_4k_page(
             &&& post.mapping_2m().dom().contains(w.va) == pre.mapping_2m().dom().contains(w.va)
             &&& pre.mapping_2m().dom().contains(w.va) ==> post.mapping_2m().spec_index(w.va) == pre.mapping_2m().spec_index(w.va)
             &&& pre.window_leaves_present(w) ==> post.window_leaves_present(w)
+            &&& pei_valid(spec_v2l2index(w.va)) && !pre.lower.l2_entry_hides_l1(pre.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) ==> !post.lower.l2_entry_hides_l1(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|w: WindowVa, v: VAddr|
             #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
@@ -138,6 +140,10 @@ pub(super) fn map_one_mmap_4k_page(
         spec_va_4k_index_roundtrip_at(window.va, indices.0, indices.1, indices.2, 0usize);
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf_mapping_2m_at(indices.0, indices.1, indices.2);
+        assert(!(krnl.prc_mp.spec_index(process_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(process_ptr).view().state.view() is Zombie)) by {
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_perms_wf_at(krnl.prc_mp, process_ptr);
+            process_emptied_threads_wf_at(krnl.prc_mp, krnl.thr_mp, process_ptr, thread_ptr);
+        };
     }
     let l2_present = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
@@ -161,9 +167,7 @@ pub(super) fn map_one_mmap_4k_page(
     let page_index = page_ptr2page_index(page_ptr);
     let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     let ghost section_start = *krnl;
-    proof {
-        pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr, window);
-    }
+    proof { pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr, window); }
     map_owned_4k_page(krnl, page_ptr, thread_ptr, pagetable_ptr, va, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm),
         Tracked(window_perm));
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));

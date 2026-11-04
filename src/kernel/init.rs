@@ -240,7 +240,11 @@ pub open spec fn boot_page_array_ready(
 /// atomically) whose entries own the L1 pages they link. This assumes that the
 /// bootloader leaves bit 9 (the window lock bit) of every L2 word clear, so that
 /// no window lock is held; the window half therefore starts with every window
-/// unlocked and no stale CPU.
+/// unlocked and no stale CPU. Every L1 page of the boot model is linked by a
+/// present L2 entry, so no L2 entry hides an L1 page, every user root entry
+/// that links an L3 page is present, so no root is hidden and no CPU is listed
+/// as stale for the whole table, and every L3 entry under a user root entry
+/// that links an L2 page is present.
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
     raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize,
@@ -271,6 +275,11 @@ pub fn adopt_boot_dom0_pagetable(
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).wf(),
         forall|p: PageMapPtr, i: L2Index| #![trigger ret.1.view().l2_owner(p, i)] ret.1.view().l2_owner(p, i) is None,
         ret.1.view().window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        ret.1.view().hidden_l1_tables_in_locked_windows(),
+        ret.0.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        forall|l4i: L4Index| #![trigger ret.0.spec_held_l4(l4i)] kernel_l4_end <= l4i && pei_valid(l4i) && ret.0.spec_held_l4(l4i) is Some ==> ret.0.spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger ret.0.spec_held_l3(l4i, l3i)]
+            kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && ret.0.spec_held_l3(l4i, l3i) is Some ==> ret.0.spec_resolve_mapping_l3(l4i, l3i) is Some,
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
@@ -289,7 +298,7 @@ pub fn adopt_boot_dom0_pagetable(
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr,
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr, table_stale_cpus: Ghost(Set::empty()),
     };
     (higher, Tracked::assume_new())
 }
@@ -612,6 +621,7 @@ pub open spec fn boot_kernel_state(
     }
     &&& krnl.cpu_tlb.inv()
     &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+    &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.structure_cache((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
     &&& krnl.iommu_tlb.inv()
     &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
     &&& krnl.iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty()
@@ -636,6 +646,7 @@ pub open spec fn boot_kernel_state(
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.hidden_l1_tables_in_locked_windows()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
@@ -646,6 +657,15 @@ pub open spec fn boot_kernel_state(
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& forall|l4i: L4Index|
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i)]
+        kernel_l4_end <= l4i && pei_valid(l4i) && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i) is Some
+            ==> krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l4(l4i) is Some
+    &&& forall|l4i: L4Index, l3i: L3Index|
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i)]
+        kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i) is Some
+            ==> krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some
     &&& krnl.it_mp.perms_wf()
     &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
     &&& krnl.it_mp.spec_index(layout.iommu_table).is_init()

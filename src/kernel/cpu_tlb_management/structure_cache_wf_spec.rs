@@ -1,0 +1,182 @@
+use vstd::prelude::*;
+use crate::*;
+verus! {
+    /// Every directory entry a CPU's paging-structure cache keeps is a user entry the table still holds, present or as a
+    /// placeholder, naming the same page: the structure-cache form of `single_tlb_subset_of_whole_pagetable`.
+    pub open spec fn single_structure_cache_subset_of_whole_pagetable(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>) -> bool {
+        &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] #![trigger cache.pml4e.spec_index(i)]
+            cache.pml4e.dom().contains(i) ==> table.kernel_l4_end() <= i && pei_valid(i) && table.spec_held_l4(i) is Some && table.spec_held_l4(i)->0.addr == cache.pml4e.spec_index(i)
+        &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] #![trigger cache.pdpte.spec_index(key)]
+            cache.pdpte.dom().contains(key) ==> table.kernel_l4_end() <= key.0 && pei_valid(key.0) && pei_valid(key.1)
+                && table.spec_held_l3(key.0, key.1) is Some && table.spec_held_l3(key.0, key.1)->0.addr == cache.pdpte.spec_index(key)
+        &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] #![trigger cache.pde.spec_index(key)]
+            cache.pde.dom().contains(key) ==> table.kernel_l4_end() <= key.0 && pei_valid(key.0) && pei_valid(key.1) && pei_valid(key.2)
+                && table.spec_held_l2(key.0, key.1, key.2) is Some && table.spec_held_l2(key.0, key.1, key.2)->0.addr == cache.pde.spec_index(key)
+    }
+
+    /// Every directory entry the cache keeps is held and its path resolves: the shape after a flush or a CR3 write, the
+    /// structure-cache form of `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
+    pub open spec fn single_structure_cache_subset_of_present_pagetable(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>) -> bool {
+        &&& single_structure_cache_subset_of_whole_pagetable(cache, table)
+        &&& forall|i: L4Index| #![trigger cache.pml4e.spec_index(i)] cache.pml4e.dom().contains(i) ==> table.spec_resolve_mapping_l4(i) is Some
+        &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.spec_index(key)] cache.pdpte.dom().contains(key) ==> table.spec_resolve_mapping_l3(key.0, key.1) is Some
+        &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.spec_index(key)] cache.pde.dom().contains(key) ==> table.spec_resolve_mapping_l2(key.0, key.1, key.2) is Some
+    }
+
+    /// The cache of CPU `cpu_id` keeps a directory entry the table no longer resolves only while `cpu_id` is listed stale
+    /// for it: an L2 entry by the record of its 2M window while the L3 path still resolves, any other entry by the table
+    /// record. The structure-cache form of `single_tlb_present_or_stale`.
+    pub open spec fn single_structure_cache_present_or_stale(cache: PagingStructureCache, table: WholePageTable<PT_TYPE>, cpu_id: CpuId) -> bool {
+        &&& forall|i: L4Index| #![trigger cache.pml4e.spec_index(i)]
+            cache.pml4e.dom().contains(i) && table.spec_resolve_mapping_l4(i) is None ==> table.higher.table_stale_cpus.view().contains(cpu_id)
+        &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.spec_index(key)]
+            cache.pdpte.dom().contains(key) && table.spec_resolve_mapping_l3(key.0, key.1) is None ==> table.higher.table_stale_cpus.view().contains(cpu_id)
+        &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.spec_index(key)]
+            cache.pde.dom().contains(key) && table.spec_resolve_mapping_l2(key.0, key.1, key.2) is None ==> if table.spec_resolve_mapping_l3(key.0, key.1) is Some {
+                let stale_key = (table.window_l2_page(key.0, key.1), key.2);
+                &&& table.lower.window_stale_cpus.dom().contains(stale_key)
+                &&& table.lower.window_stale_cpus.spec_index(stale_key).contains(cpu_id)
+            } else {
+                table.higher.table_stale_cpus.view().contains(cpu_id)
+            }
+    }
+
+    /// No usable paging-structure cache names table page `page`: under every non-default PCID that is current or not
+    /// marked for flush, no CPU keeps an L4, L3, or L2 entry pointing at it. Inactive, marked PCIDs are flushed before
+    /// their next activation, as in `structure_cache_wf_spec`.
+    pub open spec fn table_page_unreferenced_by_structure_caches(cpu_tlb: CpuTLB, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, page: PageMapPtr) -> bool {
+        forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger cpu_tlb.structure_cache((cpu_id, pcid))]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            && (!needflush.spec_index(cpu_id, pcid).view().needflush || cpu_array.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let cache = cpu_tlb.structure_cache((cpu_id, pcid));
+                &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
+                &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
+                &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
+            }
+    }
+
+    /// A CPU keeps paging-structure entries under a PCID only for its dirty table: each is an entry the table holds, and
+    /// one the table no longer resolves only while the CPU is listed stale for it. Inactive, marked PCIDs remain exempt
+    /// until their next activation flush, as in `tlb_wf_spec`.
+    #[verifier::opaque]
+    pub open spec fn structure_cache_wf_spec(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
+        forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger cpu_tlb.structure_cache((cpu_id, pcid))]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+            && (!needflush.spec_index(cpu_id, pcid).view().needflush || cpu_array.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let dirty_entry = cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+                let table = whole_pagetable(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr);
+                &&& dirty_entry is Some
+                &&& pagetable_map.dom().contains(dirty_entry.unwrap().pagetable_ptr)
+                &&& single_structure_cache_subset_of_whole_pagetable(cpu_tlb.structure_cache((cpu_id, pcid)), table)
+                &&& single_structure_cache_present_or_stale(cpu_tlb.structure_cache((cpu_id, pcid)), table, cpu_id)
+            }
+    }
+
+    pub proof fn structure_cache_wf_spec_at(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)
+        requires structure_cache_wf_spec(cpu_tlb, pagetable_map, pt_lower, cpu_array, needflush),
+        ensures
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+            && (!needflush.spec_index(cpu_id, pcid).view().needflush || cpu_array.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let dirty_entry = cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+                let table = whole_pagetable(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr);
+                &&& dirty_entry is Some
+                &&& pagetable_map.dom().contains(dirty_entry.unwrap().pagetable_ptr)
+                &&& single_structure_cache_subset_of_whole_pagetable(cpu_tlb.structure_cache((cpu_id, pcid)), table)
+                &&& single_structure_cache_present_or_stale(cpu_tlb.structure_cache((cpu_id, pcid)), table, cpu_id)
+            },
+    { reveal(structure_cache_wf_spec); }
+
+    /// A page of a table whose user roots all fail to resolve and which lists no CPU stale is named by no usable
+    /// paging-structure cache: a cached entry is held by the cache's dirty table, so naming `page` it is that table, whose
+    /// unresolvable entries the empty table record cannot cover.
+    pub proof fn held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_caches(k: KernelK, table: RwLockPageTableRoot, page: PageMapPtr)
+        requires
+            k.inv(),
+            k.pt_mp.dom().contains(table),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).page_closure().contains(page),
+            forall|l4i: L4Index| #![trigger whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
+                whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        ensures table_page_unreferenced_by_structure_caches(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, page),
+    { broadcast use held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_cache_at; }
+
+    /// Point form of `held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_caches`
+    /// at one `(cpu_id, pcid)`.
+    broadcast proof fn held_table_page_under_unresolvable_path_with_empty_table_record_implies_unreferenced_by_structure_cache_at(k: KernelK, table: RwLockPageTableRoot, page: PageMapPtr, cpu_id: CpuId,
+        pcid: Pcid)
+        requires
+            k.inv(),
+            k.pt_mp.dom().contains(table),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).page_closure().contains(page),
+            forall|l4i: L4Index| #![trigger whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
+                whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        ensures
+            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), table).page_closure().contains(page)]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+                &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
+                &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
+                &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
+            },
+    {
+        let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+        let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
+        let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+        structure_cache_wf_spec_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
+        if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
+            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+            assert(dirty_table.page_closure().contains(page) ==> dirty_ptr == table) by {
+                if dirty_table.page_closure().contains(page) {
+                    pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page);
+                    pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, table, page);
+                }
+            };
+            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2);
+        }
+    }
+
+    /// A page of an IOMMU table is named by no usable paging-structure cache: a cached entry is held by the cache's dirty
+    /// CPU table, whose pages are tagged as CPU-table pages, while the pages of an IOMMU table are tagged as IOMMU-table
+    /// pages.
+    pub proof fn iommu_table_page_implies_unreferenced_by_structure_caches(k: KernelK, iommu_table: RwLockPageTableRoot, page: PageMapPtr)
+        requires
+            k.inv(),
+            k.it_mp.dom().contains(iommu_table),
+            k.it_mp.spec_index(iommu_table).view().page_closure().contains(page),
+        ensures table_page_unreferenced_by_structure_caches(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, page),
+    { broadcast use iommu_table_page_implies_unreferenced_by_structure_cache_at; }
+
+    /// Point form of `iommu_table_page_implies_unreferenced_by_structure_caches` at one `(cpu_id, pcid)`.
+    broadcast proof fn iommu_table_page_implies_unreferenced_by_structure_cache_at(k: KernelK, iommu_table: RwLockPageTableRoot, page: PageMapPtr, cpu_id: CpuId, pcid: Pcid)
+        requires
+            k.inv(),
+            k.it_mp.dom().contains(iommu_table),
+            k.it_mp.spec_index(iommu_table).view().page_closure().contains(page),
+        ensures
+            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), k.it_mp.spec_index(iommu_table).view().page_closure().contains(page)]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+                &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != page
+                &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != page
+                &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != page
+            },
+    {
+        let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+        let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
+        let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+        structure_cache_wf_spec_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
+        if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
+            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+            assert(!dirty_table.page_closure().contains(page)) by {
+                iommu_table_pages_wf_closure_entry_at(k.it_mp, k.pg_arr, iommu_table, page);
+                if dirty_table.page_closure().contains(page) { pagetable_pages_wf_closure_entry_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, page); }
+            };
+            reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2);
+        }
+    }
+}

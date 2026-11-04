@@ -23,7 +23,8 @@ impl KernelK {
     /// Lock, in ascending address order, every 2M window of page table `root` that covers `range`, while this thread
     /// holds the big lock of `root` in either mode through `big` and holds windows only of tables below `root`; each
     /// window keeps its lock state until this call returns, and under a read-held table each locked window has its
-    /// leaves present and lists no stale CPU.
+    /// leaves present, lists no stale CPU, and hides no L1 page. If only write-locked L2 entries hid L1 pages before the
+    /// call, that still holds and no locked window hides one.
     pub fn lock_pagetable_range_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
@@ -81,6 +82,7 @@ impl KernelK {
             forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
                 va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
             final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
             final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -118,6 +120,10 @@ impl KernelK {
                     &&& big.state() is ReadLock ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_leaves_present(w)
                     &&& big.state() is ReadLock ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                         whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                    &&& big.state() is ReadLock ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 },
     {
         let (first_l4i, first_l3i, first_l2i, _) = va2index(range.start);
@@ -193,6 +199,7 @@ impl KernelK {
                     va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))
                         ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
                 whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
                 lctx.cpu_id() == old(lctx).cpu_id(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -234,6 +241,10 @@ impl KernelK {
                         &&& big.state() is ReadLock ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(w)
                         &&& big.state() is ReadLock ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                             whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                        &&& big.state() is ReadLock ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
+                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                        &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
+                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     },
                 forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) ==> perms.dom().contains(w),
             decreases 512 - l4i, 512 - l3i, 512 - l2i,
@@ -276,7 +287,8 @@ impl KernelK {
 
     /// Release every 2M window of page table `root` that covers `range`, in ascending address order, while this thread
     /// holds the big lock of `root` in either mode through `big`; under a read-held table each window must have its
-    /// leaves present and list no stale CPU.
+    /// leaves present, list no stale CPU, and hide no L1 page. Releasing windows that hide no L1 page keeps every hiding
+    /// L2 entry write-locked.
     pub fn unlock_pagetable_range_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(perms): Tracked<Map<WindowVa, LockPerm>>)
         requires
@@ -303,6 +315,8 @@ impl KernelK {
                     &&& !(big.state() is WriteLock) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_leaves_present(w)
                     &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                         whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                    &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -332,6 +346,10 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
                 == pagetable_window_locks_after_unlocking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows()
+                && (forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                    whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
             final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
             final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -416,6 +434,10 @@ impl KernelK {
                     whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)
                         == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) { LockStateU::Unlocked } else { whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w) },
                 whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows()
+                    && (forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                    ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
                 lctx.cpu_id() == old(lctx).cpu_id(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.page_lock_map() == old(lctx).page_lock_map(),
@@ -454,6 +476,8 @@ impl KernelK {
                         &&& !(big.state() is WriteLock) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(w)
                         &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                             whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
+                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     },
             decreases 512 - l4i, 512 - l3i, 512 - l2i,
         {
@@ -492,7 +516,9 @@ impl KernelK {
     /// Lock, in ascending address order, every 2M window of page table `root` that covers `range` and whose L3 entry
     /// links an L2 page, skipping the others, while this thread holds the big lock of `root` in either mode through
     /// `big` and holds windows only of tables below `root`; each locked window keeps its lock state until this call
-    /// returns, and under a read-held table each locked window has its leaves present and lists no stale CPU.
+    /// returns, and under a read-held table each locked window has its leaves present, lists no stale CPU, and hides no
+    /// L1 page. If only write-locked L2 entries hid L1 pages before the call, that still holds and no locked window hides
+    /// one.
     pub fn lock_pagetable_range_existing_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
@@ -549,6 +575,7 @@ impl KernelK {
             forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
                 va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
             final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
             final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -589,6 +616,10 @@ impl KernelK {
                     &&& big.state() is ReadLock ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_leaves_present(w)
                     &&& big.state() is ReadLock ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                         whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                    &&& big.state() is ReadLock ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 },
     {
         let (first_l4i, first_l3i, first_l2i, _) = va2index(range.start);
@@ -689,7 +720,8 @@ impl KernelK {
 
     /// Release exactly the windows in `perms`, in ascending address order: the 2M windows of page table `root` that
     /// cover `range` and whose L3 entry links an L2 page, while this thread holds the big lock of `root` in either mode
-    /// through `big`; under a read-held table each of them must have its leaves present and list no stale CPU.
+    /// through `big`; under a read-held table each of them must have its leaves present, list no stale CPU, and hide no
+    /// L1 page. Releasing windows that hide no L1 page keeps every hiding L2 entry write-locked.
     pub fn unlock_pagetable_range_existing_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>, Tracked(perms): Tracked<Map<WindowVa, LockPerm>>)
         requires
@@ -719,6 +751,8 @@ impl KernelK {
                     &&& !(big.state() is WriteLock) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_leaves_present(w)
                     &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                         whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                    &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                        whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -748,6 +782,10 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
                 == pagetable_window_locks_after_unlocking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows()
+                && (forall|w: WindowVa| #![trigger perms.dom().contains(w)] perms.dom().contains(w) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                    whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
             final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
             final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -825,6 +863,8 @@ impl KernelK {
                         &&& !(big.state() is WriteLock) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_leaves_present(w)
                         &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     },
                 self.inv(),
                 typed_lock_maps_aligned(self, lctx),
@@ -858,6 +898,7 @@ impl KernelK {
                         &&& !(big.state() is WriteLock) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(window_va)
                         &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                             whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i))
+                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)
                     }) by { reveal(unlock_pagetable_range_existing_windows_eol_loop_framing); };
                 }
                 let tracked perm = remaining.tracked_remove(window_va);

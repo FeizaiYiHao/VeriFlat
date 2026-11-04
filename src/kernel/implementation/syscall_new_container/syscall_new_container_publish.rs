@@ -167,6 +167,7 @@ pub(super) fn publish_new_container_staged_root(
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.6.view().2),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pages_4k.view().spec_index(5)).is_empty(),
+        final(krnl).pt_mp.spec_index(pages_4k.view().spec_index(5)).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
@@ -375,6 +376,7 @@ pub(super) fn publish_new_container_staged_root(
             &&& !krnl.cpu_set_mp.spec_index(cpu_set_page).being_killed()
             &&& krnl.pt_mp.spec_index(source_pagetable_ptr) == staged_k.pt_mp.spec_index(source_pagetable_ptr)
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(staged_k.pt_mp, staged_k.pt_lower.view(), source_pagetable_ptr)
+            &&& krnl.pt_mp.spec_index(pagetable_page).view().table_stale_cpus.view() == Set::<CpuId>::empty()
         }) by { reveal(publish_staged_container_root_eof_transition_framing); };
     }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress {

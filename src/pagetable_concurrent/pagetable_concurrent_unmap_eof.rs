@@ -47,12 +47,14 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf(),
             post.page_closure() =~= pre.page_closure(),
+            pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
         assert(pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))) by { reveal(WholePageTable::wf_mapping_4k); };
         Self::unmap_4k_page_user_view_eof_frame(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_user_view_eof_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_user_view_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_user_view_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
     }
 
     /// EOF closure of `unmap_4k_page_user_view`: the leaves that read no L1 entry and no 4K mapping value.
@@ -233,6 +235,43 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         reveal(WholePageTable::unmap_4k_page_user_view_eof_transition_framing);
         assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view`: `hidden_l1_tables_in_locked_windows`. The target entry and its lock are unchanged.
+    proof fn unmap_4k_page_user_view_eof_hidden_l1_tables_in_locked_windows(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+        target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
+    { reveal(WholePageTable::unmap_4k_page_user_view_eof_transition_framing); }
+
+    /// EOF closure of `unmap_4k_page_user_view`: the target 4K leaf stays held with its present bit clear; the rest of the held chain is unchanged.
+    pub(super) proof fn unmap_4k_page_user_view_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is Some || pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
+            post.spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i)
+                == Some(PageEntry { perm: PageEntryPerm { present: false, ..pre.lower.l1_page(target_l2_p, target_l2i).spec_index(target_l1i).perm }, ..pre.lower.l1_page(target_l2_p, target_l2i).spec_index(target_l1i) }),
+    {
+        reveal(WholePageTable::unmap_4k_page_user_view_eof_transition_framing);
+        broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
+        pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(target_l4i, target_l3i);
+        pre.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i);
     }
 }
 } // verus!

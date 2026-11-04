@@ -40,11 +40,16 @@ impl CpuCr3Pcid {
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
-            forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
+            forall|c: CpuId, p: Pcid|
+                #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] #![trigger final(tlb).structure_cache((c, p))] #![trigger old(tlb).structure_cache((c, p))]
+                index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+                    ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)) && final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
+            final(tlb).structure_caches.view() == old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
             match next_table {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
-                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
+                    && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty() && final(tlb).structure_cache((cpu_id, pcid)).is_empty(),
             },
     {
         tlb.write_cr3_pcid(cpu_id, cr3, pcid, true, self, Ghost(k), Ghost(next_table), Tracked(lctx));
@@ -74,12 +79,19 @@ impl CpuCr3Pcid {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(tlb).spec_index((other_cpu, other_pcid))]
                 #![trigger old(tlb).spec_index((other_cpu, other_pcid))]
+                #![trigger final(tlb).structure_cache((other_cpu, other_pcid))]
+                #![trigger old(tlb).structure_cache((other_cpu, other_pcid))]
                 index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
-                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid)),
+                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid))
+                    && final(tlb).structure_cache((other_cpu, other_pcid)) == old(tlb).structure_cache((other_cpu, other_pcid)),
             final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() },
+            final(tlb).structure_caches.view() == if flush {
+                old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
+            } else { old(tlb).structure_caches.view() },
             flush ==> match next_table {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
-                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
+                    && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty() && final(tlb).structure_cache((cpu_id, pcid)).is_empty(),
             },
     {
         proof { lctx.enter_kernel_view_release(); }

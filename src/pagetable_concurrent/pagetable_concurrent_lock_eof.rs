@@ -91,6 +91,10 @@ proof fn lock_window_eof_window_locks(pre: WholePageTable<PT_TYPE>, post: WholeP
     broadcast use {PageTableHigher::resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip};
     let va = spec_index2va((l4i, l3i, l2i, 0));
     assert(spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i && spec_v2l2index(va) == l2i) by { spec_index2va_injective(); };
+    let p = pre.window_l2_page(l4i, l3i);
+    assert(pre.lower.l2_perms.dom().contains(p)) by { pre.higher.wf_l4_at(l4i); pre.wf_l3_at(pre.spec_resolve_mapping_l4(l4i)->0.addr, l3i); };
+    let rev = pre.higher.l2_rev_map.view().spec_index(p);
+    assert(rev == (l4i, l3i)) by { pre.tables_reachable_wf_l2_at(p); pre.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1); };
     reveal(WholePageTable::wf_window_locks);
 }
 
@@ -136,7 +140,7 @@ proof fn unlock_window_eof_window_locks(pre: WholePageTable<PT_TYPE>, post: Whol
     let p = pre.window_l2_page(l4i, l3i);
     assert(pre.lower.l2_perms.dom().contains(p)) by { pre.higher.wf_l4_at(l4i); pre.wf_l3_at(pre.spec_resolve_mapping_l4(l4i)->0.addr, l3i); };
     let rev = pre.higher.l2_rev_map.view().spec_index(p);
-    assert(rev == (l4i, l3i)) by { pre.tables_reachable_wf_l2_at(p); pre.higher.resolve_l3_addr_unique_at(l4i, l3i, rev.0, rev.1); };
+    assert(rev == (l4i, l3i)) by { pre.tables_reachable_wf_l2_at(p); pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i); pre.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1); };
     pre.wf_window_locks_slot_at(p, l2i);
     spec_index2va_injective();
     reveal(WholePageTable::wf_window_locks);
@@ -321,4 +325,63 @@ proof fn unlock_window_eof_tables_reachable_wf(pre: WholePageTable<PT_TYPE>, pos
     ensures
         post.tables_reachable_wf(),
 { reveal(WholePageTable::tables_reachable_wf); }
+
+/// EOF closure of `lock_window` for `hidden_l1_tables_in_locked_windows`: the window's entry is now write-locked.
+pub(super) proof fn lock_window_eof_hidden_l1_tables_in_locked_windows(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index,
+    thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
+{}
+
+/// EOF closure of `unlock_window` for `hidden_l1_tables_in_locked_windows`: the released entry hides no L1 page.
+pub(super) proof fn unlock_window_eof_hidden_l1_tables_in_locked_windows(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        pre.lower.hidden_l1_tables_in_locked_windows() && !pre.lower.l2_entry_hides_l1(pre.window_l2_page(l4i, l3i), l2i) ==> post.lower.hidden_l1_tables_in_locked_windows(),
+{}
+
+/// EOF closure of `lock_window` for the held chain: only the window's lock owner moved.
+pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        pre.kernel_l4_end() <= l4i && pei_valid(l4i),
+        pei_valid(l3i),
+        pei_valid(l2i),
+        pre.window_exists(l4i, l3i),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_held_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_held_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_2m_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_2m_l2(l4j, l3j, l2j) == pre.spec_held_2m_l2(l4j, l3j, l2j),
+{
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
+    pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+}
+
+/// EOF closure of `unlock_window` for the held chain: only the window's lock owner moved.
+pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        pre.kernel_l4_end() <= l4i && pei_valid(l4i),
+        pei_valid(l3i),
+        pei_valid(l2i),
+        pre.window_exists(l4i, l3i),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j) ==> post.spec_held_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_held_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_2m_l2(l4j, l3j, l2j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_2m_l2(l4j, l3j, l2j) == pre.spec_held_2m_l2(l4j, l3j, l2j),
+{
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
+    pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+}
 } // verus!

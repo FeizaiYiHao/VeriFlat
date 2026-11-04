@@ -80,8 +80,8 @@ pub(super) fn iommu_map_4k_exit(
                 &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_leaves_present(w)
-                &&& !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus.dom().contains((
-                    whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                &&& !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus.dom().contains((whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                &&& !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
             },
         old(krnl).cpu_arr.spec_index(cpu_id).view() == k0.cpu_arr.spec_index(cpu_id).view(),
         old(krnl).prc_mp.dom().contains(process_ptr),

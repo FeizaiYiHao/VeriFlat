@@ -384,8 +384,10 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
+        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
+        iommu_table_no_huge_leaf_wf(post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+        pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); page_ptr_roundtrip(); };
@@ -394,6 +396,10 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+        assert(post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().mappings());
+        reveal(process_emptied_tables_wf);
+    };
 }
 
 proof fn pop_stage_2m_page_eof_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -598,9 +604,7 @@ proof fn pop_stage_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     pop_stage_2m_page_eof_page_types(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_staged_pages(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_free_pages(pre, post, allocator, thread, container, page, node, source);
-    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        reveal(pop_stage_2m_page_eof_transition_framing); reveal(container_kill_retire_wf);
-    };
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(pop_stage_2m_page_eof_transition_framing); reveal(container_kill_retire_wf); };
 }
 
 proof fn pop_stage_2m_page_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, thread: RwLockThreadPtr)

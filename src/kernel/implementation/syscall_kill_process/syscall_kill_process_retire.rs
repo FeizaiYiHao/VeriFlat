@@ -112,6 +112,13 @@ pub(crate) fn kill_retire_hold_tables(
         kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
+        ({
+            let pt = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
+            &&& pt.lower.hidden_l1_tables_in_locked_windows()
+            &&& pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
+            &&& pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& forall|p: PageMapPtr, i: L2Index| #![trigger pt.lower.l2_owner(p, i)] pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> pt.lower.l2_owner(p, i) is None
+        }),
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         ret.0.wf(),
         0 < ret.0.view().len(),
@@ -170,8 +177,7 @@ pub(crate) fn kill_retire_hold_tables(
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         assert(held.view().to_set() =~= kill_retire_held_pages(*krnl, target)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
-        assert(lctx.page_lock_map().dom() =~= held.view().to_set() && lctx.pagetable_lock_map().dom() =~= set![pagetable]
-            && lctx.iommu_table_lock_map().dom() =~= match iommu_table { Some(it) => set![it], None => Set::<RwLockPageTableRoot>::empty() });
+        assert(lctx.page_lock_map().dom() =~= held.view().to_set() && lctx.pagetable_lock_map().dom() =~= set![pagetable] && lctx.iommu_table_lock_map().dom() =~= match iommu_table { Some(it) => set![it], None => Set::<RwLockPageTableRoot>::empty() });
     }
     (held, Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm))
 }
@@ -323,8 +329,7 @@ pub(crate) fn kill_retire_end_step(
         base.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, KillStage::Retire),
         scope matches KillScope::Container { container } ==> base.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(base_lctx.container_lock_map(), container, TypedLockMode::Write),
         scope is Subtree ==> container_ptr == base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-        scope matches KillScope::Container { container } ==> container_ptr == container
-            && base.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        scope matches KillScope::Container { container } ==> container_ptr == container && base.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         base.prc_mp.dom().contains(target),
         base.prc_mp.spec_index(target).being_killed(),
         base.prc_mp.spec_index(target).view().zombie,
@@ -450,6 +455,7 @@ pub(crate) fn kill_retire_commit(
         ({
             let pt = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             &&& pt.page_closure() =~= set![pt.cr3()]
+            &&& pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& pt.mapping_4k().dom() =~= Set::<VAddr>::empty()
             &&& pt.mapping_2m().dom() =~= Set::<VAddr>::empty()
             &&& pt.mapping_1g().dom() =~= Set::<VAddr>::empty()
@@ -474,8 +480,7 @@ pub(crate) fn kill_retire_commit(
         typed_lock_map_contains_mode(old(lctx).allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedLockMode::Write),
         forall|d: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(d)] old(lctx).process_lock_map().dom().contains(d) && old(krnl).prc_mp.spec_index(d).killer_info() is Some
             ==> old(krnl).prc_mp.spec_index(d).killer_info()->Some_0.process != target && old(krnl).prc_mp.spec_index(d).view_rodata().view().owning_container == container_ptr,
-        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && old(krnl).ctn_mp.spec_index(c).killer_info() is Some
-            ==> old(krnl).ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && old(krnl).ctn_mp.spec_index(c).killer_info() is Some ==> old(krnl).ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
         cache_lock_perm.state() is WriteLock,
         cache_lock_perm.thread_id() == old(lctx).thread_id(),
         cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -686,11 +691,8 @@ pub(crate) fn kill_retire_unlink_process(
         let tree = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
         process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, container_ptr);
         assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, container_ptr); };
-        assert(root != target) by {
-            process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target);
-        };
-        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom())
-            && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by {
+        assert(root != target) by { process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target); };
+        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom()) && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by {
             krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_dom_at(root, tree, krnl.prc_mp, target);
             container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, container_ptr, target); process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_depth_wf_at(root, tree, krnl.prc_mp, target);
         };
@@ -779,8 +781,7 @@ pub(crate) fn kill_retire_remove_tables(
         forall|t: RwLockPageTableRoot| #![trigger final(krnl).it_mp.lock_id_by_key(t)] final(krnl).it_mp.dom().contains(t) ==> final(krnl).it_mp.lock_id_by_key(t) == old(krnl).it_mp.lock_id_by_key(t),
         ret.view().dom().contains(page_ptr2page_index(pagetable)),
         ret.view().dom().contains(page_ptr2page_index(old(krnl).pt_mp.spec_index(pagetable).view().cr3)),
-        iommu_table is Some ==> ret.view().dom().contains(page_ptr2page_index(iommu_table->Some_0))
-            && ret.view().dom().contains(page_ptr2page_index(old(krnl).it_mp.spec_index(iommu_table->Some_0).view().cr3)),
+        iommu_table is Some ==> ret.view().dom().contains(page_ptr2page_index(iommu_table->Some_0)) && ret.view().dom().contains(page_ptr2page_index(old(krnl).it_mp.spec_index(iommu_table->Some_0).view().cr3)),
         forall|i: PageIndex| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) ==> ret.view()[i].is_init() && ret.view()[i].addr() == page_index2page_ptr(i),
 {
     let ghost entry = *krnl;

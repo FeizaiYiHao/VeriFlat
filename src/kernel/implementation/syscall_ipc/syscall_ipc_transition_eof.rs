@@ -267,6 +267,7 @@ pub(super) proof fn ipc_block_current_eof(
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 
 /// The cpu and emptied-thread relations close after the transition.
@@ -457,6 +458,7 @@ pub(super) proof fn ipc_schedule_waiting_peer_eof_rendezvous_fields(
         pre.irt.view().owners() == snapshot.irt.view().owners(),
         pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.cpu_tlb.structure_caches.view() == snapshot.cpu_tlb.structure_caches.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
         pre.cpu_set_mp == snapshot.cpu_set_mp,
         snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,

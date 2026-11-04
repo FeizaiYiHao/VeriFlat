@@ -95,8 +95,7 @@ pub(crate) proof fn kill_retire_eof_process_relations(
         forall|d: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(d)] lctx.process_lock_map().dom().contains(d) && pre.prc_mp.spec_index(d).killer_info() is Some
             ==> pre.prc_mp.spec_index(d).killer_info()->Some_0.process != target && pre.prc_mp.spec_index(d).view_rodata().view().owning_container == container_ptr,
         pre.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
-            ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
+        forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
         forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
             pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thr_mp.spec_index(u).being_killed(),
     ensures
@@ -155,9 +154,10 @@ pub(crate) proof fn kill_retire_eof_iommu(
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
 }
 
-/// A CPU/PCID association that the TLB and dirty-map invariants constrain belongs to neither the retired target nor its
-/// page table: a current PCID belongs to a running process, which is no zombie, and a live TLB entry for the target's
-/// page table would have to be a subset of its empty mappings.
+/// A CPU/PCID association that the TLB, structure-cache and dirty-map invariants constrain belongs to neither the retired
+/// target nor its page table: a current PCID belongs to a running process, which is no zombie, and a live TLB or
+/// structure-cache entry for the target's page table would need a user root that resolves or a stale CPU, and the
+/// zombie's table has neither.
 broadcast proof fn kill_retire_eof_tlb_entry(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr, c: CpuId, p: Pcid,
@@ -165,9 +165,12 @@ broadcast proof fn kill_retire_eof_tlb_entry(
     requires
         cpu_array_wf(pre.cpu_arr, pre.dflt_pt.view()),
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
+        process_perms_wf(pre.prc_mp),
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr),
         cpu_dirty_map_proc_pcid_match(pre.prc_mp, pre.cpu_arr, pre.pcid_needflush, pre.cpu_tlb),
         tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        structure_cache_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
@@ -183,33 +186,39 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         p != KERNEL_DEFAULT_PCID,
     ensures
         #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_tlb.spec_index((c, p))]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_tlb.structure_cache((c, p))]
         #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, container_ptr, allocator_ptr), post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p)]
         ({
             let tlb = post.cpu_tlb.spec_index((c, p));
+            let cache = post.cpu_tlb.structure_cache((c, p));
             let cpu = post.cpu_arr.spec_index(c).view().view();
             let dirty = cpu.tlb_dirty_bitmap().spec_index(p);
             let pagetable = pre.prc_mp.spec_index(target).view().pagetable;
             let needflush = post.pcid_needflush.spec_index(c, p).view().needflush;
-            &&& !tlb.is_empty() && (!needflush || cpu.view().current_pcid == p) ==> dirty is Some && dirty.unwrap().pagetable_ptr != pagetable
-            &&& dirty is Some && ((!needflush && !tlb.is_empty()) || cpu.view().current_pcid == p) ==> dirty.unwrap().process_ptr != target && dirty.unwrap().pagetable_ptr != pagetable
+            &&& (!tlb.is_empty() || !cache.is_empty()) && (!needflush || cpu.view().current_pcid == p) ==> dirty is Some && dirty.unwrap().pagetable_ptr != pagetable
+            &&& dirty is Some && ((!needflush && (!tlb.is_empty() || !cache.is_empty())) || cpu.view().current_pcid == p) ==> dirty.unwrap().process_ptr != target && dirty.unwrap().pagetable_ptr != pagetable
         }),
 {
     reveal(kill_retire_eof_transition_framing);
     let tlb = pre.cpu_tlb.spec_index((c, p));
+    let cache = pre.cpu_tlb.structure_cache((c, p));
     let cpu = pre.cpu_arr.spec_index(c).view().view();
     let dirty = cpu.tlb_dirty_bitmap().spec_index(p);
     let pagetable = pre.prc_mp.spec_index(target).view().pagetable;
     if cpu.view().current_pcid == p {
         cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), c); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, c);
         process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, target); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, cpu.view().current_process.unwrap());
-    } else if !tlb.is_empty() && !pre.pcid_needflush.spec_index(c, p).view().needflush {
-        assert(dirty is Some && (dirty.unwrap().pagetable_ptr == pagetable
-            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty())) by { reveal(tlb_wf_spec); };
+    } else if (!tlb.is_empty() || !cache.is_empty()) && !pre.pcid_needflush.spec_index(c, p).view().needflush {
+        process_perms_wf_at(pre.prc_mp, target); process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, target);
+        assert(dirty is Some) by { reveal(tlb_wf_spec); reveal(structure_cache_wf_spec); };
+        assert(dirty.unwrap().pagetable_ptr == pagetable
+            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()) by { reveal(tlb_wf_spec); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+        assert(dirty.unwrap().pagetable_ptr == pagetable ==> cache.pml4e.dom() =~= Set::<L4Index>::empty() && cache.pdpte.dom() =~= Set::<(L4Index, L3Index)>::empty() && cache.pde.dom() =~= Set::<(L4Index, L3Index, L2Index)>::empty()) by { reveal(structure_cache_wf_spec); };
         assert(dirty.unwrap().process_ptr != target) by { reveal(cpu_dirty_map_proc_pcid_match); };
     }
 }
 
-/// Retiring the empty zombie `target` keeps the cpu dirty-map and TLB invariants.
+/// Retiring the empty zombie `target` keeps the cpu dirty-map, TLB and structure-cache invariants.
 pub(crate) proof fn kill_retire_eof_tlb(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
@@ -229,11 +238,13 @@ pub(crate) proof fn kill_retire_eof_tlb(
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_retire_eof_transition_framing);
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); broadcast use kill_retire_eof_tlb_entry; };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_proc_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
     assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); broadcast use kill_retire_eof_tlb_entry; };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); broadcast use kill_retire_eof_tlb_entry; };
 }
 } // verus!

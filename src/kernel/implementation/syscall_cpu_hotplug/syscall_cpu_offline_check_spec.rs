@@ -116,6 +116,8 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> if c == cpu_id && (p != KERNEL_DEFAULT_PCID || flush_default) {
             post.cpu_tlb.spec_index((c, p)).is_empty()
         } else { post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)) })
+    &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.structure_cache((c, p))] #![trigger post.cpu_tlb.structure_cache((c, p))]
+        index_valid(NUM_CPUS, c) && pcid_valid(p) && p != KERNEL_DEFAULT_PCID ==> if c == cpu_id { post.cpu_tlb.structure_cache((c, p)).is_empty() } else { post.cpu_tlb.structure_cache((c, p)) == pre.cpu_tlb.structure_cache((c, p)) })
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& (forall|ptr: RwLockCpuSetPtr| #![trigger pre.cpu_set_mp.spec_index(ptr)] #![trigger post.cpu_set_mp.spec_index(ptr)] pre.cpu_set_mp.dom().contains(ptr) ==> {
         &&& (ptr != cpu_set_ptr ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr))

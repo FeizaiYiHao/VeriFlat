@@ -333,6 +333,7 @@ pub(super) proof fn ipc_pages_check_result_from_k(
             assert(u_table.mapping_4k.dom().contains(fv));
         } else {
             reveal(WholePageTable::spec_mapping_4k_va_range_empty);
+            if !checked.leaves_present() { va_range_2m_windows_contains_window_of_first_n_pages(target_range, target_range.len as int); }
         }
     }
 }

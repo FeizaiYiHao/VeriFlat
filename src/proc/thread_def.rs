@@ -10,6 +10,12 @@ pub ghost enum Mmap4kDirectory { None, L4, L3, L2 }
 /// Page-table lock mode of a 4K mapping: big lock read, small locks filling, or small locks after filling.
 pub ghost enum Mmap4kPhase { Read, Fill, Filled }
 
+/// Deepest page-table level installed so far for the 2M page being mapped; a 2M leaf needs no L1 page.
+pub ghost enum Mmap2mDirectory { None, L4, L3 }
+
+/// Page-table lock mode of a 2M mapping: big lock read, small locks filling, or small locks after filling.
+pub ghost enum Mmap2mPhase { Read, Fill, Filled }
+
 /// Page-table lock state of a pages rendezvous: unlocked, big lock read, small locks filling, or small locks after filling.
 pub ghost enum IpcPagesTables { Unlocked, Read, Fill, Filled }
 
@@ -71,6 +77,10 @@ pub ghost enum ContainerKillStage {
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory, phase: Mmap4kPhase },
     Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
+    /// Anonymous 2M mapping of `range`; the first `mapped` pages are done and `directory` is the level installed for the next one.
+    Mmap2m { range: VaRange2M, mapped: usize, directory: Mmap2mDirectory, phase: Mmap2mPhase },
+    /// Unmapping of the 2M pages of `range`; the first `unmapped` leaves are hidden, and `flushed` records the TLB flush.
+    Unmap2m { range: VaRange2M, unmapped: usize, flushed: bool },
     /// IOMMU mapping of the caller's pages at `va_range` into its IOMMU table at `iova_range`; the first `mapped` pages are done.
     IommuMap4k { va_range: VaRange4K, iova_range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
     /// IOMMU unmapping of `iova_range`; the first `unmapped` pages are done, and `flushed` records the IOTLB flush.

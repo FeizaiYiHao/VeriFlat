@@ -181,9 +181,7 @@ fn ipc_lock_tables_and_share_pages(
             Tracked(target_windows), Ghost(channel_index), Ghost(waiting_state), Ghost(start), Ghost(pre),
         );
     }
-    proof {
-        assert(lctx.pagetable_lock_map() =~= old(lctx).pagetable_lock_map() && lctx.pagetable_window_lock_map() =~= old(lctx).pagetable_window_lock_map());
-    }
+    proof { assert(lctx.pagetable_lock_map() =~= old(lctx).pagetable_lock_map() && lctx.pagetable_window_lock_map() =~= old(lctx).pagetable_window_lock_map()); }
     result
 }
 
@@ -452,9 +450,7 @@ fn ipc_map_pages_and_release_tables(
         assert(ipc_begin_transit_eof_transition_framing(recorded_k, *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr)) by { reveal(ipc_begin_transit_eof_transition_framing); };
         ipc_begin_transit_eof(recorded_k, *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr);
         let pre_k = old(steps).snapshot_k();
-        assert(kernel_thread_state_changed(&pre_k, &*krnl, peer_thread_ptr)) by {
-            reveal(kernel_thread_state_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-        };
+        assert(kernel_thread_state_changed(&pre_k, &*krnl, peer_thread_ptr)) by { reveal(kernel_thread_state_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
         kernel_thread_dequeued_and_locks_changed_implies_u_step(&pre_k, old(krnl), &*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, true);
         ipc_pages_enter_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, channel_index,
             waiting_state, *source_range, *target_range);
@@ -612,6 +608,7 @@ pub(super) fn ipc_rendezvous_pages(
         old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
         old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,

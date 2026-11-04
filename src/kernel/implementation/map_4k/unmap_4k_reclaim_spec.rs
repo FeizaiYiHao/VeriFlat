@@ -29,6 +29,18 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
     &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure()
     &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.l2_entry(p, i)]
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.l2_entry(p, i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.l2_entry(p, i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_l2(l4i, l3i, l2i)]
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_l2(l4i, l3i, l2i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != spec_va2index(va)
+            ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)]
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)
     &&& post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view()
     &&& post.pt_mp.spec_index(pagetable).view().kernel_entries == pre.pt_mp.spec_index(pagetable).view().kernel_entries
     &&& post.pt_mp.spec_index(pagetable).view().kernel_l4_end == pre.pt_mp.spec_index(pagetable).view().kernel_l4_end

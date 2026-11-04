@@ -326,5 +326,60 @@ impl VaRange4K {
     }
 }
 
+/// A sequence of `len` consecutive 2M-aligned VAs starting at `start`.
+#[derive(Clone, Copy)]
+pub struct VaRange2M {
+    pub start: VAddr,
+    pub len: usize,
+    pub view: Ghost<Seq<VAddr>>,
+}
+
+impl VaRange2M {
+    pub closed spec fn view(&self) -> Seq<VAddr> { self.view.view() }
+
+    pub open spec fn wf(&self) -> bool {
+        &&& self.len <= usize::MAX / 0x200000
+        &&& self.start < usize::MAX - self.len * 0x200000
+        &&& spec_va_2m_valid(self.start)
+        &&& self.view().len() == self.len
+        &&& self.view().no_duplicates()
+        &&& forall|i: int| #![trigger self.view().spec_index(i)] 0 <= i < self.len ==> spec_va_2m_valid(self.view().spec_index(i))
+        &&& self.view_match_spec()
+    }
+
+    pub closed spec fn view_match_spec(&self) -> bool {
+        &&& forall|i: usize| #![trigger spec_va_add_range_2m(self.start, i)] 0 <= i < self.len ==> spec_va_add_range_2m(self.start, i) == self.view().spec_index(i as int)
+    }
+
+    pub fn new(va: VAddr, len: usize) -> (ret: Self)
+        requires
+            spec_va_2m_valid(va),
+            va_2m_range_valid(va, len),
+            len <= usize::MAX / 0x200000,
+            va < usize::MAX - len * 0x200000,
+        ensures
+            ret.wf(),
+            ret == (Self { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_2m(va, i as usize))) }),
+    {
+        let seq = Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_2m(va, i as usize)));
+        Self { start: va, len: len, view: seq }
+    }
+
+    pub fn index(&self, i: usize) -> (ret: VAddr)
+        requires
+            self.wf(),
+            0 <= i < self.len,
+        ensures
+            ret == self.view().spec_index(i as int),
+    {
+        va_add_range_2m(self.start, i)
+    }
+
+    /// The 4K pages that cover the 2M pages of the range, in address order; its 2M windows are the range's pages.
+    pub open spec fn covering_4k_range(&self) -> VaRange4K {
+        VaRange4K { start: self.start, len: (self.len * 512) as usize, view: Ghost(Seq::new((self.len * 512) as nat, |i: int| spec_va_add_range(self.start, i as usize))) }
+    }
+}
+
 // -------------------- End of Structs -------------------
 } // verus!

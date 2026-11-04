@@ -5,9 +5,9 @@ use super::syscall_mmap_4k_spec::*;
 verus! {
 /// The entry state's K facts on the running thread, its process, and its pagetable decide the mmap result `ret`. A range result
 /// checked on `cur`, which has the entry pagetable's mappings, is exact: a range found in use under a read lock has every leaf it
-/// covers present, since its 2M windows are held and every 2M and 1G leaf is present, and `found` names a 4K leaf in its index
-/// interval or, if there is none, some page is covered by a 2M or 1G leaf. Without a checked table, a range result is only known
-/// to be success or in use.
+/// covers present, since its 2M windows are held with their leaves present and every 1G leaf is present, and `found` names a 4K
+/// leaf in its index interval or, if there is none, some page is covered by a 2M or 1G leaf. Without a checked table, a range
+/// result is only known to be success or in use.
 pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable<PT_TYPE>>,
     found: Option<(L4Index, L3Index, L2Index, L1Index)>)
     requires
@@ -45,7 +45,6 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             }
             &&& cur is Some && ret is ErrorVaInUse ==> checked.leaves_present() || {
                 &&& forall|w: WindowVa| #![trigger va_range_2m_windows(va_range).contains(w)] va_range_2m_windows(va_range).contains(w) ==> checked.window_leaves_present(w)
-                &&& forall|v: VAddr| #![trigger checked.mapping_2m().dom().contains(v)] checked.mapping_2m().dom().contains(v) ==> checked.mapping_2m().spec_index(v).present
                 &&& forall|v: VAddr| #![trigger checked.mapping_1g().dom().contains(v)] checked.mapping_1g().dom().contains(v) ==> checked.mapping_1g().spec_index(v).present
                 &&& found is Some ==> {
                     let f = found->Some_0;
@@ -87,7 +86,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
                 spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
                 assert(checked.mapping_4k().spec_index(fv).present);
                 assert(u_table.mapping_4k.dom().contains(fv));
-            } else { reveal(WholePageTable::spec_mapping_4k_va_range_empty); }
+            } else { reveal(WholePageTable::spec_mapping_4k_va_range_empty); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
         }
     }
 }

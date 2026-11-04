@@ -131,7 +131,10 @@ pub(super) fn mmap_4k_fill_enter(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: *va_range, mapped: 0, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Fill })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
-    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); }
+    proof {
+        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_perms_wf_at(krnl.prc_mp, process_ptr);
+        process_emptied_threads_wf_at(krnl.prc_mp, krnl.thr_mp, process_ptr, thread_ptr);
+    }
     let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
     let ghost locked_lctx = *lctx;

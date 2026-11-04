@@ -17,6 +17,7 @@ pub mod pagetable_util;
 pub mod pagetable_util_t;
 mod pagetable_util_t_eof;
 mod pagetable_window_stale_eof;
+mod pagetable_table_stale_eof;
 pub mod pagetable_structure_scan;
 mod pagetable_structure_scan_eof;
 pub mod pagetable_range;

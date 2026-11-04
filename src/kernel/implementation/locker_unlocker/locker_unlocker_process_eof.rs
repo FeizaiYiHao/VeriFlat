@@ -19,7 +19,8 @@ pub(super) proof fn wlock_process_eof(pre: KernelK, post: KernelK, process_ptr: 
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, process_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
@@ -78,7 +79,11 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, process_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by {
+        reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match);
+        process_state_lock_wf_at(pre.prc_mp, process_ptr); process_perms_wf_at(pre.prc_mp, process_ptr);
+    };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by {
@@ -126,7 +131,8 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp)) by { process_lock_op_preserves_invariant_fields(pre.prc_mp, post.prc_mp, process_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };

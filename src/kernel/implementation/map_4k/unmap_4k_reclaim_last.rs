@@ -212,6 +212,8 @@ pub fn reclaim_last_4k_mapping(
             &&& post.window_view(w).stale_cpus == pre.window_view(w).stale_cpus
             &&& post.mapping_2m().dom().contains(w.va) == pre.mapping_2m().dom().contains(w.va)
             &&& pre.mapping_2m().dom().contains(w.va) ==> post.mapping_2m().spec_index(w.va) == pre.mapping_2m().spec_index(w.va)
+            &&& pei_valid(spec_v2l2index(w.va)) && !pre.lower.l2_entry_hides_l1(pre.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                ==> !post.lower.l2_entry_hides_l1(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|w: WindowVa, v: VAddr|
             #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)), whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)]

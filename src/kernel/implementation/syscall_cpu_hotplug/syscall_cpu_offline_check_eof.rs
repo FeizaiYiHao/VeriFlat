@@ -299,6 +299,7 @@ proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, contai
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     hide(Seq::contains);
     reveal(cpu_went_off_eof_transition_framing);
@@ -306,6 +307,7 @@ proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, contai
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 
 /// Closes every kernel invariant after the committed offline from the entry invariants, the summary, and

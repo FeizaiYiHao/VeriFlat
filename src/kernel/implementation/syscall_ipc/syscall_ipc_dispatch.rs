@@ -546,9 +546,7 @@ verus! {
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth
-            }) by {
-                process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
-            };
+            }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); };
         }
         let current_thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
 
@@ -775,6 +773,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
@@ -1049,6 +1048,7 @@ verus! {
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
             old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+            old(krnl).cpu_tlb.structure_caches.view() == old(steps).snapshot_k().cpu_tlb.structure_caches.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
@@ -1199,9 +1199,7 @@ verus! {
             release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
-                assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
-                    kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
-                };
+                assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl); };
                 ipc_rendezvous_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload, RetValueType::ErrorIpcPeerKilled);
             }
             return RetValueType::ErrorIpcPeerKilled;

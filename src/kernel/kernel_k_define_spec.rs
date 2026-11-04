@@ -56,7 +56,9 @@ verus! {
             &&& pagetable_window_holders_hold_pagetable(self.pt_mp, self.pt_lower.view())
             &&& pagetable_lower_backup_wf(self.pt_mp, self.pt_lower.view())
             &&& pagetable_hidden_leaves_only_when_locked(self.pt_mp, self.pt_lower.view())
+            &&& pagetable_hidden_l1_only_when_locked(self.pt_mp, self.pt_lower.view())
             &&& pagetable_window_stale_cpus_only_when_locked(self.pt_mp, self.pt_lower.view())
+            &&& pagetable_table_stale_cpus_only_when_write_held(self.pt_mp)
             &&& iommu_table_perms_wf(self.it_mp)
             &&& self.irt.inv()
             &&& page_array_wf(self.pg_arr)
@@ -100,8 +102,10 @@ verus! {
             &&& endpoint_pages_wf(self.ep_mp, self.pg_arr)
             &&& process_pagetable_match(self.prc_mp, self.pt_mp)
             &&& process_iommu_table_match(self.prc_mp, self.it_mp)
-            &&& pagetable_no_huge_leaf_wf(self.pt_mp, self.pt_lower.view(), self.it_mp)
-            &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp)
+            &&& pagetable_no_1g_leaf_wf(self.pt_mp, self.pt_lower.view())
+            &&& iommu_table_no_huge_leaf_wf(self.it_mp)
+            &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp, self.pg_arr)
+            &&& pagetable_hidden_roots_only_when_write_held_or_emptied(self.pt_mp, self.prc_mp)
             &&& process_kernel_pages_owner_wf(self.pg_arr, self.prc_mp, self.pt_mp, self.it_mp)
             &&& page_object_owner_wf(self.pg_arr, self.ctn_mp, self.thr_mp)
             &&& self.allocator_free_pages_wf()
@@ -152,6 +156,7 @@ verus! {
             // TLB spec
             &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
             &&& tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)
+            &&& structure_cache_wf_spec(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)
         }
 
         #[verifier::opaque]

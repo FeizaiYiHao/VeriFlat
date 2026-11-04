@@ -196,8 +196,10 @@ proof fn thread_exit_destroy_eof_page_relations(
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
+        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
+        iommu_table_no_huge_leaf_wf(post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+        pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp),
 {
     reveal(thread_exit_destroy_eof_transition_framing);
     let page_index = page_ptr2page_index(thread_ptr);
@@ -226,7 +228,8 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); reveal(process_pagetable_match); };
 }
 
 proof fn thread_exit_destroy_eof_allocator_quota_wf(
@@ -580,6 +583,7 @@ pub(super) proof fn thread_exit_destroy_eof(
         reveal(container_cpu_wf);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
 }
 
 /// The destroy step, between the lock acquisitions that follow the step's start `start` and the releases that end the
@@ -654,13 +658,11 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
     let pcid = entry.prc_mp.spec_index(process_ptr).view().pcid;
     assert(entry.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == pcid) by { reveal(process_pagetable_match); };
     assert forall|c: RwLockContainerPtr| #![trigger mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)] entry.ctn_mp.dom().contains(c) implies
-        PcidAllocator::free_pcids(mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
-            == if zombie && c == container_ptr {
+        PcidAllocator::free_pcids(mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()) == if zombie && c == container_ptr {
                 PcidAllocator::free_pcids(entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()).insert(pcid)
             } else { PcidAllocator::free_pcids(entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()) } by {
         if c != container_ptr {
-            assert(entry.pcid_allc_mp.dom().contains(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)
-                && entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator != pcid_allocator_ptr) by { reveal(container_pcid_allocator_wf); };
+            assert(entry.pcid_allc_mp.dom().contains(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator) && entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator != pcid_allocator_ptr) by { reveal(container_pcid_allocator_wf); };
         } else if zombie {
             pcid_allocator_perms_wf_at(entry.pcid_allc_mp, pcid_allocator_ptr);
         }

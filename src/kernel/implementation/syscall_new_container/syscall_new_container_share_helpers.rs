@@ -140,6 +140,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger entry_lctx.pagetable_window_lock_map().dom().contains((p, w))]
             entry_lctx.pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable_ptr && source_window_perms.dom().contains(w)),
@@ -153,6 +154,14 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
                 && old(lctx).pagetable_window_lock_map().index((p, w)) == entry_lctx.pagetable_window_lock_map().index((p, w)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).leaves_present(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
+                ==> old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_page(p).entry_lock(i).l1()]
+            whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_entry_hides_l1(p, i),
         old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
             va_range_2m_windows(*source_range).contains(w) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> child_window_perms.dom().contains(w),
@@ -261,9 +270,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
         krnl, Tracked(&mut *lctx), cpu_id, parent_container_ptr, child_container_ptr, parent_process_ptr, current_thread_ptr, Tracked(cpu_lock_perm),
         Tracked(parent_container_lock_perm), Tracked(child_container_lock_perm), Tracked(parent_process_lock_perm), Tracked(current_thread_lock_perm),
     );
-    proof {
-        assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by { broadcast use kernel_process_nonlock_fields_unchanged_transitive; };
-    }
+    proof { assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by { broadcast use kernel_process_nonlock_fields_unchanged_transitive; }; }
 }
 
 /// Releases the child's and the parent's held windows of the range, the child process, both page tables, the new thread's page,
@@ -363,6 +370,7 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_entry_hides_l1(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger entry_lctx.pagetable_window_lock_map().dom().contains((p, w))]
             entry_lctx.pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable_ptr && source_window_perms.dom().contains(w)),
@@ -376,6 +384,14 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
                 && old(lctx).pagetable_window_lock_map().index((p, w)) == entry_lctx.pagetable_window_lock_map().index((p, w)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).leaves_present(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
+                ==> old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_page(p).entry_lock(i).l1()]
+            whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_entry_hides_l1(p, i),
         old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
             va_range_2m_windows(*source_range).contains(w) && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> child_window_perms.dom().contains(w),

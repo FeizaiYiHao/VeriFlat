@@ -256,6 +256,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_page).view().pcid_value() == root_pcid
     &&& post.pt_mp.spec_index(pagetable_page).view().cr3 == l4_page
     &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
+    &&& post.pt_mp.spec_index(pagetable_page).view().table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
     &&& post.pt_mp.spec_index(pagetable_page).view_ghost() == post.pt_lower.view().spec_index(pagetable_page)
     &&& forall|pt_ptr: RwLockPageTableRoot|

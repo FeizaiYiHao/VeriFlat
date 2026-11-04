@@ -192,9 +192,7 @@ pub(super) fn new_container_lock_process_and_thread(
         }),
 {
     proof {
-        assert(!krnl.prc_mp.spec_index(parent_process_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(parent_process_ptr))) by {
-            process_perms_wf_at(krnl.prc_mp, parent_process_ptr);
-        };
+        assert(!krnl.prc_mp.spec_index(parent_process_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(parent_process_ptr))) by { process_perms_wf_at(krnl.prc_mp, parent_process_ptr); };
     }
     let process_res = krnl.wlock_process_unless_killed(parent_process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
@@ -325,6 +323,7 @@ pub(super) fn new_container_lock_source_windows(
                 == (RwLockState::Write { thread_id: ret.2.view().index(w).thread_id(), lock_id: ret.2.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_leaves_present(w)
             &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+            &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
         },
         ret.0 ==> forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == root && ret.2.view().dom().contains(w)),
