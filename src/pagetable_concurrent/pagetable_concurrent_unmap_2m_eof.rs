@@ -302,6 +302,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
             post.spec_held_2m_l2(target_l4i, target_l3i, target_l2i) == Some(post.lower.l2_entry(target_l2_p, target_l2i)),
+            forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i).l1()] pei_valid(i) && !pre.lower.l2_entry_hides_l1(p, i) ==> !post.lower.l2_entry_hides_l1(p, i),
     {
         reveal(WholePageTable::unmap_2m_page_user_view_eof_transition_framing);
         broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;

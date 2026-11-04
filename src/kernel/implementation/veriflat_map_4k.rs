@@ -11,6 +11,7 @@ use veriflat_alloc_page::free_2m_page::drain_2m_cache_batch;
 pub mod map_4k;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
+pub use map_4k::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;
 pub use map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use map_4k::mmap_4k_build_structure_spec::*;
 pub use map_4k::share_mapping_4k_spec::*;

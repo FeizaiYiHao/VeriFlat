@@ -21,8 +21,25 @@ const _: () = assert!(MAX_PAGES == NUM_PAGES);
 const PAGE_SIZE: usize = 4096;
 const PAGES_PER_2M: usize = 512;
 /// Free 2M blocks handed to the 2M allocator; they are the root container's 2M quota, and each
-/// new container costs two.
-const BOOT_FREE_2M_BLOCKS: usize = 4;
+/// new container costs two. `VERIFLAT_BOOT_2M_BLOCKS` of the kernel build sets it (decimal, default 4);
+/// the benchmark images take 128 (256 MiB of the managed GiB) for the parallel mmap_2m timing.
+const BOOT_FREE_2M_BLOCKS: usize = match option_env!("VERIFLAT_BOOT_2M_BLOCKS") {
+    Some(blocks) => parse_decimal(blocks),
+    None => 4,
+};
+
+/// The value of the decimal number `text`, at compile time.
+const fn parse_decimal(text: &str) -> usize {
+    let digits = text.as_bytes();
+    assert!(!digits.is_empty(), "VERIFLAT_BOOT_2M_BLOCKS is empty");
+    let (mut value, mut i) = (0, 0);
+    while i < digits.len() {
+        assert!(digits[i].is_ascii_digit(), "VERIFLAT_BOOT_2M_BLOCKS is not a decimal number");
+        value = value * 10 + (digits[i] - b'0') as usize;
+        i += 1;
+    }
+    value
+}
 const PTE_PRESENT: u64 = 1;
 const PTE_HUGE: u64 = 1 << 7;
 const PTE_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;

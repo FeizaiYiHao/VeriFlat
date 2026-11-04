@@ -659,6 +659,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     &&& self.lower.l2_page(p).entry_lock(i).l1() is Some ==> !self.lower.l2_entry(p, i).perm.ps
                     &&& self.lower.l2_page(p).entry_lock(i).l1() is Some && !self.lower.l2_entry(p, i).perm.present
                         ==> self.lower.l2_entry(p, i).perm.kernel_present
+                    // Conversely the hidden-L1 marker word (kernel_present, not present, not huge) always owns its L1 page.
+                    &&& self.lower.l2_entry(p, i).perm.kernel_present && !self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps
+                        ==> self.lower.l2_page(p).entry_lock(i).l1() is Some
                     &&& self.lower.l2_page(p).entry_lock(i).l1() is Some
                         ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr)
                 }

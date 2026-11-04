@@ -555,6 +555,12 @@ const PHASE_MMAP_ONLY_XPROC_CONCURRENT: usize = 14;
 const PHASE_MMAP_CACHED_XPROC_ALONE: usize = 15;
 const PHASE_MMAP_CACHED_XPROC_CONCURRENT: usize = 16;
 const PHASE_STOP: usize = 17;
+/// The parallel mmap_2m timing (`time_parallel_mmap_2m`): the start of its cross-process child, then per
+/// variant of `MAP2M_VARIANTS`, in its order, four phases from `PHASE_MAP2M_FIRST`: alone and at once in
+/// dom0, then alone and at once in the child.
+const PHASE_MAP2M_XPROC_SETUP: usize = 18;
+const PHASE_MAP2M_FIRST: usize = 19;
+const PHASE_MAP2M_END: usize = PHASE_MAP2M_FIRST + 4 * MAP2M_VARIANTS.len();
 /// The descriptor where each client of the cross-process mode, dom0 as client 0 included, creates the
 /// endpoint of its child server, which holds it in descriptor 0. The pair's endpoint cannot serve: the
 /// same-process server stays blocked in receive_call on it.
@@ -562,12 +568,19 @@ const XPROC_ENDPOINT: usize = 1;
 /// The same for the child of the parallel mmap timing's cross-process modes: a descriptor no earlier
 /// child used, since a killed child's endpoint stays in its client's descriptor.
 const MMAP_XPROC_ENDPOINT: usize = 5;
-/// The parallel timings this build runs, from the build environment: `call`, `mmap`, or both
-/// (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// The same for the child of the parallel mmap_2m timing.
+const MAP2M_XPROC_ENDPOINT: usize = 6;
+/// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
+/// `mmap`, and `mmap2m` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
 };
+
+/// Whether `PARALLEL` lists the parallel timing `name`.
+fn runs_parallel(name: &str) -> bool {
+    PARALLEL.split(',').any(|listed| listed.trim() == name)
+}
 
 /// One client/server pair of the parallel call timing, alone on its cache lines, so the pairs share
 /// nothing but the kernel.
@@ -590,6 +603,9 @@ struct Pair {
     end: AtomicU64,
     rounds: AtomicU64,
     cycles: AtomicU64,
+    /// The TSC cycles per round of the last finished phase including the untimed work between rounds,
+    /// when a timing records it (the parallel mmap_2m timing); 0 otherwise.
+    span: AtomicU64,
 }
 
 impl Pair {
@@ -597,7 +613,7 @@ impl Pair {
         Pair {
             client_cpu: AtomicUsize::new(0), server_cpu: AtomicUsize::new(0), ready: AtomicBool::new(false), go: AtomicUsize::new(0),
             done: AtomicUsize::new(0), deadline: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0),
-            rounds: AtomicU64::new(0), cycles: AtomicU64::new(0),
+            rounds: AtomicU64::new(0), cycles: AtomicU64::new(0), span: AtomicU64::new(0),
         }
     }
 }
@@ -697,6 +713,12 @@ extern "C" fn pair_client() -> ! {
                 pair.ready.store(true, Ordering::SeqCst);
             }
             PHASE_MMAP_XPROC_ALONE..=PHASE_MMAP_CACHED_XPROC_CONCURRENT => call_mmap_child(phase),
+            PHASE_MAP2M_XPROC_SETUP => {
+                start_pair_child(k, MAP2M_XPROC_ENDPOINT, mmap_server);
+                pair.ready.store(true, Ordering::SeqCst);
+            }
+            PHASE_MAP2M_FIRST..PHASE_MAP2M_END if map2m_phase_in_child(phase) => call_mmap_child(phase),
+            PHASE_MAP2M_FIRST..PHASE_MAP2M_END => time_map2m(k, phase),
             PHASE_STOP => break,
             _ => {
                 log::error!("pair {}: released into unknown phase {}", k, phase);
@@ -757,8 +779,8 @@ fn time_pair(k: usize, endpoint: usize, phase: usize) {
 /// the only queued thread, and creates its server, and later its child, there; each round trip is a
 /// direct switch between the pair's threads, so no pair leaves its CPU. The cross-process mode times as
 /// many pairs as dom0's container quota funds children for. Afterwards the children are killed. Then,
-/// when this build runs it (`PARALLEL`), the parallel mmap timing (`time_parallel_mmap`) uses the same
-/// clients as its workers; without `call` in `PARALLEL` the call timing is skipped and the pairs only
+/// when this build runs them (`PARALLEL`), the parallel mmap and mmap_2m timings (`time_parallel_mmap`,
+/// `time_parallel_mmap_2m`) use the same clients as their workers; without `call` in `PARALLEL` the call timing is skipped and the pairs only
 /// place the workers. Finally every CPU but 0 is Off again.
 fn time_parallel_call() {
     // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
@@ -796,14 +818,17 @@ fn time_parallel_call() {
         }
         wait_for("a pair server to block", || pair.ready.load(Ordering::SeqCst));
     }
-    if PARALLEL.contains("call") {
+    if runs_parallel("call") {
         time_pairs(n, [PHASE_ALONE, PHASE_CONCURRENT], "parallel_call", true, &|phase| time_pair(0, PAIR_ENDPOINT, phase));
         let m = start_pair_children(n, XPROC_ENDPOINT, pair_server, PHASE_XPROC_SETUP, "parallel_call_xproc");
         time_pairs(m, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT], "parallel_call_xproc", true, &|phase| time_pair(0, XPROC_ENDPOINT, phase));
         kill_pair_children(m);
     }
-    if PARALLEL.contains("mmap") {
+    if runs_parallel("mmap") {
         time_parallel_mmap(n);
+    }
+    if runs_parallel("mmap2m") {
+        time_parallel_mmap_2m(n);
     }
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
@@ -835,9 +860,10 @@ fn time_parallel_call() {
 /// pair was timing in at least `PAIR_MIN_OVERLAP` hundredths of the concurrent phase's span; otherwise a
 /// shorter overlap is only logged as an error.
 fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &str, overlap_fatal: bool, run0: &dyn Fn(usize)) {
-    let (mut alone, mut alone_rounds) = ([0; MAX_PAIRS], [0; MAX_PAIRS]);
+    let (mut alone, mut alone_rounds, mut alone_span) = ([0; MAX_PAIRS], [0; MAX_PAIRS], [0; MAX_PAIRS]);
     for k in 0..n {
         let pair = &PAIRS[k];
+        pair.span.store(0, Ordering::SeqCst);
         pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
         if k == 0 {
             run0(alone_phase);
@@ -846,6 +872,7 @@ fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &st
             wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == alone_phase);
         }
         (alone[k], alone_rounds[k]) = (pair.cycles.load(Ordering::SeqCst), pair.rounds.load(Ordering::SeqCst));
+        alone_span[k] = alone[k].max(pair.span.load(Ordering::SeqCst));
         let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
         if server_cpu != k + 1 {
             log::error!("{}: the server of pair {} ran on CPU {}", prefix, k, server_cpu as isize - 1);
@@ -854,8 +881,8 @@ fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &st
     }
     // One deadline for all pairs, published before any release: `PAIR_WINDOW` away, or further (up to
     // `PAIR_MAX_WINDOW`) when needed for `PAIR_MIN_ROUNDS` rounds of each pair even if the pairs took
-    // turns at their alone pace.
-    let window = (PAIR_MIN_ROUNDS * n as u64 * alone[..n].iter().max().unwrap()).clamp(PAIR_WINDOW, PAIR_MAX_WINDOW);
+    // turns at their alone pace (with the untimed work between rounds, when the timing records it).
+    let window = (PAIR_MIN_ROUNDS * n as u64 * alone_span[..n].iter().max().unwrap()).clamp(PAIR_WINDOW, PAIR_MAX_WINDOW);
     let deadline = unsafe { core::arch::x86_64::_rdtsc() } + window;
     for pair in &PAIRS[..n] {
         pair.deadline.store(deadline, Ordering::SeqCst);
@@ -1014,21 +1041,27 @@ fn report_quota_short(prefix: &str, n: usize, region: usize) {
     log::info!("{} quota: region {} pages per worker, {} early region unmaps for want of container quota", prefix, region, short);
 }
 
-/// First thread of a child of the parallel mmap timing's cross-process modes, holding its client's
-/// endpoint in descriptor 0: runs worker k, its pair, in this process in each phase its client calls it
-/// with, and replies the phase once done.
+/// First thread of a child of the parallel mmap (or mmap_2m) timing's cross-process modes, holding its
+/// client's endpoint in descriptor 0: runs worker k, its pair, in this process in each phase its client
+/// calls it with, and replies the phase once done.
 extern "C" fn mmap_server() -> ! {
     let k = NEXT_PAIR.load(Ordering::SeqCst);
     let mut phase = quiet_value("mmap server receive_call", unsafe { sys_receive_call(0) });
     loop {
-        time_mmap(k, phase);
+        if (PHASE_MAP2M_FIRST..PHASE_MAP2M_END).contains(&phase) {
+            time_map2m(k, phase);
+        } else {
+            time_mmap(k, phase);
+        }
         phase = quiet_value("mmap server reply_and_receive_usize", unsafe { sys_reply_and_receive_usize(0, phase) });
     }
 }
 
-/// Has the calling client's mmap child run `phase`, waiting in the call until it is done.
+/// Has the calling client's mmap child (of the parallel mmap_2m timing for its phases) run `phase`,
+/// waiting in the call until it is done.
 fn call_mmap_child(phase: usize) {
-    let reply = quiet_value("call_usize (mmap child)", unsafe { sys_call_usize(MMAP_XPROC_ENDPOINT, phase) });
+    let endpoint = if (PHASE_MAP2M_FIRST..PHASE_MAP2M_END).contains(&phase) { MAP2M_XPROC_ENDPOINT } else { MMAP_XPROC_ENDPOINT };
+    let reply = quiet_value("call_usize (mmap child)", unsafe { sys_call_usize(endpoint, phase) });
     if reply != phase {
         log::error!("the mmap child replied {} to phase {}", reply, phase);
         unsafe { sys_debug_exit(1) };
@@ -1191,6 +1224,400 @@ fn online_after_offline(name: &str, online: impl Fn() -> isize) {
         }
         unsafe { sys_schedule() };
     }
+}
+
+// ---- parallel mmap_2m timing ----
+
+const SIZE_2M: usize = 1 << 21;
+const PAGES_PER_2M: usize = 512;
+
+/// What a round of the parallel mmap_2m timing does with its 2 MiB.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Map2mKind {
+    /// Maps 2 MiB, touches it, and unmaps it, all timed.
+    MapUnmap,
+    /// Maps 2 MiB and touches it, timed; once the region of `MAP2M_REGION` 2 MiB is full, unmaps it untimed.
+    MapOnly,
+    /// Maps and touches the region untimed, then unmaps it with one call, timed.
+    UnmapOnly,
+}
+
+/// How a variant maps its 2 MiB: one 2M page; one `mmap_4k` of 512 pages; or 512 `mmap_4k` of one page.
+/// Every variant unmaps with one call, `unmap_2m` or `unmap_4k` over the whole range.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Map2mPages {
+    Huge,
+    Small,
+    SmallSingle,
+}
+
+/// A variant of the parallel mmap_2m timing: its kind, how it maps, and its line prefix without `_same`
+/// or `_xproc`.
+struct Map2mVariant {
+    kind: Map2mKind,
+    pages: Map2mPages,
+    prefix: &'static str,
+}
+
+/// The variants in the order they run, each 2M one before its 4K twins.
+const MAP2M_VARIANTS: [Map2mVariant; 7] = [
+    Map2mVariant { kind: Map2mKind::MapUnmap, pages: Map2mPages::Huge, prefix: "parallel_mmap2m_mapunmap_2m" },
+    Map2mVariant { kind: Map2mKind::MapUnmap, pages: Map2mPages::Small, prefix: "parallel_mmap2m_mapunmap_4k" },
+    Map2mVariant { kind: Map2mKind::MapUnmap, pages: Map2mPages::SmallSingle, prefix: "parallel_mmap2m_mapunmap_4k1" },
+    Map2mVariant { kind: Map2mKind::MapOnly, pages: Map2mPages::Huge, prefix: "parallel_mmap2m_mmaponly_2m" },
+    Map2mVariant { kind: Map2mKind::MapOnly, pages: Map2mPages::Small, prefix: "parallel_mmap2m_mmaponly_4k" },
+    Map2mVariant { kind: Map2mKind::UnmapOnly, pages: Map2mPages::Huge, prefix: "parallel_mmap2m_unmaponly_2m" },
+    Map2mVariant { kind: Map2mKind::UnmapOnly, pages: Map2mPages::Small, prefix: "parallel_mmap2m_unmaponly_4k" },
+];
+
+/// The region of each kind, one GiB each: the 2M variants in `PAR_MAP2M_HUGE_VA`, the 4K ones in
+/// `PAR_MAP2M_SMALL_VA`, so no 2M window of a 2M variant ever holds an L1 table. Worker k's region starts
+/// at `k * PAR_MAP2M_STRIDE` in it: one 2M window in the map+unmap kind, `MAP2M_REGION` windows in the
+/// others, so the L2 entries of each worker fill a cache line of their own.
+const PAR_MAP2M_HUGE_VA: [usize; 3] = [0xc1_0000_0000, 0xc1_4000_0000, 0xc1_8000_0000];
+const PAR_MAP2M_SMALL_VA: [usize; 3] = [0xc2_0000_0000, 0xc2_4000_0000, 0xc2_8000_0000];
+const PAR_MAP2M_STRIDE: usize = 1 << 24;
+const MAP2M_REGION: usize = PAR_MAP2M_STRIDE / SIZE_2M;
+/// 4K quota a worker of the parallel mmap_2m timing moves to its thread at a time, and 2M quota, untimed.
+const PAR_MAP2M_FUND_4K: usize = 2048;
+const PAR_MAP2M_FUND_2M: usize = 8;
+/// As `PAR_TABLE_SLACK`: more than the page tables a worker's maps build over the whole timing, which
+/// its count leaves out (an L1 table per 4K window, and the directories of its child).
+const PAR_MAP2M_TABLE_SLACK: usize = 64;
+/// Per worker, the 4K and 2M quota its thread holds by its own count, carried from one phase to the next.
+static PAR_MAP2M_QUOTA_4K: [AtomicUsize; MAX_PAIRS] = [const { AtomicUsize::new(0) }; MAX_PAIRS];
+static PAR_MAP2M_QUOTA_2M: [AtomicUsize; MAX_PAIRS] = [const { AtomicUsize::new(0) }; MAX_PAIRS];
+
+/// The variant of a phase of the parallel mmap_2m timing.
+fn map2m_variant(phase: usize) -> &'static Map2mVariant {
+    &MAP2M_VARIANTS[(phase - PHASE_MAP2M_FIRST) / 4]
+}
+
+/// Whether a phase of the parallel mmap_2m timing runs in the worker's child.
+fn map2m_phase_in_child(phase: usize) -> bool {
+    (phase - PHASE_MAP2M_FIRST) % 4 >= 2
+}
+
+/// The alone and concurrent phases of variant `v`, in dom0 or in the child.
+fn map2m_phases(v: usize, in_child: bool) -> [usize; 2] {
+    let first = PHASE_MAP2M_FIRST + 4 * v + if in_child { 2 } else { 0 };
+    [first, first + 1]
+}
+
+/// Times one worker per CPU (`time_pairs`) over the variants of `MAP2M_VARIANTS`, every round mapping or
+/// unmapping 2 MiB as 2M pages or as 4K pages with the same touch (one write per 4K page) and the same
+/// funding, first with the workers threads of dom0, then the first threads of one child process per
+/// worker as `time_parallel_mmap` does. Every line gives TSC cycles per 2 MiB. A round's cycles leave out
+/// the quota moves, and the region maps and unmaps that are not what the variant times.
+fn time_parallel_mmap_2m(n: usize) {
+    // dom0 builds the page directory of each region's GiB, so that no timed map of dom0 takes the page
+    // table's write lock: with mmap_2m + unmap_2m in the 2M GiBs, which leaves no L1 table there.
+    fund("parallel mmap_2m page directories", 32);
+    for va in PAR_MAP2M_HUGE_VA {
+        quiet("alloc_quota_2m (parallel mmap_2m page directory)", unsafe { sys_alloc_quota_2m(1) });
+        quiet("alloc_thread_quota_2m (parallel mmap_2m page directory)", unsafe { sys_alloc_thread_quota_2m(1) });
+        quiet("mmap_2m (parallel mmap_2m page directory)", unsafe { sys_mmap_2m(va, 1) });
+        quiet("unmap_2m (parallel mmap_2m page directory)", unsafe { sys_unmap_2m(va, 1) });
+    }
+    for va in PAR_MAP2M_SMALL_VA {
+        quiet("mmap_4k (parallel mmap_2m page directory)", unsafe { sys_mmap_4k(va, 1) });
+        quiet("unmap_4k (parallel mmap_2m page directory)", unsafe { sys_unmap_4k(va, 1) });
+    }
+    let in_dom0 = |phase: usize| time_map2m(0, phase);
+    let mut prefix = Prefix::new();
+    for (v, variant) in MAP2M_VARIANTS.iter().enumerate() {
+        time_pairs(n, map2m_phases(v, false), prefix.with(variant.prefix, "_same"), false, &in_dom0);
+        if variant.kind == Map2mKind::MapOnly {
+            report_quota_short(prefix.with(variant.prefix, "_same"), n, MAP2M_REGION * PAGES_PER_2M);
+        }
+    }
+    // The children's threads start without quota of their own.
+    for quota in PAR_MAP2M_QUOTA_4K.iter().chain(&PAR_MAP2M_QUOTA_2M) {
+        quota.store(0, Ordering::SeqCst);
+    }
+    let m = start_pair_children(n, MAP2M_XPROC_ENDPOINT, mmap_server, PHASE_MAP2M_XPROC_SETUP, "parallel_mmap2m_xproc");
+    for (v, variant) in MAP2M_VARIANTS.iter().enumerate() {
+        time_pairs(m, map2m_phases(v, true), prefix.with(variant.prefix, "_xproc"), false, &call_mmap_child);
+        if variant.kind == Map2mKind::MapOnly {
+            report_quota_short(prefix.with(variant.prefix, "_xproc"), m, MAP2M_REGION * PAGES_PER_2M);
+        }
+    }
+    kill_pair_children(m);
+}
+
+/// A line prefix put together from two parts.
+struct Prefix {
+    text: [u8; 64],
+}
+
+impl Prefix {
+    const fn new() -> Self {
+        Prefix { text: [0; 64] }
+    }
+
+    fn with(&mut self, base: &str, suffix: &str) -> &str {
+        let len = base.len() + suffix.len();
+        self.text[..base.len()].copy_from_slice(base.as_bytes());
+        self.text[base.len()..len].copy_from_slice(suffix.as_bytes());
+        core::str::from_utf8(&self.text[..len]).unwrap()
+    }
+}
+
+/// Runs worker `k` of the parallel mmap_2m timing in `phase`, in the calling process, as `time_mmap` does
+/// for the parallel mmap timing, and records the timed TSC cycles per 2 MiB and, as `span`, the cycles per
+/// round with the untimed work. Afterwards the worker maps and unmaps whatever 2M quota its thread still
+/// holds, which moves that quota back to the container for the other workers and the children.
+fn time_map2m(k: usize, phase: usize) {
+    let pair = &PAIRS[k];
+    pair.server_cpu.store(current_cpu() + 1, Ordering::SeqCst);
+    let deadline = pair.deadline.load(Ordering::SeqCst);
+    let variant = map2m_variant(phase);
+    let alone = (phase - PHASE_MAP2M_FIRST) % 2 == 0;
+    let kind = variant.kind as usize;
+    let gib = if variant.pages == Map2mPages::Huge { PAR_MAP2M_HUGE_VA[kind] } else { PAR_MAP2M_SMALL_VA[kind] };
+    let (quota, quota_2m) = (PAR_MAP2M_QUOTA_4K[k].load(Ordering::SeqCst), PAR_MAP2M_QUOTA_2M[k].load(Ordering::SeqCst));
+    let mut worker = Map2mWorker { kind: variant.kind, pages: variant.pages, base: gib + k * PAR_MAP2M_STRIDE, mapped: 0, quota, quota_2m, timed: 0, short: 0 };
+    // Only alone: the phase at once follows the same worker's alone phase in the same region.
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    let warmup_end = start + deadline.saturating_sub(start) / 8;
+    for _ in 0..if alone { PAR_WARMUP } else { 0 } {
+        worker.round();
+        if unsafe { core::arch::x86_64::_rdtsc() } >= warmup_end {
+            break;
+        }
+    }
+    worker.timed = 0;
+    let begin = unsafe { core::arch::x86_64::_rdtsc() };
+    let mut rounds = 0;
+    let end = loop {
+        worker.round();
+        rounds += 1;
+        let now = unsafe { core::arch::x86_64::_rdtsc() };
+        if now >= deadline && (!alone || rounds >= PAR_MIN_ALONE_ROUNDS) {
+            break now;
+        }
+    };
+    if current_cpu() != k {
+        log::error!("mmap_2m worker {} moved to CPU {}", k, current_cpu());
+        unsafe { sys_debug_exit(1) };
+    }
+    if worker.mapped > 0 {
+        worker.unmap_region();
+    }
+    worker.return_quota_2m();
+    PAR_MAP2M_QUOTA_4K[k].store(worker.quota, Ordering::SeqCst);
+    PAR_MAP2M_QUOTA_2M[k].store(worker.quota_2m, Ordering::SeqCst);
+    PAR_SHORT[k].fetch_add(worker.short, Ordering::SeqCst);
+    let units = rounds * if worker.kind == Map2mKind::UnmapOnly { MAP2M_REGION as u64 } else { 1 };
+    pair.begin.store(begin, Ordering::SeqCst);
+    pair.end.store(end, Ordering::SeqCst);
+    pair.rounds.store(rounds, Ordering::SeqCst);
+    pair.cycles.store(worker.timed / units, Ordering::SeqCst);
+    pair.span.store((end - begin) / rounds, Ordering::SeqCst);
+    pair.done.store(phase, Ordering::SeqCst);
+}
+
+/// A worker of the parallel mmap_2m timing within one phase: its variant, its region's start, the 2 MiB
+/// mapped there (map-only kind), its thread's 4K and 2M quota by its own count, the timed TSC cycles, and
+/// its early region unmaps.
+struct Map2mWorker {
+    kind: Map2mKind,
+    pages: Map2mPages,
+    base: usize,
+    mapped: usize,
+    quota: usize,
+    quota_2m: usize,
+    timed: u64,
+    short: usize,
+}
+
+impl Map2mWorker {
+    /// One round, by kind; only the work the kind times adds to `timed`.
+    fn round(&mut self) {
+        match self.kind {
+            Map2mKind::MapUnmap => {
+                self.make_room(1);
+                let start = unsafe { core::arch::x86_64::_rdtsc() };
+                self.map(self.base, 1);
+                touch_2m(self.base, 1);
+                self.unmap(self.base, 1);
+                self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+            }
+            Map2mKind::MapOnly => {
+                if self.mapped == MAP2M_REGION {
+                    self.unmap_region();
+                }
+                self.make_room(1);
+                let va = self.base + self.mapped * SIZE_2M;
+                let start = unsafe { core::arch::x86_64::_rdtsc() };
+                self.map(va, 1);
+                touch_2m(va, 1);
+                self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+                self.mapped += 1;
+            }
+            Map2mKind::UnmapOnly => {
+                self.make_room(MAP2M_REGION);
+                self.map(self.base, MAP2M_REGION);
+                touch_2m(self.base, MAP2M_REGION);
+                let start = unsafe { core::arch::x86_64::_rdtsc() };
+                self.unmap(self.base, MAP2M_REGION);
+                self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+            }
+        }
+    }
+
+    /// Maps `count` 2 MiB at `va` the variant's way and takes the quota the pages use from the count.
+    fn map(&mut self, va: usize, count: usize) {
+        match self.pages {
+            Map2mPages::Huge => {
+                quiet("parallel mmap_2m", unsafe { sys_mmap_2m(va, count) });
+                self.quota_2m -= count;
+            }
+            Map2mPages::Small => {
+                for i in 0..count {
+                    quiet("parallel mmap_4k (512 pages)", unsafe { sys_mmap_4k(va + i * SIZE_2M, PAGES_PER_2M) });
+                }
+                self.quota -= count * PAGES_PER_2M;
+            }
+            Map2mPages::SmallSingle => {
+                for i in 0..count * PAGES_PER_2M {
+                    quiet("parallel mmap_4k (1 page)", unsafe { sys_mmap_4k(va + i * 4096, 1) });
+                }
+                self.quota -= count * PAGES_PER_2M;
+            }
+        }
+    }
+
+    /// Unmaps `count` 2 MiB at `va` with one call, which refunds the pages to the container.
+    fn unmap(&self, va: usize, count: usize) {
+        if self.pages == Map2mPages::Huge {
+            quiet("parallel unmap_2m", retry_lock_order(|| unsafe { sys_unmap_2m(va, count) }));
+        } else {
+            quiet("parallel unmap_4k (2 MiB)", retry_lock_order(|| unsafe { sys_unmap_4k(va, count * PAGES_PER_2M) }));
+        }
+    }
+
+    fn unmap_region(&mut self) {
+        self.unmap(self.base, self.mapped);
+        self.mapped = 0;
+    }
+
+    /// Moves quota to the thread until a map of `count` 2 MiB finds what it needs at hand: per 2M page
+    /// one 2M and two 4K quota; per `mmap_4k` call four 4K quota per page (one more page each than it
+    /// keeps); plus `PAR_MAP2M_TABLE_SLACK` for page tables. When the container lacks it, unmaps the region
+    /// early, which refunds its pages to the container.
+    fn make_room(&mut self, count: usize) {
+        let (need, need_2m) = match self.pages {
+            Map2mPages::Huge => (2 * count, count),
+            Map2mPages::Small => ((count - 1) * PAGES_PER_2M + 4 * PAGES_PER_2M, 0),
+            Map2mPages::SmallSingle => (count * PAGES_PER_2M + 3, 0),
+        };
+        while self.quota < need + PAR_MAP2M_TABLE_SLACK {
+            if try_fund(PAR_MAP2M_FUND_4K) {
+                self.quota += PAR_MAP2M_FUND_4K;
+            } else {
+                self.out_of_quota("4K", PAR_MAP2M_FUND_4K);
+            }
+        }
+        while self.quota_2m < need_2m {
+            // Topped up to `PAR_MAP2M_FUND_2M` at most, so what is left fits the region.
+            let amount = need_2m.max(PAR_MAP2M_FUND_2M) - self.quota_2m;
+            if try_fund_2m(amount) {
+                self.quota_2m += amount;
+            } else if try_fund_2m(need_2m - self.quota_2m) {
+                self.quota_2m = need_2m;
+            } else {
+                self.out_of_quota("2M", need_2m - self.quota_2m);
+            }
+        }
+    }
+
+    fn out_of_quota(&mut self, which: &str, amount: usize) {
+        if self.mapped > 0 {
+            self.short += 1;
+            self.unmap_region();
+        } else {
+            log::error!("parallel mmap_2m: the container holds less than {} {} quota", amount, which);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+
+    /// Maps and unmaps the 2M quota the thread still holds at the region's start, untimed, which moves it
+    /// back to the container. The region is empty: the 2M pages fit in it, at most `MAP2M_REGION`.
+    fn return_quota_2m(&mut self) {
+        if self.quota_2m > 0 {
+            let count = self.quota_2m;
+            self.make_room(count);
+            quiet("mmap_2m (2M quota return)", unsafe { sys_mmap_2m(self.base, count) });
+            quiet("unmap_2m (2M quota return)", retry_lock_order(|| unsafe { sys_unmap_2m(self.base, count) }));
+            self.quota_2m = 0;
+        }
+    }
+}
+
+/// Writes the first word of each 4K page of `count` 2 MiB at `va` and reads the last one back.
+fn touch_2m(va: usize, count: usize) {
+    let pages = count * PAGES_PER_2M;
+    for i in 0..pages {
+        unsafe { ((va + i * 4096) as *mut u64).write_volatile(PAGE_MAGIC ^ i as u64) };
+    }
+    let last = va + (pages - 1) * 4096;
+    if unsafe { (last as *const u64).read_volatile() } != PAGE_MAGIC ^ (pages - 1) as u64 {
+        log::error!("parallel mmap_2m: the page at {:#x} does not hold what was written", last);
+        unsafe { sys_debug_exit(1) };
+    }
+}
+
+/// `try_fund` for 2M quota.
+fn try_fund_2m(amount: usize) -> bool {
+    let ret = retry_lock_order(|| unsafe { sys_alloc_quota_2m(amount) });
+    if error_name(ret) == "ErrorContainerQuotaInsufficient" {
+        return false;
+    }
+    quiet("parallel mmap_2m alloc_quota_2m", ret);
+    quiet("parallel mmap_2m alloc_thread_quota_2m", unsafe { sys_alloc_thread_quota_2m(amount) });
+    true
+}
+
+/// The window of the mmap_2m self-test, in a GiB no other test maps.
+const TEST_2M_VA: usize = 0xc3_0000_0000;
+
+/// Functional test of mmap_2m and unmap_2m, skipped while the kernel answers mmap_2m with InvalidSyscall.
+/// Without 2M quota mmap_2m fails; over a live 4K page it fails with ErrorVaInUse and unmap_2m of a 4K
+/// mapping fails; once that page is unmapped, its window keeps an empty L1 table, which mmap_2m replaces
+/// with a 2M leaf; the 2M page holds what is written and unmaps. The 2M quota goes back to the container.
+fn test_mmap_2m() {
+    let ret = unsafe { sys_mmap_2m(TEST_2M_VA, 1) };
+    if error_name(ret) == "InvalidSyscall" {
+        log::info!("mmap_2m self-test skipped: the kernel does not handle mmap_2m yet");
+        return;
+    }
+    expect_error("mmap_2m without 2M quota", ret, "ErrorNoQuota");
+    fund("mmap_2m self-test funding", 16);
+    check("alloc_quota_2m (self-test)", unsafe { sys_alloc_quota_2m(1) });
+    check("alloc_thread_quota_2m (self-test)", unsafe { sys_alloc_thread_quota_2m(1) });
+    let ret = unsafe { sys_mmap_2m(TEST_2M_VA + 4096, 1) };
+    log::info!("mmap_2m at an unaligned va -> {} ({})", ret, error_name(ret));
+    if !matches!(error_name(ret), "Error" | "InvalidArgument") {
+        log::error!("mmap_2m at an unaligned va: expected Error or InvalidArgument");
+        unsafe { sys_debug_exit(1) };
+    }
+    let small = TEST_2M_VA + 5 * 4096;
+    check("mmap_4k in the 2M window", unsafe { sys_mmap_4k(small, 1) });
+    unsafe { (small as *mut u64).write_volatile(PAGE_MAGIC) };
+    expect_error("mmap_2m over a live 4K page", unsafe { sys_mmap_2m(TEST_2M_VA, 1) }, "ErrorVaInUse");
+    expect_error("unmap_2m of a 4K mapping", unsafe { sys_unmap_2m(TEST_2M_VA, 1) }, "Error");
+    check("unmap_4k in the 2M window", unsafe { sys_unmap_4k(small, 1) });
+    check("mmap_2m over the emptied L1 table", unsafe { sys_mmap_2m(TEST_2M_VA, 1) });
+    touch_2m(TEST_2M_VA, 1);
+    if unsafe { (small as *const u64).read_volatile() } != PAGE_MAGIC ^ 5 {
+        log::error!("mmap_2m: the 2M page does not hold what was written at {:#x}", small);
+        unsafe { sys_debug_exit(1) };
+    }
+    expect_error("mmap_2m over a live 2M page without quota", unsafe { sys_mmap_2m(TEST_2M_VA, 1) }, "ErrorNoQuota");
+    check("unmap_2m", unsafe { sys_unmap_2m(TEST_2M_VA, 1) });
+    expect_error("unmap_2m of an unmapped window", unsafe { sys_unmap_2m(TEST_2M_VA, 1) }, "Error");
+    log::info!("mmap_2m self-test passed");
 }
 
 // ---- 9. kill_process ----
@@ -1615,6 +2042,7 @@ pub extern "C" fn _start() -> ! {
     }
     log::info!("mapped pages read back correctly");
     check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, TEST_PAGES) });
+    test_mmap_2m();
 
     // 2. SMP, before any other thread exists: CPU 1 comes online and pulls the worker, unmapping
     // a page the worker touched there flushes CPU 1's TLB, and CPU 1 goes Off and comes back.

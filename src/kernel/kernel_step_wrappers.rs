@@ -70,6 +70,8 @@ pub mod cpu_set_read_lock;
 pub mod container_quota_2m;
 /// K->U lemma of a step that hides one user root entry of a page table.
 pub mod table_hidden;
+/// K->U lemmas and step boundary of a section that adds or clears one 2M leaf of a process's page table.
+pub mod process_2m_mapping;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -103,6 +105,7 @@ pub use env_steps::*;
 pub use cpu_set_read_lock::*;
 pub use container_quota_2m::*;
 pub use table_hidden::*;
+pub use process_2m_mapping::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

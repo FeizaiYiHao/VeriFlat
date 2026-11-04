@@ -81,6 +81,8 @@ pub const NR_KILL_PROCESS: usize = 43;
 pub const NR_KILL_CONTAINER: usize = 44;
 pub const NR_IOMMU_MAP_4K: usize = 45;
 pub const NR_IOMMU_UNMAP_4K: usize = 46;
+pub const NR_MMAP_2M: usize = 47;
+pub const NR_UNMAP_2M: usize = 48;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -270,6 +272,17 @@ pub unsafe fn sys_mmap_4k(va: usize, range: usize) -> isize {
 
 pub unsafe fn sys_unmap_4k(va: usize, range: usize) -> isize {
     syscall2(NR_UNMAP_4K, va, range).rax
+}
+
+/// Maps `range` fresh 2 MiB pages at the 2 MiB-aligned `va`, funded by the calling thread's 2M quota
+/// (one per page) and 4K quota (for page tables).
+pub unsafe fn sys_mmap_2m(va: usize, range: usize) -> isize {
+    syscall2(NR_MMAP_2M, va, range).rax
+}
+
+/// Unmaps the `range` 2 MiB pages mapped at `va` and refunds their 2M quota to the container.
+pub unsafe fn sys_unmap_2m(va: usize, range: usize) -> isize {
+    syscall2(NR_UNMAP_2M, va, range).rax
 }
 
 /// Maps the caller's `range` 4 KiB pages at `va` into its IOMMU table at `iova`.

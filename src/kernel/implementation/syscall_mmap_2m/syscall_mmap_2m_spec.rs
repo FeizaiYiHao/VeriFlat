@@ -31,8 +31,6 @@ pub open spec fn mmap_2m_window_unmapped(pagetable: PageTableU, va: VAddr) -> bo
 /// killed caller, less than one 2M quota and two 4K quota per page, a range below the first user L4 index, and then a
 /// range page whose 2M window a 4K, 2M, or 1G leaf maps.
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
-/// TODO(D2): the implementation also rejects a window that holds an L1 table without leaves; that table is not visible
-/// in `KernelU`, so this result cannot state it until the decision recorded in `.ai-memory/mmap_2m/API.md` is taken.
 pub open spec fn mmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let pagetable = pre.process_map[thread.owning_proc].pagetable->Some_0;
@@ -285,12 +283,67 @@ pub open spec fn mmap_2m_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// A step inside the mmap loop installs one directory page, downgrades the pagetable lock, or
+/// Flushing the TLBs once after hiding the empty L1 tables of the range's windows happens outside the fill phase, before the
+/// first leaf, under the three mmap locks, in an existing container.
+#[verifier::opaque]
+pub open spec fn mmap_2m_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap2m
+    &&& !(progress->Mmap2m_phase is Fill)
+    &&& progress->Mmap2m_mapped == 0
+}
+
+/// Recording the flush happens at the same point as flushing.
+#[verifier::opaque]
+pub open spec fn mmap_2m_flushed_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap2m
+    &&& !(progress->Mmap2m_phase is Fill)
+    &&& progress->Mmap2m_mapped == 0
+}
+
+/// Recording the flush releases this thread's read hold on the cpu set of the thread's container, which no writer holds
+/// afterwards, and changes nothing else.
+#[verifier::opaque]
+pub open spec fn mmap_2m_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let cpu_set_lock = new_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
+    &&& !(cpu_set_lock is WriteLocked)
+    &&& new_u == (KernelU { container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(thread.owning_container) }), ..old_u })
+}
+
+/// Reclaiming a hidden, flushed L1 table of a window of the range happens outside the fill phase, before the first leaf,
+/// under the three mmap locks.
+#[verifier::opaque]
+pub open spec fn mmap_2m_l1_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap2m
+    &&& !(progress->Mmap2m_phase is Fill)
+    &&& progress->Mmap2m_mapped == 0
+}
+
+/// A step inside the mmap loop installs one directory page, downgrades the pagetable lock, flushes the TLBs after hiding the
+/// range's empty L1 tables, records that flush, returns one hidden L1 table's 4K quota to the thread's container, or
 /// publishes one leaf.
 #[verifier::opaque]
 pub open spec fn mmap_2m_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
+    let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     ||| mmap_2m_directory_step_pre(step.old_u, cpu_id) && mmap_2m_directory_step(step.old_u, step.new_u, cpu_id)
     ||| mmap_2m_downgrade_step_pre(step.old_u, cpu_id) && mmap_2m_downgrade_step(step.old_u, step.new_u, cpu_id)
+    ||| mmap_2m_flush_step_pre(step.old_u, cpu_id) && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
+    ||| mmap_2m_flushed_step_pre(step.old_u, cpu_id) && mmap_2m_flushed_step(step.old_u, step.new_u, cpu_id)
+    ||| mmap_2m_l1_reclaim_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
     ||| mmap_2m_leaf_step_pre(step.old_u, cpu_id) && mmap_2m_leaf_step(step.old_u, step.new_u, cpu_id)
 }
 
@@ -314,11 +367,12 @@ pub open spec fn mmap_2m_trace_after_enter(trace: Seq<KernelStep>, cpu_id: CpuId
 }
 
 /// The partial trace after mapping the range: the partial trace after entering in `phase` followed by
-/// one directory, downgrade, or leaf step per recorded mutation.
+/// one range step per recorded mutation: one downgrade, at most two directory pages per page, one TLB flush per cpu and its
+/// record, at most one L1 reclaim per page, and one leaf per page.
 #[verifier::opaque]
 pub open spec fn mmap_2m_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange2M, phase: Mmap2mPhase) -> bool {
     let e: int = if phase is Fill { 1 } else { 0 };
-    &&& e + range.len + 1 <= trace.len() <= e + 3 * range.len + 2
+    &&& e + range.len + 1 <= trace.len() <= e + 4 * range.len + NUM_CPUS + 3
     &&& phase is Fill ==> mmap_2m_hold_step_pre(trace[0].old_u, cpu_id, range) && mmap_2m_hold_step(trace[0].old_u, trace[0].new_u, cpu_id)
     &&& mmap_2m_enter_step_pre(trace[e].old_u, cpu_id, range, phase)
     &&& mmap_2m_enter_step(trace[e].old_u, trace[e].new_u, cpu_id, range, phase)
@@ -326,12 +380,12 @@ pub open spec fn mmap_2m_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId
 }
 
 /// The full trace of a successful mmap entering in `phase`: one enter step to read, or a hold step and
-/// an enter step to fill; one directory, downgrade, or leaf step per recorded mutation; and one exit step.
+/// an enter step to fill; one range step per recorded mutation; and one exit step.
 #[verifier::opaque]
 pub open spec fn mmap_2m_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize, phase: Mmap2mPhase) -> bool {
     let va_range = mmap_2m_syscall_va_range(va, range);
     let e: int = if phase is Fill { 1 } else { 0 };
-    &&& e + range + 2 <= trace.len() <= e + 3 * range + 3
+    &&& e + range + 2 <= trace.len() <= e + 4 * range + NUM_CPUS + 4
     &&& phase is Fill ==> mmap_2m_hold_step_pre(trace[0].old_u, cpu_id, va_range) && mmap_2m_hold_step(trace[0].old_u, trace[0].new_u, cpu_id)
     &&& mmap_2m_enter_step_pre(trace[e].old_u, cpu_id, va_range, phase)
     &&& mmap_2m_enter_step(trace[e].old_u, trace[e].new_u, cpu_id, va_range, phase)

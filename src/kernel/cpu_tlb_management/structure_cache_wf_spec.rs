@@ -139,6 +139,65 @@ verus! {
         }
     }
 
+    /// The L1 page `l1_p` that the L2 entry `(l4i, l3i, l2i)` of `table` hides under a resolving L3 path is named by no usable
+    /// paging-structure cache once neither the window nor the table lists a CPU stale: a cached entry naming it is that L2
+    /// entry of `table`, which no longer resolves and which no stale record covers.
+    pub proof fn hidden_l1_page_without_window_stale_record_implies_unreferenced_by_structure_caches(k: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index,
+        l2i: L2Index, l1_p: PageMapPtr)
+        requires
+            k.inv(),
+            k.pt_mp.dom().contains(table),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry_hides_l1(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i).addr == l1_p,
+            !whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.window_stale_cpus.dom().contains((whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i)),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        ensures table_page_unreferenced_by_structure_caches(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, l1_p),
+    { broadcast use hidden_l1_page_without_window_stale_record_implies_unreferenced_by_structure_cache_at; }
+
+    /// Point form of `hidden_l1_page_without_window_stale_record_implies_unreferenced_by_structure_caches` at one
+    /// `(cpu_id, pcid)`.
+    broadcast proof fn hidden_l1_page_without_window_stale_record_implies_unreferenced_by_structure_cache_at(k: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index,
+        l2i: L2Index, cpu_id: CpuId, pcid: Pcid)
+        requires
+            k.inv(),
+            k.pt_mp.dom().contains(table),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is Some,
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry_hides_l1(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i),
+            !whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.window_stale_cpus.dom().contains((whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i)),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        ensures
+            #![trigger k.cpu_tlb.structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i)]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            && (!k.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || k.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) ==> {
+                let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+                let l1_p = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i).addr;
+                &&& forall|i: L4Index| #![trigger cache.pml4e.dom().contains(i)] cache.pml4e.dom().contains(i) ==> cache.pml4e.spec_index(i) != l1_p
+                &&& forall|key: (L4Index, L3Index)| #![trigger cache.pdpte.dom().contains(key)] cache.pdpte.dom().contains(key) ==> cache.pdpte.spec_index(key) != l1_p
+                &&& forall|key: (L4Index, L3Index, L2Index)| #![trigger cache.pde.dom().contains(key)] cache.pde.dom().contains(key) ==> cache.pde.spec_index(key) != l1_p
+            },
+    {
+        let cache = k.cpu_tlb.structure_cache((cpu_id, pcid));
+        let dirty_ptr = k.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr;
+        let dirty_table = whole_pagetable(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+        let l1_p = whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i).addr;
+        structure_cache_wf_at(k.cpu_tlb, k.pt_mp, k.pt_lower.view(), k.cpu_arr, k.pcid_needflush, cpu_id, pcid);
+        pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), table);
+        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
+        if !cache.is_empty() && k.pt_mp.dom().contains(dirty_ptr) {
+            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), dirty_ptr);
+            assert(dirty_table.page_closure().contains(l1_p) ==> dirty_ptr == table) by {
+                if dirty_table.page_closure().contains(l1_p) {
+                    pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, dirty_ptr, l1_p);
+                    pagetable_pages_wf_closure_page_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, table, l1_p);
+                }
+            };
+            reveal(WholePageTable::table_pages_wf); reveal(WholePageTable::disjoint_l2);
+        }
+    }
+
     /// A page of an IOMMU table is named by no usable paging-structure cache: a cached entry is held by the cache's dirty
     /// CPU table, whose pages are tagged as CPU-table pages, while the pages of an IOMMU table are tagged as IOMMU-table
     /// pages.

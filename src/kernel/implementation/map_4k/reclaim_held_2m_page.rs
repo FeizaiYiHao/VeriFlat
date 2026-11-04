@@ -525,7 +525,7 @@ fn remove_last_held_2m_mapping_to_allocator(
 /// Write-locks the owner allocator's 2M cache on `cpu_id` and, when the cache is at its 2M watermark, drains one batch into the global pool under its own step boundary, so that
 /// the cache has room for the reclaimed page. The cache lock stays held. Without a drain the steps and their snapshot stay; a drain first records the user view of the entry state
 /// against the snapshot and ends with the snapshot at the returned state.
-fn reclaim_last_lock_2m_cache_with_room(krnl: &mut KernelK, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
+pub(crate) fn reclaim_last_lock_2m_cache_with_room(krnl: &mut KernelK, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(steps): Tracked<&mut KernelSteps>) -> (ret: Tracked<LockPerm>)
     requires
         old(krnl).inv(),

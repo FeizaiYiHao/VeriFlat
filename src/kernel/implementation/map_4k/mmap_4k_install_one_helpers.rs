@@ -3,7 +3,7 @@ use crate::*;
 use super::mmap_4k_create_entry_install::install_staged_4k_page_table_page;
 use super::mmap_4k_build_structure_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::mmap_4k_build_structure_trace::mmap_4k_directory_step_from_k;
+use super::mmap_4k_build_structure_trace::{mmap_4k_directory_step_from_k, mmap_2m_directory_step_from_k};
 #[cfg(verus_keep_ghost)]
 use super::share_mapping_4k_trace::share_4k_directory_step_from_k;
 
@@ -399,7 +399,7 @@ verus! {
 
     /// Move the staged page to `ctn_ptr`, publish it as the missing directory page, and release its page lock, ending the
     /// krnl section's mutations in Release.
-    fn install_one_mmap_4k_directory_page_link(
+    pub(super) fn install_one_mmap_4k_directory_page_link(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr,
         ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), lo: L2Index, hi: L2Index, write_held: bool,
         transfer_source: Option<RwLockContainerPtr>, Ghost(entry_lctx): Ghost<LocalContext>, Tracked(page_lock_perm): Tracked<LockPerm>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>,
@@ -962,6 +962,156 @@ verus! {
             let tracked target_lock_perm = transfer_target_lock_perm.tracked_unwrap();
             proof { assert(krnl.ctn_mp.spec_index(source).view().owned_pages.view().contains(pg_ptr)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(pg_ptr)); }; }
             transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), pg_ptr, quota_thrd_ptr, source, ctn_ptr, Tracked(page_lock_perm), Tracked(source_lock_perm), Tracked(target_lock_perm));
+        }
+    }
+
+    /// Record the installed L4 or L3 level in the running thread's 2M mmap progress, then end the krnl section of one directory
+    /// install at the step boundary and derive the 2M mmap directory step from the section's start snapshot.
+    pub(super) fn install_one_mmap_2m_directory_page_end_step(
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, level: MissingPageTableLevel, cpu_id: CpuId,
+        thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), lo: L2Index, hi: L2Index,
+        Tracked(thread_lock_perm): Tracked<&LockPerm>,
+    )
+        requires
+            old(krnl).inv(),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            old(krnl).thrd_mp.dom().contains(thrd_ptr),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+            thread_lock_perm.state() is WriteLock,
+            thread_lock_perm.thread_id() == old(lctx).thread_id(),
+            thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+            KERNEL_MEM_END_L4INDEX <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1),
+            level is L4 || level is L3,
+            level is L3 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
+                whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom()
+                    + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((indices.0, indices.1, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+                |w: WindowVa| if whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) {
+                    whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w]
+                } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
+            level is L3 ==> !whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) }),
+            level is L4 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+            old(lctx).kernel_view_locking_state() is Release,
+            kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(krnl), thrd_ptr, -1),
+            index_valid(NUM_CPUS, cpu_id),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
+            {
+                let pre = old(steps).snapshot_k();
+                let progress = pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view();
+                &&& pre.inv()
+                &&& pre.thrd_mp.typed_lock_map_aligned(old(lctx).thread_lock_map(), old(lctx).thread_id())
+                &&& pre.pt_mp.typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id())
+                &&& *old(krnl) == (KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, pg_arr: old(krnl).pg_arr, thrd_mp: old(krnl).thrd_mp, ..pre })
+                &&& old(krnl).thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
+                &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread {
+                    quota_4k: old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k, temp_alloc_cache_4k: old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k,
+                    syscall_progress: old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view()
+                })
+                &&& old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed()
+                &&& pre.prc_mp.dom().contains(prc_ptr) && pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr
+                &&& old(krnl).pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
+                &&& old(krnl).pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, old(krnl).pt_lower.view().spec_index(pagetable_ptr))
+                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k()
+                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m()
+                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g()
+                &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr)
+                &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
+                &&& pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr
+                &&& progress is Some && progress->Some_0 is Mmap2m && progress->Some_0->Mmap2m_mapped < progress->Some_0->Mmap2m_range.len
+                &&& progress->Some_0->Mmap2m_phase is Fill
+                &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(progress, level)
+                &&& level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(progress->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
+                    w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
+                        ==> va_range_2m_windows(progress->Some_0->Mmap2m_range.covering_4k_range()).contains(w) == (lo <= spec_v2l2index(w.va) <= hi)
+            },
+        ensures
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            final(steps).view() == old(steps).view().push(final(steps).view().last()),
+            mmap_2m_directory_step_pre(final(steps).view().last().old_u, cpu_id),
+            mmap_2m_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
+            final(steps).snapshot_k() == *final(krnl),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
+            kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
+            kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
+            final(krnl).inv(),
+            final(lctx).kernel_view_locking_state() is Acquire,
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            forall|cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)] old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            forall|ctn_ptr: RwLockContainerPtr|
+                #![trigger old(lctx).container_lock_map().dom().contains(ctn_ptr)]
+                old(lctx).container_lock_map().dom().contains(ctn_ptr) ==> {
+                    &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
+                    &&& final(krnl).ctn_mp.lock_id_by_key(ctn_ptr) == old(krnl).ctn_mp.lock_id_by_key(ctn_ptr)
+                    &&& final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr)
+                },
+            forall|prc_ptr: RwLockProcessPtr|
+                #![trigger old(lctx).process_lock_map().dom().contains(prc_ptr)]
+                old(lctx).process_lock_map().dom().contains(prc_ptr) ==> {
+                    &&& final(krnl).prc_mp.dom().contains(prc_ptr)
+                    &&& final(krnl).prc_mp.lock_id_by_key(prc_ptr) == old(krnl).prc_mp.lock_id_by_key(prc_ptr)
+                    &&& final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr)
+                },
+            forall|t: RwLockThreadPtr|
+                #![trigger old(lctx).thread_lock_map().dom().contains(t)]
+                old(lctx).thread_lock_map().dom().contains(t) ==> {
+                    &&& final(krnl).thrd_mp.dom().contains(t)
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t) == old(krnl).thrd_mp.spec_index(t)
+                },
+            final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread {
+                syscall_progress: Ghost(mmap_2m_progress_after_directory(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level)), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view()
+            }),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
+            forall|pagetable_ptr: RwLockPageTableRoot|
+                #![trigger old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr)]
+                old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr) ==> {
+                    &&& final(krnl).pt_mp.dom().contains(pagetable_ptr)
+                    &&& final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr)
+                    &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) ==> {
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr) == old(krnl).pt_mp.spec_index(pagetable_ptr)
+                        &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)
+                    }
+                    &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(old(lctx).thread_id())
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed()
+                    }
+                },
+            held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
+            {
+                let thread = old(krnl).thrd_mp.spec_index(thrd_ptr).view();
+                &&& final(krnl).ctn_mp.dom().contains(thread.owning_container)
+                &&& final(krnl).ctn_mp.spec_index(thread.owning_container).view_rodata() == old(krnl).ctn_mp.spec_index(thread.owning_container).view_rodata()
+                &&& !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)) ==> final(krnl).prc_mp.dom().contains(thread.owning_proc)
+                &&& !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)) ==> final(krnl).prc_mp.spec_index(thread.owning_proc).view_rodata() == old(krnl).prc_mp.spec_index(thread.owning_proc).view_rodata()
+            },
+            held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
+            held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
+            held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
+            held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
+            held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+            held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
+    {
+        let ghost mid = *krnl;
+        krnl.set_thread_syscall_progress(thrd_ptr, Ghost(mmap_2m_progress_after_directory(krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level)),
+            Tracked(&*lctx), Tracked(thread_lock_perm));
+        proof {
+            let pre = steps.snapshot_k();
+            let before = *krnl;
+            let before_lctx = *lctx;
+            assert(kernel_thread_quota_4k_changed(&pre, &before, thrd_ptr, -1)) by { reveal(kernel_thread_quota_4k_changed); };
+            mid.thrd_mp.typed_lock_map_aligned_held_in_dom(before_lctx.thread_lock_map(), before_lctx.thread_id());
+            krnl.kernel_step_boundary_thread_quota_4k_changed(&mut *lctx, &mut *steps, thrd_ptr, -1);
+            mmap_2m_directory_step_from_k(&pre, &before, &before_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, level, indices.0, indices.1, lo, hi);
         }
     }
 } // verus!

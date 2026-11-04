@@ -179,6 +179,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.lower.l2_entry(p, l2i).perm.present && !self.lower.l2_entry(p, l2i).perm.ps ==> self.lower.l2_page(p).entry_lock(l2i).l1() is Some,
             self.lower.l2_page(p).entry_lock(l2i).l1() is Some ==> !self.lower.l2_entry(p, l2i).perm.ps,
             self.lower.l2_page(p).entry_lock(l2i).l1() is Some && !self.lower.l2_entry(p, l2i).perm.present ==> self.lower.l2_entry(p, l2i).perm.kernel_present,
+            self.lower.l2_entry(p, l2i).perm.kernel_present && !self.lower.l2_entry(p, l2i).perm.present && !self.lower.l2_entry(p, l2i).perm.ps ==> self.lower.l2_page(p).entry_lock(l2i).l1() is Some,
             self.lower.l2_page(p).entry_lock(l2i).l1() is Some
                 ==> self.lower.l1_perm(p, l2i).addr() == self.lower.l2_entry(p, l2i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, l2i).addr),
     { reveal(WholePageTable::wf_l2); }

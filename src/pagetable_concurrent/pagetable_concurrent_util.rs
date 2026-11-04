@@ -240,6 +240,37 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         l2_tbl.borrow_entry_lock(target_l2i).get()
     }
 
+    /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry` while this thread holds the entry's
+    /// window lock; the acquire-load decodes past the lock bit. A kernel-present, non-present, non-huge word is the hidden-L1 marker:
+    /// the entry hides the L1 page at the word's address.
+    pub fn get_l2_entry_word_write_held(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+        l3_entry: &PageEntry) -> (ret: PageEntry)
+        requires
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            self.spec_held_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+            lower.hidden_l1_tables_in_locked_windows(),
+            lower.l2_owner(l3_entry.addr, target_l2i) is Write,
+        ensures
+            ret == lower.l2_entry(l3_entry.addr, target_l2i),
+            ret.perm.kernel_present && !ret.perm.present && !ret.perm.ps ==> lower.l2_entry_hides_l1(l3_entry.addr, target_l2i) && lower.l1_perm(l3_entry.addr, target_l2i).addr() == ret.addr,
+            lower.l2_page(l3_entry.addr).entry_lock(target_l2i).l1() is Some ==> !ret.perm.ps && (ret.perm.present || ret.perm.kernel_present),
+            ret.perm.present && !ret.perm.ps ==> lower.l2_page(l3_entry.addr).entry_lock(target_l2i).l1() is Some,
+            (WholePageTable { higher: *self, lower: *lower }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+    {
+        proof {
+            let c = WholePageTable { higher: *self, lower: *lower };
+            self.wf_l4_at(target_l4i);
+            c.l3_links_l2_wf_at(self.spec_held_l4(target_l4i)->0.addr, target_l3i);
+            c.wf_l2_at(l3_entry.addr, target_l2i);
+        }
+        let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
+        let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
+        l2_tbl.borrow_entry_lock(target_l2i).get()
+    }
+
     /// Kernel-present 4K leaf `(target_l4i, target_l3i, target_l2i, target_l1i)` of the L1 page that the held L2 entry `l2_entry` holds,
     /// linked or hidden.
     pub fn get_held_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,

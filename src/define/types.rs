@@ -334,7 +334,45 @@ pub struct VaRange2M {
     pub view: Ghost<Seq<VAddr>>,
 }
 
+/// A valid, non-empty 2M range's covering 4K range of `len * 512` pages is a valid 4K range.
+pub proof fn va_2m_range_valid_implies_covering_4k_range_valid(va: VAddr, len: usize)
+    requires
+        spec_va_2m_valid(va),
+        spec_va_2m_range_valid(va, len),
+        len <= usize::MAX / 0x200000,
+        va < usize::MAX - len * 0x200000,
+    ensures
+        spec_va_4k_valid(va),
+        len * 512 <= usize::MAX / 4096,
+        va < usize::MAX - (len * 512) * 4096,
+        spec_va_4k_range_valid(va, (len * 512) as usize),
+{
+    assert(spec_va_4k_valid(va)) by (bit_vector) requires (va & (!MEM_2M_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= 1u64;
+    assert(len * 512 <= usize::MAX / 4096 && (len * 512) * 4096 == len * 0x200000) by (nonlinear_arith) requires len <= usize::MAX / 0x200000;
+    assert forall|i: usize| #![trigger spec_va_add_range(va, i)] 0 <= i < len * 512 implies spec_va_4k_valid(spec_va_add_range(va, i)) by {
+        let q = i / 512;
+        let r = i % 512;
+        assert(i == 512 * q + r && r < 512 && q < len) by (nonlinear_arith) requires q == i / 512, r == i % 512, i < len * 512;
+        assert(i * 4096 == q * 0x200000 + r * 4096) by (nonlinear_arith) requires i == 512 * q + r;
+        assert(q * 0x200000 <= len * 0x200000) by (nonlinear_arith) requires q < len;
+        let x = spec_va_add_range_2m(va, q);
+        assert(spec_va_2m_valid(x));
+        let y = spec_va_add_range(va, i);
+        assert(y == x + r * 4096);
+        assert((x & (!MEM_2M_MASK) as usize == 0) && (x as u64 >> 39u64 & 0x1ffu64) >= 1u64 && r < 512 && y == x + r * 4096
+            ==> (y & (!MEM_4K_MASK) as usize == 0) && (y as u64 >> 39u64 & 0x1ffu64) >= 1u64) by (bit_vector);
+    };
+}
+
 impl VaRange2M {
+    pub proof fn wf_implies_view_index_is_start_plus_offset(&self)
+        requires
+            self.wf(),
+        ensures
+            forall|i: usize| 0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range_2m(self.start, i),
+    {
+    }
+
     pub closed spec fn view(&self) -> Seq<VAddr> { self.view.view() }
 
     pub open spec fn wf(&self) -> bool {

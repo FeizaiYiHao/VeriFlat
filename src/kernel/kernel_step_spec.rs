@@ -827,6 +827,20 @@ pub open spec fn kernel_process_4k_mapping_changed(pre: &KernelK, post: &KernelK
         != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
 }
 
+#[verifier::opaque]
+pub open spec fn kernel_process_2m_mapping_changed(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
+    &&& pre.prc_mp.dom().contains(prc_ptr)
+    &&& post.prc_mp.dom().contains(prc_ptr)
+    &&& !pre.prc_mp.spec_index(prc_ptr).view().zombie
+    &&& !post.prc_mp.spec_index(prc_ptr).view().zombie
+    &&& pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
+    &&& post.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
+    &&& pre.pt_mp.dom().contains(pagetable_ptr)
+    &&& post.pt_mp.dom().contains(pagetable_ptr)
+    &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
+        != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
+}
+
 /// `share_4k_objects` read from the kernel objects it projects from.
 #[verifier::opaque]
 pub open spec fn share_4k_objects_k(krnl: KernelK, cpu_id: CpuId) -> Share4kObjects {

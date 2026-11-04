@@ -9,8 +9,12 @@ Drivers for the TSC timings dom0 prints under KVM. Results and images go to `boo
   intra-process call, and new_thread timers on the way.
 - `NO_TIMER=1 SMP=n boot/run.sh`: kernel and dom0 with feature `no-timer`. dom0 runs only the timers
   (adding the parallel call and cross-process call timers) and exits. Use this mode for measurements.
-  `VERIFLAT_PARALLEL` of the dom0 build picks the parallel timings: `call` (default), `mmap` (the
-  parallel mmap timing instead of the parallel call timing), or `call,mmap`.
+  `VERIFLAT_PARALLEL` of the dom0 build picks the parallel timings, a comma-separated list of `call`
+  (default), `mmap` (the parallel mmap timing), and `mmap2m` (the parallel mmap_2m timing).
+- `VERIFLAT_BOOT_2M_BLOCKS=n` of the kernel build (decimal, default 4) sets the free 2M blocks the kernel
+  hands to the 2M allocator at boot, which are the root container's 2M quota. `build-parallel-call-image.sh`
+  sets it to 128 (256 MiB of the managed GiB) unless `BOOT_2M_BLOCKS` says otherwise; `boot/run.sh` passes
+  it through from the environment.
 
 QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
 
@@ -20,8 +24,8 @@ QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
   does and stores `aloader`, `jumbo` (kernel ELF then dom0 ELF), and `built-from.txt` (commit, dirty
   `src/` and `boot/` files, parallel timings, hashes) in `out_dir`, default `out/image`.
   `WORKTREE=<checkout>` builds another checkout, such as a `git worktree add` of a baseline commit or
-  an `export-snapshot.sh` export. `PARALLEL=call|mmap|call,mmap` sets `VERIFLAT_PARALLEL` (default
-  `call`).
+  an `export-snapshot.sh` export. `PARALLEL` sets `VERIFLAT_PARALLEL` (default `call`), `BOOT_2M_BLOCKS`
+  sets `VERIFLAT_BOOT_2M_BLOCKS` (default 128); `built-from.txt` records both.
 - `export-snapshot.sh <snap_dir> [commit]`: exports a commit (default `HEAD`) without git metadata,
   with `verus` linked to this checkout's, so an image can be built from a fixed kernel while `src/` is
   being edited. `OVERLAY="<path>..."` copies working-copy files over it (such as an uncommitted
@@ -39,7 +43,8 @@ QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
   mode and SMP the medians across runs of each run's median alone and concurrent cycles per round and
   of its median ratio, the concurrent cycles over the SMP=1 alone cycles (`vs smp1`), and the overlap
   range with the number of runs that reached 0.50 (runs below it are left out of the medians unless
-  none reached it). Run it with `python3 -I`.
+  none reached it). The parallel mmap_2m modes come in TSC cycles per 2 MiB, followed by a table of each
+  2M variant against its 4K twins. Run it with `python3 -I`.
 
 ## Timer lines
 
@@ -90,6 +95,40 @@ Run: `PARALLEL=mmap boot/bench/build-parallel-call-image.sh boot/bench/out/image
 `IMAGE=boot/bench/out/image-mmap OUT=boot/bench/out/results-mmap boot/bench/run-parallel-call.sh 7 1 4 8 16 32`
 (every run boots each SMP count in turn), then
 `python3 -I boot/bench/summarize-parallel-mmap.py boot/bench/out/results-mmap`.
+
+## Parallel mmap_2m timing
+
+Built with `PARALLEL=mmap2m` (or with it in a list). It needs the kernel's `mmap_2m` and `unmap_2m`
+(syscalls 47 and 48) and enough 2M quota: each worker uses at most 8 2M pages at a time and moves back
+what its thread still holds after every phase, so the default image's 128 blocks cover 16 workers. The
+workers and the alone and concurrent windows are those of the parallel mmap timing, first threads of dom0
+(`_same`), then the first threads of one child process per worker (`_xproc`). Every round handles 2 MiB,
+as 2M pages or as 4K pages, with the same touch (one write per 4K page, the last read back) and the same
+untimed funding (4K quota 2048 at a time, 2M quota topped up to 8). Every line gives TSC cycles per 2 MiB.
+
+| line prefix (`_same` / `_xproc`) | a round, timed | untimed |
+| --- | --- | --- |
+| `parallel_mmap2m_mapunmap_2m` | `mmap_2m(va, 1)`, touch, `unmap_2m(va, 1)` | |
+| `parallel_mmap2m_mapunmap_4k` | `mmap_4k(va, 512)`, touch, `unmap_4k(va, 512)` | |
+| `parallel_mmap2m_mapunmap_4k1` | 512 × `mmap_4k(va + 4K·i, 1)`, touch, `unmap_4k(va, 512)` | |
+| `parallel_mmap2m_mmaponly_2m` | `mmap_2m` of the next 2 MiB of an 8 × 2M region, touch | region unmap once full |
+| `parallel_mmap2m_mmaponly_4k` | `mmap_4k(…, 512)` of the next 2 MiB of a 4096-page region, touch | region unmap once full |
+| `parallel_mmap2m_unmaponly_2m` | `unmap_2m(base, 8)` | `mmap_2m(base, 8)`, touch |
+| `parallel_mmap2m_unmaponly_4k` | `unmap_4k(base, 4096)` | 8 × `mmap_4k(…, 512)`, touch |
+
+Regions: worker k at `k * 16M` in its kind's GiB, the 2M variants in `0xc1_0000_0000`, `0xc1_4000_0000`,
+`0xc1_8000_0000` and the 4K twins in `0xc2_…` at the same offsets, so no 2M window ever holds an L1
+table. dom0 builds the directories of its GiBs first, with `mmap_2m` + `unmap_2m` in the 2M ones. Other
+lines: `parallel_mmap2m_xproc funding` and, after each mmap-only mode, `<prefix> quota: ...` as for the
+parallel mmap timing.
+
+Run: `PARALLEL=mmap2m boot/bench/build-parallel-call-image.sh boot/bench/out/image-mmap2m`, then
+`IMAGE=boot/bench/out/image-mmap2m OUT=boot/bench/out/results-mmap2m boot/bench/run-parallel-call.sh 5 1 2 4 8 16`,
+then `python3 -I boot/bench/summarize-parallel-mmap.py boot/bench/out/results-mmap2m`.
+
+The timer build of dom0 also runs a functional test of `mmap_2m` and `unmap_2m` after its first mmap test
+(`mmap_2m self-test passed`), or logs `mmap_2m self-test skipped` while the kernel answers syscall 47 with
+InvalidSyscall.
 
 ## Interleaved A/B protocol
 

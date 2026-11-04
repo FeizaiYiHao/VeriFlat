@@ -1,1 +1,14 @@
 pub mod syscall_mmap_2m_spec;
+mod syscall_mmap_2m_trace;
+mod syscall_mmap_2m_map_owned;
+mod syscall_mmap_2m_map_owned_eof;
+mod syscall_mmap_2m_precheck;
+mod syscall_mmap_2m_fill_structure;
+mod syscall_mmap_2m_map_one_leaf;
+mod syscall_mmap_2m_hide_reclaim;
+mod syscall_mmap_2m_map_range;
+mod syscall_mmap_2m_read_windows;
+mod syscall_mmap_2m_fill_enter;
+mod syscall_mmap_2m_read_enter;
+mod syscall_mmap_2m_lock_helpers;
+pub mod syscall_mmap_2m;

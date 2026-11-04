@@ -184,9 +184,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     { reveal(WholePageTable::hide_l1_page_eof_transition_framing); }
 
-    /// Operation-state summary of `unlink_hidden_l1_page`: entry `target_l2i` of the L2 page `target_l2_p` gives up the hidden
-    /// L1 page `target_l1_p`, which leaves the L1 pages and their reverse index; the entry word and every other field are
-    /// unchanged.
+    /// Operation-state summary of `unlink_hidden_l1_page`: entry `target_l2i` of the L2 page `target_l2_p` is published cleared and
+    /// gives up the hidden L1 page `target_l1_p`, which leaves the L1 pages and their reverse index; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn unlink_hidden_l1_page_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         target_l1_p: PageMapPtr) -> bool {
@@ -200,7 +199,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& post.lower.l2_page(target_l2_p).wf()
         &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
             p == target_l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
-        &&& post.lower.l2_entry(target_l2_p, target_l2i) == pre.lower.l2_entry(target_l2_p, target_l2i)
+        &&& post.lower.l2_entry(target_l2_p, target_l2i).is_empty()
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is None
     }
@@ -225,6 +224,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
+        pre.wf_l2_at(target_l2_p, target_l2i);
         Self::unlink_hidden_l1_page_eof_frame(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::unlink_hidden_l1_page_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::unlink_hidden_l1_page_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
@@ -293,6 +293,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             pre.lower.l2_entry_hides_l1(target_l2_p, target_l2i),
+            !pre.lower.l2_entry(target_l2_p, target_l2i).perm.ps,
             Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
             post.wf_mapping_4k(),
@@ -368,6 +369,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pei_valid(target_l2i),
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            !pre.lower.l2_entry(target_l2_p, target_l2i).perm.ps,
             Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]

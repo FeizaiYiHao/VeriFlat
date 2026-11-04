@@ -54,6 +54,7 @@ use veriflat_monolith::kernel::implementation::syscall_kill_container::syscall_k
 use veriflat_monolith::kernel::implementation::syscall_iommu_map_4k::syscall_iommu_map_4k::syscall_iommu_map_4k;
 use veriflat_monolith::kernel::implementation::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k;
 use veriflat_monolith::kernel::implementation::syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k;
+use veriflat_monolith::kernel::implementation::syscall_mmap_2m::syscall_mmap_2m::syscall_mmap_2m;
 use veriflat_monolith::kernel::implementation::syscall_new_container::{syscall_new_container, syscall_new_container_with_endpoint};
 use veriflat_monolith::kernel::implementation::syscall_new_endpoint::syscall_new_endpoint::syscall_new_endpoint;
 use veriflat_monolith::kernel::implementation::syscall_new_process::syscall_new_process::syscall_new_process;
@@ -65,6 +66,7 @@ use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_attach_d
 use veriflat_monolith::kernel::implementation::syscall_schedule::syscall_schedule::{syscall_schedule, ScheduleResult};
 use veriflat_monolith::kernel::implementation::syscall_thread_exit::syscall_thread_exit::syscall_thread_exit;
 use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4k;
+use veriflat_monolith::kernel::implementation::syscall_unmap_2m::syscall_unmap_2m;
 use veriflat_monolith::{IPCPayLoad, Registers, RetValueType, MAX_NUM_ENDPOINT_DESCRIPTORS, NUM_CPUS, PCI_BUS_COUNT, PCI_DEVICE_COUNT, PCI_FUNCTION_COUNT};
 use vstd::prelude::Tracked;
 use x86::msr;
@@ -576,6 +578,8 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_KILL_CONTAINER => syscall_kill_container(k, t!(), t!(), cpu_id, a1),
         vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
+        vsys::NR_MMAP_2M => syscall_mmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,
+        vsys::NR_UNMAP_2M => syscall_unmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_IOMMU_MAP_4K => syscall_iommu_map_4k(k, t!(), t!(), cpu_id, a1, a2, a3),
         vsys::NR_IOMMU_UNMAP_4K => syscall_iommu_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {

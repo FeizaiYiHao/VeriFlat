@@ -15,3 +15,7 @@ veriflat_map_4k = { path = "../veriflat_map_4k" }
 
 [package.metadata.verus]
 verify = true
+
+[features]
+default = ["split-crates"]
+split-crates = []
