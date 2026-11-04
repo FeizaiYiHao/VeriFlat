@@ -982,7 +982,7 @@ pub(super) proof fn thread_exit_trace_from_refund(
         forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
-            &&& kernel_u_container_quota_4k_increased(old_u, steps.view()[j].new_u, ctn_ptr)
+            &&& kernel_u_container_quota_4k_increased(old_u, steps.view()[j].new_u, ctn_ptr) || kernel_u_container_quota_2m_increased(old_u, steps.view()[j].new_u, ctn_ptr)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& old_u.thread_map.dom().contains(thrd_ptr)
@@ -1007,13 +1007,15 @@ pub(super) proof fn thread_exit_trace_from_refund(
     assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len() implies thread_exit_middle_step(trace[j], cpu_id) by { if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); } };
 }
 
-/// Growing the 4K quota of the running thread's container or of one of its ancestors, and nothing else, is a refund step.
+/// Growing the 4K or 2M quota of the running thread's container or of one of its ancestors, and nothing else, is a refund step.
 pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
-    requires kernel_u_container_quota_4k_increased(pre, post, pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0).owning_container),
+    requires
+        kernel_u_container_quota_4k_increased(pre, post, pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0).owning_container)
+            || kernel_u_container_quota_2m_increased(pre, post, pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0).owning_container),
     ensures thread_exit_refund_step(pre, post, cpu_id),
 {
     reveal(thread_exit_refund_step);
-    assert(post.process_map == pre.process_map) by { reveal(kernel_u_container_quota_4k_increased); };
+    assert(post.process_map == pre.process_map) by { reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); };
     assert((KernelU { process_map: post.process_map, ..pre }) == pre);
 }
 

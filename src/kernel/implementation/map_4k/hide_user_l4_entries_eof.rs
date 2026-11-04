@@ -68,7 +68,7 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
     pre.default_pagetable_wf_at(pagetable);
-    pagetable_no_huge_leaf_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    pagetable_no_1g_leaf_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -78,7 +78,7 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
-        assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_huge_leaf_wf); };
+        assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
         assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
         assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
@@ -104,8 +104,8 @@ pub proof fn hide_user_l4_entries_eof(post: KernelK, pagetable: RwLockPageTableR
 {
     post.default_pagetable_wf_at(pagetable);
     pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
-    pagetable_no_huge_leaf_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
+    pagetable_no_1g_leaf_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
     broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
-    reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_window_locks);
+    reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(WholePageTable::wf_window_locks);
 }
 }

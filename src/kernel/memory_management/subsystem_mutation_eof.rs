@@ -682,7 +682,7 @@ pub(super) proof fn pagetable_map_unmap_2m_kernel_rlocked_eof(
 
 /// S of `pagetable_map_remove_table_page`: under the big write lock only the entry and window half of `pagetable_ptr` change, by
 /// unlinking one table page; the lock's ghost slot is reset to the new window half, every mapping and every window lock of a valid
-/// user index stay, and every held 4K leaf left was held before.
+/// user index stay, and every held 4K or 2M leaf left was held before.
 #[verifier::opaque]
 pub(super) open spec fn pagetable_map_remove_table_page_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
@@ -712,6 +712,10 @@ pub(super) open spec fn pagetable_map_remove_table_page_eof_transition_framing(
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
             && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+        whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) is Some
+            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)
     &&& post_pt.spec_index(pagetable_ptr).view().table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().table_stale_cpus
 }
 
@@ -1272,7 +1276,7 @@ pub(super) proof fn pagetable_map_hide_l4_entry_eof(
 
 /// S of `pagetable_map_unlink_unresolvable_l1_page`: under the big write lock only the window half of `pagetable_ptr` changes, by
 /// taking one L1 page out of an unresolvable path; the lock's ghost slot is reset to the new window half, every mapping and every
-/// window lock of a valid user index stay, and every held 4K leaf left was held before.
+/// window lock of a valid user index stay, and every held 4K or 2M leaf left was held before.
 #[verifier::opaque]
 pub(super) open spec fn pagetable_map_unlink_unresolvable_l1_page_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
@@ -1302,6 +1306,10 @@ pub(super) open spec fn pagetable_map_unlink_unresolvable_l1_page_eof_transition
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
             && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+        whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) is Some
+            ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)
     &&& post_pt.spec_index(pagetable_ptr).view().table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().table_stale_cpus
 }
 
@@ -1449,6 +1457,92 @@ pub(super) proof fn pagetable_map_clear_held_4k_leaf_eof(
     };
 }
 
+/// S of `pagetable_map_clear_held_2m_leaf`: under the big write lock only the window half of `pagetable_ptr` changes, by clearing one
+/// held 2M leaf under an unresolvable root entry; the lock's ghost slot is reset to the new window half, and every mapping and every
+/// window lock of a valid user index stay.
+#[verifier::opaque]
+pub(super) open spec fn pagetable_map_clear_held_2m_leaf_eof_transition_framing(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+) -> bool {
+    &&& post_pt.perms_wf()
+    &&& post_pt.unchanged_except(&pre_pt, pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).is_init()
+    &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
+    &&& post_pt.spec_index(pagetable_ptr).being_killed() == pre_pt.spec_index(pagetable_ptr).being_killed()
+    &&& post_pt.spec_index(pagetable_ptr).view_rodata() == pre_pt.spec_index(pagetable_ptr).view_rodata()
+    &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
+    &&& post_pt.spec_index(pagetable_ptr).view_ghost() == post_lower.spec_index(pagetable_ptr)
+    &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
+    &&& post_lower.dom() =~= pre_lower.dom()
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, post_lower, r)] pre_pt.dom().contains(r) && r != pagetable_ptr ==> whole_pagetable(post_pt, post_lower, r) == whole_pagetable(pre_pt, pre_lower, r)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+        #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_4k()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_2m()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_1g()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.window_stale_cpus == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.window_stale_cpus
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i)]
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_owner(p, i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_owner(p, i)
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
+    &&& post_pt.spec_index(pagetable_ptr).view().table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().table_stale_cpus
+}
+
+/// EOF closure of `pagetable_map_clear_held_2m_leaf`: the big-lock and window-half invariants after one held 2M leaf under an
+/// unresolvable root entry is cleared; every mapping, window lock, and stale-CPU record stays.
+pub(super) proof fn pagetable_map_clear_held_2m_leaf_eof(
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
+    window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
+)
+    requires
+        pagetable_perms_wf(pre_pt),
+        pre_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(pre_pt, pre_lower),
+        pagetable_window_holders_hold_pagetable(pre_pt, pre_lower),
+        pagetable_hidden_leaves_only_when_locked(pre_pt, pre_lower),
+        pagetable_hidden_l1_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_stale_cpus_only_when_locked(pre_pt, pre_lower),
+        pagetable_window_typed_lock_map_aligned(pre_pt, pre_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(pre_pt, pre_lower),
+        pagetable_table_stale_cpus_only_when_write_locked(pre_pt),
+        pre_pt.dom().contains(pagetable_ptr),
+        pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
+        pagetable_map_clear_held_2m_leaf_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+    ensures
+        pagetable_perms_wf(post_pt),
+        post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
+        pagetable_lower_wf(post_pt, post_lower),
+        pagetable_window_holders_hold_pagetable(post_pt, post_lower),
+        pagetable_hidden_leaves_only_when_locked(post_pt, post_lower),
+        pagetable_hidden_l1_only_when_locked(post_pt, post_lower),
+        pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower),
+        pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id),
+        pagetable_lower_backup_wf(post_pt, post_lower),
+        pagetable_table_stale_cpus_only_when_write_locked(post_pt),
+{
+    reveal(pagetable_map_clear_held_2m_leaf_eof_transition_framing);
+    assert(pagetable_table_stale_cpus_only_when_write_locked(post_pt)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
+    assert(pagetable_perms_wf(post_pt)) by { reveal(pagetable_perms_wf); };
+    assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
+        reveal(LockedMap::typed_lock_map_aligned);
+        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
+        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
+        assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
+    };
+    assert(pagetable_lower_wf(post_pt, post_lower)) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(post_pt, post_lower)) by { reveal(pagetable_window_holders_hold_pagetable); };
+    assert(pagetable_hidden_leaves_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_hidden_l1_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_hidden_l1_only_when_locked); };
+    assert(pagetable_window_stale_cpus_only_when_locked(post_pt, post_lower)) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
+    assert(pagetable_window_typed_lock_map_aligned(post_pt, post_lower, window_lock_map, pagetable_lock_map, thread_id)) by {
+        reveal(pagetable_window_typed_lock_map_aligned);
+        broadcast use spec_va_2m_valid_index_roundtrip;
+    };
+}
+
 /// S of `iommu_table_map_set_did`: only the DID of the write-held IOMMU table `iommu_table_ptr` changes; its lock state stays.
 #[verifier::opaque]
 pub(super) open spec fn iommu_table_map_set_did_eof_transition_framing(
@@ -1573,6 +1667,24 @@ pub(super) proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLocke
         page_array_remove_4k_mapping_without_free_eof_transition_framing(pre, post, pg_idx),
     ensures page_array_wf(post),
 { reveal(page_array_remove_4k_mapping_without_free_eof_transition_framing); reveal(page_array_wf); }
+
+/// S of `page_array_remove_2m_mapping_without_free`: only page `pg_idx` changes, by removing one mapping of the still-referenced 2M page; it stays well formed at its address.
+#[verifier::opaque]
+pub(super) open spec fn page_array_remove_2m_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex) -> bool {
+    &&& post.inv()
+    &&& post.entries_unchanged_except(&pre, pg_idx)
+    &&& post.spec_index(pg_idx).view().inv()
+    &&& post.spec_index(pg_idx).view().view().addr == pre.spec_index(pg_idx).view().view().addr
+}
+
+/// EOF closure of `page_array_remove_2m_mapping_without_free`: the page array stays well formed when one page changes in place.
+pub(super) proof fn page_array_remove_2m_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, pg_idx: PageIndex)
+    requires
+        page_array_wf(pre),
+        index_valid(NUM_PAGES, pg_idx),
+        page_array_remove_2m_mapping_without_free_eof_transition_framing(pre, post, pg_idx),
+    ensures page_array_wf(post),
+{ reveal(page_array_remove_2m_mapping_without_free_eof_transition_framing); reveal(page_array_wf); }
 
 /// S of `page_array_remove_last_4k_mapping_to_cache`: only page `pg_idx` changes, by removing the last mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]

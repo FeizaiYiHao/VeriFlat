@@ -123,7 +123,7 @@ impl KernelK{
         &&& process_pagetable_wf(self.prc_mp, self.pt_mp)
         &&& process_iommu_table_wf(self.prc_mp, self.it_mp)
         // leaf sizes, emptied tables, and hidden user L4 entries
-        &&& pagetable_no_huge_leaf_wf(self.pt_mp, self.pt_lower.view())
+        &&& pagetable_no_1g_leaf_wf(self.pt_mp, self.pt_lower.view())
         &&& iommu_table_no_huge_leaf_wf(self.it_mp)
         &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp, self.pg_arr)
         &&& pagetable_hidden_roots_only_when_write_locked_or_emptied(self.pt_mp, self.prc_mp)

@@ -23,6 +23,7 @@ pub mod pagetable_concurrent_map_2m_eof;
 pub mod pagetable_concurrent_impl_remove_base;
 mod pagetable_concurrent_unmap_eof;
 mod pagetable_concurrent_unmap_kernel_eof;
+mod pagetable_concurrent_clear_held_2m_eof;
 mod pagetable_concurrent_unmap_2m_eof;
 mod pagetable_concurrent_unmap_2m_kernel_eof;
 mod pagetable_concurrent_hide_l1_eof;

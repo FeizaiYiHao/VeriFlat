@@ -95,6 +95,78 @@ pub(crate) open spec fn kill_reclaim_held_4k_page_scoped_eof_transition_framing(
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
 }
 
+/// The final mapping of the 2M page `pg_ptr`, the held 2M leaf at `va` of the write-held page table `pagetable` whose root
+/// entry no longer resolves, leaves the table with its record, and the page returns through its free-list node at
+/// `node_addr` to shard `cpu_id` of the 2M allocator `allc_ptr` of its owner, whose quota grows by one.
+#[verifier::opaque]
+pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
+) -> bool {
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    let old_page = pre.pg_arr.spec_index(pg_idx).view();
+    let new_page = post.pg_arr.spec_index(pg_idx).view();
+    let old_allocator = pre.allc_2m_mp.spec_index(allc_ptr);
+    let new_allocator = post.allc_2m_mp.spec_index(allc_ptr);
+    let old_table = pre.pt_mp.spec_index(pagetable);
+    let new_table = post.pt_mp.spec_index(pagetable);
+    let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
+    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_2m_mp: post.allc_2m_mp, ..pre })
+    &&& post.pt_mp.dom() == pre.pt_mp.dom()
+    &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
+    &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
+    &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
+        pre.pt_mp.dom().contains(r) && r != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
+    &&& new_table.locking_thread() == old_table.locking_thread()
+    &&& new_table.being_killed() == old_table.being_killed()
+    &&& new_c.higher == old_c.higher
+    &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
+    &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_l2(l4i, l3i, l2i) == old_c.spec_held_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
+            ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+    &&& new_c.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
+    &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
+        index_valid(NUM_PAGES, i) ==> {
+            &&& post.pg_arr.spec_index(i).view().view().state == if i == pg_idx {
+                PageState::Free2m { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }
+            } else { pre.pg_arr.spec_index(i).view().view().state }
+            &&& post.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(i).view().view().owning_container
+            &&& (i != pg_idx ==> post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings())
+        }
+    &&& new_page.is_init() == old_page.is_init()
+    &&& new_page.view_rodata() == old_page.view_rodata()
+    &&& new_page.view_ghost() == old_page.view_ghost()
+    &&& new_page.locking_thread() == old_page.locking_thread()
+    &&& new_page.being_killed() == old_page.being_killed()
+    &&& new_page.view().free_list_node_storage.addr() == node_addr
+    &&& new_page.view() == (Page {
+        state: PageState::Free2m { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
+        mappings: Ghost(old_page.view().mappings().remove((pagetable, va))), ref_count: 0, free_list_node_storage: new_page.view().free_list_node_storage, ..old_page.view()
+    })
+    &&& post.allc_2m_mp.dom() == pre.allc_2m_mp.dom()
+    &&& post.allc_2m_mp.unchanged_except(&pre.allc_2m_mp, allc_ptr)
+    &&& new_allocator.total_free_pages.view() == old_allocator.total_free_pages.view() + 1
+    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().view() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().view().insert(0, pg_ptr)
+    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().map() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, pg_ptr)
+    &&& new_allocator.cpu_caches.entries_unchanged_except(&old_allocator.cpu_caches, cpu_id)
+    &&& new_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread() == old_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread()
+    &&& new_allocator.global_pool == old_allocator.global_pool
+    &&& new_allocator.owning_container == old_allocator.owning_container
+    &&& new_allocator.quota.view().value == old_allocator.quota.view().value + 1
+    &&& new_allocator.quota.view() == (AllocatorQuota { value: new_allocator.quota.view().value, ..old_allocator.quota.view() })
+    &&& new_allocator.quota.is_init() == old_allocator.quota.is_init()
+    &&& new_allocator.quota.view_rodata() == old_allocator.quota.view_rodata()
+    &&& new_allocator.quota.view_ghost() == old_allocator.quota.view_ghost()
+    &&& new_allocator.quota.locking_thread() == old_allocator.quota.locking_thread()
+    &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
+}
+
 /// The owner of the mapped page `p_i` that the leaf at `iova` of the IOMMU table `it_ptr` maps is the container of that
 /// table's process or one of its ancestors.
 pub proof fn page_iommu_table_wf_page_owner_at(

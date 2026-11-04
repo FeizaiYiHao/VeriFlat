@@ -390,7 +390,7 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
 
-/// Refunding 4K quota on a cpu of `a` may unlock a window of the exiting thread's process, a process of `a`, and raises
+/// Refunding 4K or 2M quota on a cpu of `a` may unlock a window of the exiting thread's process, a process of `a`, and raises
 /// the quota of the exiting thread's container, which lies in `a`, or of an ancestor of `a`, neither of which lies in `b`.
 pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -401,7 +401,8 @@ pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
+    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    reveal(kernel_u_cpu_ownership_wf);
     reveal(kernel_u_container_tree_wf);
     assert(domain_view(KernelU { process_map: new_u.process_map, ..old_u }, b) =~~= domain_view(old_u, b));
 }
@@ -427,7 +428,7 @@ pub proof fn thread_exit_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         &&& new_u.process_map[q].pagetable->Some_0.mapping_1g == old_u.process_map[q].pagetable->Some_0.mapping_1g
     });
     assert(isolated(KernelU { process_map: new_u.process_map, ..old_u }, a, b));
-    reveal(kernel_u_container_quota_4k_increased);
+    reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
 }
 
 /// Returning one size of quota on a cpu of `a` moves quota from the exiting thread and its process to their container,

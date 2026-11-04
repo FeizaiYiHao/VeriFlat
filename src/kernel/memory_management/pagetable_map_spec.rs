@@ -321,25 +321,19 @@ pub proof fn pagetable_window_typed_lock_map_aligned_locked_at(
             window_lock_map.dom().contains((pt_ptr, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) })),
 { reveal(pagetable_window_typed_lock_map_aligned); }
 
-/// No CPU page table maps a 2M or 1G leaf.
-/// Interim: the 2M conjunct stays until the thread_exit and kill reclaim paths remove 2M leaves and
-/// `process_emptied_tables_wf` excludes them for emptied tables.
+/// No CPU page table maps a 1G leaf.
 #[verifier::opaque]
-pub open spec fn pagetable_no_huge_leaf_wf(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
+pub open spec fn pagetable_no_1g_leaf_wf(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     forall|pt: RwLockPageTableRoot|
         #![trigger whole_pagetable(pt_mp, pt_lower, pt)]
-        pt_mp.dom().contains(pt) ==> {
-            &&& whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().dom() =~= Set::<VAddr>::empty()
-            &&& whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().dom() =~= Set::<VAddr>::empty()
-        }
+        pt_mp.dom().contains(pt) ==> whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().dom() =~= Set::<VAddr>::empty()
 }
 
-pub proof fn pagetable_no_huge_leaf_wf_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt_ptr: RwLockPageTableRoot)
+pub proof fn pagetable_no_1g_leaf_wf_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt_ptr: RwLockPageTableRoot)
     requires
-        pagetable_no_huge_leaf_wf(pt_mp, pt_lower),
+        pagetable_no_1g_leaf_wf(pt_mp, pt_lower),
         pt_mp.dom().contains(pt_ptr),
     ensures
-        whole_pagetable(pt_mp, pt_lower, pt_ptr).mapping_2m().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(pt_mp, pt_lower, pt_ptr).mapping_1g().dom() =~= Set::<VAddr>::empty(),
-{ reveal(pagetable_no_huge_leaf_wf); }
+{ reveal(pagetable_no_1g_leaf_wf); }
 }

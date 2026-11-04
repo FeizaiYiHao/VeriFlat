@@ -32,6 +32,7 @@ pub use pagetable_concurrent::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
+pub use kernel::implementation::free_2m_page::drain_2m_cache_batch;
 pub use kernel::implementation::reclaim_dangling_thread::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::allocate_free_4k_page;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::allocate_free_4k_pages;

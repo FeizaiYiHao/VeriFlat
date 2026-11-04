@@ -430,7 +430,7 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// A refund grows the 4K quota of the running thread's container or of one of its ancestors and unlocks at most one window
+/// A refund grows the 4K or 2M quota of the running thread's container or of one of its ancestors and unlocks at most one window
 /// of the page table of the thread's process.
 #[verifier::opaque]
 pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
@@ -447,6 +447,7 @@ pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id:
         &&& new_u.process_map == old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..process.pagetable->Some_0 }), ..process })
     }
     &&& kernel_u_container_quota_4k_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, thread.owning_container)
+        || kernel_u_container_quota_2m_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, thread.owning_container)
 }
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,

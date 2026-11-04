@@ -589,6 +589,81 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         }
     }
 
+    /// Clear the held 2M leaf `(target_l4i, target_l3i, target_l2i)` under the user root entry `target_l4i`, which no longer resolves:
+    /// the held L2 entry is published cleared and stays in its L2 page, so no mapping changes. No path to the leaf resolves, so the
+    /// entry's window lock is free; the caller holds the table's big lock in write mode, which every window lock follows. A 2M leaf
+    /// owns no L1 page, so no L1 token moves.
+    pub fn clear_held_2m_leaf(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
+        Tracked(lctx): Tracked<&mut LocalContext>)
+        requires
+            (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            self.spec_resolve_mapping_l4(target_l4i) is None,
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) is Some,
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            (WholePageTable { higher: *self, lower: *final(lower) }).wf(),
+            (WholePageTable { higher: *self, lower: *final(lower) }).page_closure() =~= (WholePageTable { higher: *self, lower: *old(lower) }).page_closure(),
+            final(lower).l1_rev_map == old(lower).l1_rev_map,
+            final(lower).mapping_4k == old(lower).mapping_4k,
+            final(lower).mapping_2m == old(lower).mapping_2m,
+            final(lower).l2_perms.dom() == old(lower).l2_perms.dom(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_entry(p, i)]
+                (p, i) != (self.spec_held_l3(target_l4i, target_l3i)->0.addr, target_l2i) ==> final(lower).l2_entry(p, i) == old(lower).l2_entry(p, i),
+            final(lower).l2_entry(self.spec_held_l3(target_l4i, target_l3i)->0.addr, target_l2i).is_empty(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_owner(p, i)] final(lower).l2_owner(p, i) == old(lower).l2_owner(p, i),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_page(p).entry_lock(i).l1()] final(lower).l2_page(p).entry_lock(i).l1() == old(lower).l2_page(p).entry_lock(i).l1(),
+            forall|w: WindowVa| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w)]
+                self.kernel_l4_end <= spec_v2l4index(w.va) && pei_valid(spec_v2l4index(w.va)) && pei_valid(spec_v2l3index(w.va))
+                    && (WholePageTable { higher: *self, lower: *old(lower) }).window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).window_view(w) == (WholePageTable { higher: *self, lower: *old(lower) }).window_view(w),
+            final(lower).pagetable_window_locks == old(lower).pagetable_window_locks,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
+            old(lower).hidden_l1_tables_in_locked_windows() ==> final(lower).hidden_l1_tables_in_locked_windows(),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i)
+                    ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
+            (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+    {
+        let ghost pre = WholePageTable { higher: *self, lower: *lower };
+        if let Some(l4_entry) = self.get_held_entry_l4(target_l4i) {
+            if let Some(l3_entry) = self.get_held_entry_l3(target_l4i, target_l3i, &l4_entry) {
+                let target_l2_p = l3_entry.addr;
+                proof {
+                    self.wf_l4_at(target_l4i);
+                    pre.l3_links_l2_wf_at(l4_entry.addr, target_l3i);
+                    pre.wf_l2_at(target_l2_p, target_l2i);
+                    pre.tables_reachable_wf_l2_at(target_l2_p);
+                    self.disjoint_l4_l3_implies_held_l3_addr_unique_at(target_l4i, target_l3i, self.l2_rev_map.view().spec_index(target_l2_p).0, self.l2_rev_map.view().spec_index(target_l2_p).1);
+                    pre.wf_window_locks_l2_entry_at(target_l2_p, target_l2i);
+                    mem_valid_zero();
+                }
+                let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
+                l2_entry_set_published_unlocked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, PageEntry::empty(), Tracked(&mut *lctx));
+                proof {
+                    lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
+                    let post = WholePageTable { higher: *self, lower: *lower };
+                    assert(WholePageTable::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i)) by {
+                        reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing);
+                    };
+                    WholePageTable::clear_held_2m_leaf_eof(pre, post, target_l4i, target_l3i, target_l2i);
+                    WholePageTable::clear_held_2m_leaf_eof_held_chain(pre, post, target_l4i, target_l3i, target_l2i);
+                }
+            }
+        }
+    }
+
     /// Unlink the L1 page of window `(target_l4i, target_l3i, target_l2i)` and return it. The cleared L2 entry is the window's
     /// spin lock word, so this thread must hold that window lock; the published word keeps the lock bit.
     pub fn remove_l2_entry(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,

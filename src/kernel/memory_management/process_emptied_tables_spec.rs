@@ -4,7 +4,8 @@ use crate::*;
 verus! {
 /// The page table, and the IOMMU table if any, of a process whose tables were emptied or that is a zombie map no 4K leaf;
 /// no mapped page lists its page table in its mappings, and no user L4 entry of its page table resolves.
-/// 2M/1G leaves are excluded by `pagetable_no_huge_leaf_wf` and `iommu_table_no_huge_leaf_wf`.
+/// 1G leaves are excluded by `pagetable_no_1g_leaf_wf` and IOMMU 2M/1G leaves by `iommu_table_no_huge_leaf_wf`; a 2M leaf of a
+/// page table names a Mapped2m page that lists the table (`mapped_2m_page_pagetable_wf`), which the no-listing clause excludes.
 #[verifier::opaque]
 pub open spec fn process_emptied_tables_wf(
     prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pg_arr: PageLockedArray,

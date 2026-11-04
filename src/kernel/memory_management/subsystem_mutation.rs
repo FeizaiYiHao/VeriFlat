@@ -192,6 +192,49 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
     }
 }
 
+pub fn page_array_remove_2m_mapping_without_free(page_array: &mut PageLockedArray, pg_idx: PageIndex, pagetable_ptr: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>)
+    requires
+        page_array_wf(*old(page_array)),
+        index_valid(NUM_PAGES, pg_idx),
+        old(page_array).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.page_lock_map(), pg_idx, TypedLockMode::Write),
+        page_lock_perm.state() is WriteLock,
+        page_lock_perm.thread_id() == lctx.thread_id(),
+        page_lock_perm.lock_id() == old(page_array).spec_index(pg_idx).view().locking_thread()->Write_lock_id,
+        old(page_array).spec_index(pg_idx).view().view().state is Mapped2m,
+        old(page_array).spec_index(pg_idx).view().view().mappings().contains((pagetable_ptr, va)),
+        old(page_array).spec_index(pg_idx).view().view().ref_count > 1,
+    ensures
+        page_array_wf(*final(page_array)),
+        final(page_array).inv(),
+        final(page_array).entries_unchanged_except(old(page_array), pg_idx),
+        lctx.page_lock_map().index(pg_idx).lock_id == old(page_array).lock_id_by_index(pg_idx),
+        final(page_array).typed_lock_map_aligned(lctx.page_lock_map().insert(pg_idx, TypedHeldLock { lock_id: final(page_array).lock_id_by_index(pg_idx), mode: TypedLockMode::Write }), lctx.thread_id()),
+        final(page_array).spec_index(pg_idx).view().is_init(),
+        final(page_array).spec_index(pg_idx).view().inv(),
+        final(page_array).spec_index(pg_idx).view().wlocked_by(lctx),
+        final(page_array).spec_index(pg_idx).view().locking_thread() == old(page_array).spec_index(pg_idx).view().locking_thread(),
+        final(page_array).spec_index(pg_idx).view().being_killed() == old(page_array).spec_index(pg_idx).view().being_killed(),
+        final(page_array).spec_index(pg_idx).view().view_rodata() == old(page_array).spec_index(pg_idx).view().view_rodata(),
+        final(page_array).spec_index(pg_idx).view().view_ghost() == old(page_array).spec_index(pg_idx).view().view_ghost(),
+        final(page_array).spec_index(pg_idx).view().view().mappings() == old(page_array).spec_index(pg_idx).view().view().mappings().remove((pagetable_ptr, va)),
+        final(page_array).spec_index(pg_idx).view().view().iommu_mappings() == old(page_array).spec_index(pg_idx).view().view().iommu_mappings(),
+        final(page_array).spec_index(pg_idx).view().view().ref_count == old(page_array).spec_index(pg_idx).view().view().ref_count - 1,
+        final(page_array).spec_index(pg_idx).view().view().state == PageState::Mapped2m,
+        forall|i: PageIndex| #![trigger old(page_array).spec_index(i).view().view().state] #![trigger final(page_array).spec_index(i).view().view().state]
+            index_valid(NUM_PAGES, i) && i != pg_idx ==> final(page_array).spec_index(i).view().view().state == old(page_array).spec_index(i).view().view().state,
+        final(page_array).spec_index(pg_idx).view().view() == (Page { mappings: final(page_array).spec_index(pg_idx).view().view().mappings,
+            ref_count: final(page_array).spec_index(pg_idx).view().view().ref_count, ..old(page_array).spec_index(pg_idx).view().view() }),
+{
+    assert(page_array.inv() && page_array.spec_index(pg_idx).view().is_init() && page_array.spec_index(pg_idx).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, pg_idx); };
+    let page = page_array.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
+    remove_shared_2m_mapping(page, pagetable_ptr, va);
+    proof {
+        assert(page_array_remove_2m_mapping_without_free_eof_transition_framing(*old(page_array), *page_array, pg_idx)) by { reveal(page_array_remove_2m_mapping_without_free_eof_transition_framing); };
+        page_array_remove_2m_mapping_without_free_eof(*old(page_array), *page_array, pg_idx);
+    }
+}
+
 pub fn page_array_remove_last_4k_mapping_to_cache(
     page_array: &mut PageLockedArray, pg_idx: PageIndex, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>,

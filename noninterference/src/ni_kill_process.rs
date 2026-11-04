@@ -784,7 +784,7 @@ pub proof fn kill_process_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cp
     reveal(kill_process_step_pre); reveal(kill_process_iommu_leaf_step);
 }
 
-/// Refunding 4K quota of a process kill on a cpu of `a` raises the quota of the container of the target, which lies in `a`,
+/// Refunding 4K or 2M quota of a process kill on a cpu of `a` raises the quota of the container of the target, which lies in `a`,
 /// or of an ancestor of it, neither of which lies in `b`.
 pub proof fn kill_process_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -795,7 +795,7 @@ pub proof fn kill_process_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
         kill_process_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_tree_wf);
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_tree_wf);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let container = old_u.process_map[kill_target(old_u, cpu_id)].owning_container;
     assert(in_domain(old_u, a, container)) by {
@@ -816,7 +816,7 @@ pub proof fn kill_process_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_step_pre(old_u, cpu_id),
         kill_process_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); }
+{ reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); }
 
 /// Returning one size of the quota of the target of a process kill on a cpu of `a`, which lies in `a`, to its container
 /// changes only the target, its container, and the killer, so it leaves the view of `b` unchanged.

@@ -53,4 +53,6 @@ pub mod hide_user_l4_entries_eof;
 pub mod hide_user_l4_entries_trace;
 pub mod reclaim_held_4k_page;
 mod reclaim_held_4k_page_eof;
-pub mod reclaim_held_4k_leaves;
+pub mod reclaim_held_2m_page;
+mod reclaim_held_2m_page_eof;
+pub mod reclaim_held_leaves;
