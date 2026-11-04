@@ -841,7 +841,13 @@ verus! {
                     }
                 },
             held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
-            held_owner_rodata_unchanged(*old(krnl), *final(krnl), *old(lctx)),
+            old(lctx).thread_lock_map().dom().contains(quota_thread_ptr) ==> {
+                let thread = old(krnl).thr_mp.spec_index(quota_thread_ptr).view();
+                &&& final(krnl).ctn_mp.dom().contains(thread.owning_container)
+                &&& final(krnl).ctn_mp.spec_index(thread.owning_container).view_rodata() == old(krnl).ctn_mp.spec_index(thread.owning_container).view_rodata()
+                &&& !thread_is_dangling(old(krnl).thr_mp.spec_index(quota_thread_ptr)) ==> final(krnl).prc_mp.dom().contains(thread.owning_proc)
+                &&& !thread_is_dangling(old(krnl).thr_mp.spec_index(quota_thread_ptr)) ==> final(krnl).prc_mp.spec_index(thread.owning_proc).view_rodata() == old(krnl).prc_mp.spec_index(thread.owning_proc).view_rodata()
+            },
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),

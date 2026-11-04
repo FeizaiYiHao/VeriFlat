@@ -266,7 +266,8 @@ pub(crate) fn kill_reclaim_flush(
 }
 
 /// Flush `pcid` on cpu `c` under its needflush lock and drop `c` from the stale-CPU record of the write-held page table
-/// `pagetable` with `cr3` and `pcid`; returns whether the hardware cr3/pcid word of `c` names the table.
+/// `pagetable` with `cr3` and `pcid`; returns whether the hardware cr3/pcid word of `c` names the table. What `c` may
+/// cache after a flush is stated in the state before the record drop, whose tables differ only in that record.
 pub(crate) fn kill_reclaim_flush_cpu_tlb(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, c: usize, cpu_id: CpuId, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(pagetable_perm): Tracked<&LockPerm>,
@@ -323,7 +324,9 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         final(krnl).cpu_tlb.view() == if flushed { old(krnl).cpu_tlb.view().insert((c, pcid), final(krnl).cpu_tlb.spec_index((c, pcid))) } else { old(krnl).cpu_tlb.view() },
-        flushed ==> cpu_tlb_within_may_cache(*final(krnl), c, pcid, final(krnl).cpu_tlb.spec_index((c, pcid)), final(krnl).cpu_tlb.structure_cache((c, pcid))),
+        (KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..*final(krnl) }).inv(),
+        flushed ==> cpu_tlb_within_may_cache(KernelK { pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..*final(krnl) }, c, pcid, final(krnl).cpu_tlb.spec_index((c, pcid)),
+            final(krnl).cpu_tlb.structure_cache((c, pcid))),
 {
     hide(typed_lock_maps_aligned);
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(c, pcid, Tracked(&mut *lctx));

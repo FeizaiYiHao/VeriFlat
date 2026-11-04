@@ -212,6 +212,28 @@ proof fn kill_retire_table_page_eof_process_management_inv(
     assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
 }
 
+/// The CPU TLBs and paging-structure caches keep only what the table still holds: a page table, which resolves no user
+/// root entry and lists no cpu stale, backs no cached entry.
+proof fn kill_retire_table_page_eof_tlb_caches(
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    node_addr: usize,
+)
+    requires
+        pre.inv(),
+        kill_retire_table_page_eof_transition_framing(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr),
+        !iommu ==> pre.pt_mp.dom().contains(table),
+        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
+        !iommu ==> pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+    ensures
+        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+        structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(kill_retire_table_page_eof_transition_framing);
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
+}
+
 /// The table page leaving its zombie table for the owner's cpu cache, with the killer's pending refund grown by one,
 /// keeps the kernel invariant and every non-lock field the projection reads.
 pub(crate) proof fn kill_retire_table_page_eof(
@@ -266,13 +288,12 @@ pub(crate) proof fn kill_retire_table_page_eof(
     kill_retire_table_page_eof_page_relations(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);
     kill_retire_table_page_eof_allocator_quota_wf(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);
     kill_retire_table_page_eof_process_management_inv(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);
+    kill_retire_table_page_eof_tlb_caches(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_eof_transition_framing);
     assert(pagetable_hidden_roots_only_when_write_held_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
-    assert(structure_cache_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf_spec); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);

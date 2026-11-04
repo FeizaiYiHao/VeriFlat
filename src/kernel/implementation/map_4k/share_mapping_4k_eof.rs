@@ -364,9 +364,6 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         target_write_held ==> {
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k()
                 == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_4k().insert(target_va, whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va))
-            &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k
-                == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va,
-                    whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va))
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_2m() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_2m()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_1g()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.pagetable_window_locks == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.pagetable_window_locks
@@ -388,8 +385,8 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat)) by {
-            assert(whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)
-                == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va));
+            assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k
+                =~= whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)));
             reveal(share_mapping_4k_target_map_with_shared_prefix);
         };
     }

@@ -325,17 +325,11 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         final(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().being_killed() == old(krnl).cpu_arr.spec_index(local_cpu).view().being_killed(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().killer_info() == old(krnl).cpu_arr.spec_index(local_cpu).view().killer_info(),
-        final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)] old(krnl).pt_mp.dom().contains(pt) ==> {
-            &&& final(krnl).pt_mp.spec_index(pt).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pt).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pt).view() })
-            &&& final(krnl).pt_mp.spec_index(pt).locking_thread() == old(krnl).pt_mp.spec_index(pt).locking_thread()
-            &&& final(krnl).pt_mp.spec_index(pt).being_killed() == old(krnl).pt_mp.spec_index(pt).being_killed()
-            &&& final(krnl).pt_mp.lock_id_by_key(pt) == old(krnl).pt_mp.lock_id_by_key(pt)
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_2m()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_1g()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).lower.pagetable_window_locks
-        },
+        final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
+        final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
+        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
+        final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
+        final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
         !table_write_held ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range((cpu_id + 1) as usize, NUM_CPUS) || final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
@@ -366,16 +360,42 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl) && kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by {
             broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
         };
-        let cpu = flushed.cpu_arr.spec_index(cpu_id).view().view().view();
-        if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
-            assert(flushed.pt_mp.dom().contains(cpu.current_pagetable->Some_0)) by {
-                cpu_array_wf_at(flushed.cpu_arr, flushed.dflt_pt.view(), cpu_id); process_cpu_wf_at(flushed.prc_mp, flushed.cpu_arr, cpu_id);
-                process_pagetable_match_process_at(flushed.prc_mp, flushed.pt_mp, cpu.current_process.unwrap());
-            };
-        }
+        assert(cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) ==> cpu_tlb_within_may_cache(*krnl, cpu_id, pcid, krnl.cpu_tlb.spec_index((cpu_id, pcid)), krnl.cpu_tlb.structure_cache((cpu_id, pcid)))) by {
+            let cpu = flushed.cpu_arr.spec_index(cpu_id).view().view().view();
+            if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
+                assert(flushed.pt_mp.dom().contains(cpu.current_pagetable->Some_0)) by {
+                    cpu_array_wf_at(flushed.cpu_arr, flushed.dflt_pt.view(), cpu_id); process_cpu_wf_at(flushed.prc_mp, flushed.cpu_arr, cpu_id);
+                    process_pagetable_match_process_at(flushed.prc_mp, flushed.pt_mp, cpu.current_process.unwrap());
+                };
+                if cpu.current_pagetable->Some_0 == pagetable {
+                    let pre = whole_pagetable(flushed.pt_mp, flushed.pt_lower.view(), pagetable);
+                    let post = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+                    stale_cpus_only_change_implies_present_tlb_subset_kept(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pre, post);
+                    stale_cpus_only_change_implies_present_structure_cache_subset_kept(krnl.cpu_tlb.structure_cache((cpu_id, pcid)), pre, post);
+                }
+            }
+        };
     }
     hw_cr3_pcid
 }
+
+/// A table that differs from `pre` only in its table and window stale-CPU records keeps every cached translation that
+/// `pre` holds present.
+proof fn stale_cpus_only_change_implies_present_tlb_subset_kept(tlb: SingleTLB, pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
+    ensures single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, pre) ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, post),
+{}
+
+/// A table that differs from `pre` only in its table and window stale-CPU records keeps every paging-structure entry that
+/// `pre` holds present.
+proof fn stale_cpus_only_change_implies_present_structure_cache_subset_kept(cache: PagingStructureCache, pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
+    ensures single_structure_cache_subset_of_present_pagetable(cache, pre) ==> single_structure_cache_subset_of_present_pagetable(cache, post),
+{}
 
 /// Drops `cpu_id`, whose TLB and paging-structure cache for `pcid` hold nothing of `pagetable` that a flush would remove, from
 /// the stale-CPU records of `pagetable` the thread may change, deleting the window records after the last cpu. Every such
@@ -424,17 +444,9 @@ pub(super) fn drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot,
         final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower == (PageTableLower { window_stale_cpus: whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
             ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower }),
-        final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)] old(krnl).pt_mp.dom().contains(pt) ==> {
-            &&& final(krnl).pt_mp.spec_index(pt).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pt).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pt).view() })
-            &&& final(krnl).pt_mp.spec_index(pt).locking_thread() == old(krnl).pt_mp.spec_index(pt).locking_thread()
-            &&& final(krnl).pt_mp.spec_index(pt).being_killed() == old(krnl).pt_mp.spec_index(pt).being_killed()
-            &&& final(krnl).pt_mp.lock_id_by_key(pt) == old(krnl).pt_mp.lock_id_by_key(pt)
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_2m()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_1g()
-            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).lower.pagetable_window_locks
-        },
+        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
+        final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
+        final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
         !table_write_held ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range((cpu_id + 1) as usize, NUM_CPUS) || final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
@@ -456,6 +468,20 @@ pub(super) fn drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot,
     if table_write_held {
         assert(Set::<CpuId>::empty().remove(cpu_id) =~= Set::<CpuId>::empty());
         krnl.replace_table_stale_cpus(pagetable, Ghost(TableStaleUpdate::RemoveCpu { cpu_id }), Tracked(lctx), Tracked(table_perm));
+        assert({
+            let dirty_entry = krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+            let exempt = krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid;
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+            &&& krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
+                || single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), table)
+            &&& krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
+                || single_structure_cache_subset_of_present_pagetable(krnl.cpu_tlb.structure_cache((cpu_id, pcid)), table)
+        }) by {
+            let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
+            let post = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+            stale_cpus_only_change_implies_present_tlb_subset_kept(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pre, post);
+            stale_cpus_only_change_implies_present_structure_cache_subset_kept(krnl.cpu_tlb.structure_cache((cpu_id, pcid)), pre, post);
+        };
     }
     krnl.replace_window_stale_cpus(pagetable, Ghost(WindowStaleUpdate::RemoveCpu { cpu_id }), Tracked(lctx));
     if cpu_id + 1 == NUM_CPUS {

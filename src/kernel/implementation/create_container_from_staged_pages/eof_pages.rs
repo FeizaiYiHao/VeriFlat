@@ -198,7 +198,6 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_unmodified_objec
         },
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     let page_ptr = page_index2page_ptr(page_index);
     assert(!funding_pages.to_set().contains(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr)) by {
@@ -389,8 +388,7 @@ pub(super) proof fn publish_staged_container_root_eof_existing_post_container_pa
     ensures
         post.pg_arr.spec_index(page_index).view().view().state == pre.pg_arr.spec_index(page_index).view().view().state,
 {
-    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
-    page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); page_index_valid_imply_page_ptr_valid();
     let page_ptr = page_index2page_ptr(page_index);
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr)) by { reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); };
     assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(page_ptr)) by {

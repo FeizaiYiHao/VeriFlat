@@ -1030,7 +1030,7 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
 
 /// A section that flushes cpu `c`'s TLB for `pcid` and changes only cpu state, TLBs, needflush flags, and page-table ghost
 /// state that keeps every table's lock mode, mappings, and window locks changes only the TLB projection, and, if it changes
-/// it, clears what `c` caches under `pcid` down to what it may cache.
+/// it, clears what `c` caches under `pcid` down to what it may cache in the state with `pre`'s page tables.
 pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c: CpuId, pcid: Pcid, flushed: bool)
     requires
         post.inv(),
@@ -1048,7 +1048,8 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
         },
         index_valid(NUM_CPUS, c),
         post.cpu_tlb.view() == if flushed { pre.cpu_tlb.view().insert((c, pcid), post.cpu_tlb.spec_index((c, pcid))) } else { pre.cpu_tlb.view() },
-        flushed ==> cpu_tlb_within_may_cache(*post, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid))),
+        (KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post }).inv(),
+        flushed ==> cpu_tlb_within_may_cache(KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post }, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid))),
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
         (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.cpu_tlb.view() == post.cpu_tlb.view()),
@@ -1061,7 +1062,8 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
     if pre_u != post_u {
         assert(flushed) by { if !flushed { assert(post_u == pre_u); } };
         reveal(kernel_u_cpu_tlb_cleared);
-        kernel_cpu_tlb_within_may_cache_projection(post, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid)));
+        let mid = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*post };
+        kernel_cpu_tlb_updated_implies_u_step(pre, &mid); kernel_cpu_tlb_within_may_cache_projection(&mid, c, pcid, post.cpu_tlb.spec_index((c, pcid)), post.cpu_tlb.structure_cache((c, pcid)));
         assert(!pre_u.cpu_tlb.dom().contains((c, pcid)) || pre_u.cpu_tlb[(c, pcid)] != post.cpu_tlb.spec_index((c, pcid))) by {
             if pre_u.cpu_tlb.dom().contains((c, pcid)) && pre_u.cpu_tlb[(c, pcid)] == post.cpu_tlb.spec_index((c, pcid)) { assert_maps_equal!(pre_u.cpu_tlb, post.cpu_tlb.view(), key => {}); }
         };

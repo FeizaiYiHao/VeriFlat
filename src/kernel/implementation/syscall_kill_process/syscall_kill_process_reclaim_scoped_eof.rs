@@ -80,6 +80,50 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_owners(
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
 }
 
+/// Every page keeps the mapping records of the page tables after the last mapping of `page_ptr` leaves `pagetable` and
+/// the page returns to its owner's 4K allocator.
+proof fn kill_reclaim_held_4k_page_scoped_eof_page_mappings(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    node_addr: usize,
+)
+    requires
+        pre.inv(),
+        kill_reclaim_held_4k_page_scoped_eof_transition_framing(pre, post, pagetable, va, page_ptr, allocator_ptr, cpu_id, node_addr),
+        ({
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
+            &&& pre.pt_mp.dom().contains(pagetable)
+            &&& va_4k_valid(va)
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == page_ptr
+            &&& page_ptr_valid(page_ptr)
+            &&& old_page.ref_count == 1
+            &&& old_page.state is Mapped4k
+            &&& !old_page.is_io_page
+            &&& old_page.mappings().contains((pagetable, va))
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
+            &&& !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
+        }),
+        post.subsystems_inv(),
+    ensures
+        mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(kill_reclaim_held_4k_page_scoped_eof_transition_framing);
+    let page_index = page_ptr2page_index(page_ptr);
+    assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, page_index);
+    pre.default_pagetable_wf_at(pagetable);
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf); };
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); reveal(page_array_wf); };
+    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); reveal(page_array_wf); };
+}
+
 /// The mapping relations and the allocator invariants hold after the last mapping of `page_ptr` leaves `pagetable` and
 /// the page returns to its owner's 4K allocator.
 proof fn kill_reclaim_held_4k_page_scoped_eof_page_relations(
@@ -111,8 +155,6 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_relations(
         }),
         post.subsystems_inv(),
     ensures
-        mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
-        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
@@ -130,11 +172,6 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_relations(
     reveal(kill_reclaim_held_4k_page_scoped_eof_transition_framing);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
-    page_array_wf_at(pre.pg_arr, page_index);
-    pre.default_pagetable_wf_at(pagetable);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf); };
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); reveal(page_array_wf); };
-    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); reveal(page_array_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_match); };
@@ -222,6 +259,7 @@ pub(crate) proof fn kill_reclaim_held_4k_page_scoped_eof(
     reveal(kill_reclaim_held_4k_page_scoped_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_held); };
     kill_reclaim_held_4k_page_scoped_eof_page_owners(pre, post, pagetable, va, page_ptr, owner, allocator_ptr, cpu_id, node_addr);
+    kill_reclaim_held_4k_page_scoped_eof_page_mappings(pre, post, pagetable, va, page_ptr, owner, allocator_ptr, cpu_id, node_addr);
     kill_reclaim_held_4k_page_scoped_eof_page_relations(pre, post, pagetable, va, page_ptr, owner, allocator_ptr, cpu_id, node_addr);
     kill_reclaim_held_4k_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, page_ptr, allocator_ptr, cpu_id, node_addr);
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_held_or_emptied); };

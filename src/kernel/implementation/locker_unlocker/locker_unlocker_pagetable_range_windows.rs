@@ -1,5 +1,7 @@
 #[cfg(verus_keep_ghost)]
-use super::locker_unlocker_pagetable_range_windows_eol::{lock_pagetable_range_existing_windows_eol_loop_framing, lock_pagetable_range_existing_windows_eol_step, lock_pagetable_range_existing_windows_eol_exit,
+use super::locker_unlocker_pagetable_range_windows_eol::{lock_pagetable_range_windows_eol_loop_framing, lock_pagetable_range_windows_eol_step, lock_pagetable_range_windows_eol_exit,
+    lock_pagetable_range_existing_windows_eol_loop_framing, lock_pagetable_range_existing_windows_eol_step, lock_pagetable_range_existing_windows_eol_exit,
+    unlock_pagetable_range_windows_eol_loop_framing, unlock_pagetable_range_windows_eol_step, unlock_pagetable_range_windows_eol_exit,
     unlock_pagetable_range_existing_windows_eol_loop_framing, unlock_pagetable_range_existing_windows_eol_step, unlock_pagetable_range_existing_windows_eol_exit};
 use vstd::prelude::*;
 use crate::*;
@@ -129,17 +131,18 @@ impl KernelK {
         let (first_l4i, first_l3i, first_l2i, _) = va2index(range.start);
         let last_va = range.index(range.len - 1);
         let (last_l4i, last_l3i, last_l2i, _) = va2index(last_va);
+        let tracked mut perms = Map::<WindowVa, LockPerm>::tracked_empty();
         proof {
             assert(KERNEL_MEM_END_L4INDEX <= first_l4i && pei_valid(last_l4i) && pei_valid(last_l3i) && pei_valid(last_l2i)) by { broadcast use spec_va_4k_valid_index_roundtrip; };
             assert(first_l4i < last_l4i || (first_l4i == last_l4i && (first_l3i < last_l3i || (first_l3i == last_l3i && first_l2i <= last_l2i)))) by {
                 range.wf_implies_view_index_is_start_plus_offset(); broadcast use spec_va_4k_valid_index_roundtrip;
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
             };
-            pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
-            reveal(pagetable_window_typed_lock_map_aligned);
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            assert(lock_pagetable_range_windows_eol_loop_framing(*old(self), *self, old(lctx), lctx, root, range, perms, big, (first_l4i, first_l3i, first_l2i))) by {
+                reveal(lock_pagetable_range_windows_eol_loop_framing); pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root); reveal(pagetable_window_typed_lock_map_aligned);
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            };
         }
-        let tracked mut perms = Map::<WindowVa, LockPerm>::tracked_empty();
         let mut l4i = first_l4i;
         let mut l3i = first_l3i;
         let mut l2i = first_l2i;
@@ -152,101 +155,30 @@ impl KernelK {
                 pei_valid(last_l4i) && pei_valid(last_l3i) && pei_valid(last_l2i),
                 pei_valid(l3i) && pei_valid(l2i) && l4i <= 512,
                 first_l4i < l4i || (first_l4i == l4i && (first_l3i < l3i || (first_l3i == l3i && first_l2i <= l2i))),
-                old(self).pt_mp.dom().contains(root),
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= first_l4i,
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher.spec_mapping_4k_va_range_windows_exist(range),
-                old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).scheduler_lock_map().dom().is_empty(),
-                old(lctx).cpu_set_lock_map().dom().is_empty(),
-                old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-                forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-                forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
-                forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-                    ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
+                self.pt_mp.dom().contains(root),
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).kernel_l4_end() <= first_l4i,
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).higher.spec_mapping_4k_va_range_windows_exist(range),
+                lctx.kernel_view_locking_state() is Acquire,
+                lctx.scheduler_lock_map().dom().is_empty(),
+                lctx.cpu_set_lock_map().dom().is_empty(),
+                lctx.pcid_needflush_lock_map().dom().is_empty(),
+                lctx.holds_no_allocator_locks(PageSize::SZ4k),
+                lctx.holds_no_allocator_locks(PageSize::SZ2m),
+                lctx.holds_no_allocator_locks(PageSize::SZ1g),
+                forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(self.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+                forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> self.pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+                forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread)
+                    ==> self.thr_mp.spec_index(held_thread).being_killed() || !(self.thr_mp.spec_index(held_thread).view().state is SCHEDULED),
                 forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root,
-                old(lctx).pagetable_lock_map().dom().contains(root),
-                big.thread_id() == old(lctx).thread_id(),
-                big.state() is WriteLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Write),
-                big.state() is WriteLock ==> big.lock_id() == old(self).pt_mp.spec_index(root).locking_thread()->Write_lock_id,
-                big.state() is ReadLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Read),
-                big.state() is ReadLock ==> old(self).pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), big.lock_id()),
+                lctx.pagetable_lock_map().dom().contains(root),
+                big.thread_id() == lctx.thread_id(),
+                big.state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write),
+                big.state() is WriteLock ==> big.lock_id() == self.pt_mp.spec_index(root).locking_thread()->Write_lock_id,
+                big.state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Read),
+                big.state() is ReadLock ==> self.pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), big.lock_id()),
                 self.inv(),
-                kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self),
                 typed_lock_maps_aligned(self, lctx),
-                *self == (KernelK { pt_mp: self.pt_mp, pt_lower: self.pt_lower, ..*old(self) }),
-                self.pt_mp.unchanged_except(&old(self).pt_mp, root),
-                update_ghost_ensures(old(self).pt_mp.spec_index(root), self.pt_mp.spec_index(root),
-                    if old(self).pt_mp.spec_index(root).wlocked() { self.pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
-                self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, self.pt_lower.view().spec_index(root)),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
-                forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
-                    whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
-                        && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom(),
-                forall|w: WindowVa| #![trigger whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)]
-                    whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)
-                        == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) { LockStateU::WriteLocked } else { whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w) },
-                forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
-                    va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))
-                        ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
-                lctx.cpu_id() == old(lctx).cpu_id(),
-                lctx.thread_id() == old(lctx).thread_id(),
-                lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                lctx.page_lock_map() == old(lctx).page_lock_map(),
-                lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
-                lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
-                lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
-                lctx.container_lock_map() == old(lctx).container_lock_map(),
-                lctx.process_lock_map() == old(lctx).process_lock_map(),
-                lctx.thread_lock_map() == old(lctx).thread_lock_map(),
-                lctx.endpoint_lock_map() == old(lctx).endpoint_lock_map(),
-                lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
-                lctx.pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
-                lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
-                lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
-                lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
-                lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
-                lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
-                lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
-                lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-                forall|p: RwLockPageTableRoot, w: WindowVa|
-                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
-                    lctx.pagetable_window_lock_map().dom().contains((p, w)) == (old(lctx).pagetable_window_lock_map().dom().contains((p, w)) || (p == root && perms.dom().contains(w))),
-                forall|p: RwLockPageTableRoot, w: WindowVa|
-                    #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
-                    old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
-                forall|p: RwLockPageTableRoot, w: WindowVa|
-                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
-                    lctx.pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == (TypedHeldLock { lock_id: window_lock_id_of(p, w), mode: TypedLockMode::Write }),
-                forall|w: WindowVa|
-                    #![trigger perms.dom().contains(w)]
-                    perms.dom().contains(w) ==> {
-                        &&& va_range_2m_windows(*range).contains(w)
-                        &&& !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))
-                        &&& perms.index(w).state() is WriteLock
-                        &&& perms.index(w).thread_id() == old(lctx).thread_id()
-                        &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
-                        &&& whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_view(w).lock_state == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: perms.index(w).lock_id() })
-                        &&& big.state() is ReadLock ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(w)
-                        &&& big.state() is ReadLock ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
-                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
-                        &&& big.state() is ReadLock ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
-                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                        &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
-                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    },
-                forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) ==> perms.dom().contains(w),
+                lock_pagetable_range_windows_eol_loop_framing(*old(self), *self, old(lctx), lctx, root, range, perms, big, (l4i, l3i, l2i)),
             decreases 512 - l4i, 512 - l3i, 512 - l2i,
         {
             let ghost window_va = WindowVa { va: spec_index2va((l4i, l3i, l2i, 0usize)) };
@@ -255,16 +187,15 @@ impl KernelK {
                 spec_va_4k_index_roundtrip_at(window_va.va, l4i, l3i, l2i, 0);
                 assert(va_range_2m_windows(*range).contains(window_va));
                 assert(typed_lock_map_2d_ids_lt(lctx.pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i))) by {
-                    reveal_with_fuel(lock_minor_lt, 4);
+                    reveal(lock_pagetable_range_windows_eol_loop_framing); reveal_with_fuel(lock_minor_lt, 4);
                 };
             }
+            let ghost krnl_i = *self;
+            let ghost lctx_i = *lctx;
+            let ghost perms_i = perms;
             let Tracked(perm) = self.lock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
-            proof {
-                perms.tracked_insert(window_va, perm);
-                broadcast use spec_va_2m_valid_index_roundtrip;
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            }
-            let ghost prev = (l4i, l3i, l2i, 0usize);
+            proof { perms.tracked_insert(window_va, perm); }
+            let ghost prev = (l4i, l3i, l2i);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -275,13 +206,9 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
-            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
+            proof { lock_pagetable_range_windows_eol_step(*old(self), krnl_i, *self, old(lctx), &lctx_i, lctx, root, range, perms_i, perms, big, window_va, prev, (l4i, l3i, l2i)); }
         }
-        proof {
-            assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks =~= pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range));
-        }
+        proof { lock_pagetable_range_windows_eol_exit(*old(self), *self, old(lctx), lctx, root, range, perms, big, (l4i, l3i, l2i)); }
         Tracked(perms)
     }
 
@@ -376,7 +303,7 @@ impl KernelK {
             (forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p == root && va_range_2m_windows(*range).contains(w))
                 ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
     {
-        let tracked mut perms = perms;
+        let tracked mut remaining = perms;
         let (first_l4i, first_l3i, first_l2i, _) = va2index(range.start);
         let last_va = range.index(range.len - 1);
         let (last_l4i, last_l3i, last_l2i, _) = va2index(last_va);
@@ -386,8 +313,10 @@ impl KernelK {
                 range.wf_implies_view_index_is_start_plus_offset(); broadcast use spec_va_4k_valid_index_roundtrip;
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
             };
-            pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            assert(unlock_pagetable_range_windows_eol_loop_framing(*old(self), *self, old(lctx), lctx, root, range, perms, remaining, (first_l4i, first_l3i, first_l2i))) by {
+                reveal(unlock_pagetable_range_windows_eol_loop_framing); pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            };
         }
         let mut l4i = first_l4i;
         let mut l3i = first_l3i;
@@ -402,83 +331,31 @@ impl KernelK {
                 first_l4i < last_l4i || (first_l4i == last_l4i && (first_l3i < last_l3i || (first_l3i == last_l3i && first_l2i <= last_l2i))),
                 pei_valid(l3i) && pei_valid(l2i) && l4i <= 512,
                 first_l4i < l4i || (first_l4i == l4i && (first_l3i < l3i || (first_l3i == l3i && first_l2i <= l2i))),
-                (l4i, l3i, l2i) != (first_l4i, first_l3i, first_l2i) ==> lctx.kernel_view_locking_state() is Release,
-                old(self).pt_mp.dom().contains(root),
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).kernel_l4_end() <= first_l4i,
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher.spec_mapping_4k_va_range_windows_exist(range),
-                big.thread_id() == old(lctx).thread_id(),
-                big.state() is WriteLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Write),
-                big.state() is WriteLock ==> big.lock_id() == old(self).pt_mp.spec_index(root).locking_thread()->Write_lock_id,
-                big.state() is ReadLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Read),
-                big.state() is ReadLock ==> old(self).pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), big.lock_id()),
-                self.inv(),
-                kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self),
-                typed_lock_maps_aligned(self, lctx),
-                *self == (KernelK { pt_mp: self.pt_mp, pt_lower: self.pt_lower, ..*old(self) }),
-                self.pt_mp.unchanged_except(&old(self).pt_mp, root),
-                update_ghost_ensures(old(self).pt_mp.spec_index(root), self.pt_mp.spec_index(root),
-                    if old(self).pt_mp.spec_index(root).wlocked() { self.pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
-                self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, self.pt_lower.view().spec_index(root)),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
-                forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
-                    whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
-                        && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1(),
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom(),
-                forall|w: WindowVa| #![trigger whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)]
-                    whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)
-                        == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) { LockStateU::Unlocked } else { whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w) },
-                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
-                whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows()
-                    && (forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
-                        whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
-                    ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
-                lctx.cpu_id() == old(lctx).cpu_id(),
-                lctx.thread_id() == old(lctx).thread_id(),
-                lctx.page_lock_map() == old(lctx).page_lock_map(),
-                lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
-                lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
-                lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
-                lctx.container_lock_map() == old(lctx).container_lock_map(),
-                lctx.process_lock_map() == old(lctx).process_lock_map(),
-                lctx.thread_lock_map() == old(lctx).thread_lock_map(),
-                lctx.endpoint_lock_map() == old(lctx).endpoint_lock_map(),
-                lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
-                lctx.pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
-                lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
-                lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
-                lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
-                lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
-                lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
-                lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
-                lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-                forall|p: RwLockPageTableRoot, w: WindowVa|
-                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
-                    lctx.pagetable_window_lock_map().dom().contains((p, w)) == (old(lctx).pagetable_window_lock_map().dom().contains((p, w))
-                        && !(p == root && va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)))),
-                forall|p: RwLockPageTableRoot, w: WindowVa|
-                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
-                    lctx.pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
-                forall|k: (RwLockPageTableRoot, WindowVa)| #![trigger lctx.pagetable_window_lock_map().dom().contains(k)] lctx.pagetable_window_lock_map().dom().contains(k) ==> lctx.pagetable_window_lock_map().dom().contains((k.0, k.1)),
+                self.pt_mp.dom().contains(root),
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).kernel_l4_end() <= first_l4i,
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), root).higher.spec_mapping_4k_va_range_windows_exist(range),
+                big.thread_id() == lctx.thread_id(),
+                big.state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write),
+                big.state() is WriteLock ==> big.lock_id() == self.pt_mp.spec_index(root).locking_thread()->Write_lock_id,
+                big.state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Read),
+                big.state() is ReadLock ==> self.pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), big.lock_id()),
                 forall|w: WindowVa|
                     #![trigger va_range_2m_windows(*range).contains(w)]
-                    va_range_2m_windows(*range).contains(w) && spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) ==> {
-                        &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
+                    va_range_2m_windows(*range).contains(w) ==> {
                         &&& perms.dom().contains(w)
                         &&& perms.index(w).state() is WriteLock
                         &&& perms.index(w).thread_id() == old(lctx).thread_id()
-                        &&& whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_view(w).lock_state == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: perms.index(w).lock_id() })
-                        &&& !(big.state() is WriteLock) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(w)
-                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
-                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
-                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(
-                            whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                        &&& whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_owner(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                            == (RwLockState::Write { thread_id: perms.index(w).thread_id(), lock_id: perms.index(w).lock_id() })
+                        &&& !(big.state() is WriteLock) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_leaves_present(w)
+                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
+                            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                        &&& !(big.state() is WriteLock) ==> !whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry_hides_l1(
+                            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     },
+                self.inv(),
+                typed_lock_maps_aligned(self, lctx),
+                unlock_pagetable_range_windows_eol_loop_framing(*old(self), *self, old(lctx), lctx, root, range, perms, remaining, (l4i, l3i, l2i)),
             decreases 512 - l4i, 512 - l3i, 512 - l2i,
         {
             let ghost window_va = WindowVa { va: spec_index2va((l4i, l3i, l2i, 0usize)) };
@@ -486,14 +363,25 @@ impl KernelK {
                 assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
                 spec_va_4k_index_roundtrip_at(window_va.va, l4i, l3i, l2i, 0);
                 assert(va_range_2m_windows(*range).contains(window_va));
+                assert({
+                    &&& remaining.dom().contains(window_va)
+                    &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (root, window_va), TypedLockMode::Write)
+                    &&& remaining.index(window_va).state() is WriteLock
+                    &&& remaining.index(window_va).thread_id() == lctx.thread_id()
+                    &&& whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_owner(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)
+                        == (RwLockState::Write { thread_id: remaining.index(window_va).thread_id(), lock_id: remaining.index(window_va).lock_id() })
+                    &&& !(big.state() is WriteLock) ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_leaves_present(window_va)
+                    &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
+                        whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i))
+                    &&& !(big.state() is WriteLock) ==> !whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry_hides_l1(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)
+                }) by { reveal(unlock_pagetable_range_windows_eol_loop_framing); };
             }
-            let tracked perm = perms.tracked_remove(window_va);
+            let ghost krnl_i = *self;
+            let ghost lctx_i = *lctx;
+            let ghost remaining_i = remaining;
+            let tracked perm = remaining.tracked_remove(window_va);
             self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
-            proof {
-                broadcast use spec_va_2m_valid_index_roundtrip;
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            }
-            let ghost prev = (l4i, l3i, l2i, 0usize);
+            let ghost prev = (l4i, l3i, l2i);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -504,13 +392,9 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
-            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
+            proof { unlock_pagetable_range_windows_eol_step(*old(self), krnl_i, *self, old(lctx), &lctx_i, lctx, root, range, perms, remaining_i, remaining, window_va, prev, (l4i, l3i, l2i)); }
         }
-        proof {
-            assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).lower.pagetable_window_locks =~= pagetable_window_locks_after_unlocking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range));
-        }
+        proof { unlock_pagetable_range_windows_eol_exit(*old(self), *self, old(lctx), lctx, root, range, perms, remaining, (l4i, l3i, l2i)); }
     }
 
     /// Lock, in ascending address order, every 2M window of page table `root` that covers `range` and whose L3 entry
