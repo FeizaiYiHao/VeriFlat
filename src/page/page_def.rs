@@ -1,7 +1,9 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
-use crate::{define::*, primitive::*, va_4k_valid, va_2m_valid, va_1g_valid, iova_4k_valid, iova_2m_valid, iova_1g_valid};
+use crate::{define::*, primitive::*, va_4k_valid, va_2m_valid, va_1g_valid};
+#[cfg(verus_keep_ghost)]
+use crate::{iova_4k_valid, iova_2m_valid, iova_1g_valid};
 use crate::locks::*;
 use crate::linkedlist::*;
 verus! {
