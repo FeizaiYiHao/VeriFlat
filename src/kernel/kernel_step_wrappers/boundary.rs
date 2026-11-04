@@ -16,7 +16,6 @@ pub(super) proof fn kernel_thread_quota_4k_changed_implies_u_neq(pre: &KernelK, 
     };
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_process_quota_4k_changed_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int)
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
@@ -116,7 +115,6 @@ pub(super) proof fn kernel_process2thread_quota_4k_changed_implies_u_step(pre: &
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_process_quota_2m_changed_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int)
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
@@ -293,7 +291,6 @@ pub(super) proof fn kernel_cpu_online_changed_implies_u_step(pre: &KernelK, post
     };
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
     requires
         post.inv(),
@@ -323,14 +320,12 @@ pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, pos
     kernel_cpu_went_off_fields_implies_u_thread_map(pre, post, cpu_id, regs, flushed_default_pcid);
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_process_added_implies_u_neq(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr)
     requires kernel_process_added(pre, post, process_ptr),
     ensures
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 { reveal(kernel_process_added); reveal(kernel_k_to_kernel_u); }
 
-#[verifier::spinoff_prover]
 pub proof fn kernel_process_4k_mapping_changed_implies_u_neq(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires kernel_process_4k_mapping_changed(pre, post, process_ptr, pagetable_ptr, va),
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),

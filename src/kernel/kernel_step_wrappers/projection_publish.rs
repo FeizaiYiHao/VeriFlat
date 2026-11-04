@@ -615,7 +615,6 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
 
 /// Thread publication with the caller's cpu released projects to the cpu array with only that cpu unlocked and its running
 /// state taken from `post`.
-#[verifier::spinoff_prover]
 pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
@@ -639,7 +638,6 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(
 
 /// Thread publication with the caller's thread released projects to the unlocked staging thread paying one quota and
 /// recording `staging_progress`, plus the new thread.
-#[verifier::spinoff_prover]
 pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_thread_map(
     pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
@@ -673,7 +671,6 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_thread_map(
 
 /// Thread publication with its initial endpoint released projects to that endpoint, unlocked, owning the new thread's
 /// first descriptor; without one the endpoint map is unchanged.
-#[verifier::spinoff_prover]
 pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_endpoint_map(
     pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
@@ -719,7 +716,6 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_endpoint_map(
 
 /// Thread publication projects to its container owning and scheduling the new thread; with a released source
 /// container, that container and the new thread's container are both unlocked.
-#[verifier::spinoff_prover]
 pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_container_map(
     pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,

@@ -14,7 +14,6 @@ pub enum OfflineCheckResult {
 /// Commits the offline of `cpu_id` under every lock the check acquired: the running thread, if any, is
 /// requeued at the tail, the cpu publishes the default page table and goes Off, its TLB entries are
 /// flushed, its slot in the container cpu set is closed, and the request bit is cleared.
-#[verifier::spinoff_prover]
 pub(super) fn cpu_offline_commit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr,
@@ -202,7 +201,6 @@ pub(super) fn cpu_offline_commit(
 /// thread, if any, is live, the cpu requeues that thread and goes Off; the trap layer then halts it.
 /// Otherwise the caller continues to `syscall_schedule`. The returned ghost state is where the check decided: the entry
 /// for an early Continue and otherwise the snapshot after holding the cpu across the boundary.
-#[verifier::spinoff_prover]
 pub fn cpu_offline_check(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
 ) -> (ret: (OfflineCheckResult, Ghost<KernelK>))

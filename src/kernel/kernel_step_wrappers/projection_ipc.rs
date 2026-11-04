@@ -25,7 +25,6 @@ proof fn kernel_thread_dequeued_implies_u_container_map(before: &KernelK, entry:
 }
 
 /// A process map with unchanged nonlock fields and lock states projects to the same process map.
-#[verifier::spinoff_prover]
 proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &KernelK, after: &KernelK, lctx: &LocalContext)
     requires
         process_pagetable_match(after.prc_mp, after.pt_mp),
@@ -351,7 +350,6 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
     });
 }
 
-#[verifier::spinoff_prover]
 pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu: CpuId,
     caller: RwLockThreadPtr, peer: RwLockThreadPtr, endpoint: RwLockEndpointPtr, tables: Option<(RwLockProcessPtr, RwLockProcessPtr)>,
@@ -521,7 +519,6 @@ proof fn kernel_endpoint_write_locked_implies_u_endpoint_map(pre: &KernelK, post
     });
 }
 
-#[verifier::spinoff_prover]
 pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     endpoint_ptr: Option<RwLockEndpointPtr>, write_locked: bool, container: Option<RwLockContainerPtr>, pagetable: bool, cpu_set_unlocked: Option<KernelK>,
@@ -700,7 +697,6 @@ pub(super) proof fn kernel_ipc_block_fields_implies_u_step(
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
     callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
@@ -730,7 +726,6 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid))); }
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_ipc_accept_call_fields_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
     caller_ptr: RwLockThreadPtr, )
@@ -765,7 +760,6 @@ pub(super) proof fn kernel_ipc_accept_call_fields_implies_u_step(
     });
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
     caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
@@ -991,7 +985,6 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_cpu_array(
 }
 
 /// The rendezvous fields project to the container map with only the peer pushed onto its wake cpu's scheduler queue.
-#[verifier::spinoff_prover]
 proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr, peer_result: RetValueType,
@@ -1223,7 +1216,6 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_iommu_root_table(
 }
 
 /// The rendezvous fields project to the thread map with only the peer scheduled on its wake cpu with `peer_result`.
-#[verifier::spinoff_prover]
 proof fn kernel_ipc_rendezvous_fields_implies_u_thread_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr, peer_result: RetValueType,

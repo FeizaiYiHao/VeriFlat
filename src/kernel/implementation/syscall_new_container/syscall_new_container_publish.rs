@@ -4,7 +4,6 @@ use super::*;
 use super::syscall_new_container_publish_release::release_new_container_publish_staging;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) fn publish_new_container_staged_root(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, caller_cpu_id: CpuId, transfer_cpu_id: CpuId,
     parent_cpu_set: RwLockCpuSetPtr, parent_container_ptr: RwLockContainerPtr, parent_process_ptr: RwLockProcessPtr,

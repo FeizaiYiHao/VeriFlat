@@ -133,7 +133,6 @@ proof fn scheduler_context_switch_eof_endpoint_wf(pre: KernelK, post: KernelK, c
     assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
 }
 
-#[verifier::spinoff_prover]
 proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),

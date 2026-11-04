@@ -7,7 +7,6 @@ use super::*;
 
 verus! {
 /// Returns the published funding chain to the child allocator, records the sharing progress, and releases the staging page locks.
-#[verifier::spinoff_prover]
 pub(super) fn release_new_container_publish_staging(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, current_thread_ptr: RwLockThreadPtr, pages_4k: &ArrayVec<PagePtr, 9>,
     container_page: PagePtr, pcid_allocator_page: PagePtr, funding_page_count: usize, funding_page_head: PagePtr, Ghost(funding_pages): Ghost<Seq<PagePtr>>,

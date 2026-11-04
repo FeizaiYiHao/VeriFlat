@@ -13,7 +13,6 @@ use super::super::syscall_new_process_trace::*;
 use super::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(in super::super) fn commit_new_process(
     krnl: &mut KernelK, source_range: &VaRange4K, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr,

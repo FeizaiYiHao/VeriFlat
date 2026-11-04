@@ -14,7 +14,6 @@ use super::syscall_ipc_call_eof::ipc_reply_handoff_eof;
 verus! {
     /// Under cpu, callee, endpoint, and caller locks: switch the CPU to the recorded caller's process and
     /// resume it, and park the replying callee at the endpoint tail as a receive-call waiter.
-    #[verifier::spinoff_prover]
     fn ipc_reply_handoff(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
@@ -747,7 +746,6 @@ verus! {
     /// `reply_and_receive(ep)` / `reply_and_receive_usize(ep, v)`: reply `payload` to the recorded caller by
     /// handing it the CPU and wait for the next call on the endpoint; reclaim the dangling thread of a killed caller and fail with
     /// `ErrorIpcCallerKilled`; otherwise stutter with the rejection.
-    #[verifier::spinoff_prover]
     pub fn syscall_reply_and_receive(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, endpoint_index: EndpointIdx, payload: IPCPayLoad, pt_regs: &mut Registers) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),

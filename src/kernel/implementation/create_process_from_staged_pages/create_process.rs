@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub fn create_process_from_staged_pages(
     krnl: &mut KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
     parent_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,

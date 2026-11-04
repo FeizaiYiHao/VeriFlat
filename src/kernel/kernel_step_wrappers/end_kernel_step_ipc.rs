@@ -8,7 +8,6 @@ use super::projection_ipc::{
 
 verus! {
 impl KernelSteps {
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_ipc_block(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
         endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool,
@@ -76,7 +75,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_ipc_call_handoff(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
         endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
@@ -155,7 +153,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_ipc_accept_call(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
@@ -229,7 +226,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_ipc_reply_handoff(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
         endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
@@ -305,7 +301,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_ipc_rendezvous(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr,
         endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr,

@@ -6,7 +6,6 @@ use crate::*;
 verus! {
 impl KernelK {
     /// Common acquisition after a state wrapper has derived the lock order; not a public locker.
-    #[verifier::spinoff_prover]
     fn wlock_thread_unless_killed(&mut self, thread_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),

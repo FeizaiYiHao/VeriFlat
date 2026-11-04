@@ -6,7 +6,6 @@ use super::syscall_new_container_trace::*;
 
 verus! {
 /// Records the new-container progress on the caller thread and ends the enter step.
-#[verifier::spinoff_prover]
 pub(super) fn enter_new_container_commit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, caller_cpu_id: CpuId,
     parent_container_ptr: RwLockContainerPtr, parent_process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, source_pagetable_ptr: RwLockPageTableRoot,

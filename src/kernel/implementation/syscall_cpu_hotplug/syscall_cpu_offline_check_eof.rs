@@ -38,7 +38,6 @@ proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
     requires
         pre.inv(),

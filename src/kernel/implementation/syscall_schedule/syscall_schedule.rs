@@ -55,7 +55,6 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
     if cpu.current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap()); }
 }
 
-#[verifier::spinoff_prover]
 fn schedule_switch_to_queue_head(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &mut Registers,
     scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, current_process: Option<RwLockProcessPtr>,
@@ -238,7 +237,6 @@ fn schedule_switch_to_queue_head(
 
 /// Timer entry for a user context or the idle loop. Kernel execution is not
 /// preemptible; the entry layer binds `lctx` to this CPU and restores `pt_regs`.
-#[verifier::spinoff_prover]
 pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &mut Registers) -> (ret: ScheduleResult)
     requires
         index_valid(NUM_CPUS, cpu_id),

@@ -6,7 +6,6 @@ use super::*;
 use super::syscall_new_container_finish_release::{finish_staged_container_unlock_tails, release_backing_page_lock_group, staged_container_backing_page_indices};
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) fn finish_staged_container_publish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pages_4k: &ArrayVec<PagePtr, 9>, container_page: PagePtr,
     pcid_allocator_page: PagePtr, Tracked(container_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,

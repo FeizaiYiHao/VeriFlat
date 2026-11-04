@@ -327,7 +327,6 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations_io
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
 }
 
-#[verifier::spinoff_prover]
 proof fn create_process_with_iommu_from_staged_pages_eof_memory_relations_allocators(
     pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
     iommu_table_page_ptr: PagePtr, iommu_l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,

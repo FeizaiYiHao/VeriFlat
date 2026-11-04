@@ -10,7 +10,6 @@ use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
 verus! {
-    #[verifier::spinoff_prover]
     fn finish_ipc_cpu_rendezvous_release(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
@@ -1063,7 +1062,6 @@ verus! {
         caller_result
     }
 
-    #[verifier::spinoff_prover]
     pub(super) fn ipc_rendezvous_cpu(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, Ghost(endpoint_index): Ghost<EndpointIdx>,

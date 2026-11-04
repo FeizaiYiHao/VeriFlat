@@ -4,7 +4,6 @@ use crate::*;
 verus! {
 /// Stages the container root page and the PCID-allocator page as two 2M pages of the parent container on the caller thread,
 /// keeping the already staged 4K pages and their locks intact.
-#[verifier::spinoff_prover]
 pub(super) fn allocate_new_container_2m_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, current_thread_ptr: RwLockThreadPtr,
     parent_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId, Tracked(current_thread_lock_perm): Tracked<&LockPerm>, Ghost(page_4k_lock_perms): Ghost<Map<PagePtr, LockPerm>>,

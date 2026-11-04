@@ -13,7 +13,6 @@ use super::super::syscall_new_process_enter::enter_new_process_commit;
 use super::super::syscall_new_process_share_finish::share_and_finish_new_process;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
     krnl: &mut KernelK, source_range: &VaRange4K, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr,

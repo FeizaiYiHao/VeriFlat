@@ -20,7 +20,6 @@ use super::mmap_4k_create_entry_install_eof::*;
     ///
     /// L4 and L3 need the table's big write lock (`write_held`); an L2 page is linked under either big-lock mode while this thread
     /// holds the 2M window. A new L2 page starts with windows `lo..=hi` held by this thread and returns their lock perms.
-    #[verifier::spinoff_prover]
     pub(super) fn install_staged_4k_page_table_page(
         krnl: &mut KernelK, level: MissingPageTableLevel, page_ptr: PagePtr, quota_thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
         pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), lo: L2Index, hi: L2Index, write_held: bool, Tracked(lctx): Tracked<&mut LocalContext>,

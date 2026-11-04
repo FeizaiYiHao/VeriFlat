@@ -19,7 +19,6 @@ pub open spec fn new_container_moved_pages(
     page_2m_all_ptrs(page_ptr2page_index(container_page)).union(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))).union(new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page))
 }
 
-#[verifier::spinoff_prover]
 pub(super) fn publish_staged_container_root_mutation(
     krnl: &mut KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,

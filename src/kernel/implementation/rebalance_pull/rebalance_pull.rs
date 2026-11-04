@@ -429,7 +429,6 @@ fn rebalance_pull_move_head(
 
 /// Idle-cpu entry: pulls the head of the lowest-numbered other nonempty shard of the cpu's container scheduler
 /// into the cpu's own empty shard. The trap layer schedules again after `Pulled` and halts after `Nothing`.
-#[verifier::spinoff_prover]
 pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId) -> (ret: RebalanceResult)
     requires
         index_valid(NUM_CPUS, cpu_id),

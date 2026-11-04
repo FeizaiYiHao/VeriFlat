@@ -17,7 +17,6 @@ pub use super::syscall_ipc_call_reply::syscall_reply_and_receive;
 verus! {
     /// Under cpu, caller, endpoint, and callee locks: dequeue the receive-call callee, switch the CPU to its
     /// process, record the caller on it, and park the caller waiting for the reply.
-    #[verifier::spinoff_prover]
     fn ipc_call_handoff(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
@@ -422,7 +421,6 @@ verus! {
 
     /// Under cpu, current-thread, and endpoint locks with an opposite-direction queue head: hand off to a
     /// receive-call head, accept a calling head, or take the rendezvous error step; a killed head stutters.
-    #[verifier::spinoff_prover]
     fn ipc_call_rendezvous_from_queue(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,

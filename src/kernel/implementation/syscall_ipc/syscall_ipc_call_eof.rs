@@ -132,7 +132,6 @@ proof fn ipc_call_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
 }
 
-#[verifier::spinoff_prover]
 proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
@@ -541,7 +540,6 @@ proof fn ipc_accept_call_eof_dangling_chain_end_wf(pre: KernelK, post: KernelK, 
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
@@ -787,7 +785,6 @@ proof fn ipc_reply_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: 
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
 }
 
-#[verifier::spinoff_prover]
 proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),

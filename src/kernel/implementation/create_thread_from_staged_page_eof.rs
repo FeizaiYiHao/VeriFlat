@@ -273,7 +273,6 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
     reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); page_ptr_roundtrip(); page_index_roundtrip();
 }
 
-#[verifier::spinoff_prover]
 proof fn create_thread_from_staged_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,

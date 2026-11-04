@@ -38,7 +38,6 @@ pub(super) proof fn page_ptrs_to_indices_excludes_distinct_valid_page(pages: Seq
         !page_ptrs_to_indices(pages).contains(page_ptr2page_index(excluded_page)),
 { page_ptr_seq_indices_excludes_page(pages, excluded_page); }
 
-#[verifier::spinoff_prover]
 pub(super) fn set_4k_page_staging_next(krnl: &mut KernelK, Tracked(lctx): Tracked<&LocalContext>, page_ptr: PagePtr, next: PagePtr, Tracked(page_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),

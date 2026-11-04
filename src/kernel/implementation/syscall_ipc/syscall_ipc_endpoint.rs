@@ -401,7 +401,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
     }
 }
 
-#[verifier::spinoff_prover]
 pub(super) fn ipc_finish_endpoint_transit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, payload_endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,
@@ -803,7 +802,6 @@ fn ipc_endpoint_check_slots(
     })
 }
 
-#[verifier::spinoff_prover]
 pub(super) fn ipc_rendezvous_endpoint(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,

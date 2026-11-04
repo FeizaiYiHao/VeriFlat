@@ -9,7 +9,6 @@ use super::allocate_free_2m_page_pop_impl::pop_stage_2m_page;
 verus! {
     /// Allocate a single 2m page from the container's allocator.
     /// Caller holds the allocating thread's write-lock.
-    #[verifier::spinoff_prover]
     pub fn allocate_free_2m_page(
         krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,

@@ -1037,7 +1037,6 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf(
     );
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn publish_staged_container_root_eof_object_pages_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,

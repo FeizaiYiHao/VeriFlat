@@ -242,7 +242,6 @@ impl KernelK {
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn kernel_step_boundary_thread_syscall_progress_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread_ptr: RwLockThreadPtr)
         requires
             old(self).inv(),
@@ -348,7 +347,6 @@ impl KernelK {
         reveal(LockedMap::typed_lock_map_aligned);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn kernel_step_boundary_process_added(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr)
         requires
             old(self).inv(),
@@ -395,7 +393,6 @@ impl KernelK {
         }
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn kernel_step_boundary_process_4k_mapping_changed(
         tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, process_ptr: RwLockProcessPtr,
         pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_process_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,

@@ -9,7 +9,6 @@ use super::syscall_ipc_transition_spec::{ipc_block_current_eof_transition_framin
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_transition_eof::{ipc_block_current_eof, ipc_schedule_waiting_peer_eof_rendezvous_fields};
 verus! {
-    #[verifier::spinoff_prover]
     pub(super) fn ipc_block_current(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,

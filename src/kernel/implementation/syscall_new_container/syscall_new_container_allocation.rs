@@ -7,7 +7,6 @@ use super::syscall_new_container_allocation_eof::allocate_new_container_pages_eo
 use super::syscall_new_container_allocation_2m::allocate_new_container_2m_pages;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) fn allocate_new_container_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, current_thread_ptr: RwLockThreadPtr,
     parent_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId, Tracked(current_thread_lock_perm): Tracked<&LockPerm>

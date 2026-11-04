@@ -611,7 +611,6 @@ verus! {
             current_thread_ptr, endpoint_ptr, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm))
     }
 
-    #[verifier::spinoff_prover]
     pub(super) fn syscall_ipc_ordinary(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, pt_regs: &mut Registers,

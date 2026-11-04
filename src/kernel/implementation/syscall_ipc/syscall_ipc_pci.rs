@@ -12,7 +12,6 @@ verus! {
     /// lock; an attached function is detached under the sender's IOMMU table write lock, which invalidates its old DID
     /// domain, and the waiting peer is scheduled with Success. A same-process
     /// pair or a sender that does not own the function schedules the peer with that error and moves nothing.
-    #[verifier::spinoff_prover]
     pub(super) fn ipc_rendezvous_pci(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, Ghost(endpoint_index): Ghost<EndpointIdx>,

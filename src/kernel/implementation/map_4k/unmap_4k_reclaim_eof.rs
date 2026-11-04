@@ -135,7 +135,6 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_free_4k_pages(
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
     depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,

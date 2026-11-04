@@ -95,7 +95,6 @@ pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &
 
 /// Unchanged non-lock fields and user-visible lock modes, except on the page table and IOMMU table of the zombie process
 /// `zombie`, if any, which the projection hides, leave the complete projection unchanged.
-#[verifier::spinoff_prover]
 pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &KernelK, post: &KernelK, zombie: Option<RwLockProcessPtr>)
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
@@ -310,7 +309,6 @@ proof fn kernel_lock_states_unchanged_implies_u_endpoint_map(pre: &KernelK, post
     });
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires
         post.inv(),
@@ -510,7 +508,6 @@ proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, pos
     });
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr)
     requires
         container_scheduler_wf(post.ctn_mp, post.sched_mp),

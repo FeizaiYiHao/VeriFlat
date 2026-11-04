@@ -479,7 +479,6 @@ impl KernelSteps {
     }
 
     /// Finish without interleaving; append exactly the non-stuttering transition.
-    #[verifier::spinoff_prover]
     proof fn end_kernel_step_raw(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext)
         requires
             krnl.inv(),
@@ -582,7 +581,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_thread_state_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thread_ptr: RwLockThreadPtr, old_state: ThreadState, new_state: ThreadState)
         requires
             krnl.inv(),
@@ -603,7 +601,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_thread_syscall_progress_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, thread_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
@@ -625,7 +622,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_context_switch(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
         requires
             krnl.inv(),
@@ -693,7 +689,6 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn end_kernel_step_rebalance_pull(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr)
         requires
             krnl.inv(),
