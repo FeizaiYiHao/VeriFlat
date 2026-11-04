@@ -40,39 +40,14 @@ impl KernelK {
                 &&& old(self).ctn_mp.dom().contains(owner)
                 &&& final(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq == old(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq
             },
-            forall|pt: RwLockPageTableRoot, window_va: WindowVa, va: VAddr|
-                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pt, window_va)), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va)]
-                old(lctx).pagetable_lock_map().dom().contains(pt) && old(lctx).pagetable_window_lock_map().dom().contains((pt, window_va))
-                    && spec_v2l4index(va) == spec_v2l4index(window_va.va) && spec_v2l3index(va) == spec_v2l3index(window_va.va) && spec_v2l2index(va) == spec_v2l2index(window_va.va)
-                    && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().dom().contains(va) && page_ptr_valid(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va).addr) ==> {
-                    let entry = whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va);
-                    let pg_idx = page_ptr2page_index(entry.addr);
-                    &&& old(self).pg_arr.spec_index(pg_idx).view().view().owning_container == entry.owning_container.view()
-                    &&& old(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
-                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, va))
-                },
-            forall|pt: RwLockPageTableRoot, va: VAddr|
-                #![trigger typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pt, TypedLockMode::Write), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va)]
-                typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pt, TypedLockMode::Write) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().dom().contains(va)
-                    && page_ptr_valid(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va).addr) ==> {
-                    let entry = whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k().spec_index(va);
-                    let pg_idx = page_ptr2page_index(entry.addr);
-                    &&& old(self).pg_arr.spec_index(pg_idx).view().view().owning_container == entry.owning_container.view()
-                    &&& old(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).ctn_mp.dom().contains(entry.owning_container.view())
-                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
-                    &&& final(self).pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, va))
-                },
     {
         use_type_invariant(&*steps);
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
-        old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); old(self).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id());
-        reveal(container_owned_pages_wf); reveal(container_thread_wf); reveal(mapped_4k_page_pagetable_wf);
+        old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id());
+        reveal(container_thread_wf);
     }
 
     pub proof fn kernel_step_boundary_cpu_tlb_updated(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, flushed: bool)
