@@ -10,7 +10,9 @@ Drivers for the TSC timings dom0 prints under KVM. Results and images go to `boo
 - `NO_TIMER=1 SMP=n boot/run.sh`: kernel and dom0 with feature `no-timer`. dom0 runs only the timers
   (adding the parallel call and cross-process call timers) and exits. Use this mode for measurements.
   `VERIFLAT_PARALLEL` of the dom0 build picks the parallel timings, a comma-separated list of `call`
-  (default), `mmap` (the parallel mmap timing), and `mmap2m` (the parallel mmap_2m timing).
+  (default), `mmap` (the parallel mmap timing), `mmap2m` (the parallel mmap_2m timing), and `unmapn`
+  (dom0 alone: `unmapn <4k|2m> n=..` lines, median cycles of an n-page unmap and of the re-touch of a
+  128-page working set right after it).
 - `VERIFLAT_BOOT_2M_BLOCKS=n` of the kernel build (decimal, default 4) sets the free 2M blocks the kernel
   hands to the 2M allocator at boot, which are the root container's 2M quota. `build-parallel-call-image.sh`
   sets it to 128 (256 MiB of the managed GiB) unless `BOOT_2M_BLOCKS` says otherwise; `boot/run.sh` passes

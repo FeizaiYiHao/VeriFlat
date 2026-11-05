@@ -2,8 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Most pages an unmap flushes from the TLBs address by address; a longer range flushes the whole PCID.
-pub const TLB_FLUSH_VA_RANGE_MAX_PAGES: usize = 32;
+/// Longest unmap_4k range flushed per address, a longer one flushes the whole PCID: one INVPCID costs about 142 cycles, a CR3 reload about 380 plus the refill of the working set (KVM, 2026-11-05).
+pub const TLB_FLUSH_VA_RANGE_MAX_PAGES_4K: usize = 8;
+/// Longest unmap_2m range flushed per address, a longer one flushes the whole PCID: one INVPCID costs about 142 cycles, a CR3 reload about 380, with no refill gain measured for 2M pages (KVM, 2026-11-05).
+pub const TLB_FLUSH_VA_RANGE_MAX_PAGES_2M: usize = 2;
 
 /// Every leaf of `table` the user cannot see in a window of `pagetable` that `window_lock_map` holds lies in a per-address
 /// flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, and no such window's L2 entry hides its L1 page.
@@ -121,15 +123,15 @@ pub open spec fn unmap_4k_refund_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool
 }
 
 /// A step inside the unmap range clears one leaf, flushes on one cpu the process's PCID or, for a range of at most
-/// `TLB_FLUSH_VA_RANGE_MAX_PAGES` pages, the range's addresses, records the flush, or refunds 4K quota to the thread's
+/// `TLB_FLUSH_VA_RANGE_MAX_PAGES_4K` pages, the range's addresses, records the flush, or refunds 4K quota to the thread's
 /// container chain.
 #[verifier::opaque]
 pub open spec fn unmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let range = thread.syscall_progress->Some_0->Unmap4k_range;
     ||| unmap_4k_leaf_step_pre(step.old_u, cpu_id) && unmap_4k_leaf_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, false)
+    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_4K < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
+    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_4K && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, false)
     ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && unmap_4k_flushed_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_4k_refund_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
 }

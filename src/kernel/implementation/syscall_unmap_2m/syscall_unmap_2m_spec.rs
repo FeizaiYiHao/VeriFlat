@@ -115,15 +115,15 @@ pub open spec fn unmap_2m_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: C
 }
 
 /// A step inside the unmap range clears one 2M leaf, flushes on one cpu the process's PCID or, for a range of at most
-/// `TLB_FLUSH_VA_RANGE_MAX_PAGES` 2M pages, the range's 2M addresses, records the flush, or refunds 2M quota to the thread's
+/// `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` 2M pages, the range's 2M addresses, records the flush, or refunds 2M quota to the thread's
 /// container chain.
 #[verifier::opaque]
 pub open spec fn unmap_2m_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let range = thread.syscall_progress->Some_0->Unmap2m_range;
     ||| unmap_2m_leaf_step_pre(step.old_u, cpu_id) && unmap_2m_leaf_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, true)
+    ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_2M < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
+    ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_2M && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, true)
     ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && unmap_2m_flushed_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_2m_exit_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_2m_increased(step.old_u, step.new_u, thread.owning_container)
 }

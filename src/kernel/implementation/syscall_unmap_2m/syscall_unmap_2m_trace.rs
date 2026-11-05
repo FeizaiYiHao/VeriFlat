@@ -342,7 +342,7 @@ pub(super) proof fn unmap_2m_range_steps_from_tlb_flush(
         entry.thread_map[thrd_ptr].owning_proc == prc_ptr,
         entry.thread_map[thrd_ptr].owning_container == ctn_ptr,
         entry.process_map[prc_ptr].pcid == pcid,
-        TLB_FLUSH_VA_RANGE_MAX_PAGES < entry.thread_map[thrd_ptr].syscall_progress->Some_0->Unmap2m_range.len,
+        TLB_FLUSH_VA_RANGE_MAX_PAGES_2M < entry.thread_map[thrd_ptr].syscall_progress->Some_0->Unmap2m_range.len,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
@@ -386,7 +386,7 @@ pub(super) proof fn unmap_2m_tlb_flush_range_steps_from_k(
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap2m { range, unmapped: range.len, flushed: false }),
-        TLB_FLUSH_VA_RANGE_MAX_PAGES < range.len,
+        TLB_FLUSH_VA_RANGE_MAX_PAGES_2M < range.len,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
@@ -411,7 +411,7 @@ pub(super) proof fn unmap_2m_tlb_flush_range_steps_from_k(
 
 /// Per-address TLB flushes of the range's 2M addresses under the caller's PCID, recorded after range steps that start at
 /// `start` while the caller's held objects keep their projection at `entry` and the range has at most
-/// `TLB_FLUSH_VA_RANGE_MAX_PAGES` pages, leave only range steps.
+/// `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` pages, leave only range steps.
 pub(super) proof fn unmap_2m_range_steps_from_tlb_va_flush(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
     range: VaRange2M,
@@ -423,7 +423,7 @@ pub(super) proof fn unmap_2m_range_steps_from_tlb_va_flush(
         unmap_2m_flush_step_pre(entry, cpu_id),
         entry.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         entry.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap2m { range, unmapped: range.len, flushed: false }),
-        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES,
+        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_2M,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             &&& unmap_4k_tlb_va_flush_step(old_u, steps.view()[j].new_u, cpu_id, range.start, range.len, true)
@@ -445,7 +445,7 @@ pub(super) proof fn unmap_2m_range_steps_from_tlb_va_flush(
 
 /// Per-address TLB flushes of the range's 2M addresses under the caller's PCID recorded from `entry` after range steps that
 /// start at `start`, while the caller write-holds its cpu and thread and holds the pagetable of the thread's present process
-/// with the whole range of at most `TLB_FLUSH_VA_RANGE_MAX_PAGES` pages cleared and the thread's container exists, leave
+/// with the whole range of at most `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` pages cleared and the thread's container exists, leave
 /// only range steps.
 pub(super) proof fn unmap_2m_tlb_va_flush_range_steps_from_k(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
@@ -469,7 +469,7 @@ pub(super) proof fn unmap_2m_tlb_va_flush_range_steps_from_k(
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap2m { range, unmapped: range.len, flushed: false }),
-        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES,
+        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_2M,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);

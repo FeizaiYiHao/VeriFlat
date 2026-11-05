@@ -571,7 +571,7 @@ const MMAP_XPROC_ENDPOINT: usize = 5;
 /// The same for the child of the parallel mmap_2m timing.
 const MAP2M_XPROC_ENDPOINT: usize = 6;
 /// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
-/// `mmap`, and `mmap2m` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// `mmap`, `mmap2m`, and `unmapn` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
@@ -834,6 +834,9 @@ fn time_parallel_call() {
     }
     if runs_parallel("mmap2m") {
         time_parallel_mmap_2m(n);
+    }
+    if runs_parallel("unmapn") {
+        time_unmapn();
     }
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
@@ -1647,6 +1650,71 @@ fn try_fund_2m(amount: usize) -> bool {
     quiet("parallel mmap_2m alloc_quota_2m", ret);
     quiet("parallel mmap_2m alloc_thread_quota_2m", unsafe { sys_alloc_thread_quota_2m(amount) });
     true
+}
+
+/// The unmap-size timing (`time_unmapn`): its working set of `UNMAPN_WORKING` 4K pages and the regions
+/// its 4K and 2M unmaps take place in, each in a GiB of its own; the unmap counts, the timed rounds per
+/// stride and count, and the untimed rounds before them.
+const UNMAPN_WORKING_VA: usize = 0xc4_0000_0000;
+const UNMAPN_4K_VA: usize = 0xc4_4000_0000;
+const UNMAPN_2M_VA: usize = 0xc4_8000_0000;
+const UNMAPN_WORKING: usize = 128;
+const UNMAPN_COUNTS: [usize; 6] = [1, 2, 4, 8, 16, 32];
+const UNMAPN_ROUNDS: usize = 200;
+const UNMAPN_WARMUP: usize = 8;
+
+/// Times, on the calling thread, an unmap of n pages of each stride (`unmap_4k` of 4K pages, `unmap_2m`
+/// of 2M pages) for each n of `UNMAPN_COUNTS`, and the re-touch of a working set of `UNMAPN_WORKING` 4K
+/// pages right after it, which pays for the TLB entries the unmap's flush took away. A round maps n fresh
+/// pages, writes each, and writes every page of the working set, untimed; then times the unmap and then
+/// the working set's writes. Logs the median TSC cycles of each over `UNMAPN_ROUNDS` rounds.
+fn time_unmapn() {
+    // mmap_4k needs four 4K quota per page at hand and takes one; mmap_2m needs two 4K quota per page at
+    // hand and takes one 2M quota. The unmaps refund the pages to the container, so every round moves
+    // what its map takes to the thread, untimed; the 4K slack covers the hands and the page tables.
+    fund("unmapn funding", 4 * UNMAPN_WORKING + 64);
+    quiet("mmap_4k (unmapn working set)", unsafe { sys_mmap_4k(UNMAPN_WORKING_VA, UNMAPN_WORKING) });
+    for (huge, stride) in [(false, "4k"), (true, "2m")] {
+        for n in UNMAPN_COUNTS {
+            let (mut unmap, mut retouch) = ([0u64; UNMAPN_ROUNDS], [0u64; UNMAPN_ROUNDS]);
+            for round in 0..UNMAPN_WARMUP + UNMAPN_ROUNDS {
+                let (va, size) = if huge { (UNMAPN_2M_VA, SIZE_2M) } else { (UNMAPN_4K_VA, 4096) };
+                if huge {
+                    quiet("unmapn alloc_quota_2m", unsafe { sys_alloc_quota_2m(n) });
+                    quiet("unmapn alloc_thread_quota_2m", unsafe { sys_alloc_thread_quota_2m(n) });
+                    quiet("unmapn mmap_2m", unsafe { sys_mmap_2m(va, n) });
+                } else {
+                    fund("unmapn funding", n);
+                    quiet("unmapn mmap_4k", unsafe { sys_mmap_4k(va, n) });
+                }
+                for i in 0..n {
+                    unsafe { ((va + i * size) as *mut u64).write_volatile(PAGE_MAGIC ^ i as u64) };
+                }
+                touch_working_set();
+                let start = unsafe { core::arch::x86_64::_rdtsc() };
+                let ret = if huge { unsafe { sys_unmap_2m(va, n) } } else { unsafe { sys_unmap_4k(va, n) } };
+                let unmapped = unsafe { core::arch::x86_64::_rdtsc() };
+                touch_working_set();
+                let end = unsafe { core::arch::x86_64::_rdtsc() };
+                quiet("unmapn unmap", ret);
+                if round >= UNMAPN_WARMUP {
+                    (unmap[round - UNMAPN_WARMUP], retouch[round - UNMAPN_WARMUP]) = (unmapped - start, end - unmapped);
+                }
+            }
+            unmap.sort_unstable();
+            retouch.sort_unstable();
+            let (u, r) = (unmap[UNMAPN_ROUNDS / 2], retouch[UNMAPN_ROUNDS / 2]);
+            log::info!("unmapn {} n={}: unmap {} TSC cycles, retouch {} TSC cycles", stride, n, u, r);
+        }
+    }
+    quiet("unmap_4k (unmapn working set)", unsafe { sys_unmap_4k(UNMAPN_WORKING_VA, UNMAPN_WORKING) });
+}
+
+/// Writes the first word of each page of the unmap-size timing's working set.
+fn touch_working_set() {
+    for i in 0..UNMAPN_WORKING {
+        unsafe { ((UNMAPN_WORKING_VA + i * 4096) as *mut u64).write_volatile(PAGE_MAGIC ^ i as u64) };
+    }
 }
 
 /// The window of the mmap_2m self-test, in a GiB no other test maps.

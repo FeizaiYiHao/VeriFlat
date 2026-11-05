@@ -74,12 +74,12 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Mmap4kRelease => mmap_4k_release_step_pre(old_u, cpu_id) && mmap_4k_release_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kEnter { range } => unmap_4k_enter_step_pre(old_u, cpu_id, range) && unmap_4k_enter_step(old_u, new_u, cpu_id, range),
         StepLabel::Unmap4kLeaf => unmap_4k_leaf_step_pre(old_u, cpu_id) && unmap_4k_leaf_step(old_u, new_u, cpu_id),
-        StepLabel::Unmap4kTlbFlush => unmap_4k_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap4k_range.len
+        StepLabel::Unmap4kTlbFlush => unmap_4k_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_4K < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap4k_range.len
             && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kTlbVaFlush => {
             let range = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap4k_range;
             &&& unmap_4k_flush_step_pre(old_u, cpu_id)
-            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES
+            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_4K
             &&& unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, range.start, range.len, false)
         },
         StepLabel::Unmap4kFlushed => unmap_4k_flush_step_pre(old_u, cpu_id) && unmap_4k_flushed_step(old_u, new_u, cpu_id),
@@ -98,12 +98,12 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Mmap2mRelease => mmap_4k_release_step_pre(old_u, cpu_id) && mmap_4k_release_step(old_u, new_u, cpu_id),
         StepLabel::Unmap2mEnter { range_2m: range } => unmap_2m_enter_step_pre(old_u, cpu_id, range) && unmap_2m_enter_step(old_u, new_u, cpu_id, range),
         StepLabel::Unmap2mLeaf => unmap_2m_leaf_step_pre(old_u, cpu_id) && unmap_2m_leaf_step(old_u, new_u, cpu_id),
-        StepLabel::Unmap2mTlbFlush => unmap_2m_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap2m_range.len
+        StepLabel::Unmap2mTlbFlush => unmap_2m_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_2M < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap2m_range.len
             && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
         StepLabel::Unmap2mTlbVaFlush => {
             let range = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap2m_range;
             &&& unmap_2m_flush_step_pre(old_u, cpu_id)
-            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES
+            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_2M
             &&& unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, range.start, range.len, true)
         },
         StepLabel::Unmap2mFlushed => unmap_2m_flush_step_pre(old_u, cpu_id) && unmap_2m_flushed_step(old_u, new_u, cpu_id),

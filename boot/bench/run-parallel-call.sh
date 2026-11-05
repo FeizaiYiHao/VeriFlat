@@ -31,7 +31,7 @@ for run in $(seq "$FIRST" $((FIRST + RUNS - 1))); do
                 -no-reboot -m 6144 -mem-prealloc </dev/null >"$log" 2>&1
             status=$?
             echo "smp=$smp run=$run status=$status" | tee -a "$out/status.txt"
-            grep -a -E "parallel_call|round trip|null syscall|mmap|new_thread:|CPUs present|timings passed|panic|ERROR|error|timed out" "$log" \
+            grep -a -E "parallel_call|unmapn|round trip|null syscall|mmap|new_thread:|CPUs present|timings passed|panic|ERROR|error|timed out" "$log" \
                 | sed "s/^/smp=$smp run=$run: /" >> "$out/extracted.txt"
             [ "$status" = 1 ] && rm -f "$log"
         done
