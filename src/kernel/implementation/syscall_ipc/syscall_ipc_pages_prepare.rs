@@ -877,12 +877,8 @@ fn ipc_pages_downgrade_target(
     let Tracked(read_perm) = krnl.downgrade_pagetable(cpu_id, target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     proof {
         let ghost downgraded_k = *krnl;
-        assert(krnl.pt_lower.view() =~= pre_k.pt_lower.view().insert(source_pagetable, krnl.pt_lower.view().spec_index(source_pagetable))
-            .insert(target_pagetable, krnl.pt_lower.view().spec_index(target_pagetable)));
-        kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&pre_k, &*krnl, source_process, target_process, source_pagetable, target_pagetable,
-            current_thrd_ptr);
-        ipc_pages_downgrade_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), &pre_k, cpu_id, current_thrd_ptr, source_process, target_process, source_pagetable,
-            target_pagetable, pre_k.pt_mp.spec_index(source_pagetable).lock_state_u(), krnl.pt_mp.spec_index(target_pagetable).lock_state_u());
+        kernel_pagetable_downgraded_implies_u_step(&pre_k, &*krnl, cpu_id, target_process, target_pagetable);
+        ipc_pages_downgrade_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, target_process);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         ipc_pages_trace_downgrade_step(&*steps, before, start, kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(downgraded_k), cpu_id);

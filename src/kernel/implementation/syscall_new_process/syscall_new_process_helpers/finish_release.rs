@@ -151,7 +151,6 @@ pub(super) fn release_new_process_child_locks(
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)]
             old(krnl).pt_mp.dom().contains(p) ==> if p == target_pagetable_ptr { final(krnl).pt_mp.spec_index(p).locking_thread() is None }
                 else if p == source_pagetable_ptr {
-                    &&& old(krnl).pt_mp.spec_index(p).rlocked_by_thread(cpu_id)
                     &&& final(krnl).pt_mp.spec_index(p).locking_thread() == (if old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id).dom().is_empty() { RwLockState::None } else {
                         RwLockState::Read { reader_map: old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id) }
                     })

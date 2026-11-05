@@ -7,6 +7,7 @@ mod syscall_mmap_2m_fill_structure;
 mod syscall_mmap_2m_map_one_leaf;
 mod syscall_mmap_2m_hide_reclaim;
 mod syscall_mmap_2m_map_range;
+mod syscall_mmap_2m_finish;
 mod syscall_mmap_2m_read_windows;
 mod syscall_mmap_2m_fill_enter;
 mod syscall_mmap_2m_read_enter;

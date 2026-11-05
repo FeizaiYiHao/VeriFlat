@@ -12,6 +12,7 @@ mod share_mapping_4k_precheck_helpers;
 pub mod share_mapping_4k_spec;
 pub mod share_mapping_4k_trace;
 pub mod share_mapping_4k_child_structure;
+mod share_mapping_4k_child_structure_eol;
 
 pub mod unmap_4k_present;
 mod unmap_4k_present_eof;
@@ -30,6 +31,7 @@ mod unmap_4k_reclaim_last;
 mod unmap_4k_reclaim_last_cache;
 mod unmap_4k_mapped_page_ptr;
 pub mod unmap_4k_range;
+mod unmap_4k_range_eol;
 pub mod unmap_4k_lock_running_thread;
 pub mod mmap_4k_lock_current_thread;
 pub mod hide_empty_l1_in_window;

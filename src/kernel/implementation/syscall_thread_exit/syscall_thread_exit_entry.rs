@@ -95,45 +95,47 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& final(krnl).cpu_op.view().view()[cpu_id as int] is InStep
         }),
 {
-    let locked = match thread_exit_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
-        Ok(e) => e,
-        Err(r) => { return Err(r); },
-    };
-    let ctn_ptr = locked.container_ptr;
-    let prc_ptr = locked.process_ptr;
-    let thrd_ptr = locked.thread_ptr;
-    let Tracked(cpu_lock_perm) = locked.cpu_lock_perm;
-    let Tracked(container_lock_perm) = locked.container_lock_perm;
-    let Tracked(process_lock_perm) = locked.process_lock_perm;
-    let Tracked(thread_lock_perm) = locked.thread_lock_perm;
-    proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(&thread_lock_perm),
-        Ghost(*old(krnl)));
-    if entered.is_none() {
-        krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-        krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-        krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-        }
-        return Err(RetValueType::ErrorIpcPeerKilled);
+    match thread_exit_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
+        Err(r) => Err(r),
+        Ok(locked) => {
+            let ctn_ptr = locked.container_ptr;
+            let prc_ptr = locked.process_ptr;
+            let thrd_ptr = locked.thread_ptr;
+            let Tracked(cpu_lock_perm) = locked.cpu_lock_perm;
+            let Tracked(container_lock_perm) = locked.container_lock_perm;
+            let Tracked(process_lock_perm) = locked.process_lock_perm;
+            let Tracked(thread_lock_perm) = locked.thread_lock_perm;
+            proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+            let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, Tracked(&thread_lock_perm),
+                Ghost(*old(krnl)));
+            if entered.is_none() {
+                krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+                krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+                krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+                krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+                proof {
+                    assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
+                    thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+                }
+                Err(RetValueType::ErrorIpcPeerKilled)
+            } else {
+                let (dangling, dangling_lock_perm) = entered.unwrap();
+                let Tracked(dangling_lock_perm) = dangling_lock_perm;
+                proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+                if let Some(dangling_ptr) = dangling {
+                    let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
+                    thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, dangling_ptr, Tracked(dangling_perm),
+                        Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(*old(krnl))));
+                }
+                proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+                Ok(ThreadExitEntered {
+                    container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
+                    process_lock_perm: Tracked(process_lock_perm), thread_lock_perm: Tracked(thread_lock_perm),
+                })
+            }
+        },
     }
-    let (dangling, dangling_lock_perm) = entered.unwrap();
-    let Tracked(dangling_lock_perm) = dangling_lock_perm;
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    if let Some(dangling_ptr) = dangling {
-        let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
-        thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, dangling_ptr, Tracked(dangling_perm),
-            Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(*old(krnl))));
-    }
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    Ok(ThreadExitEntered {
-        container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
-        process_lock_perm: Tracked(process_lock_perm), thread_lock_perm: Tracked(thread_lock_perm),
-    })
 }
 
 /// Reclaims the dangling thread `dangling_ptr` of the running `thrd_ptr`'s container, taken over from the killed caller of

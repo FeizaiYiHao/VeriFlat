@@ -87,7 +87,7 @@ proof fn kernel_process_quota_4k_changed_implies_u_process_map(pre: &KernelK, po
         quota_4k: (process.quota_4k as int + delta) as usize, ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p);
     });
 }
 
@@ -186,7 +186,7 @@ proof fn kernel_process_quota_2m_changed_implies_u_process_map(pre: &KernelK, po
         quota_2m: (process.quota_2m as int + delta) as usize, ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p);
     });
 }
 
@@ -324,14 +324,14 @@ pub(super) proof fn kernel_process_added_implies_u_neq(pre: &KernelK, post: &Ker
     requires kernel_process_added(pre, post, prc_ptr),
     ensures
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-{ reveal(kernel_process_added); reveal(kernel_k_to_kernel_u); }
+{ reveal(kernel_process_added); kernel_u_domains_projection(pre); kernel_u_domains_projection(post); }
 
 pub proof fn kernel_process_4k_mapping_changed_implies_u_neq(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires kernel_process_4k_mapping_changed(pre, post, prc_ptr, pagetable_ptr, va),
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     assert(kernel_k_to_kernel_u(*pre).process_map.spec_index(prc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va) != kernel_k_to_kernel_u(*post).process_map.spec_index(prc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by {
-        reveal(kernel_process_4k_mapping_changed); reveal(kernel_k_to_kernel_u);
+        reveal(kernel_process_4k_mapping_changed); kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
     };
 }
 
@@ -355,9 +355,14 @@ pub proof fn kernel_cpu_tlb_updated_implies_u_step(pre: &KernelK, post: &KernelK
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU { cpu_tlb: post.cpu_tlb.view(), ..kernel_k_to_kernel_u(*pre) }),
 {
-    reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_k_to_kernel_u);
-    assert_seqs_equal!(kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array);
-    assert_maps_equal!(kernel_k_to_kernel_u(*post).process_map, kernel_k_to_kernel_u(*pre).process_map, p => { reveal(process_pagetable_wf); });
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); }
+    });
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 pub proof fn kernel_container_quota_4k_changed_implies_u_step(pre: &KernelK, post: &KernelK, container: RwLockContainerPtr, delta: int)

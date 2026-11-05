@@ -118,7 +118,19 @@ proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: Ker
         pre.it_mp.dom().contains(iommu_table),
     ensures post.memory_management_inv(),
 {
-    reveal(thread_exit_detach_process_functions_eof_transition_framing);
+    assert({
+        &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
+        &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table)
+        &&& post.it_mp.lock_id_by_key(iommu_table) == pre.it_mp.lock_id_by_key(iommu_table)
+        &&& post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread()
+        &&& post.it_mp.spec_index(iommu_table).being_killed() == pre.it_mp.spec_index(iommu_table).being_killed()
+        &&& post.it_mp.spec_index(iommu_table).view() == (PageTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() })
+        &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k()
+        &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m()
+        &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g()
+        &&& post.it_mp.spec_index(iommu_table).view().page_closure() == pre.it_mp.spec_index(iommu_table).view().page_closure()
+        &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr
+    }) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };

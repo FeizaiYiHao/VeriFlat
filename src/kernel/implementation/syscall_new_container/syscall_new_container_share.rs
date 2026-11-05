@@ -179,7 +179,7 @@ pub(super) fn end_new_container_created_step(
     transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), thread_pg_ptr, current_thrd_ptr, parent_ctn_ptr, child_ctn_ptr, Tracked(thread_page_lock_perm), Tracked(parent_container_lock_perm), Tracked(child_container_lock_perm));
     proof {
         assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_prc_ptr)) by { reveal(kernel_process_added); };
-        assert(krnl.prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr) by { reveal(process_pagetable_wf); };
+        assert(krnl.prc_mp.spec_index(child_prc_ptr).view().pagetable == child_pagetable_ptr) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, child_prc_ptr); };
         assert(kernel_u_cpu_and_page_owner_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), transfer_cpu_id, parent_ctn_ptr, child_ctn_ptr, thread_pg_ptr)) by {
             kernel_cpu_and_page_owner_changed_implies_u_step(old(krnl), &*krnl, transfer_cpu_id, parent_ctn_ptr, child_ctn_ptr, thread_pg_ptr);
         };

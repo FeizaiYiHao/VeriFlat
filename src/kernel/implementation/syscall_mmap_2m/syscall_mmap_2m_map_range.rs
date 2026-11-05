@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_mmap_2m_hide_reclaim::{mmap_2m_flush_and_reclaim_hidden_l1_range, mmap_2m_hide_linked_l1_range};
+use super::syscall_mmap_2m_finish::mmap_2m_unlock_range_and_finish;
 use super::syscall_mmap_2m_map_one_leaf::mmap_2m_page;
 use super::syscall_mmap_2m_spec::*;
 use super::syscall_mmap_2m_trace::*;
@@ -516,7 +517,6 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         mmap_2m_syscall_success_mapped(final(krnl), cpu_id, va, range),
 {
     let ghost cover = va_range.covering_4k_range();
-    let ghost t0 = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     let ghost phase = if enter_phase is Read { Mmap2mPhase::Read } else { Mmap2mPhase::Filled };
     proof {
         let s = va_range.start;
@@ -562,42 +562,10 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
     }
     mmap_2m_map_leaf_range(krnl, va_range, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, Ghost(phase), Ghost(flushed), Ghost(t4k), Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(&window_perms));
-    let ghost range_steps = steps.view();
-    let ghost exit_start = *krnl;
-    let ghost exit_lctx = *lctx;
     proof {
         mmap_2m_trace_range_steps(&*steps, entered, cpu_id, *va_range, enter_phase);
-        assert forall|w: WindowVa| #![trigger va_range_2m_windows(cover).contains(w)] va_range_2m_windows(cover).contains(w) implies {
-            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-            &&& table.window_leaves_present(w)
-            &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
-            &&& !table.lower.l2_entry_hides_l1(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-        } by {
-            let j = ((w.va - va_range.start) / 0x200000) as int;
-            assert(old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)));
-            assert(t0.window_leaves_present(w));
-        };
     }
-    let cover_exec = VaRange4K { start: va_range.start, len: range * 512, view: Ghost(va_range.covering_4k_range().view@) };
-    assert(cover_exec == cover);
-    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    krnl.unlock_pagetable_range_windows(pagetable_ptr, &cover_exec, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
-    proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
-    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
-    krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-    proof { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
-    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-    let ghost exit_k = *krnl;
-    proof {
-        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
-        assert(mmap_2m_syscall_trace(steps.view(), cpu_id, va, range, enter_phase)) by {
-            kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
-            process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
-            mmap_2m_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, *va_range,
-                whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
-            mmap_2m_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);
-        };
-        assert(mmap_2m_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
-    }
+    mmap_2m_unlock_range_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, thrd_ptr, prc_ptr, pagetable_ptr, Ghost(enter_phase), Ghost(flushed),
+        Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(cpu_lock_perm), Tracked(window_perms));
 }
 } // verus!

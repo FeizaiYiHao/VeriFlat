@@ -1378,13 +1378,10 @@ pub(super) fn ipc_pages_lock_tables(
         ipc_pages_lock_tables_step_pre_from_k(&lock_pre_k, &lock_pre_lctx, cpu_id, current_thrd_ptr, peer_thrd_ptr, ep_ptr, channel_index, source_thread, target_thread, source_process,
             target_process, source_pagetable, target_pagetable, tables);
         assert(ipc_pages_lock_tables_step(kernel_k_to_kernel_u(lock_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, tables)) by {
-            assert(krnl.pt_lower.view() =~= lock_pre_k.pt_lower.view().insert(source_pagetable, krnl.pt_lower.view().spec_index(source_pagetable))
-                .insert(target_pagetable, krnl.pt_lower.view().spec_index(target_pagetable)));
-            kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&lock_pre_k, &*krnl, source_process, target_process, source_pagetable, target_pagetable,
+            kernel_pagetable_pair_rlocked_and_progress_changed_implies_u_step(&lock_pre_k, &*krnl, cpu_id, fill, source_process, target_process, source_pagetable, target_pagetable,
                 current_thrd_ptr);
             ipc_pages_lock_tables_step_from_u(kernel_k_to_kernel_u(lock_pre_k), kernel_k_to_kernel_u(*krnl), &lock_pre_k, cpu_id, current_thrd_ptr, *source_range, *target_range,
-                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, tables, krnl.pt_mp.spec_index(source_pagetable).lock_state_u(),
-                krnl.pt_mp.spec_index(target_pagetable).lock_state_u(), whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
+                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, tables, whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
                 whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).lower.pagetable_window_locks);
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);

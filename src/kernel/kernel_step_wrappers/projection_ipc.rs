@@ -47,7 +47,7 @@ proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &
     assert_maps_equal!(post.process_map, pre.process_map, p => {
         if after.prc_mp.dom().contains(p) { kernel_process_projection_at(after, p); } if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(after.prc_mp, after.pt_mp, p); process_iommu_table_wf_process_at(after.prc_mp, after.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -274,12 +274,11 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
 {
     hide(Map::filter_keys);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(after.process_map, before.process_map, p => {
-        if post.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); }
+        if post.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); }
     });
 }
 
@@ -345,9 +344,9 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
         }), ..processes[target]
     });
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
+    process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, target);
     assert_maps_equal!(after.process_map, locked_processes, p => {
-        if post.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); }
+        if post.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); }
     });
 }
 
@@ -867,7 +866,7 @@ proof fn kernel_ipc_reply_handoff_fields_implies_u_process_map(
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 

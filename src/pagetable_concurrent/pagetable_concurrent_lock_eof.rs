@@ -384,4 +384,68 @@ pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, p
     broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at;
     pre.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
 }
+
+/// EOF closure of `lock_window` for the resolved leaves: no L2 entry or L1 page moved.
+pub(super) proof fn lock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
+    lock_token: LockToken)
+    requires
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j)]
+            post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j)]
+            post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j) == pre.spec_resolve_mapping_2m_l2(l4j, l3j, l2j),
+{}
+
+/// EOF closure of `unlock_window` for the resolved leaves: no L2 entry or L1 page moved.
+pub(super) proof fn unlock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j)]
+            post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j),
+        forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j)]
+            post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j) == pre.spec_resolve_mapping_2m_l2(l4j, l3j, l2j),
+{}
+
+/// EOF closure of `lock_window` for the window holders and views: only window `(l4i, l3i, l2i)` changed holder.
+pub(super) proof fn lock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
+    lock_token: LockToken)
+    requires
+        pre.wf(),
+        pre.kernel_l4_end() <= l4i && pei_valid(l4i),
+        pei_valid(l3i),
+        pei_valid(l2i),
+        pre.window_exists(l4i, l3i),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        forall|l4: L4Index, l3: L3Index, l2: L2Index, t: LockThreadId| #![trigger post.window_locked_by_thread(l4, l3, l2, t)]
+            pre.kernel_l4_end() <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2)
+                ==> post.window_locked_by_thread(l4, l3, l2, t) == if l4 == l4i && l3 == l3i && l2 == l2i { t == thread_id } else { pre.window_locked_by_thread(l4, l3, l2, t) },
+        forall|w: WindowVa| #![trigger post.window_view(w)]
+            page_table_key_2m_valid::<PT_TYPE>(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> post.window_view(w) == pre.window_view(w),
+{
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+}
+
+/// EOF closure of `unlock_window` for the window holders and views: only window `(l4i, l3i, l2i)` lost its holder.
+pub(super) proof fn unlock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        pre.kernel_l4_end() <= l4i && pei_valid(l4i),
+        pei_valid(l3i),
+        pei_valid(l2i),
+        pre.window_exists(l4i, l3i),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        forall|l4: L4Index, l3: L3Index, l2: L2Index, t: LockThreadId| #![trigger post.window_locked_by_thread(l4, l3, l2, t)]
+            pre.kernel_l4_end() <= l4 && pei_valid(l4) && pei_valid(l3) && pei_valid(l2)
+                ==> post.window_locked_by_thread(l4, l3, l2, t) == (!(l4 == l4i && l3 == l3i && l2 == l2i) && pre.window_locked_by_thread(l4, l3, l2, t)),
+        forall|w: WindowVa| #![trigger post.window_view(w)]
+            page_table_key_2m_valid::<PT_TYPE>(w.va) && pre.kernel_l4_end() <= spec_v2l4index(w.va) && pre.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                && w.va != spec_index2va((l4i, l3i, l2i, 0)) ==> post.window_view(w) == pre.window_view(w),
+{
+    broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+}
 } // verus!

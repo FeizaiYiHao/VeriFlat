@@ -592,18 +592,16 @@ pub(super) fn ipc_pages_release_tables_and_record(
         Tracked(source_windows), Tracked(target_windows),
     );
     proof {
-        kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&unlock_pre_k, &unlocked_k, source_process, target_process, source_pagetable, target_pagetable,
+        kernel_pagetable_pair_runlocked_and_progress_changed_implies_u_step(&unlock_pre_k, &unlocked_k, cpu_id, source_process, target_process, source_pagetable, target_pagetable,
             current_thrd_ptr);
         if passed {
             ipc_pages_unlock_tables_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), &unlock_pre_k, cpu_id, current_thrd_ptr, *source_range, *target_range,
-                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, unlocked_k.pt_mp.spec_index(source_pagetable).lock_state_u(),
-                unlocked_k.pt_mp.spec_index(target_pagetable).lock_state_u(), whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
+                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
                 whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), target_pagetable).lower.pagetable_window_locks);
             ipc_pages_trace_unlock_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, channel_index, waiting_state, range);
         } else {
             ipc_pages_failed_check_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), &unlock_pre_k, cpu_id, current_thrd_ptr, *source_range, *target_range,
-                peer_thrd_ptr, tables, result, source_process, target_process, source_pagetable, target_pagetable, unlocked_k.pt_mp.spec_index(source_pagetable).lock_state_u(),
-                unlocked_k.pt_mp.spec_index(target_pagetable).lock_state_u(), whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
+                peer_thrd_ptr, tables, result, source_process, target_process, source_pagetable, target_pagetable, whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
                 whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), target_pagetable).lower.pagetable_window_locks);
             ipc_pages_trace_failed_check_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, channel_index,
                 waiting_state, range, tables, result);

@@ -30,6 +30,8 @@ pub(super) open spec fn lock_pagetable_window_eof_transition_framing(pre: Kernel
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index|
         #![trigger after.spec_held_2m_l2(i4, i3, i2)]
         before.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> after.spec_held_2m_l2(i4, i3, i2) == before.spec_held_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger after.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)] after.spec_resolve_mapping_4k_l1(i4, i3, i2, i1) == before.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger after.spec_resolve_mapping_2m_l2(i4, i3, i2)] after.spec_resolve_mapping_2m_l2(i4, i3, i2) == before.spec_resolve_mapping_2m_l2(i4, i3, i2)
     &&& forall|pagetable_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr)]
         pre.pt_mp.dom().contains(pagetable_ptr) && pagetable_ptr != root ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr)
@@ -68,6 +70,8 @@ pub(super) open spec fn unlock_pagetable_window_eof_transition_framing(pre: Kern
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index|
         #![trigger after.spec_held_2m_l2(i4, i3, i2)]
         before.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> after.spec_held_2m_l2(i4, i3, i2) == before.spec_held_2m_l2(i4, i3, i2)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger after.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)] after.spec_resolve_mapping_4k_l1(i4, i3, i2, i1) == before.spec_resolve_mapping_4k_l1(i4, i3, i2, i1)
+    &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger after.spec_resolve_mapping_2m_l2(i4, i3, i2)] after.spec_resolve_mapping_2m_l2(i4, i3, i2) == before.spec_resolve_mapping_2m_l2(i4, i3, i2)
     &&& forall|pagetable_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr)]
         pre.pt_mp.dom().contains(pagetable_ptr) && pagetable_ptr != root ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr)

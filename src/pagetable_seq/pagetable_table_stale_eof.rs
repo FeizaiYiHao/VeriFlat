@@ -77,6 +77,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
 {
     table_stale_cpus_update_eof_tlb_wf(pre, post, root, update);
     table_stale_cpus_update_eof_structure_cache_wf(pre, post, root, update);
+    table_stale_cpus_update_eof_page_tables(pre, post, root);
     reveal(table_stale_cpus_update_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -89,10 +90,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
     assert(pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
-    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
@@ -131,6 +129,7 @@ proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post
         post.wf(),
 {
     table_stale_cpus_update_eof_higher_inv(pre.higher, post.higher);
+    table_stale_cpus_update_eof_tables_reachable_wf(pre, post);
     assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
@@ -140,8 +139,19 @@ proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post
     assert(post.user_only()) by { reveal(WholePageTable::user_only); };
     assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
     assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
-    assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
     assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
+}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for `tables_reachable_wf`: no held table path reads the table record.
+proof fn table_stale_cpus_update_eof_tables_reachable_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        post.tables_reachable_wf(),
+{
+    assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the TLB invariant: a `Set` keeps every listed CPU listed; a
@@ -195,5 +205,25 @@ proof fn table_stale_cpus_update_eof_structure_cache_wf(pre: KernelK, post: Kern
 {
     reveal(table_stale_cpus_update_eof_transition_framing);
     reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
+}
+
+/// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_table_stale_cpus`: no leaf, held
+/// entry or table page moved.
+proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        table_stale_cpus_update_eof_transition_framing(pre, post, root),
+    ensures
+        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+{
+    reveal(table_stale_cpus_update_eof_transition_framing);
+    pagetable_perms_wf_at(pre.pt_mp, root);
+    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 } // verus!

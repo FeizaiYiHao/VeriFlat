@@ -687,21 +687,22 @@ fn new_container_lock_entry(
                 proof {
                     new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx, error);
                 }
-                return Err(error);
+                Err(error)
+            } else {
+                proof {
+                    assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+                        && krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_ctn_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_ctn_ptr, transfer_cpu_id); };
+                    new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, ep_idx, RetValueType::Success);
+                    pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
+                }
+                let (endpoint, endpoint_slot) = match ep_idx { Some(index) => (Some(ep_ptr), index), None => (None, 0) };
+                Ok(NewContainerEntryLocked {
+                    parent_container_ptr: parent_ctn_ptr, parent_process_ptr: parent_prc_ptr, current_thread_ptr: current_thrd_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint, endpoint_slot,
+                    cpu_lock_perm, container_lock_perm, process_lock_perm,
+                    thread_lock_perm, source_pagetable_lock_perm: Tracked(source_pagetable_lock_perm), cpu_set_lock_perm: Tracked(cpu_set_lock_perm),
+                    endpoint_lock_perm: Tracked(endpoint_lock_perm_opt), source_window_perms: Tracked(source_window_perms),
+                })
             }
-            proof {
-                assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
-                    && krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_ctn_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_ctn_ptr, transfer_cpu_id); };
-                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, ep_idx, RetValueType::Success);
-                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
-            }
-            let (endpoint, endpoint_slot) = match ep_idx { Some(index) => (Some(ep_ptr), index), None => (None, 0) };
-            Ok(NewContainerEntryLocked {
-                parent_container_ptr: parent_ctn_ptr, parent_process_ptr: parent_prc_ptr, current_thread_ptr: current_thrd_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint, endpoint_slot,
-                cpu_lock_perm, container_lock_perm, process_lock_perm,
-                thread_lock_perm, source_pagetable_lock_perm: Tracked(source_pagetable_lock_perm), cpu_set_lock_perm: Tracked(cpu_set_lock_perm),
-                endpoint_lock_perm: Tracked(endpoint_lock_perm_opt), source_window_perms: Tracked(source_window_perms),
-            })
         },
     }
 }

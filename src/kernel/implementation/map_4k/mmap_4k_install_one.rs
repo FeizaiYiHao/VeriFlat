@@ -457,12 +457,6 @@ verus! {
             Tracked(window_perm));
         proof {
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); };
-            assert(!(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie)) by {
-                if !typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write) {
-                    process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
-                    process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, quota_thrd_ptr);
-                }
-            };
         }
         windows
     }

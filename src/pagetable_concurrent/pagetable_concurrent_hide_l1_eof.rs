@@ -51,6 +51,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         Self::hide_l1_page_eof_resolve_unchanged(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::hide_l1_page_eof_table_leaves(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::hide_l1_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::hide_l1_page_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::hide_l1_page_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::hide_l1_page_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
@@ -79,7 +80,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.user_only(),
             post.rwx_upper_level_entries(),
             post.table_pages_wf(),
-            post.tables_reachable_wf(),
             post.wf_window_locks(),
     {
         reveal(WholePageTable::hide_l1_page_eof_transition_framing);
@@ -90,8 +90,27 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.user_only()) by { reveal(WholePageTable::user_only); };
         assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
         assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
         assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
+    }
+
+    /// EOF closure of `hide_l1_page`: `tables_reachable_wf`; the hidden entry keeps the L1 page and its address.
+    proof fn hide_l1_page_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            Self::hide_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.tables_reachable_wf(),
+    {
+        reveal(WholePageTable::hide_l1_page_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
     }
 
     /// EOF-only framing of `hide_l1_page`: the target L2 and 4K walks now miss; every other L2 and 4K walk and every 2M walk

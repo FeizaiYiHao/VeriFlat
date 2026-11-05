@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use super::share_mapping_4k_child_structure_eol::*;
 #[cfg(verus_keep_ghost)]
 use super::share_mapping_4k_trace::share_4k_range_steps_from_directory;
 
@@ -519,6 +520,11 @@ pub fn build_new_child_structure(
         };
     }
     let mut i: usize = 0;
+    proof {
+        assert(build_new_child_structure_eol_loop_framing(*old(krnl), *krnl, old(lctx), lctx, *range, source_pagetable_ptr, pagetable_ptr, entry_lctx, i)) by {
+            reveal(build_new_child_structure_eol_loop_framing);
+        };
+    }
     while i < range_len
         invariant
             krnl.inv(),
@@ -545,7 +551,6 @@ pub fn build_new_child_structure(
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             held_locks_order_below(krnl, lctx, PAGE_TABLE_WINDOW_LOCK_MAJOR),
-            held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx)),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(ctn_ptr),
@@ -592,11 +597,6 @@ pub fn build_new_child_structure(
             !old(krnl).prc_mp.spec_index(child_ptr).view().zombie,
             krnl.prc_mp.dom().contains(child_ptr),
             krnl.prc_mp.spec_index(child_ptr) == old(krnl).prc_mp.spec_index(child_ptr),
-            held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
-            held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
-            held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx)),
-            held_pagetables_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), set![pagetable_ptr]),
-            held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx)),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             krnl.thrd_mp.dom().contains(thrd_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
@@ -662,12 +662,6 @@ pub fn build_new_child_structure(
             forall|w: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w))]
                 lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) == (va_range_2m_windows(*range).contains(w)
                     && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some),
-            forall|p: RwLockPageTableRoot, w: WindowVa|
-                #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
-                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
-                p != pagetable_ptr ==> lctx.pagetable_window_lock_map().dom().contains((p, w)) == old(lctx).pagetable_window_lock_map().dom().contains((p, w)),
-            forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
-                old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
             forall|w: WindowVa|
                 #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w))]
                 #![trigger va_range_2m_windows(*range).contains(w)]
@@ -684,29 +678,27 @@ pub fn build_new_child_structure(
                 &&& va_range_2m_windows(*range).contains(window_of(range.view().spec_index(j)))
                 &&& spec_va2index(window_of(range.view().spec_index(j)).va) == (spec_v2l4index(range.view().spec_index(j)), spec_v2l3index(range.view().spec_index(j)), spec_v2l2index(range.view().spec_index(j)), 0usize)
             },
-            forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < i ==> {
-                &&& pei_valid(spec_v2l4index(range.view().spec_index(j))) && pei_valid(spec_v2l3index(range.view().spec_index(j))) && pei_valid(spec_v2l2index(range.view().spec_index(j)))
-                &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.view().spec_index(j))
-                &&& entry_lctx.pagetable_window_lock_map().dom().contains((source_pagetable_ptr, window_of(range.view().spec_index(j))))
-                &&& lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(range.view().spec_index(j))))
-                &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(spec_v2l4index(range.view().spec_index(j)), spec_v2l3index(range.view().spec_index(j)),
-                    spec_v2l2index(range.view().spec_index(j))) is Some
-            },
+            build_new_child_structure_eol_loop_framing(*old(krnl), *krnl, old(lctx), lctx, *range, source_pagetable_ptr, pagetable_ptr, entry_lctx, i),
         decreases range_len - i,
     {
+        let ghost (krnl_i, lctx_i) = (*krnl, *lctx);
         proof {
             let va = range.view()[i as int];
             let cur = spec_va2index(va);
             range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_index_roundtrip(va); spec_v2l4index_monotonic(range.start, va);
-            whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).wf_mapping_4k_at(cur.0, cur.1, cur.2, cur.3);
+            assert(entry_lctx.pagetable_window_lock_map().dom().contains((source_pagetable_ptr, window_of(va)))) by {
+                whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).wf_mapping_4k_at(cur.0, cur.1, cur.2, cur.3);
+            };
         }
         build_new_child_page_structure(
             krnl, range, i, start_indices, end_indices, allc_ptr, thrd_ptr, child_ptr, ctn_ptr, transfer_source, cpu_id, pagetable_ptr, Ghost(origin),
             Ghost(old(steps).view().len() as int), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm),
             Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm), Tracked(&mut window_perms),
         );
+        proof { build_new_child_structure_eol_step(*old(krnl), krnl_i, *krnl, old(lctx), &lctx_i, lctx, *range, source_pagetable_ptr, pagetable_ptr, entry_lctx, i); }
         i = i + 1;
     }
+    proof { build_new_child_structure_eol_exit(*old(krnl), *krnl, old(lctx), lctx, *range, source_pagetable_ptr, pagetable_ptr, entry_lctx); }
     Tracked(window_perms)
 }
 } // verus!

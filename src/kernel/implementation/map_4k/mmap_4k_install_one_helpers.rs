@@ -118,6 +118,7 @@ verus! {
             held_locks_order_below(old(krnl), &entry_lctx, ALLOCATOR_CACHE_4K_MAJOR),
             entry_lctx.thread_id() == old(lctx).thread_id(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(quota_thrd_ptr)),
+            !old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost().exited,
             transfer_source is None ==> old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_container == ctn_ptr,
             !write_held ==> transfer_source is None,
             ((old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr)
@@ -179,6 +180,7 @@ verus! {
             final(krnl).prc_mp.dom().contains(prc_ptr),
             final(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
             final(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+            !(final(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(final(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
             final(krnl).thrd_mp.dom().contains(quota_thrd_ptr),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).being_killed() == false,
             !thread_is_dangling(final(krnl).thrd_mp.spec_index(quota_thrd_ptr)),
@@ -387,6 +389,11 @@ verus! {
             assert(krnl.ctn_mp.dom().contains(ctn_ptr)) by { if transfer_source is None { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, quota_thrd_ptr); } };
             assert(krnl.prc_mp.dom().contains(prc_ptr) && ((krnl.thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && krnl.thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr)
                 || (typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write) && !krnl.prc_mp.spec_index(prc_ptr).view().zombie))) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); };
+            assert(!(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie)) by {
+                if !typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write) {
+                    process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, quota_thrd_ptr);
+                }
+            };
             if !write_held {
                 spec_va_4k_index_roundtrip_at(window_va.va, indices.0, indices.1, indices.2, 0usize);
                 assert(directory_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_va)));

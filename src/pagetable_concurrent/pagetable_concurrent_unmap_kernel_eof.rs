@@ -297,6 +297,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
         Self::clear_held_4k_leaf_eof_frame(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
+        Self::clear_held_4k_leaf_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
         Self::clear_held_4k_leaf_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
     }
 
@@ -316,7 +317,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.user_only(),
             post.rwx_upper_level_entries(),
             post.table_pages_wf(),
-            post.tables_reachable_wf(),
             post.wf_window_locks(),
             post.page_closure() =~= pre.page_closure(),
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
@@ -330,8 +330,19 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.user_only()) by { reveal(WholePageTable::user_only); };
         assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
         assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
         assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
+    }
+
+    /// EOF closure of `clear_held_4k_leaf`: `tables_reachable_wf`; the target L2 entry keeps its L1 page and address.
+    proof fn clear_held_4k_leaf_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index)
+        requires
+            pre.wf(),
+            Self::clear_held_4k_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i),
+        ensures
+            post.tables_reachable_wf(),
+    {
+        reveal(WholePageTable::clear_held_4k_leaf_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
     }
 
     /// EOF closure of `clear_held_4k_leaf`: `wf_mapping_4k`; a resolving 4K leaf sits under a resolving L3 path, whose L2 page is not

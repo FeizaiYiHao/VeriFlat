@@ -83,7 +83,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     let process = unlocked.spec_index(prc_ptr);
     assert_maps_equal!(post_u.process_map, unlocked.insert(prc_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thrd_ptr), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, prc_ptr);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source); reveal(kernel_pagetable_nonlock_fields_unchanged);
         assert(post.prc_mp.spec_index(prc_ptr).view().pagetable == pre.prc_mp.spec_index(prc_ptr).view().pagetable);
         assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
     });

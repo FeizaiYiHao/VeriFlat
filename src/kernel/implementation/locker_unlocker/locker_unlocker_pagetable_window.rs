@@ -135,13 +135,13 @@ impl KernelK {
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(lock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id())) by {
-                reveal(lock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+                reveal(lock_pagetable_window_eof_transition_framing);
                 pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             };
             assert(pre_c.lower.pagetable_window_locks[w] is Unlocked) by { reveal(lock_pagetable_window_eof_transition_framing); pre_c.wf_window_locks_va_at(w); };
+            assert(self.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(lock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
+                reveal(lock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); broadcast use spec_va_2m_valid_index_roundtrip;
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -251,11 +251,11 @@ impl KernelK {
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(unlock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i)) by {
-                reveal(unlock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
+                reveal(unlock_pagetable_window_eof_transition_framing);
             };
+            assert(self.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(unlock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
+                reveal(unlock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {

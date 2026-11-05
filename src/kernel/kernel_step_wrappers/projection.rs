@@ -372,7 +372,7 @@ proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post:
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -1160,10 +1160,10 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_process_map(
             after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
     ensures kernel_k_to_kernel_u(*after).process_map == kernel_k_to_kernel_u(*before).process_map,
 {
-    reveal(kernel_k_to_kernel_u); reveal(kernel_process_nonlock_fields_unchanged);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); reveal(kernel_process_nonlock_fields_unchanged);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    assert_maps_equal!(post.process_map, pre.process_map, p => {});
+    assert_maps_equal!(post.process_map, pre.process_map, p => { if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); } });
 }
 
 /// The peer-scheduled transition projects to the container map with `peer` pushed on shard `wake_cpu` of its container's scheduler.

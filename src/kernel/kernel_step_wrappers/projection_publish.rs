@@ -590,7 +590,9 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     };
     let post_u = kernel_k_to_kernel_u(*post);
     assert(pre.prc_mp.dom().contains(prc_ptr) && post.prc_mp.dom() == pre.prc_mp.dom() && pre.thrd_mp.dom().contains(thrd_ptr) && post.thrd_mp.dom().contains(new_thrd_ptr)
-        && post.ep_mp.dom() == pre.ep_mp.dom() && (ep_ptr is Some ==> pre.ep_mp.dom().contains(ep_ptr->Some_0))) by { reveal(kernel_new_thread_fields); };
+        && post.ep_mp.dom() == pre.ep_mp.dom() && (ep_ptr is Some ==> pre.ep_mp.dom().contains(ep_ptr->Some_0)) && pre.ctn_mp.dom().contains(ctn_ptr) && !pre.thrd_mp.dom().contains(new_thrd_ptr)
+        && pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k > 0 && post.cpu_tlb.view() == pre.cpu_tlb.view() && post.iommu_tlb.view() == pre.iommu_tlb.view() && post.dflt_pt == pre.dflt_pt
+        && post.irt.view().owners() == pre.irt.view().owners() && post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()) by { reveal(kernel_new_thread_fields); };
     kernel_cpu_projection_at(post, cpu_id); kernel_cpu_projection_at(pre, cpu_id); kernel_process_projection_at(post, prc_ptr);
     if let Some(source) = release_source_process {
         kernel_process_projection_at(post, source); kernel_process_projection_at(pre, source);
@@ -601,7 +603,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     }
     kernel_thread_projection_at(pre, thrd_ptr);
     if let Some(e) = ep_ptr { kernel_endpoint_projection_at(post, e); kernel_endpoint_projection_at(pre, e); }
-    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
+    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
     assert(post_u.process_map.spec_index(prc_ptr).owned_threads.last() == new_thrd_ptr
         && kernel_u_new_thread_changed(pre_u, post_u, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress)) by {
         kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(pre, post, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, new_thrd_ptr, initial_regs, ep_ptr, staging_progress);
@@ -609,7 +611,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         kernel_new_thread_fields_and_unlocks_implies_u_endpoint_map(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress);
         kernel_new_thread_fields_and_unlocks_implies_u_container_map(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress, None);
         kernel_new_thread_fields_and_unlocks_implies_u_process_map(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress, release_source_process);
-        reveal(kernel_new_thread_fields); reveal(kernel_u_new_thread_changed);
+        reveal(kernel_u_new_thread_changed);
         kernel_new_thread_fields_implies_u_new_thread_entry(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress);
     };
 }
