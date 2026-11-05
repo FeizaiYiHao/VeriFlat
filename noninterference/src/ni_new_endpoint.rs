@@ -43,7 +43,6 @@ pub proof fn new_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
 { reveal(new_endpoint_finish_step_pre); reveal(new_endpoint_finish_step); reveal(kernel_u_new_endpoint_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `new_endpoint_finish_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn new_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

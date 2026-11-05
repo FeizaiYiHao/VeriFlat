@@ -15,7 +15,6 @@ pub proof fn ipc_block_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep
 { reveal(kernel_u_ipc_block_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_block_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -70,7 +69,6 @@ pub proof fn ipc_rendezvous_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
 { reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_pci_ownership_wf); }
 
 /// The step of `ipc_rendezvous_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -127,7 +125,6 @@ pub proof fn ipc_call_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 { reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_call_handoff_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -155,7 +152,6 @@ pub proof fn ipc_accept_call_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 { reveal(kernel_u_ipc_accept_call_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_accept_call_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_accept_call_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -183,7 +179,6 @@ pub proof fn ipc_reply_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: C
 { reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_reply_handoff_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -211,7 +206,6 @@ pub proof fn ipc_endpoint_transit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id
 { reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_endpoint_transit_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -269,7 +263,6 @@ pub proof fn ipc_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// The step of `ipc_endpoint_finish_step_lr` preserves isolation. When the running thread receives from a peer outside
 /// `a`, no thread of `b` holds or waits on `payload`.
-#[verifier::spinoff_prover]
 pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, peer: RwLockThreadPtr, payload: RwLockEndpointPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -318,7 +311,6 @@ pub proof fn ipc_pages_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 { reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_pages_enter_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -486,7 +478,6 @@ pub proof fn ipc_pages_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 { reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_pages_finish_step_lr` preserves isolation.
-#[verifier::spinoff_prover]
 pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
