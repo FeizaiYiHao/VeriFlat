@@ -65,3 +65,4 @@ mod reclaim_held_4k_page_eof;
 pub mod reclaim_held_2m_page;
 mod reclaim_held_2m_page_eof;
 pub mod reclaim_held_leaves;
+mod reclaim_held_leaves_eol;
