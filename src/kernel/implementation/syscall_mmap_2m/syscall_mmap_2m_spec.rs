@@ -327,6 +327,7 @@ pub open spec fn mmap_2m_l1_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     &&& mmap_4k_locked(old_u, cpu_id)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& thread.syscall_progress is Some
     &&& progress is Mmap2m
     &&& !(progress->Mmap2m_phase is Fill)

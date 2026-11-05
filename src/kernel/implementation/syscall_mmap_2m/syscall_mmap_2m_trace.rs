@@ -645,6 +645,12 @@ pub(super) proof fn mmap_2m_flushed_step_from_k(
         (kernel_k_to_kernel_u(*snap) == kernel_k_to_kernel_u(*pre)) == (snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
             == pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()),
         mmap_2m_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*pre) }, cpu_id),
+        snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+            == pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() ==> {
+            &&& kernel_cpu_process_thread_nonlock_fields_unchanged(snap, pre)
+            &&& kernel_endpoint_nonlock_fields_unchanged(snap.ep_mp, pre.ep_mp)
+            &&& kernel_container_nonlock_fields_and_quotas_unchanged(snap, pre)
+        },
 {
     let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
     reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
@@ -657,6 +663,21 @@ pub(super) proof fn mmap_2m_flushed_step_from_k(
     let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
     if snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == cpu_set_lock {
         assert_maps_equal!(pre_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre_u.container_map[ctn_ptr] }), pre_u.container_map);
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(snap, pre)) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
+            broadcast use kernel_iommu_table_nonlock_fields_unchanged_for_equal, kernel_cpu_nonlock_fields_unchanged_for_equal, kernel_process_nonlock_fields_unchanged_for_equal,
+                kernel_thread_nonlock_fields_unchanged_for_equal;
+        };
+        assert(kernel_endpoint_nonlock_fields_unchanged(snap.ep_mp, pre.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(snap, pre)) by {
+            reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            assert forall|c: RwLockContainerPtr| #![trigger pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set)] snap.ctn_mp.dom().contains(c) implies {
+                let b = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
+                let a = snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
+                &&& b.lock_state_u() == a.lock_state_u()
+                &&& b.being_killed() == a.being_killed()
+            } by { container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, c); };
+        };
     }
 }
 
@@ -671,23 +692,37 @@ pub(super) proof fn mmap_2m_flushed_range_steps_from_u(steps: &KernelSteps, befo
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_2m_range_step(steps.view()[j], cpu_id),
 {}
 
-/// A container 4K quota credit to the container `ctn_ptr` of the caller's current thread `thrd_ptr`, recorded from a state where the
-/// caller write-holds its cpu and thread and holds its pagetable with progress at the first page of `range` outside the fill phase,
-/// after range steps that start at `start` leaves only range steps.
-pub(super) proof fn mmap_2m_l1_reclaim_range_steps_from_u(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, range: VaRange2M, phase: Mmap2mPhase,
+/// A container 4K quota credit to the container `ctn_ptr` of the caller's current thread `thrd_ptr`, recorded from `entry`'s projection
+/// while the caller write-holds its cpu and thread and holds its pagetable with progress at the first page of `range` outside the fill
+/// phase, after range steps that start at `start` leaves only range steps.
+pub(super) proof fn mmap_2m_l1_reclaim_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pagetable: RwLockPageTableRoot, range: VaRange2M, phase: Mmap2mPhase,
 )
     requires
         0 <= start <= before.len(),
         forall|j: int| #![trigger before[j]] start <= j < before.len() ==> mmap_2m_range_step(before[j], cpu_id),
         steps.view() == before.push(steps.view().last()),
+        steps.view().last().old_u == kernel_k_to_kernel_u(*entry),
         kernel_u_container_quota_4k_increased(steps.view().last().old_u, steps.view().last().new_u, ctn_ptr),
-        mmap_4k_locked(steps.view().last().old_u, cpu_id),
-        steps.view().last().old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
-        steps.view().last().old_u.thread_map[thrd_ptr].owning_container == ctn_ptr,
-        steps.view().last().old_u.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Mmap2m { range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
+        typed_lock_maps_aligned(entry, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        lctx.pagetable_lock_map().dom().contains(pagetable),
+        entry.prc_mp.dom().contains(prc_ptr),
+        entry.ctn_mp.dom().contains(ctn_ptr),
+        !entry.prc_mp.spec_index(prc_ptr).view().zombie,
+        entry.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        entry.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
         !(phase is Fill),
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_2m_range_step(steps.view()[j], cpu_id),
-{ reveal(mmap_2m_range_step); reveal(mmap_2m_l1_reclaim_step_pre); }
+{
+    mmap_2m_flush_step_pre_from_k(entry, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, phase);
+    reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_l1_reclaim_step_pre);
+}
 } // verus!

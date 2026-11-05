@@ -126,11 +126,11 @@ fn reclaim_hidden_l1_page_to_cache(
 /// Free the L1 page `l1_ptr` that the held window of `va` in the read-held `pagetable`, whose L2 page is `l2_ptr`, hides
 /// after every CPU flushed it: lock the page, its owner's 4K cache shard `cpu_id` (draining a full shard first) and quota,
 /// return the page to the cache, credit the owner's 4K quota by one, and unlock. The credit is the one recorded step; the
-/// window keeps its L2 entry and no longer owns an L1 page. Returns the owner.
+/// window keeps its L2 entry and no longer owns an L1 page. Returns the owner and the state and local context the step starts from.
 pub fn reclaim_hidden_l1_page_in_window(
     krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, l2_ptr: PageMapPtr, l1_ptr: PageMapPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(steps): Tracked<&mut KernelSteps>, pagetable_perm: Tracked<&LockPerm>, Tracked(window_perm): Tracked<&LockPerm>,
-) -> (ret: RwLockContainerPtr)
+) -> (ret: (RwLockContainerPtr, Ghost<KernelK>, Ghost<LocalContext>))
     requires
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).inv(),
@@ -162,19 +162,15 @@ pub fn reclaim_hidden_l1_page_in_window(
     ensures
         final(steps).view().len() == old(steps).view().len() + 1,
         final(steps).view().drop_last() == old(steps).view(),
-        ({
-            let cpu = old(lctx).cpu_id();
-            let thrd_ptr = old(krnl).cpu_arr.spec_index(cpu).view().view().view().current_thread->Some_0;
-            index_valid(NUM_CPUS, cpu) && typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu, TypedLockMode::Write) && old(krnl).cpu_arr.spec_index(cpu).view().view().view().state is Running
-                && typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write) && old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable ==> {
-                let old_u = final(steps).view().last().old_u;
-                &&& mmap_4k_locked(old_u, cpu)
-                &&& old_u.cpu_array[cpu as int].current_thread == Some(thrd_ptr)
-                &&& old_u.thread_map[thrd_ptr].owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container
-                &&& old_u.thread_map[thrd_ptr].syscall_progress == old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()
-            }
-        }),
-        kernel_u_container_quota_4k_increased(final(steps).view().last().old_u, final(steps).view().last().new_u, ret),
+        final(steps).view().last().old_u == kernel_k_to_kernel_u(ret.1@),
+        kernel_u_container_quota_4k_increased(final(steps).view().last().old_u, final(steps).view().last().new_u, ret.0),
+        ret.1@.inv(),
+        typed_lock_maps_aligned(&ret.1@, &ret.2@),
+        ret.2@.cpu_lock_map() == old(lctx).cpu_lock_map(),
+        ret.2@.thread_lock_map() == old(lctx).thread_lock_map(),
+        ret.2@.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        held_cpus_unchanged(old(krnl).cpu_arr, ret.1@.cpu_arr, old(lctx)),
+        held_threads_unchanged(old(krnl).thrd_mp, ret.1@.thrd_mp, old(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -184,8 +180,8 @@ pub fn reclaim_hidden_l1_page_in_window(
         final(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
-        ret == old(krnl).pg_arr.spec_index(page_ptr2page_index(l1_ptr)).view().view().owning_container,
-        ret == old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).view_rodata().view().owning_container,
+        ret.0 == old(krnl).pg_arr.spec_index(page_ptr2page_index(l1_ptr)).view().view().owning_container,
+        ret.0 == old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).view_rodata().view().owning_container,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
@@ -251,21 +247,7 @@ pub fn reclaim_hidden_l1_page_in_window(
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
     }
     let ghost mid = *krnl;
-    proof {
-        let cpu = old(lctx).cpu_id();
-        let thrd_ptr = old(krnl).cpu_arr.spec_index(cpu).view().view().view().current_thread->Some_0;
-        if index_valid(NUM_CPUS, cpu) && typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu, TypedLockMode::Write) && old(krnl).cpu_arr.spec_index(cpu).view().view().view().state is Running
-            && typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write) && old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable {
-            let prc_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-            assert(krnl.cpu_arr.spec_index(cpu).view().view() == old(krnl).cpu_arr.spec_index(cpu).view().view() && krnl.thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view());
-            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu);
-            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-            kernel_write_held_context_projection(&*krnl, &*lctx, cpu, prc_ptr, thrd_ptr, None);
-            krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-            kernel_pagetable_mappings_projection_at(&*krnl, prc_ptr);
-            assert(mmap_4k_locked(kernel_k_to_kernel_u(*krnl), cpu));
-        }
-    }
+    let ghost mid_lctx = *lctx;
     proof {
         let w = window_of(va);
         let c0 = whole_pagetable(cache_pre.pt_mp, cache_pre.pt_lower.view(), pagetable);
@@ -304,6 +286,6 @@ pub fn reclaim_hidden_l1_page_in_window(
         assert(steps.snapshot_k() == mid);
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
     }
-    owner
+    (owner, Ghost(mid), Ghost(mid_lctx))
 }
 }

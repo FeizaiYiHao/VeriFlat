@@ -64,25 +64,7 @@ pub fn clear_2m_mapping_present_in_window(
     ensures
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(ret.0@) }),
         final(steps).snapshot_k() == *final(krnl),
-        ({
-            let before = kernel_k_to_kernel_u(*old(krnl));
-            let process = old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-            &&& before.process_map.dom().contains(process)
-            &&& before.process_map[process].pagetable is Some
-            &&& before.process_map[process].pagetable->Some_0.mapping_2m.dom().contains(va)
-            &&& before.thread_map.dom().contains(thrd_ptr)
-            &&& kernel_k_to_kernel_u(ret.0@) == (KernelU {
-                process_map: before.process_map.insert(process, ProcessU {
-                    pagetable: Some(PageTableU { mapping_2m: before.process_map[process].pagetable->Some_0.mapping_2m.remove(va), ..before.process_map[process].pagetable->Some_0 }),
-                    ..before.process_map[process]
-                }),
-                thread_map: before.thread_map.insert(thrd_ptr, ThreadU {
-                    syscall_progress: Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false }),
-                    ..before.thread_map[thrd_ptr]
-                }),
-                ..before
-            })
-        }),
+        ret.0@.inv(),
         ret.0@ == (KernelK { pt_mp: ret.0@.pt_mp, pt_lower: ret.0@.pt_lower, thrd_mp: ret.0@.thrd_mp, ..*old(krnl) }),
         ret.0@.pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
         ret.0@.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
@@ -97,6 +79,8 @@ pub fn clear_2m_mapping_present_in_window(
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_2m()
             == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va) }),
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+        whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
         whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.insert((
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)), Set::range(0usize, NUM_CPUS)),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable).lower.l2_owner(p, i)]
@@ -143,7 +127,6 @@ pub fn clear_2m_mapping_present_in_window(
     proof {
         assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(kernel_process_2m_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable, va)) by { reveal(kernel_process_2m_mapping_changed); };
-        kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_step(&*old(krnl), &leaf_k, pagetable, va, thrd_ptr);
         krnl.kernel_step_boundary_process_2m_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable, va, prc_ptr, pagetable, thrd_ptr, thrd_ptr);
     }
     (Ghost(leaf_k), Ghost(leaf_lctx))

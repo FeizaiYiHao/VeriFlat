@@ -152,7 +152,7 @@ pub(super) fn mmap_2m_page(
             map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_process_2m_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable_ptr, va)) by {
-            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(kernel_process_2m_mapping_changed); reveal(process_pagetable_wf);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(kernel_process_2m_mapping_changed);
         };
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         krnl.kernel_step_boundary_process_2m_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable_ptr, va, prc_ptr, pagetable_ptr, thrd_ptr, thrd_ptr);

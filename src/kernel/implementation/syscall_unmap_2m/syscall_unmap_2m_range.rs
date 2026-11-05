@@ -232,7 +232,7 @@ pub(super) fn unmap_2m_range(
             Tracked(window_perms.tracked_borrow(window_of(va))));
         proof {
             assert(range.view().contains(va));
-            unmap_2m_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, kernel_k_to_kernel_u(leaf.0@), &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable,
+            unmap_2m_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, &leaf.0@, &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable,
                 *range, i, va);
         }
         i = i + 1;

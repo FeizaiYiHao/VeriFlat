@@ -147,7 +147,10 @@ verus! {
         requires
             k.inv(),
             k.pt_mp.dom().contains(table),
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i,
+            pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry_hides_l1(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i),
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i).addr == l1_p,
@@ -163,7 +166,10 @@ verus! {
         requires
             k.inv(),
             k.pt_mp.dom().contains(table),
-            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i),
+            whole_pagetable(k.pt_mp, k.pt_lower.view(), table).kernel_l4_end() <= l4i,
+            pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is Some,
             whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.l2_entry_hides_l1(whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i),
             !whole_pagetable(k.pt_mp, k.pt_lower.view(), table).lower.window_stale_cpus.dom().contains((whole_pagetable(k.pt_mp, k.pt_lower.view(), table).window_l2_page(l4i, l3i), l2i)),

@@ -407,21 +407,6 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         mmap_2m_flushed_step_from_k(&flushed_snap, &flushed_pre, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
         if flushed_snap.cpu_set_mp.spec_index(cs).lock_state_u() == krnl.cpu_set_mp.spec_index(cs).lock_state_u() {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&flushed_snap, &*krnl)) by {
-                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
-                broadcast use kernel_iommu_table_nonlock_fields_unchanged_for_equal, kernel_cpu_nonlock_fields_unchanged_for_equal, kernel_process_nonlock_fields_unchanged_for_equal,
-                    kernel_thread_nonlock_fields_unchanged_for_equal;
-            };
-            assert(kernel_endpoint_nonlock_fields_unchanged(flushed_snap.ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&flushed_snap, &*krnl)) by {
-                reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-                assert forall|c: RwLockContainerPtr| #![trigger krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(c).view_rodata().view().cpu_set)] flushed_snap.ctn_mp.dom().contains(c) implies {
-                    let b = krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
-                    let a = flushed_snap.cpu_set_mp.spec_index(flushed_snap.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
-                    &&& b.lock_state_u() == a.lock_state_u()
-                    &&& b.being_killed() == a.being_killed()
-                } by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, c); };
-            };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         } else { krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps); }
         mmap_2m_flushed_range_steps_from_u(&*steps, flushed_before, start, kernel_k_to_kernel_u(flushed_snap), kernel_k_to_kernel_u(flushed_pre), cpu_id);
@@ -527,13 +512,15 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
             }
             proof { assert(old(lctx).cpu_lock_map().dom().contains(cpu_id)); }
             let ghost before = steps.view();
-            let owner = reclaim_hidden_l1_page_in_window(krnl, pagetable_ptr, va, l2_ptr, word.addr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_lock_perm),
-                Tracked(window_perms.tracked_borrow(window_of(va))));
+            let (owner, reclaim_entry, reclaim_lctx) = reclaim_hidden_l1_page_in_window(krnl, pagetable_ptr, va, l2_ptr, word.addr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
+                Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(window_of(va))));
             proof {
                 assert(owner == ctn_ptr);
+                process_thread_wf_thread_at(reclaim_entry@.prc_mp, reclaim_entry@.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(reclaim_entry@.prc_mp, reclaim_entry@.pt_mp, prc_ptr);
+                container_thread_wf_thread_at(reclaim_entry@.ctn_mp, reclaim_entry@.thrd_mp, thrd_ptr);
                 assert forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() implies steps.view()[j] == before[j] by { assert(steps.view().drop_last()[j] == steps.view()[j]); };
                 assert(steps.view() =~= before.push(steps.view().last()));
-                mmap_2m_l1_reclaim_range_steps_from_u(&*steps, before, start, cpu_id, thrd_ptr, ctn_ptr, *va_range, phase);
+                mmap_2m_l1_reclaim_range_steps_from_k(&*steps, before, start, &reclaim_entry@, &reclaim_lctx@, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
             }
         }
         i = i + 1;
