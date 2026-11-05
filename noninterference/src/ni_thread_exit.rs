@@ -35,7 +35,17 @@ pub proof fn thread_exit_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
     ensures isolated(new_u, a, b),
 {
     reveal(thread_exit_enter_step_pre); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_caller_wf);
-    assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_enter_step); };
+    assert(memory_iso(new_u, a, b)) by {
+        reveal(thread_exit_enter_step);
+        assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+            &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+            &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+            &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+            &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+            &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+            &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+        });
+    };
     reveal(thread_exit_enter_step);
 }
 
@@ -321,7 +331,19 @@ pub proof fn thread_exit_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, c
         thread_exit_reclaim_step_pre(old_u, cpu_id, false),
         thread_exit_table_hidden_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step); }
+{
+    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        let n = new_u.process_map[p].pagetable->Some_0;
+        let o = old_u.process_map[p].pagetable->Some_0;
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_4k == o.mapping_4k.restrict(n.mapping_4k.dom())
+        &&& n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_2m == o.mapping_2m.restrict(n.mapping_2m.dom())
+        &&& n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
+    });
+}
 
 /// A reclaim TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
 /// domain view contains.
@@ -462,7 +484,7 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         &&& new_u.process_map[q].iommu_table == old_u.process_map[q].iommu_table
     }) by { reveal(thread_exit_quota_step); };
     assert(new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set && new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set) by { reveal(thread_exit_quota_step); };
-    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b) && memory_iso(new_u, a, b));
+    assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b) && memory_iso(new_u, a, b));
     reveal(thread_exit_quota_step);
 }
 
@@ -510,7 +532,14 @@ pub proof fn thread_exit_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         thread_exit_finish_step_pre(old_u, cpu_id),
         thread_exit_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_finish_step_pre); reveal(thread_exit_finish_step); reveal(kernel_u_thread_exit_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(thread_exit_finish_step_pre); reveal(thread_exit_finish_step); reveal(kernel_u_thread_exit_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].pagetable is Some ==> new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
+        &&& new_u.process_map[p].iommu_table is Some ==> new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+    });
+}
 
 /// The exit result of a cpu of `b` reads only the view of `b`: the cpu, its container with the running process and
 /// thread, and the caller that thread serves, which shares its container.

@@ -24,7 +24,17 @@ pub proof fn new_endpoint_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         new_endpoint_enter_step_pre(old_u, cpu_id, ep_idx),
         new_endpoint_enter_step(old_u, new_u, cpu_id, ep_idx),
     ensures isolated(new_u, a, b),
-{ reveal(new_endpoint_enter_step_pre); reveal(new_endpoint_enter_step); }
+{
+    reveal(new_endpoint_enter_step_pre); reveal(new_endpoint_enter_step);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+    });
+}
 
 /// Finishing endpoint creation on a cpu of `a` adds a fresh endpoint of `a` held only by the running
 /// thread, so it leaves the view of `b` unchanged.

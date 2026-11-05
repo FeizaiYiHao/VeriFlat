@@ -70,7 +70,17 @@ pub proof fn alloc_thread_quota_4k_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         alloc_thread_quota_4k_step_pre(old_u, cpu_id, alloc_amount),
         alloc_thread_quota_4k_step(old_u, new_u, cpu_id, alloc_amount),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_only_process2thread_quota_4k_changed); }
+{
+    reveal(kernel_u_only_process2thread_quota_4k_changed);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+    });
+}
 
 /// The thread 4K quota allocation result of a running cpu of `b` reads only the view of `b`.
 pub proof fn alloc_thread_quota_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, alloc_amount: usize, b: RwLockContainerPtr)
@@ -158,7 +168,17 @@ pub proof fn alloc_thread_quota_2m_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         alloc_thread_quota_2m_step_pre(old_u, cpu_id, alloc_amount),
         alloc_thread_quota_2m_step(old_u, new_u, cpu_id, alloc_amount),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_only_process2thread_quota_2m_changed); }
+{
+    reveal(kernel_u_only_process2thread_quota_2m_changed);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+    });
+}
 
 /// The thread 2M quota allocation result of a running cpu of `b` reads only the view of `b`.
 pub proof fn alloc_thread_quota_2m_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, alloc_amount: usize, b: RwLockContainerPtr)

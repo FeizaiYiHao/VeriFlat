@@ -148,7 +148,15 @@ pub proof fn mmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         mmap_4k_leaf_step_pre(old_u, cpu_id),
         mmap_4k_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    let entry = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k.spec_index(progress->Mmap4k_range.view()[progress->Mmap4k_mapped as int]);
+    reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_2m[v]]
+        old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
+            ==> !in_2m_frame(old_u.process_map[p].pagetable->Some_0.mapping_2m[v].addr, entry.addr)) by { reveal(in_2m_frame); };
+}
 
 /// Exiting mmap on a cpu of `a` unlocks only objects of `a`.
 pub proof fn mmap_4k_exit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

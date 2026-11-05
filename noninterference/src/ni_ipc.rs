@@ -105,7 +105,7 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] e != ep_ptr ==> new_u.endpoint_map[e].queue.len() == old_u.endpoint_map[e].queue.len());
     assert(new_u.endpoint_map[ep_ptr].queue.len() + 1 == old_u.endpoint_map[ep_ptr].queue.len());
     assert(domains_disjoint(new_u, a, b));
-    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b));
+    assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b));
     assert(memory_iso(new_u, a, b));
     assert(endpoint_iso(new_u, a, b));
     assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
@@ -275,8 +275,8 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         },
     ensures
         domains_disjoint(new_u, a, b),
-        domain_4k_only(new_u, a),
-        domain_4k_only(new_u, b),
+        domain_no_1g(new_u, a),
+        domain_no_1g(new_u, b),
         endpoint_iso(new_u, a, b),
         inflight_iso(new_u, a, b),
         inflight_iso(new_u, b, a),

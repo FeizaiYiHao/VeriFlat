@@ -12,19 +12,22 @@ pub open spec fn domains_disjoint(u: KernelU, a: RwLockContainerPtr, b: RwLockCo
         !(u.container_map[a].subtree_set.contains(c) && u.container_map[b].subtree_set.contains(c))
 }
 
-/// Processes of the domain map memory only through 4K page-table and 4K IOMMU-table entries. No syscall creates
-/// 2M or 1G mappings, so `memory_iso` over 4K entries of both tables covers all memory the domain maps.
-pub open spec fn domain_4k_only(u: KernelU, root: RwLockContainerPtr) -> bool {
+/// Processes of the domain map memory only through 4K and 2M page-table entries and 4K IOMMU-table entries. No syscall
+/// creates 1G mappings or 2M IOMMU mappings, so `memory_iso` over those entries covers all memory the domain maps.
+pub open spec fn domain_no_1g(u: KernelU, root: RwLockContainerPtr) -> bool {
     forall|p: RwLockProcessPtr| #![trigger u.process_map[p]] u.process_map.dom().contains(p) && in_domain(u, root, u.process_map[p].owning_container) ==> {
-        &&& u.process_map[p].pagetable is Some ==> u.process_map[p].pagetable->Some_0.mapping_2m.dom().is_empty()
         &&& u.process_map[p].pagetable is Some ==> u.process_map[p].pagetable->Some_0.mapping_1g.dom().is_empty()
         &&& u.process_map[p].iommu_table is Some ==> u.process_map[p].iommu_table->Some_0.mapping_2m.dom().is_empty()
         &&& u.process_map[p].iommu_table is Some ==> u.process_map[p].iommu_table->Some_0.mapping_1g.dom().is_empty()
     }
 }
 
-/// No physical page is mapped, through a 4K page-table or 4K IOMMU-table entry, both by a process of `a` and by a
-/// process of `b`.
+/// The 2M frame starting at `base` contains the address `addr`.
+#[verifier::opaque]
+pub open spec fn in_2m_frame(base: usize, addr: usize) -> bool { base <= addr < base + 0x200000 }
+
+/// No physical page is mapped, through a 4K or 2M page-table entry or a 4K IOMMU-table entry, both by a process of `a`
+/// and by a process of `b`. A 2M entry maps the 2M frame starting at its address (`in_2m_frame`).
 pub open spec fn memory_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContainerPtr) -> bool {
     &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
         #![trigger u.process_map[p].pagetable->Some_0.mapping_4k[va], u.process_map[q].pagetable->Some_0.mapping_4k[vb]]
@@ -50,6 +53,36 @@ pub open spec fn memory_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContaine
         && u.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(va)
         && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].iommu_table is Some && u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(vb)
             ==> u.process_map[p].iommu_table->Some_0.mapping_4k[va].addr != u.process_map[q].iommu_table->Some_0.mapping_4k[vb].addr
+    &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
+        #![trigger u.process_map[p].pagetable->Some_0.mapping_2m[va], u.process_map[q].pagetable->Some_0.mapping_2m[vb]]
+        u.process_map.dom().contains(p) && in_domain(u, a, u.process_map[p].owning_container) && u.process_map[p].pagetable is Some
+        && u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(va)
+        && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(vb)
+            ==> u.process_map[p].pagetable->Some_0.mapping_2m[va].addr != u.process_map[q].pagetable->Some_0.mapping_2m[vb].addr
+    &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
+        #![trigger u.process_map[p].pagetable->Some_0.mapping_2m[va], u.process_map[q].pagetable->Some_0.mapping_4k[vb]]
+        u.process_map.dom().contains(p) && in_domain(u, a, u.process_map[p].owning_container) && u.process_map[p].pagetable is Some
+        && u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(va)
+        && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(vb)
+            ==> !in_2m_frame(u.process_map[p].pagetable->Some_0.mapping_2m[va].addr, u.process_map[q].pagetable->Some_0.mapping_4k[vb].addr)
+    &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
+        #![trigger u.process_map[p].pagetable->Some_0.mapping_4k[va], u.process_map[q].pagetable->Some_0.mapping_2m[vb]]
+        u.process_map.dom().contains(p) && in_domain(u, a, u.process_map[p].owning_container) && u.process_map[p].pagetable is Some
+        && u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(va)
+        && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(vb)
+            ==> !in_2m_frame(u.process_map[q].pagetable->Some_0.mapping_2m[vb].addr, u.process_map[p].pagetable->Some_0.mapping_4k[va].addr)
+    &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
+        #![trigger u.process_map[p].pagetable->Some_0.mapping_2m[va], u.process_map[q].iommu_table->Some_0.mapping_4k[vb]]
+        u.process_map.dom().contains(p) && in_domain(u, a, u.process_map[p].owning_container) && u.process_map[p].pagetable is Some
+        && u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(va)
+        && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].iommu_table is Some && u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(vb)
+            ==> !in_2m_frame(u.process_map[p].pagetable->Some_0.mapping_2m[va].addr, u.process_map[q].iommu_table->Some_0.mapping_4k[vb].addr)
+    &&& forall|p: RwLockProcessPtr, va: VAddr, q: RwLockProcessPtr, vb: VAddr|
+        #![trigger u.process_map[p].iommu_table->Some_0.mapping_4k[va], u.process_map[q].pagetable->Some_0.mapping_2m[vb]]
+        u.process_map.dom().contains(p) && in_domain(u, a, u.process_map[p].owning_container) && u.process_map[p].iommu_table is Some
+        && u.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(va)
+        && u.process_map.dom().contains(q) && in_domain(u, b, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(vb)
+            ==> !in_2m_frame(u.process_map[q].pagetable->Some_0.mapping_2m[vb].addr, u.process_map[p].iommu_table->Some_0.mapping_4k[va].addr)
 }
 
 /// No endpoint is held by threads of both domains, no endpoint held by a thread of one domain is owned
@@ -83,8 +116,8 @@ pub open spec fn inflight_iso(u: KernelU, x: RwLockContainerPtr, y: RwLockContai
 /// Isolation between the container subtrees rooted at `a` and `b`.
 pub open spec fn isolated(u: KernelU, a: RwLockContainerPtr, b: RwLockContainerPtr) -> bool {
     &&& domains_disjoint(u, a, b)
-    &&& domain_4k_only(u, a)
-    &&& domain_4k_only(u, b)
+    &&& domain_no_1g(u, a)
+    &&& domain_no_1g(u, b)
     &&& memory_iso(u, a, b)
     &&& endpoint_iso(u, a, b)
     &&& inflight_iso(u, a, b)

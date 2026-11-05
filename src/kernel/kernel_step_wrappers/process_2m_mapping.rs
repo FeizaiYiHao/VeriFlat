@@ -181,6 +181,47 @@ broadcast proof fn kernel_owned_2m_page_implies_u_iommu_4k_mapping_outside_its_f
     }
 }
 
+/// The `Owned4k` page at `addr` lies in no 2M frame that a pagetable maps in the projection of `k`.
+pub proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(k: KernelK, addr: PagePtr)
+    requires
+        k.inv(),
+        k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
+    ensures
+        forall|p: RwLockProcessPtr, v: VAddr| #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v]]
+            kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
+            ==> !(kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr <= addr < kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr + 0x200000),
+{ broadcast use kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at; }
+
+/// Point form of `kernel_owned_4k_page_implies_u_outside_2m_mapping_frames` at one process and VA: a 2M mapping names a
+/// 2M-aligned `Mapped2m` head whose frame's other pages are `Merged2m` tails.
+broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k: KernelK, addr: PagePtr, p: RwLockProcessPtr, v: VAddr)
+    requires
+        k.inv(),
+        k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
+    ensures
+        #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v], k.pg_arr.spec_index(page_ptr2page_index(addr))]
+        kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
+            ==> !(kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr <= addr < kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_2m[v].addr + 0x200000),
+{
+    kernel_u_domains_projection(&k);
+    if k.prc_mp.dom().contains(p) {
+        let pt = k.prc_mp.spec_index(p).view().pagetable;
+        kernel_process_projection_at(&k, p); process_pagetable_wf_process_at(k.prc_mp, k.pt_mp, p);
+        pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt);
+        if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) {
+            let m = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr;
+            let head = page_ptr2page_index(m);
+            let idx = page_ptr2page_index(addr);
+            assert(k.pg_arr.spec_index(head).view().view().state == PageState::Mapped2m) by { reveal(mapped_2m_page_pagetable_wf); };
+            if m <= addr < m + 0x200000 {
+                assert(head <= idx < head + 512 && index_valid(NUM_PAGES, head) && index_valid(NUM_PAGES, idx)) by (nonlinear_arith)
+                    requires m % 0x200000 == 0, m / 4096 < NUM_PAGES, head == m / 4096, idx == addr / 4096, m <= addr < m + 0x200000, NUM_PAGES == 262144;
+                if idx != head { hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx); }
+            }
+        }
+    }
+}
+
 /// Publishing a present 2M leaf at `va` in the read-held pagetable of the cpu's current process from an `Owned2m` page, with
 /// the thread's 2M quota, temporary 2M cache, and progress replaced, adds that leaf to the process's 2M user mapping and changes
 /// only that thread's 2M quota and progress. The window of `va` links no L1 table under a directory L3 entry, so it holds no 4K or
