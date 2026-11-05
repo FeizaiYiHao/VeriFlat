@@ -102,6 +102,23 @@ impl KernelK {
         }
     }
 
+    /// Reads the needflush bit of an entry this thread write-holds.
+    pub fn read_pcid_needflush(&self, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> (ret: bool)
+        requires
+            self.inv(),
+            index_valid(NUM_CPUS, cpu_id),
+            pcid_valid(pcid),
+            typed_lock_maps_aligned(self, lctx),
+            typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == lctx.thread_id(),
+            lp.view().lock_id() == self.pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+        ensures ret == self.pcid_needflush.spec_index(cpu_id, pcid).view().needflush,
+    {
+        assert(self.pcid_needflush.inv() && self.pcid_needflush.spec_index(cpu_id, pcid).is_init()) by { pcid_needflush_wf_implies_array_inv(self.pcid_needflush); pcid_needflush_wf_at(self.pcid_needflush, cpu_id, pcid); };
+        self.pcid_needflush.borrow_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), lp).needflush
+    }
+
     /// Mark an entry conservatively while retaining its write lock. Marking
     /// permits stale translations only when this PCID is inactive.
     pub fn mark_pcid_needflush(&mut self, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>)

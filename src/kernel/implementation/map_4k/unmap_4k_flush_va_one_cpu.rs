@@ -159,7 +159,7 @@ pub(super) fn flush_pagetable_tlb_va_range_on_cpu(krnl: &mut KernelK, pagetable:
 
 /// Under the needflush lock of (`cpu_id`, `pcid`), marks the pair for flushing, loads the hardware cr3/pcid word of `cpu_id`,
 /// and flushes the `count` pages from `va`, 4K or 2M apart by `stride_2m`, under `pcid` on `cpu_id` when it is the local
-/// cpu, clearing the mark, or currently runs `cr3` with `pcid`, keeping it; returns that word.
+/// cpu, clearing the mark, or currently runs `cr3` with `pcid`, restoring the mark it had before; returns that word.
 fn flush_va_range_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, cpu_id: usize,
     local_cpu: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (hw_cr3_pcid: (PageTableRoot, Pcid))
     requires
@@ -205,19 +205,21 @@ fn flush_va_range_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLo
             let exempt = final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && cpu.current_pcid != pcid;
             let table = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
             &&& final(krnl).cpu_tlb.spec_index((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
-                || (cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable)
+                || ((cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable) || !old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush)
                     && single_tlb_va_range_flushed_kept_or_present(old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), final(krnl).cpu_tlb.spec_index((cpu_id, pcid)), table, va, count, stride_2m))
             &&& final(krnl).cpu_tlb.structure_cache((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
                 || single_structure_cache_subset_of_present_pagetable(final(krnl).cpu_tlb.structure_cache((cpu_id, pcid)), table)
         }),
 {
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
+    let needflush = krnl.read_pcid_needflush(cpu_id, pcid, Tracked(&*lctx), Tracked(&needflush_perm));
+    let ghost unmarked = *krnl;
     let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
     let ghost marked = *krnl;
     if cpu_id == local_cpu {
         flush_local_va_range_and_clear(krnl, cpu_id, pcid, va, count, stride_2m, Tracked(&*lctx), Tracked(&needflush_perm));
     } else if hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid {
-        flush_remote_va_range_keep_needflush(krnl, cpu_id, pcid, va, count, stride_2m, Tracked(&*lctx));
+        flush_remote_va_range_and_restore_needflush(krnl, cpu_id, pcid, va, count, stride_2m, needflush, Ghost(unmarked), Tracked(&*lctx), Tracked(&needflush_perm));
     }
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
@@ -225,7 +227,7 @@ fn flush_va_range_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLo
         let exempt = krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && cpu.current_pcid != pcid;
         let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         &&& krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
-            || (cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable)
+            || ((cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable) || !old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush)
                 && single_tlb_va_range_flushed_kept_or_present(marked.cpu_tlb.spec_index((cpu_id, pcid)), krnl.cpu_tlb.spec_index((cpu_id, pcid)), table, va, count, stride_2m))
         &&& krnl.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
             || single_structure_cache_subset_of_present_pagetable(krnl.cpu_tlb.structure_cache((cpu_id, pcid)), table)
@@ -330,9 +332,9 @@ fn flush_va_range_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTa
 
 /// Drops `cpu_id` from the records of the windows of the read-held `pagetable` this thread holds, deleting them after the
 /// last cpu. The TLB and paging-structure cache of `cpu_id` for `pcid` hold nothing of `pagetable` a flush would remove,
-/// or the cpu runs `pagetable` under `pcid` and its TLB keeps, from `pre`, only translations a per-address flush of `count`
-/// pages from `va`, 4K or 2M apart by `stride_2m`, left and present leaves. Every such record lists exactly the cpus from
-/// `cpu_id` up on entry and from `cpu_id + 1` up on return.
+/// or the cpu runs `pagetable` under `pcid` or its pair was unmarked in `pre`, and its TLB keeps, from `pre`, only
+/// translations a per-address flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, left and present leaves.
+/// Every such record lists exactly the cpus from `cpu_id` up on entry and from `cpu_id + 1` up on return.
 pub(super) fn drop_stale_cpu_after_va_flush(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, Ghost(pcid): Ghost<Pcid>, cpu_id: usize, Ghost(pre): Ghost<KernelK>, Ghost(va): Ghost<VAddr>,
     Ghost(count): Ghost<usize>, Ghost(stride_2m): Ghost<bool>, Tracked(lctx): Tracked<&LocalContext>)
     requires
@@ -353,7 +355,7 @@ pub(super) fn drop_stale_cpu_after_va_flush(krnl: &mut KernelK, pagetable: RwLoc
             let exempt = old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && cpu.current_pcid != pcid;
             let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             &&& old(krnl).cpu_tlb.spec_index((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
-                || (cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable)
+                || ((cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable) || !pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush)
                     && single_tlb_va_range_flushed_kept_or_present(pre.cpu_tlb.spec_index((cpu_id, pcid)), old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), table, va, count, stride_2m))
             &&& old(krnl).cpu_tlb.structure_cache((cpu_id, pcid)).is_empty() || exempt || (dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
                 || single_structure_cache_subset_of_present_pagetable(old(krnl).cpu_tlb.structure_cache((cpu_id, pcid)), table)
@@ -385,8 +387,10 @@ pub(super) fn drop_stale_cpu_after_va_flush(krnl: &mut KernelK, pagetable: RwLoc
 {
     proof {
         let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
-        if cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable) && single_tlb_va_range_flushed_kept_or_present(pre.cpu_tlb.spec_index((cpu_id, pcid)),
-            old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable), va, count, stride_2m) {
+        let dirty_entry = old(krnl).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+        if (cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable) || !pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && !(dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable))
+            && single_tlb_va_range_flushed_kept_or_present(pre.cpu_tlb.spec_index((cpu_id, pcid)), old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable), va,
+                count, stride_2m) {
             held_window_vas_flushed_implies_window_tlb_entries_present(pre, *old(krnl), lctx, pagetable, cpu_id, pcid, va, count, stride_2m);
         }
     }
@@ -404,9 +408,10 @@ pub(super) fn drop_stale_cpu_after_va_flush(krnl: &mut KernelK, pagetable: RwLoc
 }
 
 /// After a per-address flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, under `pcid` on cpu `cpu_id`, which
-/// runs `pagetable` under `pcid` in `pre`, every 4K or 2M translation of the TLB of `cur` in a window of `pagetable` that
-/// `lctx` holds is a present leaf: it is a present leaf the walker refilled, or a held leaf the TLB of `pre` cached and the
-/// flush left, which resolves through the window's L2 entry that hides no L1 page and is present outside the flush.
+/// runs `pagetable` under `pcid` in `pre` or whose pair is unmarked there with no other dirty table, every 4K or 2M
+/// translation of the TLB of `cur` in a window of `pagetable` that `lctx` holds is a present leaf: it is a present leaf the
+/// walker refilled, or a held leaf the TLB of `pre` cached and the flush left, which resolves through the window's L2 entry
+/// that hides no L1 page and is present outside the flush.
 pub(super) proof fn held_window_vas_flushed_implies_window_tlb_entries_present(pre: KernelK, cur: KernelK, lctx: &LocalContext, pagetable: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid, va: VAddr,
     count: usize, stride_2m: bool)
     requires
@@ -417,8 +422,12 @@ pub(super) proof fn held_window_vas_flushed_implies_window_tlb_entries_present(p
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pagetable == Some(pagetable),
+        ({
+            let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+            ||| cpu.current_pcid == pcid && cpu.current_pagetable == Some(pagetable)
+            ||| !pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && !(dirty_entry is Some && dirty_entry.unwrap().pagetable_ptr != pagetable)
+        }),
         single_tlb_va_range_flushed_kept_or_present(pre.cpu_tlb.spec_index((cpu_id, pcid)), cur.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable), va,
             count, stride_2m),
         held_windows_hidden_leaves_va_flushed(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable), lctx.pagetable_window_lock_map(), pagetable, va, count, stride_2m),
