@@ -606,6 +606,10 @@ struct Pair {
     /// The TSC cycles per round of the last finished phase including the untimed work between rounds,
     /// when a timing records it (the parallel mmap_2m timing); 0 otherwise.
     span: AtomicU64,
+    /// The parts of `cycles` spent in the syscalls and in the touch, when a timing records them (the map+unmap
+    /// and mmap-only modes of the parallel mmap_2m timing); 0 otherwise.
+    syscall: AtomicU64,
+    touch: AtomicU64,
 }
 
 impl Pair {
@@ -613,7 +617,8 @@ impl Pair {
         Pair {
             client_cpu: AtomicUsize::new(0), server_cpu: AtomicUsize::new(0), ready: AtomicBool::new(false), go: AtomicUsize::new(0),
             done: AtomicUsize::new(0), deadline: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0),
-            rounds: AtomicU64::new(0), cycles: AtomicU64::new(0), span: AtomicU64::new(0),
+            rounds: AtomicU64::new(0), cycles: AtomicU64::new(0), span: AtomicU64::new(0), syscall: AtomicU64::new(0),
+            touch: AtomicU64::new(0),
         }
     }
 }
@@ -861,9 +866,12 @@ fn time_parallel_call() {
 /// shorter overlap is only logged as an error.
 fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &str, overlap_fatal: bool, run0: &dyn Fn(usize)) {
     let (mut alone, mut alone_rounds, mut alone_span) = ([0; MAX_PAIRS], [0; MAX_PAIRS], [0; MAX_PAIRS]);
+    let mut alone_parts = [[0; 2]; MAX_PAIRS];
     for k in 0..n {
         let pair = &PAIRS[k];
         pair.span.store(0, Ordering::SeqCst);
+        pair.syscall.store(0, Ordering::SeqCst);
+        pair.touch.store(0, Ordering::SeqCst);
         pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
         if k == 0 {
             run0(alone_phase);
@@ -873,6 +881,7 @@ fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &st
         }
         (alone[k], alone_rounds[k]) = (pair.cycles.load(Ordering::SeqCst), pair.rounds.load(Ordering::SeqCst));
         alone_span[k] = alone[k].max(pair.span.load(Ordering::SeqCst));
+        alone_parts[k] = [pair.syscall.load(Ordering::SeqCst), pair.touch.load(Ordering::SeqCst)];
         let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
         if server_cpu != k + 1 {
             log::error!("{}: the server of pair {} ran on CPU {}", prefix, k, server_cpu as isize - 1);
@@ -926,6 +935,28 @@ fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &st
         );
         if overlap_fatal {
             unsafe { sys_debug_exit(1) };
+        }
+    }
+    // The syscall and touch parts, when the timing records them, as `<prefix>_syscall` and `<prefix>_touch`
+    // lines of the same form, with the same overlap and rounds.
+    if alone_parts[..n].iter().all(|parts| parts[0] > 0) {
+        let mut buf = Prefix::new();
+        for (i, part) in ["_syscall", "_touch"].into_iter().enumerate() {
+            let part_prefix = buf.with(prefix, part);
+            let mut part_ratios = [0; MAX_PAIRS];
+            for k in 0..n {
+                let conc = if i == 0 { PAIRS[k].syscall.load(Ordering::SeqCst) } else { PAIRS[k].touch.load(Ordering::SeqCst) };
+                part_ratios[k] = hundredths(conc, alone_parts[k][i]);
+                log::info!("{} cpu={} alone={} conc={} ratio={}", part_prefix, k, alone_parts[k][i], conc, Hundredths(part_ratios[k]));
+            }
+            let part_ratios = &mut part_ratios[..n];
+            part_ratios.sort_unstable();
+            log::info!(
+                "{} summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} (rounds per pair: alone {}..{}, conc {}..{})",
+                part_prefix, n, Hundredths(part_ratios[0]), Hundredths(part_ratios[n - 1]),
+                Hundredths((part_ratios[(n - 1) / 2] + part_ratios[n / 2]) / 2), Hundredths(overlap), min_alone_rounds, max_alone_rounds,
+                min_conc_rounds, max_conc_rounds
+            );
         }
     }
 }
@@ -1376,7 +1407,7 @@ fn time_map2m(k: usize, phase: usize) {
     let kind = variant.kind as usize;
     let gib = if variant.pages == Map2mPages::Huge { PAR_MAP2M_HUGE_VA[kind] } else { PAR_MAP2M_SMALL_VA[kind] };
     let (quota, quota_2m) = (PAR_MAP2M_QUOTA_4K[k].load(Ordering::SeqCst), PAR_MAP2M_QUOTA_2M[k].load(Ordering::SeqCst));
-    let mut worker = Map2mWorker { kind: variant.kind, pages: variant.pages, base: gib + k * PAR_MAP2M_STRIDE, mapped: 0, quota, quota_2m, timed: 0, short: 0 };
+    let mut worker = Map2mWorker { kind: variant.kind, pages: variant.pages, base: gib + k * PAR_MAP2M_STRIDE, mapped: 0, quota, quota_2m, timed: 0, syscall: 0, touch: 0, short: 0 };
     // Only alone: the phase at once follows the same worker's alone phase in the same region.
     let start = unsafe { core::arch::x86_64::_rdtsc() };
     let warmup_end = start + deadline.saturating_sub(start) / 8;
@@ -1386,7 +1417,7 @@ fn time_map2m(k: usize, phase: usize) {
             break;
         }
     }
-    worker.timed = 0;
+    (worker.timed, worker.syscall, worker.touch) = (0, 0, 0);
     let begin = unsafe { core::arch::x86_64::_rdtsc() };
     let mut rounds = 0;
     let end = loop {
@@ -1418,6 +1449,8 @@ fn time_map2m(k: usize, phase: usize) {
     pair.end.store(end, Ordering::SeqCst);
     pair.rounds.store(rounds, Ordering::SeqCst);
     pair.cycles.store(worker.timed / units, Ordering::SeqCst);
+    pair.syscall.store(worker.syscall / units, Ordering::SeqCst);
+    pair.touch.store(worker.touch / units, Ordering::SeqCst);
     pair.span.store((end - begin) / rounds, Ordering::SeqCst);
     pair.done.store(phase, Ordering::SeqCst);
 }
@@ -1433,6 +1466,8 @@ struct Map2mWorker {
     quota: usize,
     quota_2m: usize,
     timed: u64,
+    syscall: u64,
+    touch: u64,
     short: usize,
 }
 
@@ -1444,9 +1479,11 @@ impl Map2mWorker {
                 self.make_room(1);
                 let start = unsafe { core::arch::x86_64::_rdtsc() };
                 self.map(self.base, 1);
+                let mapped = unsafe { core::arch::x86_64::_rdtsc() };
                 touch_2m(self.base, 1);
+                let touched = unsafe { core::arch::x86_64::_rdtsc() };
                 self.unmap(self.base, 1);
-                self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+                self.record(start, mapped, touched, unsafe { core::arch::x86_64::_rdtsc() });
             }
             Map2mKind::MapOnly => {
                 if self.mapped == MAP2M_REGION {
@@ -1456,8 +1493,10 @@ impl Map2mWorker {
                 let va = self.base + self.mapped * SIZE_2M;
                 let start = unsafe { core::arch::x86_64::_rdtsc() };
                 self.map(va, 1);
+                let mapped = unsafe { core::arch::x86_64::_rdtsc() };
                 touch_2m(va, 1);
-                self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+                let touched = unsafe { core::arch::x86_64::_rdtsc() };
+                self.record(start, mapped, touched, touched);
                 self.mapped += 1;
             }
             Map2mKind::UnmapOnly => {
@@ -1469,6 +1508,13 @@ impl Map2mWorker {
                 self.timed += unsafe { core::arch::x86_64::_rdtsc() } - start;
             }
         }
+    }
+
+    /// Adds a timed round to `timed`, and its parts to `syscall` (map, then unmap if any) and `touch`.
+    fn record(&mut self, start: u64, mapped: u64, touched: u64, end: u64) {
+        self.timed += end - start;
+        self.syscall += (mapped - start) + (end - touched);
+        self.touch += touched - mapped;
     }
 
     /// Maps `count` 2 MiB at `va` the variant's way and takes the quota the pages use from the count.

@@ -125,6 +125,11 @@ table. dom0 builds the directories of its GiBs first, with `mmap_2m` + `unmap_2m
 lines: `parallel_mmap2m_xproc funding` and, after each mmap-only mode, `<prefix> quota: ...` as for the
 parallel mmap timing.
 
+The map+unmap and mmap-only modes also split each timed round into separate TSC windows: after the
+combined lines of a prefix (such as `parallel_mmap2m_mmaponly_2m_same`) come the same lines with
+`_syscall` appended (the map and unmap calls) and with `_touch` appended (the touch), over the same rounds. The summary's last table lists alone / conc
+and the ratio of the combined, syscall, and touch parts per mode.
+
 Run: `PARALLEL=mmap2m boot/bench/build-parallel-call-image.sh boot/bench/out/image-mmap2m`, then
 `IMAGE=boot/bench/out/image-mmap2m OUT=boot/bench/out/results-mmap2m boot/bench/run-parallel-call.sh 5 1 2 4 8 16`,
 then `python3 -I boot/bench/summarize-parallel-mmap.py boot/bench/out/results-mmap2m`.

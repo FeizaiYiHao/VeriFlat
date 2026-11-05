@@ -8,6 +8,8 @@ are left out of the medians unless no run reached it. Also the single-CPU mmap t
 The parallel mmap_2m timing's modes (`parallel_mmap2m_*`) count TSC cycles per 2 MiB instead of per round;
 after them, per SMP, process placement and kind, a table of the 2M variant against its 4K twins: the
 median alone and concurrent cycles per 2 MiB, the median ratio, and the 4K cycles over the 2M cycles.
+For the map+unmap and mmap-only modes, which also log their syscall and touch parts (`<mode>_syscall`,
+`<mode>_touch`), a last table splits each one's alone / conc / ratio into combined, syscall, and touch.
 Usage: python3 -I summarize-parallel-mmap.py <results_dir>..."""
 import collections, os, re, statistics, sys
 
@@ -24,7 +26,9 @@ timer_res = [
 MODES = ['parallel_mmap_same', 'parallel_mmap_xproc', 'parallel_mmap_only_same', 'parallel_mmap_only_xproc', 'parallel_mmap_cached_xproc']
 MAP2M_KINDS = ['mapunmap', 'mmaponly', 'unmaponly']
 MAP2M_PAGES = ['2m', '4k', '4k1']  # 2M pages; 4K pages 512 per call; 4K pages one per call
-MAP2M_MODES = [f'parallel_mmap2m_{kind}_{pages}_{loc}' for loc in ('same', 'xproc') for kind in MAP2M_KINDS for pages in MAP2M_PAGES]
+MAP2M_PARTS = ['', '_syscall', '_touch']
+MAP2M_MODES = [f'parallel_mmap2m_{kind}_{pages}_{loc}{part}' for loc in ('same', 'xproc') for kind in MAP2M_KINDS for pages in MAP2M_PAGES
+               for part in MAP2M_PARTS]
 MIN_OVERLAP = 0.50
 
 
@@ -109,6 +113,16 @@ def summarize(results):
                         cells.append(cell)
                     if cells:
                         print(f"SMP={smp} {loc} {kind}: " + "; ".join(cells))
+    if any(mode.endswith('_syscall') for (mode, _) in medians):
+        print("== parallel_mmap2m parts, TSC cycles per 2 MiB (alone / conc, ratio): combined | syscall | touch")
+        for smp in smps:
+            for loc in ('same', 'xproc'):
+                for kind in MAP2M_KINDS:
+                    for pages in MAP2M_PAGES:
+                        mode = f'parallel_mmap2m_{kind}_{pages}_{loc}'
+                        got = [medians.get((mode + part, smp)) for part in MAP2M_PARTS]
+                        if all(got):
+                            print(f"SMP={smp} {loc} {kind}_{pages}: " + " | ".join(f"{a:.0f} / {c:.0f}, {r:.2f}" for a, c, r in got))
 
 
 for results in sys.argv[1:]:
