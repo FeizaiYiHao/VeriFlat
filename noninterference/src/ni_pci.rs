@@ -25,7 +25,11 @@ pub proof fn pci_attach_dma_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         pci_attach_dma_step_pre(old_u, cpu_id, bus, device, function),
         pci_attach_dma_step(old_u, new_u, cpu_id, bus, device, function),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_pci_attach_changed); }
+{
+    reveal(kernel_u_pci_attach_changed);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The attach result of a running cpu of `b` reads only the view of `b`.
 pub proof fn pci_attach_dma_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize, b: RwLockContainerPtr)

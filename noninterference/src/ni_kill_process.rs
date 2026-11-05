@@ -45,6 +45,8 @@ pub proof fn kill_process_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         &&& forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container
             && new_u.thread_map[t].state == old_u.thread_map[t].state
     }) by { reveal(kill_process_enter_step_pre); reveal(kill_process_enter_step); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Descending from the target of a process kill on a cpu of `a`, which lies in `a`, marks a child of the target, which
@@ -80,7 +82,11 @@ pub proof fn kill_process_mark_child_step_iso(old_u: KernelU, new_u: KernelU, cp
         kill_process_step_pre(old_u, cpu_id),
         kill_process_mark_child_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_mark_child_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
+{
+    reveal(kill_process_mark_child_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Turning the first thread of the target of a process kill on a cpu of `a`, which lies in `a`, into a dangling thread
 /// changes only the target and that thread, which shares its container, so it leaves the view of `b` unchanged.
@@ -115,7 +121,11 @@ pub proof fn kill_process_dangling_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         kill_process_step_pre(old_u, cpu_id),
         kill_process_dangling_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_dangling_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_dangling_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Marking the first thread of the target of a process kill on a cpu of `a`, which lies in `a`, changes only that
 /// thread, which shares the target's container, and the killer, so it leaves the view of `b` unchanged.
@@ -150,7 +160,11 @@ pub proof fn kill_process_mark_thread_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_process_step_pre(old_u, cpu_id),
         kill_process_mark_thread_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_mark_thread_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
+{
+    reveal(kill_process_mark_thread_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Dequeuing the marked victim of a process kill on a cpu of `a` from a scheduler shard changes only the victim, a thread
 /// of the target in `a`, and its container, so it leaves the view of `b` unchanged.
@@ -184,7 +198,11 @@ pub proof fn kill_process_dequeue_scheduled_step_iso(old_u: KernelU, new_u: Kern
         kill_process_step_pre(old_u, cpu_id),
         kill_process_dequeue_scheduled_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_dequeue_scheduled_step); }
+{
+    reveal(kill_process_dequeue_scheduled_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Dequeuing the marked victim of a process kill on a cpu of `a` from the queue of its endpoint changes only the victim, a
 /// thread of the target in `a`, and that endpoint. The endpoint queues a thread of `a`, so no thread of `b` holds it, and
@@ -256,6 +274,8 @@ pub proof fn kill_process_dequeue_endpoint_step_iso(old_u: KernelU, new_u: Kerne
     let ep_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
     let queue = old_u.endpoint_map[ep_ptr].queue;
     queue.index_of_first_ensures(victim_ptr);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Forcing the cpu running the marked victim of a process kill on a cpu of `a` to idle changes only the victim, a thread
@@ -290,7 +310,11 @@ pub proof fn kill_process_cpu_to_idle_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_process_step_pre(old_u, cpu_id),
         kill_process_cpu_to_idle_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_cpu_to_idle_step); }
+{
+    reveal(kill_process_cpu_to_idle_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Unlinking the killed victim of a process kill on a cpu of `a` from the target, which lies in `a`, changes only the
 /// target, the victim, which shares its container, and the killer, so it leaves the view of `b` unchanged.
@@ -324,7 +348,11 @@ pub proof fn kill_process_unlink_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_step_pre(old_u, cpu_id),
         kill_process_unlink_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_unlink_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_unlink_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A killed thread of the target's container in `a` releasing one descriptor of a process kill on a cpu of `a` changes
 /// only that thread and the endpoint it held, which `b` neither owns nor holds, so it leaves the view of `b` unchanged.
@@ -381,6 +409,10 @@ pub proof fn kill_process_descriptor_dropped_step_iso(old_u: KernelU, new_u: Ker
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let thread = old_u.thread_map[t];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+        assert forall|j: int| #![trigger dropped.contains(j)] dropped.contains(j) implies memory_iso(new_u, a, b) by {
+            process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+            memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+        };
         if !isolated(new_u, a, b) { assert(dropped =~= Set::<int>::empty()); }
     };
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }
@@ -427,6 +459,10 @@ pub proof fn kill_process_caller_woken_step_iso(old_u: KernelU, new_u: KernelU, 
 {
     reveal(kernel_u_killed_caller_woken);
     let woken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is WAITING_REPLY && new_u.thread_map[t].state is SCHEDULED);
+    assert forall|t: RwLockThreadPtr| #![trigger woken.contains(t)] woken.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(woken =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -470,6 +506,10 @@ pub proof fn kill_process_caller_taken_over_step_iso(old_u: KernelU, new_u: Kern
 {
     reveal(kernel_u_killed_caller_taken_over);
     let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
+    assert forall|t: RwLockThreadPtr| #![trigger taken.contains(t)] taken.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(taken =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -516,6 +556,10 @@ pub proof fn kill_process_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Ker
 {
     reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_endpoint_ownership_wf);
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
+    assert forall|t: RwLockThreadPtr| #![trigger removed.contains(t)] removed.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(removed =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -577,6 +621,10 @@ pub proof fn kill_process_endpoint_released_step_iso(old_u: KernelU, new_u: Kern
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let thread = old_u.thread_map[t];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+        assert forall|j: int| #![trigger dropped.contains(j)] dropped.contains(j) implies memory_iso(new_u, a, b) by {
+            process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+            memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+        };
         if !isolated(new_u, a, b) { assert(dropped =~= Set::<int>::empty()); }
     };
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }
@@ -629,6 +677,8 @@ pub proof fn kill_process_reassign_functions_step_iso(old_u: KernelU, new_u: Ker
             && new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
             && new_u.process_map[p].iommu_table->Some_0.mapping_1g == old_u.process_map[p].iommu_table->Some_0.mapping_1g
     }) by { reveal(kill_process_step_pre); reveal(kill_process_reassign_functions_step); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Locking the tables of the target of a process kill on a cpu of `a`, which lies in `a`, changes only the target and
@@ -663,7 +713,11 @@ pub proof fn kill_process_lock_table_step_iso(old_u: KernelU, new_u: KernelU, cp
         kill_process_step_pre(old_u, cpu_id),
         kill_process_lock_table_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_lock_table_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_lock_table_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Hiding a root entry of the target's page table on a cpu of `a` drops only mappings and window locks of the target, which
 /// lies in `a`, so it leaves the view of `b` unchanged.
@@ -697,7 +751,10 @@ pub proof fn kill_process_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, 
         kill_process_step_pre(old_u, cpu_id),
         kill_process_table_hidden_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// A process kill TLB flush changes only cpu TLBs, which no domain view contains.
 pub proof fn kill_process_tlb_cleared_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -721,7 +778,11 @@ pub proof fn kill_process_tlb_cleared_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_process_flush_step_pre(old_u, cpu_id),
         kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_tlb_cleared); }
+{
+    reveal(kernel_u_cpu_tlb_cleared);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Recording the flush of a process kill on a cpu of `a` changes only the killer, a thread of `a`.
 pub proof fn kill_process_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -745,7 +806,11 @@ pub proof fn kill_process_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_process_flush_step_pre(old_u, cpu_id),
         kill_process_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_flushed_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
+{
+    reveal(kill_process_flushed_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A process kill IOMMU leaf step on a cpu of `a` removes one IOMMU mapping of the target, which lies in `a`, so it
 /// leaves the view of `b` unchanged.
@@ -782,6 +847,7 @@ pub proof fn kill_process_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cp
     ensures isolated(new_u, a, b),
 {
     reveal(kill_process_step_pre); reveal(kill_process_iommu_leaf_step);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Refunding 4K or 2M quota of a process kill on a cpu of `a` raises the quota of the container of the target, which lies in `a`,
@@ -816,7 +882,11 @@ pub proof fn kill_process_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_step_pre(old_u, cpu_id),
         kill_process_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Returning one size of the quota of the target of a process kill on a cpu of `a`, which lies in `a`, to its container
 /// changes only the target, its container, and the killer, so it leaves the view of `b` unchanged.
@@ -850,7 +920,11 @@ pub proof fn kill_process_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         kill_process_step_pre(old_u, cpu_id),
         kill_process_quota_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_quota_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_quota_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Unlocking the reclaimed tables of the target of a process kill on a cpu of `a`, which lies in `a`, changes only the
 /// target and the killer, so it leaves the view of `b` unchanged.
@@ -884,7 +958,11 @@ pub proof fn kill_process_unlock_table_step_iso(old_u: KernelU, new_u: KernelU, 
         kill_process_step_pre(old_u, cpu_id),
         kill_process_unlock_table_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_step_pre); reveal(kill_process_unlock_table_step); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_unlock_table_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Making the target of a process kill on a cpu of `a`, which lies in `a`, a zombie changes only the target, its
 /// container, and the killer, so it leaves the view of `b` unchanged.
@@ -918,7 +996,10 @@ pub proof fn kill_process_zombify_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_process_step_pre(old_u, cpu_id),
         kill_process_zombify_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_zombify_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
+{
+    reveal(kill_process_zombify_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// Moving an already zombie target of a process kill on a cpu of `a` to retiring changes only the killer, a thread of
 /// `a`.
@@ -941,7 +1022,11 @@ pub proof fn kill_process_zombie_retire_step_iso(old_u: KernelU, new_u: KernelU,
         kill_process_step_pre(old_u, cpu_id),
         kill_process_zombie_retire_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_zombie_retire_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
+{
+    reveal(kill_process_zombie_retire_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Retiring the empty zombie target of a process kill on a cpu of `a`, which lies in `a`, removes it from its ancestors,
 /// which share its container, and from its container, so it leaves the view of `b` unchanged.
@@ -977,8 +1062,8 @@ pub proof fn kill_process_retire_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     ensures isolated(new_u, a, b),
 {
     assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); };
-    assert(memory_iso(new_u, a, b)) by { reveal(kill_process_retire_step); };
     reveal(kill_process_retire_step);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Finishing a process kill on a cpu of `a` unlocks the cpu and its running process and thread, all of `a`, so it leaves
@@ -1002,7 +1087,11 @@ pub proof fn kill_process_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_finish_step_pre(old_u, cpu_id),
         kill_process_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_finish_step_pre); reveal(kill_process_finish_step); }
+{
+    reveal(kill_process_finish_step_pre); reveal(kill_process_finish_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The process kill result of a cpu of `b` reads only the view of `b`: the cpu, its running process and thread, and the
 /// child process at `child_index`, which shares the running process's container.

@@ -23,7 +23,11 @@ pub proof fn iommu_map_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         iommu_map_4k_enter_step_pre(old_u, cpu_id, va_range, iova_range),
         iommu_map_4k_enter_step(old_u, new_u, cpu_id, va_range, iova_range),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_map_4k_enter_step_pre); reveal(iommu_map_4k_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_map_4k_enter_step_pre); reveal(iommu_map_4k_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU directory step on a cpu of `a` changes only its running thread.
 pub proof fn iommu_map_4k_directory_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -45,7 +49,11 @@ pub proof fn iommu_map_4k_directory_step_iso(old_u: KernelU, new_u: KernelU, cpu
         iommu_map_4k_directory_step_pre(old_u, cpu_id),
         iommu_map_4k_directory_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_map_4k_directory_step_pre); reveal(iommu_map_4k_directory_step); }
+{
+    reveal(iommu_map_4k_directory_step_pre); reveal(iommu_map_4k_directory_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU map leaf on a cpu of `a` adds one IOMMU mapping to a process of `a`.
 pub proof fn iommu_map_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -68,7 +76,15 @@ pub proof fn iommu_map_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         iommu_map_4k_leaf_step_pre(old_u, cpu_id),
         iommu_map_4k_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_map_4k_leaf_step_pre); reveal(iommu_map_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+    let progress = thread.syscall_progress->Some_0;
+    let va = progress->IommuMap4k_va_range.view()[progress->IommuMap4k_mapped as int];
+    reveal(iommu_map_4k_leaf_step_pre); reveal(iommu_map_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    let entry = old_u.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k[va];
+    assert(memory_view(old_u, a).pt_4k.dom().contains((thread.owning_proc, va)) && memory_view(old_u, a).pt_4k[(thread.owning_proc, va)] == entry.addr);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// Exiting IOMMU map on a cpu of `a` unlocks only objects of `a`.
 pub proof fn iommu_map_4k_exit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -90,7 +106,11 @@ pub proof fn iommu_map_4k_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         iommu_map_4k_exit_step_pre(old_u, cpu_id),
         iommu_map_4k_exit_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_map_4k_exit_step_pre); reveal(iommu_map_4k_exit_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_map_4k_exit_step_pre); reveal(iommu_map_4k_exit_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The 4K IOMMU map result of a running cpu of `b` reads only the view of `b`.
 pub proof fn iommu_map_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize, b: RwLockContainerPtr)

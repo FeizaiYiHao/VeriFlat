@@ -14,7 +14,11 @@ pub proof fn cpu_tlb_filled_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         isolated(old_u, a, b),
         kernel_u_cpu_tlb_filled_step(old_u, new_u, cpu_id, pcid, added),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_tlb_filled_step); }
+{
+    reveal(kernel_u_cpu_tlb_filled_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOTLB fill changes only `iommu_tlb`, which no domain view contains.
 pub proof fn iommu_tlb_filled_step_lr(old_u: KernelU, new_u: KernelU, did: VtdDomainId, added: SingleTLB, b: RwLockContainerPtr)
@@ -28,7 +32,11 @@ pub proof fn iommu_tlb_filled_step_iso(old_u: KernelU, new_u: KernelU, did: VtdD
         isolated(old_u, a, b),
         kernel_u_iommu_tlb_filled_step(old_u, new_u, did, added),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_iommu_tlb_filled_step); }
+{
+    reveal(kernel_u_iommu_tlb_filled_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU context-cache fill leaves the user state unchanged.
 pub proof fn iommu_context_cache_filled_step_lr(old_u: KernelU, new_u: KernelU, b: RwLockContainerPtr)

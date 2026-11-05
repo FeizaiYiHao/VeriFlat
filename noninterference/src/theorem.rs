@@ -279,7 +279,6 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
         0 <= m <= n && (forall|i: int| #![trigger steppers[i]] m <= i < n ==> steppers[i] == a) ==> domain_view(us[n], b) =~~= domain_view(us[m], b),
     decreases n,
 {
-    hide(memory_iso);
     if n > 0 {
         let i = n - 1;
         let (old_u, new_u, cpu_id) = (us[i], us[n], cpus[i]);

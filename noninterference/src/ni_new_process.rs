@@ -24,7 +24,11 @@ pub proof fn new_process_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         new_process_enter_step_pre(old_u, cpu_id, range, ep_idx, with_iommu),
         new_process_enter_step(old_u, new_u, cpu_id, range, regs, ep_idx, with_iommu),
     ensures isolated(new_u, a, b),
-{ reveal(new_process_enter_step_pre); reveal(new_process_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(new_process_enter_step_pre); reveal(new_process_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Publishing a process on a cpu of `a` adds a child with empty tables to a container of `a` and changes
 /// only that container, the running thread, and processes of that container.
@@ -51,7 +55,10 @@ pub proof fn new_process_publish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         new_process_publish_step_pre(old_u, cpu_id),
         new_process_publish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(new_process_publish_step_pre); reveal(new_process_publish_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(new_process_publish_step_pre); reveal(new_process_publish_step); reveal(kernel_u_cpu_ownership_wf);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// Finishing process creation on a cpu of `a` adds a thread to a child process of `a` that holds only an
 /// endpoint the running thread holds.
@@ -77,20 +84,10 @@ pub proof fn new_process_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
 {
     reveal(new_process_finish_step_pre); reveal(new_process_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
     reveal(kernel_u_ipc_transit_wf);
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-        &&& (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
-        &&& new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
-        &&& new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
-        &&& new_u.process_map[p].iommu_table->Some_0.mapping_1g == old_u.process_map[p].iommu_table->Some_0.mapping_1g
-    });
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The process creation result of a running cpu of `b` reads only the view of `b`.

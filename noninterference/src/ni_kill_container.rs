@@ -35,14 +35,13 @@ pub proof fn kill_container_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
     ensures isolated(new_u, a, b),
 {
     reveal(kill_container_enter_step_pre); reveal(kill_container_enter_step); reveal(kernel_u_cpu_ownership_wf);
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
-        && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table && new_u.process_map[p].owning_container == old_u.process_map[p].owning_container);
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
     assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
     assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]]
         new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container && new_u.thread_map[t].state == old_u.thread_map[t].state);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Descending from the target of a container kill on a cpu of `a`, which lies in `a`, marks a child of the target, so
@@ -77,7 +76,11 @@ pub proof fn kill_container_mark_child_step_iso(old_u: KernelU, new_u: KernelU, 
         kill_container_step_pre(old_u, cpu_id),
         kill_container_mark_child_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_mark_child_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_mark_child_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Marking the root process of the target of a container kill on a cpu of `a`, which lies in `a`, marks a process the
 /// target owns, so it leaves the view of `b` unchanged.
@@ -112,7 +115,11 @@ pub proof fn kill_container_mark_root_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_container_step_pre(old_u, cpu_id),
         kill_container_mark_root_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_mark_root_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_mark_root_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Retiring the empty zombie root process of the target of a container kill on a cpu of `a`, which lies in `a`, removes a
 /// process of the target and changes only the target, so it leaves the view of `b` unchanged.
@@ -144,7 +151,10 @@ pub proof fn kill_container_retire_root_step_iso(old_u: KernelU, new_u: KernelU,
         kill_container_step_pre(old_u, cpu_id),
         kill_container_retire_root_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_retire_root_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_retire_root_step); reveal(kernel_u_cpu_ownership_wf);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// Marking the cpu set of the target of a container kill on a cpu of `a`, which lies in `a`, changes only the target, so
 /// it leaves the view of `b` unchanged.
@@ -176,7 +186,11 @@ pub proof fn kill_container_cpus_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_container_step_pre(old_u, cpu_id),
         kill_container_cpus_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_cpus_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_cpus_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Moving a cpu of the target of a container kill on a cpu of `a`, which lies in `a`, to the killer's container moves it
 /// within `a`, so it leaves the view of `b` unchanged.
@@ -213,7 +227,11 @@ pub proof fn kill_container_move_cpu_step_iso(old_u: KernelU, new_u: KernelU, cp
         kill_container_step_pre(old_u, cpu_id),
         kill_container_move_cpu_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_move_cpu_step); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_move_cpu_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Moving on to the free pages of a container kill on a cpu of `a` changes only the killer, a thread of `a`.
 pub proof fn kill_container_pages_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -235,7 +253,11 @@ pub proof fn kill_container_pages_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_container_step_pre(old_u, cpu_id),
         kill_container_pages_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_pages_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_pages_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Moving a free page of the target of a container kill on a cpu of `a`, which lies in `a`, to the killer's container
 /// moves pages and quota within `a`, so it leaves the view of `b` unchanged.
@@ -267,7 +289,11 @@ pub proof fn kill_container_move_page_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_container_step_pre(old_u, cpu_id),
         kill_container_move_page_step(old_u, new_u, cpu_id, size),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_move_page_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_move_page_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Starting to retire the target of a container kill on a cpu of `a` changes only the killer, a thread of `a`.
 pub proof fn kill_container_retire_stage_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -289,7 +315,11 @@ pub proof fn kill_container_retire_stage_step_iso(old_u: KernelU, new_u: KernelU
         kill_container_step_pre(old_u, cpu_id),
         kill_container_retire_stage_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_step_pre); reveal(kill_container_retire_stage_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_step_pre); reveal(kill_container_retire_stage_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Retiring the empty target of a container kill on a cpu of `a`, which lies in `a`, removes it from its ancestors, none
 /// of which is `b` or below it, and hands its pages to the killer's container, so it leaves the view of `b` unchanged.
@@ -346,6 +376,7 @@ pub proof fn kill_container_retire_step_iso(old_u: KernelU, new_u: KernelU, cpu_
     assert(target != a && target != b) by { reveal(kernel_u_container_tree_wf); reveal(kernel_u_container_depth_wf); };
     assert forall|r: RwLockContainerPtr, c: RwLockContainerPtr| #![trigger new_u.container_map[r].subtree_set.contains(c)]
         new_u.container_map.dom().contains(r) && new_u.container_map[r].subtree_set.contains(c) implies old_u.container_map[r].subtree_set.contains(c) by {};
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Finishing a container kill on a cpu of `a` unlocks the cpu, its container, the running process and thread, all of
@@ -369,7 +400,11 @@ pub proof fn kill_container_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         kill_container_finish_step_pre(old_u, cpu_id),
         kill_container_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_finish_step_pre); reveal(kill_container_finish_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_finish_step_pre); reveal(kill_container_finish_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The container kill result of a cpu of `b` reads only the view of `b`: the cpu, its container with the running process
 /// and thread, and the child container at `child_index`, which lies in `b`.

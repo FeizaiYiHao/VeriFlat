@@ -22,7 +22,11 @@ pub proof fn trap_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, 
         kernel_u_trap_enter_step_pre(old_u, cpu_id),
         kernel_u_trap_enter_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_trap_enter_step); }
+{
+    reveal(kernel_u_trap_enter_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A cpu of `a` returning from its trap path to user mode changes only that cpu, which `a` owns.
 pub proof fn trap_return_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -44,7 +48,11 @@ pub proof fn trap_return_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId,
         kernel_u_trap_return_step_pre(old_u, cpu_id),
         kernel_u_trap_return_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_trap_return_step); }
+{
+    reveal(kernel_u_trap_return_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A marked cpu of `a` diverting from its trap path to its idle loop changes only that cpu, which `a` owns.
 pub proof fn trap_divert_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -66,5 +74,9 @@ pub proof fn trap_divert_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId,
         kernel_u_trap_divert_step_pre(old_u, cpu_id),
         kernel_u_trap_divert_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_trap_divert_step); }
+{
+    reveal(kernel_u_trap_divert_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 } // verus!

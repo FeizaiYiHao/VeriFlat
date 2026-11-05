@@ -26,8 +26,8 @@ pub proof fn alloc_quota_4k_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_only_process_quota_4k_changed);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
-        && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table && new_u.process_map[p].owning_container == old_u.process_map[p].owning_container);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The 4K quota allocation result of a running cpu of `b` reads only the view of `b`.
@@ -72,14 +72,8 @@ pub proof fn alloc_thread_quota_4k_step_iso(old_u: KernelU, new_u: KernelU, cpu_
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_only_process2thread_quota_4k_changed);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The thread 4K quota allocation result of a running cpu of `b` reads only the view of `b`.
@@ -124,8 +118,8 @@ pub proof fn alloc_quota_2m_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_only_process_quota_2m_changed);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
-        && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table && new_u.process_map[p].owning_container == old_u.process_map[p].owning_container);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The 2M quota allocation result of a running cpu of `b` reads only the view of `b`.
@@ -170,14 +164,8 @@ pub proof fn alloc_thread_quota_2m_step_iso(old_u: KernelU, new_u: KernelU, cpu_
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_only_process2thread_quota_2m_changed);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The thread 2M quota allocation result of a running cpu of `b` reads only the view of `b`.

@@ -51,6 +51,8 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
     };
     assert(endpoint_iso(new_u, a, b));
     assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// A rendezvous of a running thread of `a` with the queue head of an endpoint it holds touches only that
@@ -106,9 +108,10 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     assert(new_u.endpoint_map[ep_ptr].queue.len() + 1 == old_u.endpoint_map[ep_ptr].queue.len());
     assert(domains_disjoint(new_u, a, b));
     assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b));
-    assert(memory_iso(new_u, a, b));
     assert(endpoint_iso(new_u, a, b));
     assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// A call handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and the
@@ -133,7 +136,11 @@ pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         ipc_call_handoff_step_pre(old_u, cpu_id, ep_idx),
         ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_endpoint_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Accepting a call on a running thread of `a` touches only itself, the endpoint it holds, and the calling
 /// head, which is of its container, so it leaves the view of `b` unchanged.
@@ -157,7 +164,11 @@ pub proof fn ipc_accept_call_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         ipc_accept_call_step_pre(old_u, cpu_id, ep_idx),
         ipc_accept_call_step(old_u, new_u, cpu_id, ep_idx),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_ipc_accept_call_changed); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(kernel_u_ipc_accept_call_changed); reveal(kernel_u_endpoint_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A reply handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and its
 /// recorded caller, which is of its container, so it leaves the view of `b` unchanged.
@@ -181,7 +192,11 @@ pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         ipc_reply_handoff_step_pre(old_u, cpu_id, ep_idx),
         ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Moving the queue head of an endpoint a running thread of `a` holds into transit with that thread as its partner locks
 /// only objects of `a` and that head, which is outside `b`.
@@ -229,12 +244,13 @@ pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
     assert(new_u.endpoint_map[channel_ptr].queue.len() + 1 == old_u.endpoint_map[channel_ptr].queue.len());
     assert(endpoint_iso(new_u, a, b));
     assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Finishing an endpoint transfer on a cpu of `a` hands an endpoint between its running thread and its
 /// `peer` in transit with it, which is outside `b`. `payload` is the endpoint at the peer's payload descriptor; when the
-/// running thread receives from a peer outside `a`, no thread of `b` holds `payload`. The step also keeps
-/// the memory of `a` and `b` disjoint; `ipc_endpoint_finish_step_iso` gives the other isolation clauses.
+/// running thread receives from a peer outside `a`, no thread of `b` holds `payload`.
 pub proof fn ipc_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, peer: RwLockThreadPtr, payload: RwLockEndpointPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -248,14 +264,11 @@ pub proof fn ipc_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
             && !in_domain(old_u, a, old_u.thread_map[peer].owning_container) ==> forall|t: RwLockThreadPtr, i: EndpointIdx|
             #![trigger old_u.endpoint_map[payload].owning_threads.contains((t, i))]
             old_u.endpoint_map[payload].owning_threads.contains((t, i)) ==> !in_domain(old_u, b, old_u.thread_map[t].owning_container),
-    ensures
-        domain_view(new_u, b) =~~= domain_view(old_u, b),
-        memory_iso(new_u, a, b),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_container_tree_wf); }
 
-/// The step of `ipc_endpoint_finish_step_lr` preserves every isolation clause except `memory_iso`, which that
-/// lemma gives; one query over every clause does not close. When the running thread receives from a
-/// peer outside `a`, no thread of `b` holds or waits on `payload`.
+/// The step of `ipc_endpoint_finish_step_lr` preserves isolation. When the running thread receives from a peer outside
+/// `a`, no thread of `b` holds or waits on `payload`.
 #[verifier::spinoff_prover]
 pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, peer: RwLockThreadPtr, payload: RwLockEndpointPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -277,6 +290,7 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         domains_disjoint(new_u, a, b),
         domain_no_1g(new_u, a),
         domain_no_1g(new_u, b),
+        memory_iso(new_u, a, b),
         endpoint_iso(new_u, a, b),
         inflight_iso(new_u, a, b),
         inflight_iso(new_u, b, a),
@@ -287,6 +301,8 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
                 old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->IpcEndpoint_peer
             } else { old_u.cpu_array[cpu_id as int].current_thread->Some_0 })) by { reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); };
     reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_container_tree_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Entering a pages rendezvous on a cpu of `a` locks only objects of `a`, the queue head of a channel its running thread
@@ -311,7 +327,11 @@ pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         ipc_pages_enter_step_pre(old_u, cpu_id, ep_idx, waiting_state, range),
         ipc_pages_enter_step(old_u, new_u, cpu_id, ep_idx, waiting_state, range),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Locking the page tables of a pages rendezvous on a cpu of `a` locks tables of `a` and of its peer outside `b`.
 pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -346,6 +366,8 @@ pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_
             && new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
             && new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
     }) by { reveal(ipc_pages_lock_tables_step); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Checking a pages rendezvous on a cpu of `a` records its result and may unlock tables of `a` and of its
@@ -382,6 +404,8 @@ pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
             && new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
             && new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
     }) by { reveal(ipc_pages_check_step); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Downgrading the receiver's page table of a pages rendezvous on a cpu of `a` read-locks a table of `a` or of
@@ -405,7 +429,11 @@ pub proof fn ipc_pages_downgrade_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         ipc_pages_downgrade_step_pre(old_u, cpu_id),
         ipc_pages_downgrade_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_pages_downgrade_step_pre); reveal(ipc_pages_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(ipc_pages_downgrade_step_pre); reveal(ipc_pages_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Unlocking the page tables of a shared pages rendezvous on a cpu of `a` unlocks tables of `a` and of its
 /// peer outside `b`.
@@ -441,6 +469,8 @@ pub proof fn ipc_pages_unlock_tables_step_iso(old_u: KernelU, new_u: KernelU, cp
             && new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
             && new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
     }) by { reveal(ipc_pages_unlock_tables_step); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Finishing a pages rendezvous on a cpu of `a` schedules its transit peer outside `b` and unlocks the channel at the
@@ -481,6 +511,8 @@ pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
     assert(domains_disjoint(new_u, a, b));
     assert(endpoint_iso(new_u, a, b));
     assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The IPC entry rejection of a running cpu of `b` reads only the view of `b` and whether the head of the

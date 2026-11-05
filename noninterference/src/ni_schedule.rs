@@ -23,7 +23,11 @@ pub proof fn schedule_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, en
         schedule_step_pre(old_u, cpu_id),
         schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_context_switch_changed); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kernel_u_context_switch_changed); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The scheduling result of a cpu of `b` reads only the view of `b`: its current process and thread, its
 /// container's scheduler shard `cpu_id`, and that shard's head, which that container owns.

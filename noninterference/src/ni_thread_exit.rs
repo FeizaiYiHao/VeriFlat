@@ -35,18 +35,9 @@ pub proof fn thread_exit_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
     ensures isolated(new_u, a, b),
 {
     reveal(thread_exit_enter_step_pre); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_caller_wf);
-    assert(memory_iso(new_u, a, b)) by {
-        reveal(thread_exit_enter_step);
-        assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-            &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-            &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-            &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-            &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-            &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-            &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-        });
-    };
     reveal(thread_exit_enter_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// A killed thread of the exiting thread's container, in `a`, dropping a descriptor changes only that thread and an endpoint
@@ -84,6 +75,10 @@ pub proof fn thread_exit_descriptor_dropped_step_iso(old_u: KernelU, new_u: Kern
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != old_u.thread_map[t].endpoint_descriptors[j]);
+        assert forall|j: int| #![trigger dropped.contains(j)] dropped.contains(j) implies memory_iso(new_u, a, b) by {
+            process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+            memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+        };
         if !isolated(new_u, a, b) { assert(dropped =~= Set::<int>::empty()); }
     };
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }
@@ -118,6 +113,10 @@ pub proof fn thread_exit_caller_woken_step_iso(old_u: KernelU, new_u: KernelU, c
 {
     reveal(kernel_u_killed_caller_woken);
     let woken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is WAITING_REPLY && new_u.thread_map[t].state is SCHEDULED);
+    assert forall|t: RwLockThreadPtr| #![trigger woken.contains(t)] woken.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(woken =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -150,6 +149,10 @@ pub proof fn thread_exit_caller_taken_over_step_iso(old_u: KernelU, new_u: Kerne
 {
     reveal(kernel_u_killed_caller_taken_over);
     let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
+    assert forall|t: RwLockThreadPtr| #![trigger taken.contains(t)] taken.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(taken =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -184,6 +187,10 @@ pub proof fn thread_exit_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Kern
 {
     reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_endpoint_ownership_wf);
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
+    assert forall|t: RwLockThreadPtr| #![trigger removed.contains(t)] removed.contains(t) implies isolated(new_u, a, b) by {
+        process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+        memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    };
     if !isolated(new_u, a, b) { assert(removed =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
@@ -225,6 +232,10 @@ pub proof fn thread_exit_endpoint_released_step_iso(old_u: KernelU, new_u: Kerne
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != old_u.thread_map[t].endpoint_descriptors[j]);
+        assert forall|j: int| #![trigger dropped.contains(j)] dropped.contains(j) implies memory_iso(new_u, a, b) by {
+            process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+            memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+        };
         if !isolated(new_u, a, b) { assert(dropped =~= Set::<int>::empty()); }
     };
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }
@@ -251,7 +262,11 @@ pub proof fn thread_exit_drop_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_drop_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_drop_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); }; }
+{
+    reveal(thread_exit_drop_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Releasing the last descriptor of an endpoint held by the exiting thread on a cpu of `a` removes an endpoint that `b`
 /// neither owns nor holds, so it leaves the view of `b` unchanged.
@@ -285,6 +300,8 @@ pub proof fn thread_exit_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
 {
     reveal(thread_exit_release_step); reveal(kernel_u_endpoint_released); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_endpoint_wait_wf);
     assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Locking the tables of the exiting thread's process on a cpu of `a` detaches only PCI functions that process owns and
@@ -308,7 +325,11 @@ pub proof fn thread_exit_lock_table_step_iso(old_u: KernelU, new_u: KernelU, cpu
         thread_exit_lock_table_step_pre(old_u, cpu_id),
         thread_exit_lock_table_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_lock_table_step_pre); reveal(thread_exit_lock_table_step); }
+{
+    reveal(thread_exit_lock_table_step_pre); reveal(thread_exit_lock_table_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Hiding a root entry on a cpu of `a` drops only mappings and window locks of the page table of the exiting thread's
 /// process, a process of `a`.
@@ -333,16 +354,7 @@ pub proof fn thread_exit_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, c
     ensures isolated(new_u, a, b),
 {
     reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        let n = new_u.process_map[p].pagetable->Some_0;
-        let o = old_u.process_map[p].pagetable->Some_0;
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_4k == o.mapping_4k.restrict(n.mapping_4k.dom())
-        &&& n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_2m == o.mapping_2m.restrict(n.mapping_2m.dom())
-        &&& n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
-    });
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// A reclaim TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
@@ -366,7 +378,11 @@ pub proof fn thread_exit_tlb_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         thread_exit_flush_step_pre(old_u, cpu_id),
         thread_exit_tlb_flush_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); }
+{
+    reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Recording the flush on a cpu of `a` changes only its running thread and the cpu-set lock mode of its container.
 pub proof fn thread_exit_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -388,7 +404,11 @@ pub proof fn thread_exit_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         thread_exit_flush_step_pre(old_u, cpu_id),
         thread_exit_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_flushed_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); }; }
+{
+    reveal(thread_exit_flushed_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU reclaim leaf on a cpu of `a` removes one IOMMU mapping of the exiting thread's process, a process of `a`.
 pub proof fn thread_exit_iommu_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -410,7 +430,10 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
         thread_exit_reclaim_step_pre(old_u, cpu_id, true),
         thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// Refunding 4K or 2M quota on a cpu of `a` may unlock a window of the exiting thread's process, a process of `a`, and raises
 /// the quota of the exiting thread's container, which lies in `a`, or of an ancestor of `a`, neither of which lies in `b`.
@@ -449,8 +472,9 @@ pub proof fn thread_exit_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         &&& new_u.process_map[q].pagetable->Some_0.mapping_2m == old_u.process_map[q].pagetable->Some_0.mapping_2m
         &&& new_u.process_map[q].pagetable->Some_0.mapping_1g == old_u.process_map[q].pagetable->Some_0.mapping_1g
     });
-    assert(isolated(KernelU { process_map: new_u.process_map, ..old_u }, a, b));
     reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Returning one size of quota on a cpu of `a` moves quota from the exiting thread and its process to their container,
@@ -484,8 +508,10 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         &&& new_u.process_map[q].iommu_table == old_u.process_map[q].iommu_table
     }) by { reveal(thread_exit_quota_step); };
     assert(new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set && new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set) by { reveal(thread_exit_quota_step); };
-    assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b) && memory_iso(new_u, a, b));
+    assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b));
     reveal(thread_exit_quota_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Unlocking the reclaimed tables on a cpu of `a` changes only the exiting thread and its process, both of `a`.
@@ -508,7 +534,11 @@ pub proof fn thread_exit_unlock_table_step_iso(old_u: KernelU, new_u: KernelU, c
         thread_exit_unlock_table_step_pre(old_u, cpu_id),
         thread_exit_unlock_table_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_unlock_table_step); }
+{
+    reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_unlock_table_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Finishing an exit on a cpu of `a` removes the exiting thread, changes its cpu, process, and container, and returns
 /// its page to that container, all of `a`, so it leaves the view of `b` unchanged.
@@ -539,6 +569,7 @@ pub proof fn thread_exit_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         &&& new_u.process_map[p].pagetable is Some ==> new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
         &&& new_u.process_map[p].iommu_table is Some ==> new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
     });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// The exit result of a cpu of `b` reads only the view of `b`: the cpu, its container with the running process and

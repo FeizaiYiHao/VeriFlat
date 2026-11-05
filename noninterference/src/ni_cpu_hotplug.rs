@@ -23,7 +23,11 @@ pub proof fn cpu_offline_request_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         cpu_offline_request_step_pre(old_u, cpu_id, target),
         cpu_offline_request_step(old_u, new_u, cpu_id, target),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Write-locking a cpu of `a` for the offline recheck changes only that cpu, which `a` owns.
 pub proof fn cpu_offline_check_hold_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -45,7 +49,11 @@ pub proof fn cpu_offline_check_hold_step_iso(old_u: KernelU, new_u: KernelU, cpu
         cpu_offline_check_hold_step_pre(old_u, cpu_id),
         cpu_offline_check_hold_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(cpu_offline_check_hold_step); }
+{
+    reveal(cpu_offline_check_hold_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Unlocking a cpu of `a` after a recheck that continues changes only that cpu, which `a` owns.
 pub proof fn cpu_offline_check_release_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -67,7 +75,11 @@ pub proof fn cpu_offline_check_release_step_iso(old_u: KernelU, new_u: KernelU, 
         cpu_offline_check_release_step_pre(old_u, cpu_id),
         cpu_offline_check_release_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(cpu_offline_check_release_step); }
+{
+    reveal(cpu_offline_check_release_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A cpu of `a` going Off, requeueing its thread in its own container, leaves the view of `b` unchanged.
 pub proof fn cpu_offline_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -89,7 +101,11 @@ pub proof fn cpu_offline_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         cpu_offline_check_step_pre(old_u, cpu_id),
         cpu_offline_check_step(old_u, new_u, cpu_id, regs, flushed_default_pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_went_off_changed); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kernel_u_cpu_went_off_changed); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Publishing Idle on an Off cpu of the container of a cpu of `a` leaves the view of `b` unchanged.
 pub proof fn cpu_online_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, target: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -111,7 +127,11 @@ pub proof fn cpu_online_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, 
         cpu_online_step_pre(old_u, cpu_id, target),
         cpu_online_step(old_u, new_u, cpu_id, target),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_online_changed); }
+{
+    reveal(kernel_u_cpu_online_changed);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Setting a request bit in a direct child of the container of a cpu of `a`, which lies in `a`, leaves the view
 /// of `b` unchanged.
@@ -134,7 +154,11 @@ pub proof fn cpu_offline_request_child_step_iso(old_u: KernelU, new_u: KernelU, 
         cpu_offline_request_child_step_pre(old_u, cpu_id, target),
         cpu_offline_request_child_step(old_u, new_u, cpu_id, target),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Publishing Idle on an Off cpu of a direct child of the container of a cpu of `a`, which lies in `a`, leaves
 /// the view of `b` unchanged.
@@ -157,7 +181,11 @@ pub proof fn cpu_online_child_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         cpu_online_child_step_pre(old_u, cpu_id, target),
         cpu_online_child_step(old_u, new_u, cpu_id, target),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_online_changed); }
+{
+    reveal(kernel_u_cpu_online_changed);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The offline-request result of a cpu of `b` reads only the view of `b`: its own cpu and, when `target`
 /// belongs to its container, that cpu; a `target` outside the view is rejected in both states.

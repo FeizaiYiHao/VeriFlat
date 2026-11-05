@@ -23,7 +23,11 @@ pub proof fn new_container_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         new_container_enter_step_pre(old_u, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx),
         new_container_enter_step(old_u, new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
     ensures isolated(new_u, a, b),
-{ reveal(new_container_enter_step_pre); reveal(new_container_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(new_container_enter_step_pre); reveal(new_container_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Publishing a container on a cpu of `a` adds a child of a container of `a`, with a root process with
 /// empty tables, to every subtree that contains its parent, none of which is `b` or below it, and moves an
@@ -56,6 +60,7 @@ pub proof fn new_container_publish_step_iso(old_u: KernelU, new_u: KernelU, cpu_
     reveal(new_container_publish_step_pre); reveal(new_container_publish_step);
     reveal(kernel_u_container_root_created); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
     reveal(kernel_u_container_tree_wf); reveal(kernel_u_process_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
+    memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Finishing container creation on a cpu of `a` adds a thread to the root process of a child of a
@@ -85,17 +90,10 @@ pub proof fn new_container_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
 {
     reveal(new_container_finish_step_pre); reveal(new_container_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf);
     reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_ipc_transit_wf);
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The container creation result of a running cpu of `b` reads only the view of `b`: a cpu outside the view

@@ -26,14 +26,8 @@ pub proof fn new_endpoint_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
     ensures isolated(new_u, a, b),
 {
     reveal(new_endpoint_enter_step_pre); reveal(new_endpoint_enter_step);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Finishing endpoint creation on a cpu of `a` adds a fresh endpoint of `a` held only by the running
@@ -60,8 +54,8 @@ pub proof fn new_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     ensures isolated(new_u, a, b),
 {
     reveal(new_endpoint_finish_step_pre); reveal(new_endpoint_finish_step); reveal(kernel_u_new_endpoint_changed); reveal(kernel_u_cpu_ownership_wf);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map.dom().contains(p) && new_u.process_map[p].pagetable is Some
-        ==> new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The endpoint creation result of a running cpu of `b` reads only the view of `b`.

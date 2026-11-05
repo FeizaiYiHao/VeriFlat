@@ -24,7 +24,11 @@ pub proof fn new_thread_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         new_thread_enter_step_pre(old_u, cpu_id, ep_idx),
         new_thread_enter_step(old_u, new_u, cpu_id, regs, ep_idx),
     ensures isolated(new_u, a, b),
-{ reveal(new_thread_enter_step_pre); reveal(new_thread_enter_step); }
+{
+    reveal(new_thread_enter_step_pre); reveal(new_thread_enter_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Finishing thread creation on a cpu of `a` adds a thread of `a` that holds only an endpoint the
 /// running thread holds, so it leaves the view of `b` unchanged.
@@ -51,6 +55,8 @@ pub proof fn new_thread_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
 {
     reveal(new_thread_finish_step_pre); reveal(new_thread_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
     reveal(kernel_u_ipc_transit_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// The thread creation result of a running cpu of `b` reads only the view of `b`.

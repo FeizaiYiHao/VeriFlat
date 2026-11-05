@@ -23,7 +23,11 @@ pub proof fn iommu_unmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         iommu_unmap_4k_enter_step_pre(old_u, cpu_id, iova_range),
         iommu_unmap_4k_enter_step(old_u, new_u, cpu_id, iova_range),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU unmap leaf on a cpu of `a` removes one IOMMU mapping of a process of `a`.
 pub proof fn iommu_unmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -45,7 +49,10 @@ pub proof fn iommu_unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         iommu_unmap_4k_leaf_step_pre(old_u, cpu_id),
         iommu_unmap_4k_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_unmap_4k_leaf_step_pre); reveal(iommu_unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_unmap_4k_leaf_step_pre); reveal(iommu_unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
+}
 
 /// An IOTLB flush on a cpu of `a` invalidates only the IOTLB domain of its process's IOMMU table, if it has a DID, and
 /// records the flush on its running thread; no domain view contains the IOTLB.
@@ -68,7 +75,11 @@ pub proof fn iommu_unmap_4k_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         iommu_unmap_4k_flush_step_pre(old_u, cpu_id),
         iommu_unmap_4k_flush_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_unmap_4k_flush_step_pre); reveal(iommu_unmap_4k_flush_step); }
+{
+    reveal(iommu_unmap_4k_flush_step_pre); reveal(iommu_unmap_4k_flush_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An IOMMU unmap quota refund on a cpu of `a` raises the quota of a container of `a` or of an ancestor of `a`,
 /// neither of which lies in `b`.
@@ -91,7 +102,11 @@ pub proof fn iommu_unmap_4k_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         iommu_unmap_4k_refund_step_pre(old_u, cpu_id),
         kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Exiting IOMMU unmap on a cpu of `a` unlocks only objects of `a`.
 pub proof fn iommu_unmap_4k_exit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -113,7 +128,11 @@ pub proof fn iommu_unmap_4k_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         iommu_unmap_4k_exit_step_pre(old_u, cpu_id),
         iommu_unmap_4k_exit_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(iommu_unmap_4k_exit_step_pre); reveal(iommu_unmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(iommu_unmap_4k_exit_step_pre); reveal(iommu_unmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The 4K IOMMU unmap result of a running cpu of `b` reads only the view of `b`.
 pub proof fn iommu_unmap_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, iova: VAddr, range: usize, b: RwLockContainerPtr)

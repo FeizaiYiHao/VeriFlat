@@ -26,18 +26,11 @@ pub proof fn mmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     ensures isolated(new_u, a, b),
 {
     reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step);
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
     assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
     assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] old_u.thread_map.dom().contains(t)
         ==> new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container && new_u.thread_map[t].state == old_u.thread_map[t].state);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Holding the cpu and thread on a cpu of `a` locks only objects of `a`.
@@ -60,7 +53,11 @@ pub proof fn mmap_4k_hold_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         mmap_4k_hold_step_pre(old_u, cpu_id, range),
         mmap_4k_hold_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_hold_step_pre); reveal(mmap_4k_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_4k_hold_step_pre); reveal(mmap_4k_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Releasing the cpu and thread on a cpu of `a` unlocks only objects of `a`.
 pub proof fn mmap_4k_release_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -82,7 +79,11 @@ pub proof fn mmap_4k_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         mmap_4k_release_step_pre(old_u, cpu_id),
         mmap_4k_release_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An mmap directory step on a cpu of `a` changes only its running thread.
 pub proof fn mmap_4k_directory_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -104,7 +105,11 @@ pub proof fn mmap_4k_directory_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         mmap_4k_directory_step_pre(old_u, cpu_id),
         mmap_4k_directory_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step); }
+{
+    reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Downgrading the pagetable lock on a cpu of `a` changes only its running thread and that thread's process.
 pub proof fn mmap_4k_downgrade_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -126,7 +131,11 @@ pub proof fn mmap_4k_downgrade_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         mmap_4k_downgrade_step_pre(old_u, cpu_id),
         mmap_4k_downgrade_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// An mmap leaf on a cpu of `a` maps a page that no process maps, into a process of `a`.
 pub proof fn mmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -156,6 +165,7 @@ pub proof fn mmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_2m[v]]
         old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
             ==> !in_2m_frame(old_u.process_map[p].pagetable->Some_0.mapping_2m[v].addr, entry.addr)) by { reveal(in_2m_frame); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Exiting mmap on a cpu of `a` unlocks only objects of `a`.
@@ -178,7 +188,11 @@ pub proof fn mmap_4k_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         mmap_4k_exit_step_pre(old_u, cpu_id),
         mmap_4k_exit_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_exit_step_pre); reveal(mmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_4k_exit_step_pre); reveal(mmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The 4K mmap result of a running cpu of `b` reads only the view of `b`.
 pub proof fn mmap_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, va: VAddr, range: usize, b: RwLockContainerPtr)

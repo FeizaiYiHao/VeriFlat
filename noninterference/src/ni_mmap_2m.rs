@@ -26,15 +26,8 @@ pub proof fn mmap_2m_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     ensures isolated(new_u, a, b),
 {
     reveal(mmap_2m_enter_step_pre); reveal(mmap_2m_enter_step);
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Holding the cpu and thread for a 2M mmap on a cpu of `a` locks only objects of `a`.
@@ -57,7 +50,11 @@ pub proof fn mmap_2m_hold_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         mmap_2m_hold_step_pre(old_u, cpu_id, range),
         mmap_2m_hold_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_hold_step_pre); reveal(mmap_2m_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_2m_hold_step_pre); reveal(mmap_2m_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Releasing the cpu and thread of a rejected 2M mmap on a cpu of `a` unlocks only objects of `a`.
 pub proof fn mmap_2m_release_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -79,7 +76,11 @@ pub proof fn mmap_2m_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         mmap_2m_release_step_pre(old_u, cpu_id),
         mmap_2m_release_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A 2M mmap directory step on a cpu of `a` changes only its running thread and that thread's process.
 pub proof fn mmap_2m_directory_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -103,14 +104,8 @@ pub proof fn mmap_2m_directory_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
     ensures isolated(new_u, a, b),
 {
     reveal(mmap_2m_directory_step_pre); reveal(mmap_2m_directory_step);
-    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
-        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
-        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
-    });
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
 /// Downgrading the pagetable lock of a 2M mmap on a cpu of `a` changes only its running thread and that thread's process.
@@ -133,7 +128,11 @@ pub proof fn mmap_2m_downgrade_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         mmap_2m_downgrade_step_pre(old_u, cpu_id),
         mmap_2m_downgrade_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_downgrade_step_pre); reveal(mmap_2m_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_2m_downgrade_step_pre); reveal(mmap_2m_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A 2M mmap TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
 /// domain view contains.
@@ -156,7 +155,11 @@ pub proof fn mmap_2m_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         mmap_2m_flush_step_pre(old_u, cpu_id),
         unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); }
+{
+    reveal(mmap_2m_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Recording the 2M mmap flush on a cpu of `a` changes only the cpu-set lock mode of its container.
 pub proof fn mmap_2m_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -178,7 +181,11 @@ pub proof fn mmap_2m_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         mmap_2m_flushed_step_pre(old_u, cpu_id),
         mmap_2m_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_flushed_step_pre); reveal(mmap_2m_flushed_step); }
+{
+    reveal(mmap_2m_flushed_step_pre); reveal(mmap_2m_flushed_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// Reclaiming a hidden L1 table of a 2M mmap on a cpu of `a` raises the 4K quota of a container of `a` or of an ancestor
 /// of `a`, neither of which lies in `b`.
@@ -201,7 +208,11 @@ pub proof fn mmap_2m_l1_reclaim_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         mmap_2m_l1_reclaim_step_pre(old_u, cpu_id),
         kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_l1_reclaim_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(mmap_2m_l1_reclaim_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// A 2M mmap leaf on a cpu of `a` maps a 2M frame that no mapping reaches, into a process of `a`.
 pub proof fn mmap_2m_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -234,6 +245,7 @@ pub proof fn mmap_2m_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].iommu_table->Some_0.mapping_4k[v]]
         old_u.process_map.dom().contains(p) && old_u.process_map[p].iommu_table is Some && old_u.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
             ==> !in_2m_frame(entry.addr, old_u.process_map[p].iommu_table->Some_0.mapping_4k[v].addr)) by { reveal(in_2m_frame); };
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
 /// Exiting 2M mmap on a cpu of `a` unlocks only objects of `a`.
@@ -256,7 +268,11 @@ pub proof fn mmap_2m_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         mmap_2m_exit_step_pre(old_u, cpu_id),
         mmap_2m_exit_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_2m_exit_step_pre); reveal(mmap_2m_exit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(mmap_2m_exit_step_pre); reveal(mmap_2m_exit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
 
 /// The 2M mmap result of a running cpu of `b` reads only the view of `b`.
 pub proof fn mmap_2m_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, va: VAddr, range: usize, b: RwLockContainerPtr)
