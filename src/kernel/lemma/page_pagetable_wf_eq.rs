@@ -82,7 +82,10 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
 {
     broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip};
     page_ptr_valid_imply_page_index_valid();
-    reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
+    reveal(pagetable_lower_wf);
+    assert(mapped_2m_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_2m_page_pagetable_wf); };
+    assert(mapped_4k_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_4k_page_pagetable_wf); };
+    assert(mapped_1g_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_1g_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); };
 }
 
 /// A single non-mapped page may change payload/state without affecting the
