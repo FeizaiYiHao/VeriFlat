@@ -135,4 +135,80 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         assert(typed_lock_maps_aligned(&*krnl, lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
 }
+
+/// Flushes the `count` pages from `va`, 4K or 2M apart by `stride_2m`, under `pcid` on the calling cpu `cpu_id`, which runs
+/// `pcid`, and clears the needflush bit of that pair.
+pub fn flush_local_va_range_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, Tracked(lctx): Tracked<&LocalContext>,
+    needflush_perm: Tracked<&LockPerm>)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), lctx),
+        lctx.kernel_view_locking_state() is Release,
+        index_valid(NUM_CPUS, cpu_id),
+        cpu_id == lctx.cpu_id(),
+        pcid_valid(pcid),
+        pcid != KERNEL_DEFAULT_PCID,
+        va_4k_valid(va),
+        stride_2m ==> va_2m_valid(va),
+        1 <= count < 0x4000,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
+        needflush_perm.view().state() is WriteLock,
+        needflush_perm.view().thread_id() == lctx.thread_id(),
+        needflush_perm.view().lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+    ensures
+        final(krnl).inv(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        typed_lock_maps_aligned(final(krnl), lctx),
+        *final(krnl) == (KernelK { cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
+        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
+        cpu_tlb_va_range_flushed(*old(krnl), cpu_id, pcid, va, count, stride_2m, old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), final(krnl).cpu_tlb.spec_index((cpu_id, pcid)),
+            final(krnl).cpu_tlb.structure_cache((cpu_id, pcid))),
+        !final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush,
+        final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
+        final(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread(),
+        final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost(),
+        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+            ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
+{
+    krnl.cpu_tlb.flush_local_va_range(cpu_id, pcid, va, count, stride_2m, Ghost(*krnl), Tracked(lctx));
+    pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
+    proof {
+        assert(flush_local_va_range_and_clear_eof_transition_framing(*old(krnl), *krnl, cpu_id, pcid, va, count, stride_2m)) by { reveal(flush_local_va_range_and_clear_eof_transition_framing); };
+        flush_local_va_range_and_clear_eof(*old(krnl), *krnl, cpu_id, pcid, va, count, stride_2m);
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    }
+}
+
+/// Flushes the `count` pages from `va`, 4K or 2M apart by `stride_2m`, under `pcid` on the remote cpu `cpu_id`, keeping the
+/// needflush bit of that pair, which marks it for a full flush at its next activation.
+pub fn flush_remote_va_range_keep_needflush(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, Tracked(lctx): Tracked<&LocalContext>)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), lctx),
+        lctx.kernel_view_locking_state() is Release,
+        index_valid(NUM_CPUS, cpu_id),
+        cpu_id != lctx.cpu_id(),
+        pcid_valid(pcid),
+        pcid != KERNEL_DEFAULT_PCID,
+        va_4k_valid(va),
+        stride_2m ==> va_2m_valid(va),
+        1 <= count < 0x4000,
+        old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush,
+    ensures
+        final(krnl).inv(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        typed_lock_maps_aligned(final(krnl), lctx),
+        *final(krnl) == (KernelK { cpu_tlb: final(krnl).cpu_tlb, ..*old(krnl) }),
+        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
+        cpu_tlb_va_range_flushed(*old(krnl), cpu_id, pcid, va, count, stride_2m, old(krnl).cpu_tlb.spec_index((cpu_id, pcid)), final(krnl).cpu_tlb.spec_index((cpu_id, pcid)),
+            final(krnl).cpu_tlb.structure_cache((cpu_id, pcid))),
+{
+    krnl.cpu_tlb.flush_remote_va_range(cpu_id, pcid, va, count, stride_2m, Ghost(*krnl), Tracked(lctx));
+    proof {
+        assert(flush_remote_va_range_keep_needflush_eof_transition_framing(*old(krnl), *krnl, cpu_id, pcid, va, count, stride_2m)) by { reveal(flush_remote_va_range_keep_needflush_eof_transition_framing); };
+        flush_remote_va_range_keep_needflush_eof(*old(krnl), *krnl, cpu_id, pcid, va, count, stride_2m);
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    }
+}
 }

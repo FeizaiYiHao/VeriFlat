@@ -11,8 +11,23 @@ use crate::interrupt;
 /// Toggling CR4.PGE invalidates every TLB entry of every PCID, global ones included.
 const CR4_PGE: u64 = 1 << 7;
 
+/// `INVPCID` type 0: invalidate the translations of one linear address of one PCID, every TLB entry of a large page
+/// that contains it, and every paging-structure-cache entry of that PCID.
+const INVPCID_INDIVIDUAL_ADDRESS: u64 = 0;
+
 /// `INVPCID` type 1: invalidate every non-global translation of one PCID.
 const INVPCID_SINGLE_CONTEXT: u64 = 1;
+
+/// Flush request word bit 63: a per-address request; otherwise the word is `pcid + 1` for a whole-PCID request.
+const FLUSH_VA_RANGE: usize = 1 << 63;
+/// Per-address request bit 62: the addresses are 2M apart, else 4K apart.
+const FLUSH_VA_STRIDE_2M: usize = 1 << 62;
+/// Per-address request bits 48-61: the number of addresses.
+const FLUSH_VA_COUNT_SHIFT: u32 = 48;
+const FLUSH_VA_COUNT_MASK: usize = 0x3fff;
+/// Per-address request bits 12-47: the first address; bits 0-11: the PCID.
+const FLUSH_VA_ADDR_MASK: usize = 0x0000_ffff_ffff_f000;
+const FLUSH_VA_PCID_MASK: usize = 0xfff;
 
 /// An `AtomicUsize` alone in its 64-byte cache line: arrays of them start on a line boundary and give every
 /// element its own line, so CPUs writing different slots or counters never share a line.
@@ -35,9 +50,10 @@ impl core::ops::Deref for LineWord {
     }
 }
 
-/// `FLUSH_REQUESTS[target][sender]` is `pcid + 1` while `sender` waits for `target` to flush `pcid`.
-/// One slot per sender needs no lock, and an NMI handler that scans every slot also serves an NMI
-/// that arrived while another one was pending.
+/// `FLUSH_REQUESTS[target][sender]` is nonzero while `sender` waits for `target` to serve its request: `pcid + 1`
+/// to flush `pcid`, or a per-address request word (bit 63 set; bit 62 the 2M stride; bits 48-61 the count; bits 12-47
+/// the first address; bits 0-11 the PCID). One slot per sender needs no lock, and an NMI handler that scans every slot
+/// also serves an NMI that arrived while another one was pending.
 static FLUSH_REQUESTS: [[LineWord; MAX_CPUS]; MAX_CPUS] = [const { [const { LineWord::new() }; MAX_CPUS] }; MAX_CPUS];
 
 /// `RUNNING_TO_IDLE_REQUESTS[target]` is the default `cr3` while the caller of
@@ -64,6 +80,32 @@ fn invpcid_single_context(pcid: usize) {
     }
 }
 
+fn invpcid_individual(pcid: usize, va: usize) {
+    let descriptor: [u64; 2] = [pcid as u64, va as u64];
+    unsafe {
+        asm!("invpcid {ty}, xmmword ptr [{desc}]", ty = in(reg) INVPCID_INDIVIDUAL_ADDRESS, desc = in(reg) &descriptor, options(nostack, preserves_flags));
+    }
+}
+
+/// The canonical form of the 48-bit address in bits 12-47 of `va`: bit 47 sign-extended, as the walker tags it.
+fn canonical_page(va: usize) -> usize {
+    ((((va & FLUSH_VA_ADDR_MASK) << 16) as isize) >> 16) as usize
+}
+
+/// Invalidates under `pcid` on this CPU the `count` addresses from `va` (48-bit, page aligned), 4K or 2M apart.
+fn flush_va_range(pcid: usize, va: usize, count: usize, stride_2m: bool) {
+    let stride = if stride_2m { 0x20_0000 } else { 0x1000 };
+    for i in 0..count {
+        invpcid_individual(pcid, canonical_page(va.wrapping_add(i * stride)));
+    }
+}
+
+/// Invalidates under `pcid` on this CPU the `count` addresses, 4K or 2M apart by `stride_2m`, from the user address `va`.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_local_flush_va_range(pcid: usize, va: usize, count: usize, stride_2m: bool) {
+    flush_va_range(pcid, va, count, stride_2m);
+}
+
 /// Invalidates every non-global PCID on this CPU.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_local_flush_all_pcids() {
@@ -86,6 +128,24 @@ pub extern "C" fn veriflat_remote_flush_pcid(cpu_id: usize, pcid: usize) {
     cpu::count_remote_flush();
     let slot = &FLUSH_REQUESTS[cpu_id][cpu::get_cpu_id()];
     slot.store(pcid + 1, Ordering::Release);
+    interrupt::send_nmi(cpu::apic_id(cpu_id));
+    while slot.load(Ordering::Acquire) != 0 {
+        core::hint::spin_loop();
+    }
+}
+
+/// Invalidates under `pcid` on `cpu_id` (another CPU) the `count` addresses, 4K or 2M apart by `stride_2m`, from the
+/// user address `va` (`count` below 2^14), with one NMI, and returns once it is done; as `veriflat_remote_flush_pcid`.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_remote_flush_va_range(cpu_id: usize, pcid: usize, va: usize, count: usize, stride_2m: bool) {
+    if !cpu::is_started(cpu_id) {
+        return;
+    }
+    cpu::count_remote_flush();
+    let stride_bit = if stride_2m { FLUSH_VA_STRIDE_2M } else { 0 };
+    let request = FLUSH_VA_RANGE | stride_bit | ((count & FLUSH_VA_COUNT_MASK) << FLUSH_VA_COUNT_SHIFT) | (va & FLUSH_VA_ADDR_MASK) | (pcid & FLUSH_VA_PCID_MASK);
+    let slot = &FLUSH_REQUESTS[cpu_id][cpu::get_cpu_id()];
+    slot.store(request, Ordering::Release);
     interrupt::send_nmi(cpu::apic_id(cpu_id));
     while slot.load(Ordering::Acquire) != 0 {
         core::hint::spin_loop();
@@ -142,7 +202,12 @@ pub fn handle_nmi(_regs: &mut Registers) {
     for slot in FLUSH_REQUESTS[me].iter() {
         let request = slot.load(Ordering::Acquire);
         if request != 0 {
-            invpcid_single_context(request - 1);
+            if request & FLUSH_VA_RANGE != 0 {
+                let count = (request >> FLUSH_VA_COUNT_SHIFT) & FLUSH_VA_COUNT_MASK;
+                flush_va_range(request & FLUSH_VA_PCID_MASK, request & FLUSH_VA_ADDR_MASK, count, request & FLUSH_VA_STRIDE_2M != 0);
+            } else {
+                invpcid_single_context(request - 1);
+            }
             // Only this CPU's NMI handler writes its count, and NMIs do not nest: no locked add needed.
             served.store(served.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
             slot.store(0, Ordering::Release);

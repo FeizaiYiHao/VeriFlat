@@ -527,6 +527,19 @@ pub open spec fn kernel_u_cpu_tlb_cleared(pre: KernelU, post: KernelU, pcid: Pci
     &&& post == (KernelU { cpu_tlb: post.cpu_tlb, ..pre })
 }
 
+/// CPU `cpu_id` runs INVPCID individual-address invalidations under `pcid` of the `count` addresses, 4K or 2M apart by
+/// `stride_2m`, from `va`: they drop the translations of those addresses, the walker may refill present ones at once, and
+/// every other translation of `(cpu_id, pcid)` stays. Nothing else changes.
+#[verifier::opaque]
+pub open spec fn kernel_u_cpu_tlb_va_flushed(pre: KernelU, post: KernelU, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pcid_valid(pcid)
+    &&& pcid != KERNEL_DEFAULT_PCID
+    &&& post.cpu_tlb == pre.cpu_tlb.insert((cpu_id, pcid), post.cpu_tlb[(cpu_id, pcid)])
+    &&& cpu_tlb_va_range_flushed_u(post, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb[(cpu_id, pcid)], post.cpu_tlb[(cpu_id, pcid)])
+    &&& post == (KernelU { cpu_tlb: post.cpu_tlb, ..pre })
+}
+
 #[verifier::opaque]
 pub open spec fn kernel_u_container_quota_4k_increased(pre: KernelU, post: KernelU, container: RwLockContainerPtr) -> bool {
     let changed = pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]);

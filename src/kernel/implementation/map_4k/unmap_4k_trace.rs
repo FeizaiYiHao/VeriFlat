@@ -180,6 +180,32 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
 }
 
+/// A step that takes or keeps this cpu's read hold on the cpu set of the container `ctn_ptr` of the thread that `entry`
+/// projects at `thrd_ptr`, and flushes on cpu `cpu_id` the `count` pages from `va`, 4K or 2M apart by `stride_2m`, under
+/// the PCID `pcid` of that thread's process, is a per-address TLB-flush step.
+pub proof fn unmap_4k_tlb_va_flush_step_from_k(
+    entry: &KernelK, old_u: KernelU, new_u: KernelU, local_cpu: CpuId, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, pcid: Pcid, va: VAddr, count: usize,
+    stride_2m: bool,
+)
+    requires
+        entry.thrd_mp.dom().contains(thrd_ptr),
+        entry.prc_mp.dom().contains(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc),
+        ctn_ptr == entry.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        entry.prc_mp.spec_index(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
+        old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr),
+        old_u.thread_map[thrd_ptr] == kernel_k_to_kernel_u(*entry).thread_map[thrd_ptr],
+        old_u.process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid == kernel_k_to_kernel_u(*entry).process_map[entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc].pcid,
+        ({
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
+            new_u == locked || kernel_u_cpu_tlb_va_flushed(locked, new_u, cpu_id, pcid, va, count, stride_2m)
+        }),
+    ensures
+        unmap_4k_tlb_va_flush_step(old_u, new_u, local_cpu, va, count, stride_2m),
+{
+    kernel_thread_projection_at(entry, thrd_ptr); kernel_process_projection_at(entry, entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc);
+    reveal(unmap_4k_tlb_va_flush_step); reveal(kernel_u_cpu_tlb_va_flushed);
+}
+
 /// Recording the flush in the progress and releasing this cpu's read hold on the cpu set of the thread's container is the
 /// flushed step on `pre`/`post`.
 pub proof fn unmap_4k_flushed_step_from_u(
@@ -230,6 +256,7 @@ pub proof fn unmap_4k_range_steps_from_tlb_flush(
         entry.thread_map[thrd_ptr].owning_proc == prc_ptr,
         entry.thread_map[thrd_ptr].owning_container == ctn_ptr,
         entry.process_map[prc_ptr].pcid == pcid,
+        TLB_FLUSH_VA_RANGE_MAX_PAGES < entry.thread_map[thrd_ptr].syscall_progress->Some_0->Unmap4k_range.len,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
@@ -367,6 +394,7 @@ pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        TLB_FLUSH_VA_RANGE_MAX_PAGES < range.len,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
@@ -387,6 +415,88 @@ pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
 {
     unmap_4k_flush_step_pre_from_k(entry, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, range);
     unmap_4k_range_steps_from_tlb_flush(steps, before, start, kernel_k_to_kernel_u(*entry), cpu_id, thrd_ptr, prc_ptr, ctn_ptr, pcid);
+}
+
+/// Per-address TLB flushes of the range's addresses under the caller's PCID, recorded after range steps that start at
+/// `start` while the caller's held objects keep their projection at `entry` and the range has at most
+/// `TLB_FLUSH_VA_RANGE_MAX_PAGES` pages, leave only range steps.
+pub proof fn unmap_4k_range_steps_from_tlb_va_flush(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    range: VaRange4K,
+)
+    requires
+        0 <= start <= before.len() <= steps.view().len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
+        forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
+        unmap_4k_flush_step_pre(entry, cpu_id),
+        entry.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
+        entry.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES,
+        forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
+            let old_u = steps.view()[j].old_u;
+            &&& unmap_4k_tlb_va_flush_step(old_u, steps.view()[j].new_u, cpu_id, range.start, range.len, false)
+            &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+            &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
+            &&& old_u.thread_map.dom().contains(thrd_ptr)
+            &&& old_u.thread_map[thrd_ptr] == entry.thread_map[thrd_ptr]
+            &&& old_u.process_map.dom().contains(prc_ptr)
+            &&& old_u.process_map[prc_ptr].pagetable is Some
+            &&& !(old_u.process_map[prc_ptr].pagetable->Some_0.lock_state is Unlocked)
+            &&& old_u.process_map[prc_ptr].pcid == entry.process_map[prc_ptr].pcid
+            &&& old_u.container_map.dom().contains(ctn_ptr)
+        },
+        entry.thread_map[thrd_ptr].owning_proc == prc_ptr,
+        entry.thread_map[thrd_ptr].owning_container == ctn_ptr,
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
+{ reveal(unmap_4k_range_step); reveal(unmap_4k_flush_step_pre); }
+
+/// Per-address TLB flushes of the range's addresses under the caller's PCID recorded from `entry` after range steps that
+/// start at `start`, while the caller write-holds its cpu and thread and holds the pagetable of the thread's present process
+/// with the whole range of at most `TLB_FLUSH_VA_RANGE_MAX_PAGES` pages cleared and the thread's container exists, leave
+/// only range steps.
+pub proof fn unmap_4k_tlb_va_flush_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pagetable: RwLockPageTableRoot, pcid: Pcid, range: VaRange4K,
+)
+    requires
+        0 <= start <= before.len() <= steps.view().len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
+        forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
+        typed_lock_maps_aligned(entry, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        lctx.pagetable_lock_map().dom().contains(pagetable),
+        entry.prc_mp.dom().contains(prc_ptr),
+        entry.ctn_mp.dom().contains(ctn_ptr),
+        !entry.prc_mp.spec_index(prc_ptr).view().zombie,
+        entry.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        entry.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid == pcid,
+        entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        entry.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        entry.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES,
+        forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
+            let old_u = steps.view()[j].old_u;
+            let entry_u = kernel_k_to_kernel_u(*entry);
+            &&& unmap_4k_tlb_va_flush_step(old_u, steps.view()[j].new_u, cpu_id, range.start, range.len, false)
+            &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+            &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
+            &&& old_u.thread_map.dom().contains(thrd_ptr)
+            &&& old_u.thread_map[thrd_ptr] == entry_u.thread_map[thrd_ptr]
+            &&& old_u.process_map.dom().contains(prc_ptr)
+            &&& old_u.process_map[prc_ptr].pagetable is Some
+            &&& !(old_u.process_map[prc_ptr].pagetable->Some_0.lock_state is Unlocked)
+            &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
+            &&& old_u.container_map.dom().contains(ctn_ptr)
+        },
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
+{
+    unmap_4k_flush_step_pre_from_k(entry, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, range);
+    unmap_4k_range_steps_from_tlb_va_flush(steps, before, start, kernel_k_to_kernel_u(*entry), cpu_id, thrd_ptr, prc_ptr, ctn_ptr, range);
 }
 
 /// Recording the flush in the progress from `pre` to `post` after range steps that start at `start`, where `pre` extends

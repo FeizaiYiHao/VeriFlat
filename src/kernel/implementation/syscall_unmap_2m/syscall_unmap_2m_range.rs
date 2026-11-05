@@ -8,12 +8,16 @@ use veriflat_map_4k::map_4k::unmap_2m_present_in_window::clear_2m_mapping_presen
 use veriflat_map_4k::map_4k::unmap_2m_reclaim_in_window::reclaim_unmapped_2m_page_in_window;
 #[cfg(feature = "split-crates")]
 use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota;
+#[cfg(feature = "split-crates")]
+use veriflat_map_4k::map_4k::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::unmap_2m_present_in_window::clear_2m_mapping_present_in_window;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::unmap_2m_reclaim_in_window::reclaim_unmapped_2m_page_in_window;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota;
+#[cfg(not(feature = "split-crates"))]
+use crate::kernel::implementation::map_4k::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 
 verus! {
 /// Unmap every page of `range`, each a present 2M leaf of the read-held page table `pagetable` whose window this thread holds
@@ -75,7 +79,12 @@ pub(super) fn unmap_2m_range(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])), spec_v2l2index(range.view()[j]))
                 == (RwLockState::Write { thread_id: window_perms.index(window_of(range.view()[j])).thread_id(), lock_id: window_perms.index(window_of(range.view()[j])).lock_id() })
         },
-        forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None,
+        forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
+            &&& w.wf()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_leaves_present(w)
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+        },
         old(krnl).prc_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
     ensures
         final(steps).snapshot_k() == *final(krnl),
@@ -243,10 +252,26 @@ pub(super) fn unmap_2m_range(
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
-    flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
-    proof {
-        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        unmap_2m_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+    if range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES {
+        assert(held_windows_hidden_leaves_va_flushed(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable), lctx.pagetable_window_lock_map(), pagetable, range.start, range.len, true)) by {
+            broadcast use spec_va_2m_valid_index_roundtrip;
+            range.wf_implies_view_index_is_start_plus_offset();
+        };
+        proof {
+            let start = range.start;
+            assert(spec_va_2m_valid(start) ==> spec_va_4k_valid(start)) by (bit_vector);
+        }
+        flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, true, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
+        proof {
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            unmap_2m_tlb_va_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
+    } else {
+        flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+        proof {
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            unmap_2m_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
     }
     let ghost flushed_snap = steps.snapshot_k();
     let ghost flushed_pre = *krnl;

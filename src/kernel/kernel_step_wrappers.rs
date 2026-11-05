@@ -66,6 +66,8 @@ pub mod iommu_table_steps;
 pub mod env_steps;
 /// K->U lemma and step boundary of a section that read-locks or keeps read-holding one container's cpu set.
 pub mod cpu_set_read_lock;
+/// K->U lemmas and step boundary of a per-address TLB flush in a section that read-holds one container's cpu set.
+pub mod cpu_tlb_va_flushed;
 /// K->U lemma and step boundary of a section that returns 2M quota to one container.
 pub mod container_quota_2m;
 /// K->U lemma of a step that hides one user root entry of a page table.
@@ -103,6 +105,7 @@ pub use ipc_pages_tables::*;
 pub use iommu_table_steps::*;
 pub use env_steps::*;
 pub use cpu_set_read_lock::*;
+pub use cpu_tlb_va_flushed::*;
 pub use container_quota_2m::*;
 pub use table_hidden::*;
 pub use process_2m_mapping::*;

@@ -24,10 +24,10 @@ verus! {
 /// One step of a syscall or of the hardware environment, with the arguments its step specification takes.
 pub ghost enum StepLabel {
     Mmap4kHold { range: VaRange4K }, Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit, Mmap4kRelease,
-    Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf, Unmap4kTlbFlush, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
+    Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf, Unmap4kTlbFlush, Unmap4kTlbVaFlush, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
     Mmap2mHold { range_2m: VaRange2M }, Mmap2mEnter { range_2m: VaRange2M, phase_2m: Mmap2mPhase }, Mmap2mDirectory, Mmap2mDowngrade, Mmap2mFlush, Mmap2mFlushed, Mmap2mL1Reclaim,
     Mmap2mLeaf, Mmap2mExit, Mmap2mRelease,
-    Unmap2mEnter { range_2m: VaRange2M }, Unmap2mLeaf, Unmap2mTlbFlush, Unmap2mFlushed, Unmap2mRefund, Unmap2mExit,
+    Unmap2mEnter { range_2m: VaRange2M }, Unmap2mLeaf, Unmap2mTlbFlush, Unmap2mTlbVaFlush, Unmap2mFlushed, Unmap2mRefund, Unmap2mExit,
     IommuMap4kEnter { va_range: VaRange4K, iova_range: VaRange4K }, IommuMap4kDirectory, IommuMap4kLeaf, IommuMap4kExit,
     IommuUnmap4kEnter { iova_range: VaRange4K }, IommuUnmap4kLeaf, IommuUnmap4kFlush, IommuUnmap4kRefund, IommuUnmap4kExit,
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
@@ -74,7 +74,14 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Mmap4kRelease => mmap_4k_release_step_pre(old_u, cpu_id) && mmap_4k_release_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kEnter { range } => unmap_4k_enter_step_pre(old_u, cpu_id, range) && unmap_4k_enter_step(old_u, new_u, cpu_id, range),
         StepLabel::Unmap4kLeaf => unmap_4k_leaf_step_pre(old_u, cpu_id) && unmap_4k_leaf_step(old_u, new_u, cpu_id),
-        StepLabel::Unmap4kTlbFlush => unmap_4k_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap4kTlbFlush => unmap_4k_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap4k_range.len
+            && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap4kTlbVaFlush => {
+            let range = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap4k_range;
+            &&& unmap_4k_flush_step_pre(old_u, cpu_id)
+            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES
+            &&& unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, range.start, range.len, false)
+        },
         StepLabel::Unmap4kFlushed => unmap_4k_flush_step_pre(old_u, cpu_id) && unmap_4k_flushed_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kRefund => unmap_4k_refund_step_pre(old_u, cpu_id)
             && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
@@ -91,7 +98,14 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Mmap2mRelease => mmap_4k_release_step_pre(old_u, cpu_id) && mmap_4k_release_step(old_u, new_u, cpu_id),
         StepLabel::Unmap2mEnter { range_2m: range } => unmap_2m_enter_step_pre(old_u, cpu_id, range) && unmap_2m_enter_step(old_u, new_u, cpu_id, range),
         StepLabel::Unmap2mLeaf => unmap_2m_leaf_step_pre(old_u, cpu_id) && unmap_2m_leaf_step(old_u, new_u, cpu_id),
-        StepLabel::Unmap2mTlbFlush => unmap_2m_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap2mTlbFlush => unmap_2m_flush_step_pre(old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES < old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap2m_range.len
+            && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap2mTlbVaFlush => {
+            let range = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->Unmap2m_range;
+            &&& unmap_2m_flush_step_pre(old_u, cpu_id)
+            &&& range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES
+            &&& unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, range.start, range.len, true)
+        },
         StepLabel::Unmap2mFlushed => unmap_2m_flush_step_pre(old_u, cpu_id) && unmap_2m_flushed_step(old_u, new_u, cpu_id),
         StepLabel::Unmap2mRefund => unmap_2m_exit_step_pre(old_u, cpu_id) && kernel_u_container_quota_2m_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
         StepLabel::Unmap2mExit => unmap_2m_exit_step_pre(old_u, cpu_id) && unmap_2m_exit_step(old_u, new_u, cpu_id),
@@ -301,8 +315,11 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::Mmap4kRelease => { mmap_4k_release_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_release_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kEnter { range } => { unmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
             StepLabel::Unmap4kLeaf => { unmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
-
             StepLabel::Unmap4kTlbFlush => { unmap_4k_tlb_flush_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_tlb_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap4kTlbVaFlush => {
+                unmap_4k_tlb_va_flush_step_lr(old_u, new_u, cpu_id, progress->Unmap4k_range.start, progress->Unmap4k_range.len, x, y);
+                unmap_4k_tlb_va_flush_step_iso(old_u, new_u, cpu_id, progress->Unmap4k_range.start, progress->Unmap4k_range.len, x, y);
+            },
             StepLabel::Unmap4kFlushed => { unmap_4k_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kRefund => { unmap_4k_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kExit => { unmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
@@ -319,6 +336,10 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::Unmap2mEnter { range_2m: range } => { unmap_2m_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_2m_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
             StepLabel::Unmap2mLeaf => { unmap_2m_leaf_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap2mTlbFlush => { unmap_2m_tlb_flush_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_tlb_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap2mTlbVaFlush => {
+                unmap_2m_tlb_va_flush_step_lr(old_u, new_u, cpu_id, progress->Unmap2m_range.start, progress->Unmap2m_range.len, x, y);
+                unmap_2m_tlb_va_flush_step_iso(old_u, new_u, cpu_id, progress->Unmap2m_range.start, progress->Unmap2m_range.len, x, y);
+            },
             StepLabel::Unmap2mFlushed => { unmap_2m_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap2mRefund => { unmap_2m_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap2mExit => { unmap_2m_exit_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_exit_step_iso(old_u, new_u, cpu_id, x, y); },

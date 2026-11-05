@@ -6,7 +6,38 @@ use super::cpu_cr3_pcid::CpuCr3Pcid;
 verus! {
 /// Cached translations, shared by the CPU TLBs and the IOTLB. Only the IOTLB folds its paging-structure caches in; a CPU
 /// keeps them in `PagingStructureCache`. A 2M translation the hardware splits into 4K TLB entries is represented by its
-/// `tlb_2m` entry: every modeled invalidation is PCID- or domain-wide, so the split is not observable.
+/// `tlb_2m` entry keyed by the 2M base: a PCID- or domain-wide invalidation drops every split entry, and an INVPCID
+/// individual-address invalidation of any address inside a large page drops every entry of that page (Intel SDM), so
+/// the split is not observable.
+/// One past the last of the `count` addresses, 4K apart or 2M apart by `stride_2m`, that a per-address flush from `va` names.
+pub open spec fn va_range_flush_end(va: VAddr, count: usize, stride_2m: bool) -> int { va as int + count as int * (if stride_2m { 0x200000int } else { 4096int }) }
+
+/// A per-address flush of `count` pages from `va` drops the 4K translation at `x`: the flush is 4K apart and names `x`.
+pub open spec fn va_range_flush_drops_4k(va: VAddr, count: usize, stride_2m: bool, x: VAddr) -> bool {
+    !stride_2m && spec_va_4k_valid(x) && va <= x && (x as int) < va_range_flush_end(va, count, stride_2m)
+}
+
+/// A per-address flush of `count` pages from `va` drops the 2M translation at `x`: it names an address in that 2M page.
+pub open spec fn va_range_flush_drops_2m(va: VAddr, count: usize, stride_2m: bool, x: VAddr) -> bool {
+    spec_va_2m_valid(x) && (va as int) < x as int + 0x200000 && (x as int) < va_range_flush_end(va, count, stride_2m)
+}
+
+/// A per-address flush of `count` pages from `va` drops the 1G translation at `x`: it names an address in that 1G page.
+pub open spec fn va_range_flush_drops_1g(va: VAddr, count: usize, stride_2m: bool, x: VAddr) -> bool {
+    spec_va_1g_valid(x) && (va as int) < x as int + 0x40000000 && (x as int) < va_range_flush_end(va, count, stride_2m)
+}
+
+/// Every translation `tlb` caches is one `old_tlb` caches alike that a per-address flush of `count` pages from `va` does
+/// not drop: the TLB of one `(cpu, pcid)` right after such a flush when its walker cannot refill it.
+pub open spec fn single_tlb_va_range_flushed_kept(old_tlb: SingleTLB, tlb: SingleTLB, va: VAddr, count: usize, stride_2m: bool) -> bool {
+    &&& forall|x: VAddr| #![trigger tlb.tlb_4k().dom().contains(x)] #![trigger tlb.tlb_4k().spec_index(x)] tlb.tlb_4k().dom().contains(x)
+        ==> !va_range_flush_drops_4k(va, count, stride_2m, x) && old_tlb.tlb_4k().contains_pair(x, tlb.tlb_4k().spec_index(x))
+    &&& forall|x: VAddr| #![trigger tlb.tlb_2m().dom().contains(x)] #![trigger tlb.tlb_2m().spec_index(x)] tlb.tlb_2m().dom().contains(x)
+        ==> !va_range_flush_drops_2m(va, count, stride_2m, x) && old_tlb.tlb_2m().contains_pair(x, tlb.tlb_2m().spec_index(x))
+    &&& forall|x: VAddr| #![trigger tlb.tlb_1g().dom().contains(x)] #![trigger tlb.tlb_1g().spec_index(x)] tlb.tlb_1g().dom().contains(x)
+        ==> !va_range_flush_drops_1g(va, count, stride_2m, x) && old_tlb.tlb_1g().contains_pair(x, tlb.tlb_1g().spec_index(x))
+}
+
 pub ghost struct SingleTLB {
     pub tlb_4k: Map<VAddr, TLBEntry>,
     pub tlb_2m: Map<VAddr, TLBEntry>,

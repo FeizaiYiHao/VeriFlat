@@ -67,6 +67,88 @@ pub open spec fn cpu_tlb_within_may_cache_u(u: KernelU, cpu_id: CpuId, pcid: Pci
     }
 }
 
+/// `entry` is the translation of the present 4K leaf at `va` of `table`: one entry of
+/// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
+pub open spec fn tlb_4k_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+    let held = table.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    let leaf = table.spec_resolve_mapping_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    &&& va_4k_valid(va)
+    &&& table.kernel_l4_end() <= spec_v2l4index(va)
+    &&& held is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& leaf is Some
+    &&& leaf->0.perm.present
+}
+
+/// `entry` is the translation of the present 2M leaf at `va` of `table`: one entry of
+/// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
+pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+    let held = table.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+    let leaf = table.spec_resolve_mapping_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+    &&& va_2m_valid(va)
+    &&& table.kernel_l4_end() <= spec_v2l4index(va)
+    &&& held is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& leaf is Some
+    &&& leaf->0.perm.present
+}
+
+/// `entry` is the translation of the present 1G leaf at `va` of `table`: one entry of
+/// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
+pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
+    &&& table.mapping_1g().dom().contains(va)
+    &&& spec_tlb_entry_equal_to_map_entry(entry, table.mapping_1g().spec_index(va))
+    &&& table.mapping_1g().spec_index(va).present
+}
+
+/// Every translation `tlb` caches is one `old_tlb` caches alike that a per-address flush of `count` pages from `va` does
+/// not drop, or a present leaf of `table`: the TLB of one `(cpu, pcid)` right after such a flush while it runs `table`.
+pub open spec fn single_tlb_va_range_flushed_kept_or_present(old_tlb: SingleTLB, tlb: SingleTLB, table: WholePageTable<PT_TYPE>, va: VAddr, count: usize, stride_2m: bool) -> bool {
+    &&& forall|x: VAddr| #![trigger tlb.tlb_4k().dom().contains(x)] #![trigger tlb.tlb_4k().spec_index(x)] tlb.tlb_4k().dom().contains(x)
+        ==> (!va_range_flush_drops_4k(va, count, stride_2m, x) && old_tlb.tlb_4k().contains_pair(x, tlb.tlb_4k().spec_index(x))) || tlb_4k_entry_present_in_pagetable(tlb.tlb_4k().spec_index(x), table, x)
+    &&& forall|x: VAddr| #![trigger tlb.tlb_2m().dom().contains(x)] #![trigger tlb.tlb_2m().spec_index(x)] tlb.tlb_2m().dom().contains(x)
+        ==> (!va_range_flush_drops_2m(va, count, stride_2m, x) && old_tlb.tlb_2m().contains_pair(x, tlb.tlb_2m().spec_index(x))) || tlb_2m_entry_present_in_pagetable(tlb.tlb_2m().spec_index(x), table, x)
+    &&& forall|x: VAddr| #![trigger tlb.tlb_1g().dom().contains(x)] #![trigger tlb.tlb_1g().spec_index(x)] tlb.tlb_1g().dom().contains(x)
+        ==> (!va_range_flush_drops_1g(va, count, stride_2m, x) && old_tlb.tlb_1g().contains_pair(x, tlb.tlb_1g().spec_index(x))) || tlb_1g_entry_present_in_pagetable(tlb.tlb_1g().spec_index(x), table, x)
+}
+
+/// What CPU `cpu_id` may hold under `pcid` in state `k` right after a per-address flush of `count` pages from `va` that
+/// found `old_tlb`: the translations of `old_tlb` the flush does not drop, plus present leaves and present directory
+/// entries of the table it runs when `pcid` is its current PCID. The flush drops every directory entry of `pcid`.
+pub open spec fn cpu_tlb_va_range_flushed(k: KernelK, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, old_tlb: SingleTLB, tlb: SingleTLB, cache: PagingStructureCache) -> bool {
+    let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
+    if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
+        let table = whole_pagetable(k.pt_mp, k.pt_lower.view(), cpu.current_pagetable->Some_0);
+        single_tlb_va_range_flushed_kept_or_present(old_tlb, tlb, table, va, count, stride_2m) && single_structure_cache_subset_of_present_pagetable(cache, table)
+    } else {
+        single_tlb_va_range_flushed_kept(old_tlb, tlb, va, count, stride_2m) && cache.is_empty()
+    }
+}
+
+/// U form of `single_tlb_va_range_flushed_kept_or_present`: a translation the flush keeps, or a leaf of the user view `table`.
+pub open spec fn single_tlb_va_range_flushed_kept_or_present_u(old_tlb: SingleTLB, tlb: SingleTLB, table: PageTableU, va: VAddr, count: usize, stride_2m: bool) -> bool {
+    &&& forall|x: VAddr| #![trigger tlb.tlb_4k().dom().contains(x)] #![trigger tlb.tlb_4k().spec_index(x)] tlb.tlb_4k().dom().contains(x)
+        ==> (!va_range_flush_drops_4k(va, count, stride_2m, x) && old_tlb.tlb_4k().contains_pair(x, tlb.tlb_4k().spec_index(x)))
+            || (table.mapping_4k.dom().contains(x) && spec_tlb_entry_equal_to_map_entry(tlb.tlb_4k().spec_index(x), table.mapping_4k.spec_index(x)))
+    &&& forall|x: VAddr| #![trigger tlb.tlb_2m().dom().contains(x)] #![trigger tlb.tlb_2m().spec_index(x)] tlb.tlb_2m().dom().contains(x)
+        ==> (!va_range_flush_drops_2m(va, count, stride_2m, x) && old_tlb.tlb_2m().contains_pair(x, tlb.tlb_2m().spec_index(x)))
+            || (table.mapping_2m.dom().contains(x) && spec_tlb_entry_equal_to_map_entry(tlb.tlb_2m().spec_index(x), table.mapping_2m.spec_index(x)))
+    &&& forall|x: VAddr| #![trigger tlb.tlb_1g().dom().contains(x)] #![trigger tlb.tlb_1g().spec_index(x)] tlb.tlb_1g().dom().contains(x)
+        ==> (!va_range_flush_drops_1g(va, count, stride_2m, x) && old_tlb.tlb_1g().contains_pair(x, tlb.tlb_1g().spec_index(x)))
+            || (table.mapping_1g.dom().contains(x) && spec_tlb_entry_equal_to_map_entry(tlb.tlb_1g().spec_index(x), table.mapping_1g.spec_index(x)))
+}
+
+/// U form of `cpu_tlb_va_range_flushed`: the translations of `old_tlb` the flush keeps, plus leaves of the user view of the
+/// table of the process CPU `cpu_id` runs when `pcid` is that process's PCID.
+pub open spec fn cpu_tlb_va_range_flushed_u(u: KernelU, cpu_id: CpuId, pcid: Pcid, va: VAddr, count: usize, stride_2m: bool, old_tlb: SingleTLB, tlb: SingleTLB) -> bool {
+    let process = u.cpu_array[cpu_id as int].current_process;
+    if process is Some && u.process_map.dom().contains(process->Some_0) && u.process_map[process->Some_0].pcid == pcid && u.process_map[process->Some_0].pagetable is Some {
+        single_tlb_va_range_flushed_kept_or_present_u(old_tlb, tlb, u.process_map[process->Some_0].pagetable->Some_0, va, count, stride_2m)
+    } else {
+        single_tlb_va_range_flushed_kept(old_tlb, tlb, va, count, stride_2m)
+    }
+}
+
 /// U form of `iommu_tlb_within_may_cache`: the user view of the IOMMU table of the owner of the DID's anchor B/D/F when
 /// the anchor is attached and that table carries `did`, nothing otherwise.
 pub open spec fn iommu_tlb_within_may_cache_u(u: KernelU, did: VtdDomainId, tlb: SingleTLB) -> bool {

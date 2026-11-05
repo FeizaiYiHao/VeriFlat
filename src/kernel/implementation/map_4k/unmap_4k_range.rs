@@ -4,6 +4,7 @@ use super::unmap_4k_spec::*;
 use super::unmap_4k_trace::*;
 use super::unmap_4k_present::clear_4k_mapping_present_in_window;
 use super::unmap_4k_flush_all::flush_pagetable_tlbs;
+use super::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 use super::unmap_4k_reclaim_one::reclaim_unmapped_4k_page_in_window;
 use super::unmap_4k_range_eol::*;
 
@@ -379,6 +380,10 @@ pub fn unmap_4k_range(
                 == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
         old(krnl).prc_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
+        forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_leaves_present(w)
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+        },
     ensures
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() + range.len + 1 <= final(steps).view().len() <= old(steps).view().len() + range.len + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 2,
@@ -442,10 +447,19 @@ pub fn unmap_4k_range(
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
-    flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
-    proof {
-        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+    if range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES {
+        assert(held_windows_hidden_leaves_va_flushed(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable), lctx.pagetable_window_lock_map(), pagetable, range.start, range.len, false)) by { range.wf_implies_view_index_is_start_plus_offset(); };
+        flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, false, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
+        proof {
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            unmap_4k_tlb_va_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
+    } else {
+        flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+        proof {
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range);
+        }
     }
     let ghost flushed_snap = steps.snapshot_k();
     let ghost flushed_pre = *krnl;

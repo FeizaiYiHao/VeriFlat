@@ -83,6 +83,32 @@ pub proof fn unmap_4k_tlb_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
+/// An unmap per-address TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no domain view contains.
+pub proof fn unmap_4k_tlb_va_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, count: usize, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        unmap_4k_flush_step_pre(old_u, cpu_id),
+        unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, va, count, false),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); reveal(kernel_u_cpu_tlb_va_flushed); reveal(kernel_u_cpu_ownership_wf); }
+
+/// The step of `unmap_4k_tlb_va_flush_step_lr` preserves isolation.
+pub proof fn unmap_4k_tlb_va_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, count: usize, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        unmap_4k_flush_step_pre(old_u, cpu_id),
+        unmap_4k_tlb_va_flush_step(old_u, new_u, cpu_id, va, count, false),
+    ensures isolated(new_u, a, b),
+{
+    reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); reveal(kernel_u_cpu_tlb_va_flushed);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
 /// Recording the unmap flush on a cpu of `a` changes only its running thread and the cpu-set lock mode of its container.
 pub proof fn unmap_4k_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires

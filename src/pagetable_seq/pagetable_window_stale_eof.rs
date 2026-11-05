@@ -19,6 +19,21 @@ pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2In
     })
 }
 
+/// Every 4K or 2M translation `tlb` caches under a window that thread `thread_id` holds is a present leaf of `table`, so a
+/// `RemoveCpu` of that thread may drop the cpu from those windows' records.
+pub open spec fn single_tlb_held_window_entries_present(tlb: SingleTLB, table: WholePageTable<PT_TYPE>, thread_id: LockThreadId) -> bool {
+    &&& forall|va: VAddr| #![trigger tlb.tlb_4k().spec_index(va)]
+        tlb.tlb_4k().dom().contains(va) && table.window_locked_by_thread(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), thread_id) ==> {
+            let leaf = table.spec_resolve_mapping_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+            leaf is Some && leaf->0.perm.present
+        }
+    &&& forall|va: VAddr| #![trigger tlb.tlb_2m().spec_index(va)]
+        tlb.tlb_2m().dom().contains(va) && table.window_locked_by_thread(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), thread_id) ==> {
+            let leaf = table.spec_resolve_mapping_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+            leaf is Some && leaf->0.perm.present
+        }
+}
+
 /// The stale-CPU map after the empty records the thread may change are deleted: all of them while it write-holds the table,
 /// otherwise those of the windows it holds in `lower`.
 pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
@@ -89,8 +104,9 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
 /// table that is not write-held has locked; a `Set` that only grows a record and a `ClearEmpty` keep every listed CPU listed,
 /// so the TLB invariant carries over; a `RemoveCpu` drops only `cpu_id`, whose TLB under the table's PCID is empty,
-/// exempt until its activation flush, recorded under another table, or backed only by present leaves of the table; any
-/// other update brings the invariant for the new map.
+/// exempt until its activation flush, recorded under another table, backed only by present leaves of the table, or, while
+/// the table is not write-held, backed by present leaves wherever it lies in a window this thread holds; any other update
+/// brings the invariant for the new map.
 pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, update: WindowStaleUpdate, root_write_held: bool, thread_id: LockThreadId)
     requires
         pre.inv(),
@@ -119,6 +135,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                 || (pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
             || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root))
+            || (!root_write_held && single_tlb_held_window_entries_present(pre.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), thread_id))
         }) || cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
             ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
@@ -257,6 +274,7 @@ proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                 || (pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
             || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root))
+            || (!root_write_held && single_tlb_held_window_entries_present(pre.cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), thread_id))
         }) || cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
     ensures
         cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
