@@ -104,7 +104,10 @@ what its thread still holds after every phase, so the default image's 128 blocks
 workers and the alone and concurrent windows are those of the parallel mmap timing, first threads of dom0
 (`_same`), then the first threads of one child process per worker (`_xproc`). Every round handles 2 MiB,
 as 2M pages or as 4K pages, with the same touch (one write per 4K page, the last read back) and the same
-untimed funding (4K quota 2048 at a time, 2M quota topped up to 8). Every line gives TSC cycles per 2 MiB.
+untimed funding (4K quota 2048 at a time, but for a whole region's map no more than is missing, and just
+what is missing once the container holds less; 2M quota topped up to 8). After the last `_same` phase
+dom0's worker threads map and unmap the 4K quota they still hold, which gives it back to the container for
+the children. Every line gives TSC cycles per 2 MiB.
 
 | line prefix (`_same` / `_xproc`) | a round, timed | untimed |
 | --- | --- | --- |

@@ -1405,6 +1405,11 @@ fn time_map2m(k: usize, phase: usize) {
         worker.unmap_region();
     }
     worker.return_quota_2m();
+    // dom0's threads give their 4K quota back after the last same-process phase, so the children find
+    // it in the container.
+    if phase == map2m_phases(MAP2M_VARIANTS.len() - 1, false)[1] {
+        worker.return_quota_4k();
+    }
     PAR_MAP2M_QUOTA_4K[k].store(worker.quota, Ordering::SeqCst);
     PAR_MAP2M_QUOTA_2M[k].store(worker.quota_2m, Ordering::SeqCst);
     PAR_SHORT[k].fetch_add(worker.short, Ordering::SeqCst);
@@ -1513,10 +1518,17 @@ impl Map2mWorker {
             Map2mPages::SmallSingle => (count * PAGES_PER_2M + 3, 0),
         };
         while self.quota < need + PAR_MAP2M_TABLE_SLACK {
-            if try_fund(PAR_MAP2M_FUND_4K) {
-                self.quota += PAR_MAP2M_FUND_4K;
+            // `PAR_MAP2M_FUND_4K` at a time; for a whole region no more than is missing, so that the workers
+            // of the unmap-only mode, all holding a region's quota at once, hold no excess; and just what is
+            // missing once the container holds less.
+            let missing = need + PAR_MAP2M_TABLE_SLACK - self.quota;
+            let amount = if count == MAP2M_REGION { missing.min(PAR_MAP2M_FUND_4K) } else { PAR_MAP2M_FUND_4K };
+            if try_fund(amount) {
+                self.quota += amount;
+            } else if missing < amount && try_fund(missing) {
+                self.quota += missing;
             } else {
-                self.out_of_quota("4K", PAR_MAP2M_FUND_4K);
+                self.out_of_quota("4K", missing.min(amount));
             }
         }
         while self.quota_2m < need_2m {
@@ -1539,6 +1551,18 @@ impl Map2mWorker {
         } else {
             log::error!("parallel mmap_2m: the container holds less than {} {} quota", amount, which);
             unsafe { sys_debug_exit(1) };
+        }
+    }
+
+    /// Maps and unmaps the 4K quota the thread still holds at the region's start, untimed, which moves it
+    /// back to the container, all but `PAR_MAP2M_TABLE_SLACK` and three: a call of `count` pages needs
+    /// four 4K quota per page at hand, so each call returns a quarter of what is left. The region is empty.
+    fn return_quota_4k(&mut self) {
+        while self.quota >= PAR_MAP2M_TABLE_SLACK + 4 {
+            let count = ((self.quota - PAR_MAP2M_TABLE_SLACK) / 4).min(MAP2M_REGION * PAGES_PER_2M);
+            quiet("mmap_4k (4K quota return)", unsafe { sys_mmap_4k(self.base, count) });
+            quiet("unmap_4k (4K quota return)", retry_lock_order(|| unsafe { sys_unmap_4k(self.base, count) }));
+            self.quota -= count;
         }
     }
 
