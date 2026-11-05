@@ -42,6 +42,7 @@ pub(super) fn iommu_map_4k_exit(
         lctx0.scheduler_lock_map().dom().is_empty() && lctx0.cpu_set_lock_map().dom().is_empty(),
         lctx0.holds_no_allocator_locks(PageSize::SZ4k) && lctx0.holds_no_allocator_locks(PageSize::SZ2m) && lctx0.holds_no_allocator_locks(PageSize::SZ1g),
         va_range.wf() && iova_range.wf() && va_range.len > 0 && iova_range.len == va_range.len,
+        *va_range == spec_va_range_4k(va_range.start, va_range.len) && *iova_range == spec_va_range_4k(iova_range.start, iova_range.len),
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
@@ -112,7 +113,7 @@ pub(super) fn iommu_map_4k_exit(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view()[0] == old(steps).view()[0],
-        iommu_map_4k_syscall_trace(final(steps).view(), cpu_id, *va_range, *iova_range),
+        iommu_map_4k_syscall_trace(final(steps).view(), cpu_id, va_range.start, iova_range.start, va_range.len),
         va_range.len + 2 <= final(steps).view().len() <= 4 * va_range.len + 2,
 {
     let ghost exit_start = *krnl;

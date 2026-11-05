@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 use super::syscall_new_process_common::syscall_new_process_shared_body;
 use super::syscall_new_process_spec::*;
 
@@ -36,7 +36,7 @@ pub fn syscall_new_process_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Trac
             let ctn_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
             let child_ptr = ret->SuccessPairUsize_value1;
             let thrd_ptr = ret->SuccessPairUsize_value2;
-            let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let source_range = spec_va_range_4k(va, range);
             &&& range > 0
             &&& source_range.wf()
             &&& old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.wf()

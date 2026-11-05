@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::{KillScope, kill_chain_state};
+use super::syscall_kill_process_walk_spec::{KillScope, kill_chain_state};
 
 verus! {
 /// The killer at `stage` on `chain` in `scope`, as in `kill_chain_state`, reclaims the empty live target, the last

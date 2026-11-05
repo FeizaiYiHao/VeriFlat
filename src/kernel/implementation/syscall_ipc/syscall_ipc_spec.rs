@@ -58,9 +58,9 @@ pub open spec fn ipc_peer_result(payload: IPCPayLoad, ret: RetValueType) -> RetV
 
 /// The Off CPU handed over by a successful CPU rendezvous and the receiving thread whose container takes it.
 pub open spec fn ipc_cpu_transfer(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, ret: RetValueType) -> Option<(CpuId, RwLockThreadPtr)> {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
-    let endpoint = old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int].unwrap());
+    let endpoint = old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int]->Some_0);
     if payload is Cpu && ret is Success { Some((payload->Cpu_cpu_id, endpoint.queue[0])) }
     else if payload is ReceiveCpu && ret is SuccessUsize { Some((ret->SuccessUsize_value, thrd_ptr)) }
     else { None }
@@ -68,8 +68,8 @@ pub open spec fn ipc_cpu_transfer(old_u: KernelU, cpu_id: CpuId, ep_idx: Endpoin
 
 /// The PCI function handed over by a successful PCI rendezvous with its sending and receiving processes.
 pub open spec fn ipc_pci_transfer(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, ret: RetValueType) -> Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)> {
-    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread.unwrap());
-    let peer = old_u.thread_map.spec_index(old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int].unwrap()).queue[0]);
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let peer = old_u.thread_map.spec_index(old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int]->Some_0).queue[0]);
     let sends = waiting_state is SENDING;
     match payload {
         IPCPayLoad::Pci { bus, dev, fun } if ret is Success => Some(((bus as usize, dev as usize, fun as usize),
@@ -78,39 +78,30 @@ pub open spec fn ipc_pci_transfer(old_u: KernelU, cpu_id: CpuId, ep_idx: Endpoin
     }
 }
 
-/// The running thread on `cpu_id` has no syscall in progress, belongs to a live container, and holds a live
+/// At entry the cpu runs a live thread with no syscall in progress that belongs to a live container and holds a live
 /// endpoint descriptor at `ep_idx`; the cpu, the thread, and the endpoint are unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
+    let thread = old_u.thread_map[cpu.current_thread->Some_0];
     let ep_ptr = thread.endpoint_descriptors[ep_idx as int];
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
     &&& edp_idx_valid(ep_idx)
-    &&& cpu.state is Running
-    &&& cpu.current_process is Some
-    &&& cpu.current_thread is Some
-    &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
-    &&& old_u.thread_map.dom().contains(cpu.current_thread.unwrap())
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == cpu.current_process.unwrap()
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& ep_ptr is Some
-    &&& old_u.endpoint_map.dom().contains(ep_ptr.unwrap())
-    &&& old_u.endpoint_map.spec_index(ep_ptr.unwrap()).lock_state is Unlocked
-    &&& !old_u.endpoint_map.spec_index(ep_ptr.unwrap()).queue.contains(cpu.current_thread.unwrap())
+    &&& old_u.endpoint_map.dom().contains(ep_ptr->Some_0)
+    &&& old_u.endpoint_map[ep_ptr->Some_0].lock_state is Unlocked
+    &&& !old_u.endpoint_map[ep_ptr->Some_0].queue.contains(cpu.current_thread->Some_0)
 }
 
 /// The endpoint queue is empty or waits in the caller's direction, so the caller blocks.
 #[verifier::opaque]
 pub open spec fn ipc_block_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let endpoint = old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int].unwrap());
+    let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let endpoint = old_u.endpoint_map.spec_index(thread.endpoint_descriptors[ep_idx as int]->Some_0);
     &&& ipc_step_pre(old_u, cpu_id, ep_idx)
     &&& waiting_state.is_endpoint_waiting()
     &&& endpoint.queue.len() == 0 || (endpoint.queue_state is SEND) == waiting_state.is_endpoint_send_waiting()
@@ -118,8 +109,8 @@ pub open spec fn ipc_block_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: Endpo
 
 /// User-visible blocking step: the caller waits on the endpoint with `payload` and its CPU goes idle.
 pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool) -> bool {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int].unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
     kernel_u_ipc_block_changed(old_u, new_u, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid)
 }
 
@@ -129,8 +120,8 @@ pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 #[verifier::opaque]
 pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thread = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let ep_ptr = thread.endpoint_descriptors[ep_idx as int].unwrap();
+    let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let ep_ptr = thread.endpoint_descriptors[ep_idx as int]->Some_0;
     let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     let peer = old_u.thread_map.spec_index(endpoint.queue[0]);
     let result = ipc_rendezvous_result(old_u, cpu_id, ep_idx, waiting_state, payload);
@@ -140,11 +131,11 @@ pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: 
     &&& (endpoint.queue_state is SEND) != waiting_state.is_endpoint_send_waiting()
     &&& old_u.thread_map.dom().contains(endpoint.queue[0])
     &&& peer.lock_state is Unlocked
-    &&& endpoint.queue[0] != cpu.current_thread.unwrap()
     &&& !peer.killed
     &&& peer.state.is_endpoint_waiting()
     &&& peer.blocking_endpoint_ptr == Some(ep_ptr)
     &&& old_u.container_map.dom().contains(peer.owning_container)
+    // A CPU handover that passes the type and same-container checks reads the cpu sets of both containers.
     &&& (payload is Cpu || payload is ReceiveCpu) && !(result is ErrorIpcTypeMismatch) && !(result is ErrorIpcSameContainer) ==> {
         &&& old_u.container_map[thread.owning_container].cpu_set_lock is Unlocked
         &&& old_u.container_map[peer.owning_container].cpu_set_lock is Unlocked
@@ -158,8 +149,8 @@ pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: 
 /// a successful CPU handover moves the Off CPU to the receiving thread's container, and a successful PCI
 /// handover moves the detached function to the receiving process.
 pub open spec fn ipc_rendezvous_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> bool {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int].unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
     let result = ipc_rendezvous_result(old_u, cpu_id, ep_idx, waiting_state, payload);
     kernel_u_ipc_rendezvous_changed(old_u, new_u, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, old_u.endpoint_map.spec_index(ep_ptr).queue[0], ipc_peer_result(payload, result),
         ipc_cpu_transfer(old_u, cpu_id, ep_idx, payload, result), ipc_pci_transfer(old_u, cpu_id, ep_idx, waiting_state, payload, result))
@@ -192,22 +183,17 @@ pub open spec fn ipc_ordinary_syscall_trace(
         &&& post == pre
     }
 }
-/// The endpoint queue head waits in the opposite direction with an Endpoint payload; the sender holds a
-/// descriptor at its source index and the receiver's target index is free.
+
+/// The endpoint queue head waits in the opposite direction with an Endpoint payload and the endpoint rendezvous
+/// succeeds: the sender holds a descriptor at its source index and the receiver's target index is free.
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_transit_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx) -> bool {
-    let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread.unwrap()];
-    let peer = old_u.thread_map[old_u.endpoint_map[thread.endpoint_descriptors[ep_idx as int].unwrap()].queue[0]];
-    let caller_sends = waiting_state is SENDING;
-    let peer_index = peer.ipc_payload->Endpoint_endpoint_index;
-    let sender = if caller_sends { thread } else { peer };
-    let receiver = if caller_sends { peer } else { thread };
+    let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+    let peer = old_u.thread_map[old_u.endpoint_map[thread.endpoint_descriptors[ep_idx as int]->Some_0].queue[0]];
     &&& ipc_rendezvous_step_pre(old_u, cpu_id, ep_idx, waiting_state, IPCPayLoad::Endpoint { endpoint_index: payload_index })
+    &&& ipc_rendezvous_result(old_u, cpu_id, ep_idx, waiting_state, IPCPayLoad::Endpoint { endpoint_index: payload_index }) is Success
     &&& edp_idx_valid(payload_index)
-    &&& peer.state == if caller_sends { ThreadState::RECEIVING } else { ThreadState::SENDING }
     &&& peer.ipc_payload is Endpoint
-    &&& sender.endpoint_descriptors[(if caller_sends { payload_index } else { peer_index }) as int] is Some
-    &&& receiver.endpoint_descriptors[(if caller_sends { peer_index } else { payload_index }) as int] is None
 }
 
 /// Write-lock the cpu, the caller, and the queue head, move the head into transit with the caller as its partner, and record it
@@ -215,8 +201,8 @@ pub open spec fn ipc_endpoint_transit_step_pre(old_u: KernelU, cpu_id: CpuId, ep
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_transit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thrd_ptr = cpu.current_thread.unwrap();
-    let channel_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let thrd_ptr = cpu.current_thread->Some_0;
+    let channel_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int]->Some_0;
     let channel = old_u.endpoint_map[channel_ptr];
     let peer_ptr = channel.queue[0];
     let progress = SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: waiting_state is SENDING, payload_index };
@@ -233,14 +219,16 @@ pub open spec fn ipc_endpoint_transit_step(old_u: KernelU, new_u: KernelU, cpu_i
 /// The result of the endpoint transfer recorded by the running thread: Success when the payload endpoint's
 /// container is the receiver's container or one of its ancestors.
 pub open spec fn ipc_endpoint_finish_result(old_u: KernelU, cpu_id: CpuId) -> RetValueType {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let progress = old_u.thread_map[thrd_ptr].syscall_progress.unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let progress = old_u.thread_map[thrd_ptr].syscall_progress->Some_0;
     let peer_ptr = progress->IpcEndpoint_peer;
     let caller_sends = progress->IpcEndpoint_caller_sends;
     let sender = if caller_sends { thrd_ptr } else { peer_ptr };
+    let receiver = if caller_sends { peer_ptr } else { thrd_ptr };
     let source_index = if caller_sends { progress->IpcEndpoint_payload_index } else { old_u.thread_map[peer_ptr].ipc_payload->Endpoint_endpoint_index };
-    let owner = old_u.endpoint_map[old_u.thread_map[sender].endpoint_descriptors[source_index as int].unwrap()].owning_container;
-    let container = old_u.thread_map[if caller_sends { peer_ptr } else { thrd_ptr }].owning_container;
+    let payload = old_u.thread_map[sender].endpoint_descriptors[source_index as int]->Some_0;
+    let owner = old_u.endpoint_map[payload].owning_container;
+    let container = old_u.thread_map[receiver].owning_container;
     if owner == container || old_u.container_map[container].uppertree_seq.contains(owner) { RetValueType::Success } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
 }
 
@@ -250,9 +238,9 @@ pub open spec fn ipc_endpoint_finish_result(old_u: KernelU, cpu_id: CpuId) -> Re
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thrd_ptr = cpu.current_thread.unwrap();
+    let thrd_ptr = cpu.current_thread->Some_0;
     let thread = old_u.thread_map[thrd_ptr];
-    let progress = thread.syscall_progress.unwrap();
+    let progress = thread.syscall_progress->Some_0;
     let peer_ptr = progress->IpcEndpoint_peer;
     let caller_sends = progress->IpcEndpoint_caller_sends;
     let sender = if caller_sends { thrd_ptr } else { peer_ptr };
@@ -274,18 +262,17 @@ pub open spec fn ipc_endpoint_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& old_u.container_map.dom().contains(old_u.thread_map[peer_ptr].owning_container)
     &&& edp_idx_valid(source_index)
     &&& payload is Some
-    &&& old_u.endpoint_map.dom().contains(payload.unwrap())
-    &&& old_u.endpoint_map[payload.unwrap()].lock_state is Unlocked
+    &&& old_u.endpoint_map.dom().contains(payload->Some_0)
+    &&& old_u.endpoint_map[payload->Some_0].lock_state is Unlocked
 }
 
 /// On Success the receiver's target descriptor takes the payload endpoint; the peer is scheduled with the
-/// result, the caller's progress is cleared, and the cpu, both threads, and the payload
-/// endpoint are released.
+/// result, the caller's progress is cleared, and the cpu and both threads are released.
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let thrd_ptr = cpu.current_thread.unwrap();
-    let progress = old_u.thread_map[thrd_ptr].syscall_progress.unwrap();
+    let thrd_ptr = cpu.current_thread->Some_0;
+    let progress = old_u.thread_map[thrd_ptr].syscall_progress->Some_0;
     let peer_ptr = progress->IpcEndpoint_peer;
     let caller_sends = progress->IpcEndpoint_caller_sends;
     let peer_index = old_u.thread_map[peer_ptr].ipc_payload->Endpoint_endpoint_index;
@@ -293,7 +280,7 @@ pub open spec fn ipc_endpoint_finish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let receiver = if caller_sends { peer_ptr } else { thrd_ptr };
     let source_index = if caller_sends { progress->IpcEndpoint_payload_index } else { peer_index };
     let target_index = if caller_sends { peer_index } else { progress->IpcEndpoint_payload_index };
-    let payload = old_u.thread_map[sender].endpoint_descriptors[source_index as int].unwrap();
+    let payload = old_u.thread_map[sender].endpoint_descriptors[source_index as int]->Some_0;
     let result = ipc_endpoint_finish_result(old_u, cpu_id);
     let received = ThreadU { endpoint_descriptors: old_u.thread_map[receiver].endpoint_descriptors.update(target_index as int, Some(payload)), ..old_u.thread_map[receiver] };
     let threads = if result is Success { old_u.thread_map.insert(receiver, received) } else { old_u.thread_map };
@@ -305,8 +292,9 @@ pub open spec fn ipc_endpoint_finish_step(old_u: KernelU, new_u: KernelU, cpu_id
         thread_map: threads.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..threads[thrd_ptr] })
             .insert(peer_ptr, ThreadU { lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu },
                 blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer_ptr] }),
-        endpoint_map: old_u.endpoint_map.insert(payload, EndpointU { lock_state: LockStateU::Unlocked,
-            owning_threads: if result is Success { endpoint.owning_threads.insert((receiver, target_index)) } else { endpoint.owning_threads }, ..endpoint }),
+        endpoint_map: old_u.endpoint_map.insert(payload, EndpointU {
+            owning_threads: if result is Success { endpoint.owning_threads.insert((receiver, target_index)) } else { endpoint.owning_threads }, ..endpoint
+        }),
         container_map: old_u.container_map.insert(container, ContainerU {
             scheduler: old_u.container_map[container].scheduler.update(wake_cpu as int, old_u.container_map[container].scheduler[wake_cpu as int].push(peer_ptr)), ..old_u.container_map[container]
         }),
@@ -370,15 +358,9 @@ pub open spec fn ipc_pages_source_mapped(table: PageTableU, range: VaRange4K) ->
     forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> table.mapping_4k.dom().contains(range.view()[i])
 }
 
-/// As the implementation checks, no 4K leaf lies from the first to the last page of `range`, and no 1G,
-/// 2M, or 4K leaf covers a page of `range`.
+/// No 1G, 2M, or 4K leaf covers a page of `range`.
 pub open spec fn ipc_pages_target_free(table: PageTableU, range: VaRange4K) -> bool {
-    let first = spec_va2index(range.start);
-    let last = spec_va2index(range.view()[range.len - 1]);
-    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger table.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-        pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(first, (l4i, l3i, l2i, l1i)) && spec_l4_index_path_le((l4i, l3i, l2i, l1i), last)
-            ==> !table.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> {
+    forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> {
         let indices = spec_va2index(range.view()[i]);
         &&& !table.mapping_1g.dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
         &&& !table.mapping_2m.dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
@@ -407,10 +389,10 @@ pub open spec fn ipc_pages_check_result(u: KernelU, cpu_id: CpuId) -> RetValueTy
     let receiver = u.thread_map[ipc_pages_receiver(u, cpu_id)];
     let source_table = u.process_map[u.thread_map[ipc_pages_sender(u, cpu_id)].owning_proc].pagetable->Some_0;
     let target_table = u.process_map[receiver.owning_proc].pagetable->Some_0;
-    if !user_va_range(u, source) { RetValueType::Error }
+    if !user_va_range(u, source) { RetValueType::ErrorIpcRangeNotUser }
     else if !ipc_pages_source_mapped(source_table, source) { RetValueType::ErrorIpcSourceUnmapped }
     else if receiver.quota_4k < 3 * target.len { RetValueType::ErrorNoQuota }
-    else if !user_va_range(u, target) { RetValueType::Error }
+    else if !user_va_range(u, target) { RetValueType::ErrorIpcRangeNotUser }
     else if !ipc_pages_target_free(target_table, target) { RetValueType::ErrorVaInUse }
     else if !ipc_pages_owners_compatible(u, source_table, receiver.owning_container, source) { RetValueType::ErrorIpcPageOwnerMismatch }
     else { RetValueType::Success }
@@ -548,16 +530,18 @@ pub open spec fn ipc_pages_downgrade_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
     let source = old_u.thread_map[objects.source_thread].owning_proc;
+    let source_table = old_u.process_map[source].pagetable;
+    let target_table = old_u.process_map[objects.target].pagetable;
     &&& share_4k_locked(old_u, cpu_id)
     &&& progress->Share4k_origin is IpcPages
     &&& progress->Share4k_shared == 0
     &&& source != objects.target
     &&& old_u.process_map.dom().contains(source)
     &&& old_u.process_map.dom().contains(objects.target)
-    &&& old_u.process_map[source].pagetable is Some
-    &&& old_u.process_map[objects.target].pagetable is Some
-    &&& old_u.process_map[source].pagetable->Some_0.lock_state is ReadLocked
-    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked
+    &&& source_table is Some
+    &&& target_table is Some
+    &&& source_table->Some_0.lock_state is ReadLocked
+    &&& target_table->Some_0.lock_state is WriteLocked
 }
 
 /// Downgrading turns the write lock on the receiver's page table into a read lock.
@@ -578,6 +562,8 @@ pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId)
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
     let source = old_u.thread_map[objects.source_thread].owning_proc;
+    let source_table = old_u.process_map[source].pagetable;
+    let target_table = old_u.process_map[objects.target].pagetable;
     &&& share_4k_locked(old_u, cpu_id)
     &&& progress->Share4k_origin is IpcPages
     &&& old_u.thread_map[progress->Share4k_origin->IpcPages_peer].state is IPC_TRANSIT
@@ -585,10 +571,10 @@ pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId)
     &&& source != objects.target
     &&& old_u.process_map.dom().contains(source)
     &&& old_u.process_map.dom().contains(objects.target)
-    &&& old_u.process_map[source].pagetable is Some
-    &&& old_u.process_map[objects.target].pagetable is Some
-    &&& old_u.process_map[source].pagetable->Some_0.lock_state is ReadLocked
-    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is ReadLocked
+    &&& source_table is Some
+    &&& target_table is Some
+    &&& source_table->Some_0.lock_state is ReadLocked
+    &&& target_table->Some_0.lock_state is ReadLocked
 }
 
 /// Releasing both page tables, which other readers may still hold, and the 2M windows of both ranges records that the rendezvous
@@ -647,6 +633,7 @@ pub open spec fn ipc_pages_trace_after_lock(trace: Seq<KernelStep>, pre: KernelU
 #[verifier::opaque]
 pub open spec fn ipc_pages_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K) -> bool {
     &&& 0 <= start
+    // enter + lock + check, then per page up to three directory steps and one share step, and at most one downgrade
     &&& start + range.len + 3 <= trace.len() <= start + 4 * range.len + 4
     &&& trace[start].old_u == pre
     &&& ipc_pages_enter_step_pre(pre, cpu_id, ep_idx, waiting_state, range)
@@ -664,6 +651,7 @@ pub open spec fn ipc_pages_trace_after_share(trace: Seq<KernelStep>, start: int,
 /// passed check the directory, downgrade, and share steps and unlocking both page tables. `result` is the check result.
 #[verifier::opaque]
 pub open spec fn ipc_pages_mapping_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, result: RetValueType) -> bool {
+    // enter + lock + check, then on a pass per page up to three directory steps and one share step, at most one downgrade, and unlock
     &&& if result is Success { range.len + 4 <= trace.len() <= 4 * range.len + 5 } else { trace.len() == 3 }
     &&& trace[0].old_u == pre
     &&& ipc_pages_enter_step_pre(pre, cpu_id, ep_idx, waiting_state, range)
@@ -684,35 +672,36 @@ pub open spec fn ipc_pages_mapping_trace(trace: Seq<KernelStep>, pre: KernelU, c
 /// A pages rendezvous is one rendezvous error step on TypeMismatch or SameProcess, the mapping steps and a
 /// finish step after a passed rendezvous, or a stuttering rejection.
 #[verifier::opaque]
-pub open spec fn ipc_pages_rendezvous_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, result: RetValueType) -> bool {
-    if result is ErrorIpcSameProcess || result is ErrorIpcTypeMismatch {
+pub open spec fn ipc_pages_rendezvous_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, ret: RetValueType) -> bool {
+    if ret is ErrorIpcSameProcess || ret is ErrorIpcTypeMismatch {
         &&& range.wf()
         &&& range.len > 0
         &&& trace.len() == 1
         &&& trace[0].old_u == pre && trace[0].new_u == post
-        &&& result == ipc_rendezvous_result(pre, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range })
+        &&& ret == ipc_rendezvous_result(pre, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range })
         &&& ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range })
         &&& ipc_rendezvous_step(pre, post, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range })
-    } else if result is Success || result is ErrorIpcSourceUnmapped || result is ErrorIpcPageOwnerMismatch || result is ErrorNoQuota
-        || result is ErrorVaInUse || result is Error && trace.len() > 0 {
+    } else if ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser {
         &&& trace.len() >= 2
         &&& trace.last().new_u == post
-        &&& ipc_pages_mapping_trace(trace.subrange(0, trace.len() - 1), pre, cpu_id, ep_idx, waiting_state, range, result)
+        &&& ipc_pages_mapping_trace(trace.subrange(0, trace.len() - 1), pre, cpu_id, ep_idx, waiting_state, range, ret)
         &&& ipc_pages_finish_step_pre(trace.last().old_u, cpu_id, ep_idx)
         &&& ipc_pages_finish_step(trace.last().old_u, post, cpu_id, ep_idx)
     } else { trace.len() == 0 && post == pre }
 }
 
+/// A pages send or receive blocks or stutters on CpuIdle as ordinary IPC with a Pages payload, and otherwise follows the pages
+/// rendezvous trace.
 #[verifier::opaque]
 pub open spec fn ipc_pages_syscall_trace(
-    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu: CpuId, channel_index: EndpointIdx,
-    waiting: ThreadState, range: VaRange4K, regs: Registers, flushed_default_pcid: bool, result: RetValueType,
+    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx,
+    waiting_state: ThreadState, range: VaRange4K, regs: Registers, flushed_default_pcid: bool, ret: RetValueType,
 ) -> bool {
-    if result is CpuIdle {
+    if ret is CpuIdle {
         &&& range.wf()
         &&& range.len > 0
-        &&& ipc_ordinary_syscall_trace(trace, pre, post, cpu, channel_index, waiting, IPCPayLoad::Pages { va_range: range }, regs, flushed_default_pcid, result)
-    } else { ipc_pages_rendezvous_syscall_trace(trace, pre, post, cpu, channel_index, waiting, range, result) }
+        &&& ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range }, regs, flushed_default_pcid, ret)
+    } else { ipc_pages_rendezvous_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, range, ret) }
 }
 
 /// Finishing runs after the page tables are released with a result, while the caller holds the cpu, itself,
@@ -786,6 +775,8 @@ pub open spec fn ipc_endpoint_rendezvous_trace(trace: Seq<KernelStep>, pre: Kern
     }
 }
 
+/// An endpoint send or receive blocks or stutters on CpuIdle as ordinary IPC with an Endpoint payload, and otherwise follows the
+/// endpoint rendezvous trace.
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx,

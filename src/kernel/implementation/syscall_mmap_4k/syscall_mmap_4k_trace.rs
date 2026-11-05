@@ -14,14 +14,14 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
         krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
-        cur is Some && ret is ErrorVaInUse ==> mmap_4k_syscall_va_range(va, range).wf(),
+        cur is Some && ret is ErrorVaInUse ==> spec_va_range_4k(va, range).wf(),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
             let thrd_ptr = cpu.view().view().current_thread->Some_0;
             let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
-            let va_range = mmap_4k_syscall_va_range(va, range);
+            let va_range = spec_va_range_4k(va, range);
             let start = spec_va2index(va);
             let end = spec_va2index(va_range.view()[range - 1]);
             let checked = cur->Some_0;
@@ -73,20 +73,54 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None);
         if ret is Success || ret is Error || ret is ErrorVaInUse { kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); }
         if ret is Success || ret is ErrorVaInUse { kernel_pagetable_mappings_projection_at(krnl, thread.owning_proc); kernel_process_projection_at(krnl, thread.owning_proc); }
-        if cur is Some && ret is ErrorVaInUse && !cur->Some_0.leaves_present() {
+        if cur is Some && ret is ErrorVaInUse {
             let checked = cur->Some_0;
-            let va_range = mmap_4k_syscall_va_range(va, range);
+            let va_range = spec_va_range_4k(va, range);
+            let last = va_range.view()[range - 1];
+            let (s4, s3, s2, s1) = spec_va2index(va);
+            let (e4, e3, e2, e1) = spec_va2index(last);
             let u_table = kernel_k_to_kernel_u(*krnl).process_map[thread.owning_proc].pagetable->Some_0;
-            va_range.wf_implies_view_index_is_start_plus_offset();
-            if found is Some {
-                let f = found->Some_0;
-                let fv = spec_index2va((f.0, f.1, f.2, f.3));
-                va_range_2m_windows_contains_window_of_every_va_in_range(va_range);
-                spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-                spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
-                assert(checked.mapping_4k().spec_index(fv).present);
-                assert(u_table.mapping_4k.dom().contains(fv));
-            } else { reveal(WholePageTable::spec_mapping_4k_va_range_empty); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
+            assert(last == spec_va_add_range(va, (range - 1) as usize) && spec_va_4k_valid(last)) by { va_range.wf_implies_view_index_is_start_plus_offset(); };
+            assert(spec_index2va((s4, s3, s2, s1)) == va && spec_index2va((e4, e3, e2, e1)) == last && pei_valid(s4) && pei_valid(s3) && pei_valid(s2) && pei_valid(s1)
+                && pei_valid(e4) && pei_valid(e3) && pei_valid(e2) && pei_valid(e1)) by { broadcast use spec_va_4k_valid_index_roundtrip; };
+            assert forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le((s4, s3, s2, s1), (l4i, l3i, l2i, l1i))
+                && spec_l4_index_path_le((l4i, l3i, l2i, l1i), (e4, e3, e2, e1)) && #[trigger] u_table.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                implies ({
+                    let k = ((spec_index2va((l4i, l3i, l2i, l1i)) - va) / 4096) as int;
+                    &&& 0 <= k < range
+                    &&& va_range.view()[k] == spec_index2va((l4i, l3i, l2i, l1i))
+                }) by {
+                let x = spec_index2va((l4i, l3i, l2i, l1i));
+                assert(spec_index2va((s4, s3, s2, s1)) <= spec_index2va((l4i, l3i, l2i, l1i)) && spec_index2va((l4i, l3i, l2i, l1i)) <= spec_index2va((e4, e3, e2, e1))
+                    && (spec_index2va((l4i, l3i, l2i, l1i)) - spec_index2va((s4, s3, s2, s1))) % 4096 == 0) by (bit_vector)
+                    requires
+                        s4 < 512 && s3 < 512 && s2 < 512 && s1 < 512 && e4 < 512 && e3 < 512 && e2 < 512 && e1 < 512 && l4i < 512 && l3i < 512 && l2i < 512 && l1i < 512,
+                        s4 < l4i || (s4 == l4i && (s3 < l3i || (s3 == l3i && (s2 < l2i || (s2 == l2i && s1 <= l1i))))),
+                        l4i < e4 || (l4i == e4 && (l3i < e3 || (l3i == e3 && (l2i < e2 || (l2i == e2 && l1i <= e1))))),
+                ;
+                let k = (x - va) / 4096;
+                assert(k * 4096 == x - va && k < range) by (nonlinear_arith)
+                    requires
+                        k == (x - va) / 4096,
+                        (x - va) % 4096 == 0,
+                        va <= x <= last,
+                        last == va + (range - 1) * 4096,
+                        range > 0,
+                ;
+                assert(va_range.view()[k as int] == spec_va_add_range(va, k as usize)) by { va_range.wf_implies_view_index_is_start_plus_offset(); };
+            };
+            if !checked.leaves_present() {
+                if found is Some {
+                    let f = found->Some_0;
+                    let fv = spec_index2va((f.0, f.1, f.2, f.3));
+                    va_range_2m_windows_contains_window_of_every_va_in_range(va_range);
+                    spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+                    spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
+                    assert(checked.mapping_4k().spec_index(fv).present);
+                    assert(u_table.mapping_4k.dom().contains(fv));
+                } else { reveal(WholePageTable::spec_mapping_4k_va_range_empty); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
+            }
         }
     }
 }
@@ -108,8 +142,9 @@ pub(super) proof fn mmap_4k_enter_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId,
 pub(super) proof fn mmap_4k_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     pagetable_ptr: RwLockPageTableRoot, va: VAddr, len: usize, range: VaRange4K, phase: Mmap4kPhase, windows: Map<WindowVa, LockStateU>)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        range == mmap_4k_syscall_va_range(va, len),
+        range == spec_va_range_4k(va, len),
         range.wf(),
         mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -146,7 +181,11 @@ pub(super) proof fn mmap_4k_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
     ensures
         mmap_4k_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, phase),
         mmap_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range, phase),
-{ kernel_process_projection_at(krnl, prc_ptr); reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); }
+{
+    kernel_cpu_projection_at(krnl, cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step);
+}
 
 /// Entering to fill in two sections, first locking the pagetable `pagetable_ptr` and recording the first page from `krnl`'s
 /// projection to `mid`, then locking the range's existing windows from `mid` to `post` with the thread's quota and progress kept,
@@ -155,8 +194,9 @@ pub(super) proof fn mmap_4k_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
     pagetable_ptr: RwLockPageTableRoot, va: VAddr, len: usize, range: VaRange4K, windows: Map<WindowVa, LockStateU>, quota: usize, progress: Option<SyscallProgress>,
     owner: RwLockProcessPtr)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        range == mmap_4k_syscall_va_range(va, len),
+        range == spec_va_range_4k(va, len),
         range.wf(),
         mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -213,8 +253,9 @@ pub(super) proof fn mmap_4k_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
 /// use there, give the hold step's precondition.
 pub(super) proof fn mmap_4k_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, va: VAddr, len: usize)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        mmap_4k_syscall_va_range(va, len).wf(),
+        spec_va_range_4k(va, len).wf(),
         len > 0,
         mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success || mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is ErrorVaInUse,
         !krnl.cpu_arr.spec_index(cpu_id).view().locked(),
@@ -226,8 +267,11 @@ pub(super) proof fn mmap_4k_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, 
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
-    ensures mmap_4k_hold_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, mmap_4k_syscall_va_range(va, len)),
-{ kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr); reveal(mmap_4k_hold_step_pre); }
+    ensures mmap_4k_hold_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, spec_va_range_4k(va, len)),
+{
+    kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
+    reveal(mmap_4k_hold_step_pre);
+}
 
 /// Write-locking the caller's cpu and its current thread `thrd_ptr` with the cpu inside its kernel step and changing nothing
 /// else is the hold step on `pre`/`post`.
@@ -452,7 +496,7 @@ pub(super) proof fn mmap_4k_trace_hold_step(steps: &KernelSteps, before: Seq<Ker
 /// The release step recorded after the partial trace after holding is the failure trace.
 pub(super) proof fn mmap_4k_trace_release_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize)
     requires
-        mmap_4k_trace_after_hold(before, cpu_id, mmap_4k_syscall_va_range(va, range)),
+        mmap_4k_trace_after_hold(before, cpu_id, spec_va_range_4k(va, range)),
         steps.view() == record_user_view_change(before, pre, post),
         mmap_4k_release_step_pre(pre, cpu_id),
         mmap_4k_release_step(pre, post, cpu_id),
@@ -489,7 +533,7 @@ pub(super) proof fn mmap_4k_trace_range_steps(steps: &KernelSteps, before: Seq<K
 /// The exit step pushed after the mapped partial trace completes the syscall trace.
 pub(super) proof fn mmap_4k_trace_exit_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, phase: Mmap4kPhase)
     requires
-        mmap_4k_trace_after_range(before, cpu_id, mmap_4k_syscall_va_range(va, range), phase),
+        mmap_4k_trace_after_range(before, cpu_id, spec_va_range_4k(va, range), phase),
         phase is Read || phase is Fill,
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         mmap_4k_exit_step_pre(pre, cpu_id),

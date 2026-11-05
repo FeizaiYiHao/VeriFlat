@@ -5,13 +5,13 @@ use super::syscall_ipc_spec::*;
 verus! {
 /// The queue head of the endpoint at `ep_idx` of the thread running on `cpu_id`.
 pub open spec fn ipc_queue_head(pre: KernelK, cpu_id: CpuId, ep_idx: EndpointIdx) -> RwLockThreadPtr {
-    let thread = pre.thrd_mp.spec_index(pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view();
-    pre.ep_mp.spec_index(thread.endpoint_descriptors.view()[ep_idx as int].unwrap()).view().queue.view()[0]
+    let thread = pre.thrd_mp.spec_index(pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view();
+    pre.ep_mp.spec_index(thread.endpoint_descriptors.view()[ep_idx as int]->Some_0).view().queue.view()[0]
 }
 
 /// The recorded caller of the thread running on `cpu_id`.
 pub open spec fn ipc_recorded_caller(pre: KernelK, cpu_id: CpuId) -> RwLockThreadPtr {
-    pre.thrd_mp.spec_index(pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().caller.unwrap()
+    pre.thrd_mp.spec_index(pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().caller->Some_0
 }
 
 /// The value a call-family syscall returns for the `payload` it delivers: the carried usize, or Success.
@@ -49,15 +49,14 @@ pub open spec fn ipc_reply_entry_result(pre: KernelU, cpu_id: CpuId, ep_idx: End
 #[verifier::opaque]
 pub open spec fn ipc_call_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let caller = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let ep_ptr = caller.endpoint_descriptors[ep_idx as int].unwrap();
+    let caller = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let ep_ptr = caller.endpoint_descriptors[ep_idx as int]->Some_0;
     let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     let callee = old_u.thread_map.spec_index(endpoint.queue[0]);
     &&& ipc_step_pre(old_u, cpu_id, ep_idx)
     &&& caller.callee is None
     &&& endpoint.queue.len() > 0
     &&& endpoint.queue_state is RECEIVE
-    &&& endpoint.queue[0] != cpu.current_thread.unwrap()
     &&& old_u.thread_map.dom().contains(endpoint.queue[0])
     &&& callee.lock_state is Unlocked
     &&& !callee.killed
@@ -72,8 +71,8 @@ pub open spec fn ipc_call_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx
 /// User-visible call handoff: the queue head records the caller and runs on the caller's CPU, and the caller
 /// saves `regs` and waits for the reply.
 pub open spec fn ipc_call_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
-    let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map.spec_index(caller_ptr).endpoint_descriptors[ep_idx as int].unwrap();
+    let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map.spec_index(caller_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
     kernel_u_ipc_call_handoff_changed(old_u, new_u, cpu_id, caller_ptr, ep_ptr, ep_idx, old_u.endpoint_map.spec_index(ep_ptr).queue[0], regs, flushed_pcid)
 }
 
@@ -82,8 +81,8 @@ pub open spec fn ipc_call_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: C
 #[verifier::opaque]
 pub open spec fn ipc_accept_call_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let callee = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let ep_ptr = callee.endpoint_descriptors[ep_idx as int].unwrap();
+    let callee = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let ep_ptr = callee.endpoint_descriptors[ep_idx as int]->Some_0;
     let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
     let caller = old_u.thread_map.spec_index(endpoint.queue[0]);
     &&& ipc_step_pre(old_u, cpu_id, ep_idx)
@@ -91,7 +90,6 @@ pub open spec fn ipc_accept_call_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx:
     &&& callee.callee is None
     &&& endpoint.queue.len() > 0
     &&& endpoint.queue_state is SEND
-    &&& endpoint.queue[0] != cpu.current_thread.unwrap()
     &&& old_u.thread_map.dom().contains(endpoint.queue[0])
     &&& caller.lock_state is Unlocked
     &&& !caller.killed
@@ -104,8 +102,8 @@ pub open spec fn ipc_accept_call_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx:
 /// User-visible call acceptance: the queue head leaves the queue and waits for the reply, and the running
 /// thread records it as its caller.
 pub open spec fn ipc_accept_call_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
-    let callee_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map.spec_index(callee_ptr).endpoint_descriptors[ep_idx as int].unwrap();
+    let callee_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map.spec_index(callee_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
     kernel_u_ipc_accept_call_changed(old_u, new_u, cpu_id, callee_ptr, ep_ptr, ep_idx, old_u.endpoint_map.spec_index(ep_ptr).queue[0])
 }
 
@@ -114,20 +112,20 @@ pub open spec fn ipc_accept_call_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 #[verifier::opaque]
 pub open spec fn ipc_reply_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let callee = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let ep_ptr = callee.endpoint_descriptors[ep_idx as int].unwrap();
+    let callee = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let ep_ptr = callee.endpoint_descriptors[ep_idx as int]->Some_0;
     let endpoint = old_u.endpoint_map.spec_index(ep_ptr);
-    let caller = old_u.thread_map.spec_index(callee.caller.unwrap());
+    let caller = old_u.thread_map.spec_index(callee.caller->Some_0);
     &&& ipc_step_pre(old_u, cpu_id, ep_idx)
     &&& callee.caller is Some
     &&& callee.callee is None
     &&& endpoint.queue.len() == 0 || endpoint.queue_state is RECEIVE
-    &&& callee.caller.unwrap() != cpu.current_thread.unwrap()
-    &&& old_u.thread_map.dom().contains(callee.caller.unwrap())
+    &&& callee.caller->Some_0 != cpu.current_thread->Some_0
+    &&& old_u.thread_map.dom().contains(callee.caller->Some_0)
     &&& caller.lock_state is Unlocked
     &&& !caller.killed
     &&& caller.state is WAITING_REPLY
-    &&& caller.callee == Some(cpu.current_thread.unwrap())
+    &&& caller.callee == Some(cpu.current_thread->Some_0)
     &&& caller.owning_container == callee.owning_container
     &&& old_u.process_map.dom().contains(caller.owning_proc)
 }
@@ -135,27 +133,20 @@ pub open spec fn ipc_reply_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_id
 /// User-visible reply handoff: the recorded caller resumes on the CPU, and the running thread saves `regs`
 /// and waits for the next call on the endpoint at `ep_idx`.
 pub open spec fn ipc_reply_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
-    let callee_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let callee_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let callee = old_u.thread_map.spec_index(callee_ptr);
-    kernel_u_ipc_reply_handoff_changed(old_u, new_u, cpu_id, callee_ptr, callee.endpoint_descriptors[ep_idx as int].unwrap(), ep_idx, callee.caller.unwrap(), regs, flushed_pcid)
+    kernel_u_ipc_reply_handoff_changed(old_u, new_u, cpu_id, callee_ptr, callee.endpoint_descriptors[ep_idx as int]->Some_0, ep_idx, callee.caller->Some_0, regs, flushed_pcid)
 }
 
-/// A call is one block step, one rendezvous error step against a plain receiver or a foreign receive-call
-/// waiter, one handoff step, or a stuttering rejection; a cpu no longer Running or marked by a killer stutters with CpuIdle.
+/// A call is one block step or a CpuIdle stutter as in ordinary IPC, one rendezvous error step against a plain receiver or a
+/// foreign receive-call waiter, one handoff step, or a stuttering rejection.
 #[verifier::opaque]
 pub open spec fn ipc_call_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers,
     flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType,
 ) -> bool {
-    if ret is CpuIdle && (!(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed) {
-        &&& trace.len() == 0
-        &&& post == pre
-    } else if ret is CpuIdle {
-        &&& trace.len() == 1
-        &&& trace[0].old_u == pre
-        &&& trace[0].new_u == post
-        &&& ipc_block_step_pre(pre, cpu_id, ep_idx, ThreadState::CALLING)
-        &&& ipc_block_step(pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload, regs, flushed_default_pcid)
+    if ret is CpuIdle {
+        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload, regs, flushed_default_pcid, ret)
     } else if ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
@@ -176,19 +167,12 @@ pub open spec fn ipc_call_syscall_trace(
     }
 }
 
-/// A receive_call is one block step, one rendezvous error step against a plain sender or a foreign caller,
-/// one acceptance step, or a stuttering rejection; a cpu no longer Running or marked by a killer stutters with CpuIdle.
+/// A receive_call is one block step or a CpuIdle stutter as in ordinary IPC, one rendezvous error step against a plain sender
+/// or a foreign caller, one acceptance step, or a stuttering rejection.
 #[verifier::opaque]
 pub open spec fn ipc_receive_call_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType) -> bool {
-    if ret is CpuIdle && (!(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed) {
-        &&& trace.len() == 0
-        &&& post == pre
-    } else if ret is CpuIdle {
-        &&& trace.len() == 1
-        &&& trace[0].old_u == pre
-        &&& trace[0].new_u == post
-        &&& ipc_block_step_pre(pre, cpu_id, ep_idx, ThreadState::RECEIVING_CALL)
-        &&& ipc_block_step(pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty, regs, flushed_default_pcid)
+    if ret is CpuIdle {
+        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty, regs, flushed_default_pcid, ret)
     } else if ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
@@ -214,59 +198,68 @@ pub open spec fn ipc_receive_call_syscall_trace(trace: Seq<KernelStep>, pre: Ker
 #[verifier::opaque]
 pub open spec fn ipc_reply_dangling_caller_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let callee = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-    let endpoint = old_u.endpoint_map.spec_index(callee.endpoint_descriptors[ep_idx as int].unwrap());
-    let caller = old_u.thread_map.spec_index(callee.caller.unwrap());
+    let callee = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let endpoint = old_u.endpoint_map.spec_index(callee.endpoint_descriptors[ep_idx as int]->Some_0);
+    let caller = old_u.thread_map.spec_index(callee.caller->Some_0);
     &&& ipc_step_pre(old_u, cpu_id, ep_idx)
     &&& callee.caller is Some
+    &&& callee.callee is None
     &&& endpoint.queue.len() == 0 || endpoint.queue_state is RECEIVE
-    &&& callee.caller.unwrap() != cpu.current_thread.unwrap()
-    &&& old_u.thread_map.dom().contains(callee.caller.unwrap())
+    &&& callee.caller->Some_0 != cpu.current_thread->Some_0
+    &&& old_u.thread_map.dom().contains(callee.caller->Some_0)
     &&& caller.lock_state is Unlocked
     &&& !caller.killed
     &&& caller.state is DANGLING
-    &&& caller.callee == Some(cpu.current_thread.unwrap())
+    &&& caller.callee == Some(cpu.current_thread->Some_0)
 }
 
-/// Taking over the dangling thread write-locks the cpu, the running thread, and the dangling thread, drops the running thread's caller, and
-/// leaves the dangling thread a killed thread without a callee.
+/// Taking over the dangling thread write-locks the cpu, the running thread, and the dangling thread, drops the running thread's caller and
+/// records the reply to the dangling thread in its progress, and leaves the dangling thread a killed thread without a callee.
+#[verifier::opaque]
 pub open spec fn ipc_reply_dangling_caller_taken_over_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let callee_ptr = cpu.current_thread.unwrap();
-    let dangling_ptr = old_u.thread_map.spec_index(callee_ptr).caller.unwrap();
+    let callee_ptr = cpu.current_thread->Some_0;
+    let dangling_ptr = old_u.thread_map.spec_index(callee_ptr).caller->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked, caller: None, ..old_u.thread_map.spec_index(callee_ptr) })
+        thread_map: old_u.thread_map.insert(callee_ptr, ThreadU {
+            lock_state: LockStateU::WriteLocked, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: dangling_ptr }), ..old_u.thread_map.spec_index(callee_ptr)
+        })
             .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(dangling_ptr) }),
         ..old_u
     })
 }
 
-/// The cpu and its running thread stay write-held between the steps of a reply to a dangling thread.
+/// The cpu and its running thread, which records a reply to a dangling thread, stay write-held between the steps of that reply.
+#[verifier::opaque]
 pub open spec fn ipc_reply_dangling_caller_held_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
+    let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
     &&& cpu.state is Running
     &&& cpu.current_thread is Some
     &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
-    &&& old_u.thread_map.spec_index(cpu.current_thread->Some_0).lock_state is WriteLocked
+    &&& thread.lock_state is WriteLocked
+    &&& thread.syscall_progress is Some
+    &&& thread.syscall_progress->Some_0 is ReplyDangling
 }
 
-/// Releasing the cpu and the running thread after the dangling thread is reclaimed.
+/// Releasing the cpu and the running thread and clearing its progress after the dangling thread is reclaimed.
+#[verifier::opaque]
 pub open spec fn ipc_reply_dangling_caller_released_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let callee_ptr = cpu.current_thread.unwrap();
+    let callee_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
-        thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(callee_ptr) }),
+        thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map.spec_index(callee_ptr) }),
         ..old_u
     })
 }
 
 /// A reply_and_receive is one reply handoff step; a reply to the dangling thread of a killed caller takes the dangling thread over, reclaims
-/// it and the killed callers it takes over one step per change, and releases the cpu and the running thread; a rejection
-/// stutters.
+/// it and the killed callers it takes over one step per change within the running thread's container, and releases the cpu and the
+/// running thread; a rejection stutters.
 #[verifier::opaque]
 pub open spec fn ipc_reply_and_receive_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers,
@@ -281,11 +274,14 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
         &&& ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid)
     } else if ret is ErrorIpcCallerKilled {
         let last = trace.len() - 1;
+        let container = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0].owning_container;
+        // take over + at least one reclaim step + release
         &&& trace.len() >= 3
         &&& trace[0].old_u == pre
         &&& ipc_reply_dangling_caller_step_pre(pre, cpu_id, ep_idx)
         &&& ipc_reply_dangling_caller_taken_over_step(pre, trace[0].new_u, cpu_id)
-        &&& forall|j: int| #![trigger trace[j]] 0 < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(trace[j].old_u, trace[j].new_u, cpu_id)
+        &&& forall|j: int| #![trigger trace[j]] 0 < j < last
+            ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, container)
         &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
         &&& trace[last].new_u == post
         &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, post, cpu_id)
@@ -298,7 +294,7 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
 /// Dequeues the receive-call callee, switches `cpu_id` to its process, records the caller on it, parks the
 /// caller waiting for the reply with `entry_regs`, and updates the affected PCID publication and TLB state.
 #[verifier::opaque]
-pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -409,7 +405,7 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
 /// Dequeues the caller at the queue head, parks it waiting for the reply of the running callee, and records
 /// it as that callee's caller.
 #[verifier::opaque]
-pub(super) open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
+pub(super) open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, caller_ptr: RwLockThreadPtr) -> bool {
     let caller = pre.thrd_mp.spec_index(caller_ptr).view();
     let caller_node = caller.endpoint_linkedlist_node.addr();
     let endpoint_before = pre.ep_mp.spec_index(ep_ptr);

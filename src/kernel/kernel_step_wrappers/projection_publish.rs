@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_sets_equal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
@@ -41,6 +41,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         after.prc_mp.spec_index(child).view_rodata().view().parent == Some(parent),
         after.prc_mp.spec_index(child).view_rodata().view().owning_container == container,
         after.prc_mp.spec_index(child).view_rodata().view().depth == before.prc_mp.spec_index(parent).view_rodata().view().depth + 1,
+        after.prc_mp.spec_index(child).view_rodata().view().pcid == pcid,
         after.prc_mp.spec_index(child).view().children.view() == Seq::<RwLockProcessPtr>::empty(),
         after.prc_mp.spec_index(child).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
         after.prc_mp.spec_index(child).view_ghost().uppertree_seq.view() == before.prc_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent),
@@ -103,8 +104,8 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             &&& pre.thread_map[thread].syscall_progress == before.thrd_mp.spec_index(thread).view().syscall_progress.view()
             &&& pre.container_map.dom().contains(container)
             &&& pre.thread_map[thread].quota_4k >= cost
-            &&& post.container_map[container].free_pcids.subset_of(pre.container_map[container].free_pcids)
-            &&& pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids).len() == 1
+            &&& pre.container_map[container].free_pcids.contains(pcid)
+            &&& post.container_map[container].free_pcids == pre.container_map[container].free_pcids.remove(pcid)
             &&& post.process_map.dom() == pre.process_map.dom().insert(child)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
                 lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
@@ -114,7 +115,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             })
             &&& post.process_map[child] == (ProcessU {
                 lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid: post.process_map[child].pcid, owning_container: container, owned_pci_functions: Set::empty(),
+                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid, owning_container: container, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
                 depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
@@ -139,6 +140,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
     kernel_process_published_and_parent_unlocked_implies_u_thread_map(before, after, thread, iommu, progress);
     kernel_process_published_and_parent_unlocked_implies_u_container_map(before, after, child, container, pcid_allocator, pcid);
     kernel_process_published_and_parent_unlocked_implies_u_process_map(before, after, parent, child, container, table, iommu);
+    kernel_process_projection_at(after, child);
 }
 
 /// Publishing a process projects to the thread map with only `thread` charged the publication cost and given `progress`.
@@ -192,8 +194,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
-            &&& post.container_map[container].free_pcids.subset_of(pre.container_map[container].free_pcids)
-            &&& pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids).len() == 1
+            &&& pre.container_map[container].free_pcids.contains(pcid)
+            &&& post.container_map[container].free_pcids == pre.container_map[container].free_pcids.remove(pcid)
             &&& post.container_map == pre.container_map.insert(container, ContainerU {
                 owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
             })
@@ -206,7 +208,6 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
         owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
     }), c => { if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); reveal(container_pcid_allocator_wf); } });
     assert(post.container_map[container].free_pcids =~= pre.container_map[container].free_pcids.remove(pcid)) by { pcid_allocator_perms_wf_at(before.pcid_allc_mp, pcid_allocator); };
-    assert_sets_equal!(pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids), set![pcid]);
 }
 
 /// Publishing a process projects to the process map with `child` added write-locked under `parent`, `parent` unlocked,

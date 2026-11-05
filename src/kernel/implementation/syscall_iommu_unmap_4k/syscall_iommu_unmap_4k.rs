@@ -47,7 +47,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let Tracked(thread_perm) = locked.thread_lock_perm;
     let (ctn_ptr, prc_ptr, thrd_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
     let iova_range = VaRange4K::new(iova, range);
-    let ghost r = iommu_unmap_4k_iova_range(iova, range);
+    let ghost r = spec_va_range_4k(iova, range);
     proof {
         assert(iova_range == r) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };

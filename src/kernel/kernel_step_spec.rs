@@ -3,10 +3,13 @@ use crate::*;
 
 /// User-level step relations: how one recorded step changes the user projection `KernelU`.
 pub mod kernel_u_steps;
+/// User-level clauses shared by several syscalls' step relations.
+pub mod kernel_u_syscall_common;
 /// Kernel-level field relations of the context-switch, rebalance, and IPC steps.
 pub mod kernel_schedule_ipc_fields;
 
 pub use kernel_u_steps::*;
+pub use kernel_u_syscall_common::*;
 pub use kernel_schedule_ipc_fields::*;
 
 verus! {

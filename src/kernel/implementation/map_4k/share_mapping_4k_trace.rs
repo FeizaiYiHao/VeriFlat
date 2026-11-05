@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::share_mapping_4k_spec::*;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {

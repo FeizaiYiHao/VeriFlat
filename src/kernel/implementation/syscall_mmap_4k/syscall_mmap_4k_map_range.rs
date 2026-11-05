@@ -257,7 +257,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         old(steps).snapshot_k() == *old(krnl),
         range > 0,
         va_4k_valid(va),
-        *va_range == mmap_4k_syscall_va_range(va, range),
+        *va_range == spec_va_range_4k(va, range),
         va_range.wf(),
         enter_phase is Read || enter_phase is Fill,
         mmap_4k_trace_after_enter(entered, cpu_id, *va_range, enter_phase),

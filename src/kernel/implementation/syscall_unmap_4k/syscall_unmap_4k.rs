@@ -38,7 +38,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         ret is Success ==> {
             let process = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(krnl).prc_mp.spec_index(process).view().pagetable;
-            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let va_range = spec_va_range_4k(va, range);
             &&& range > 0
             &&& va_4k_range_valid(va, range)
             &&& final(krnl).pt_mp.dom().contains(pt)

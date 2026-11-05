@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 use super::super::syscall_new_process_publish::publish_staged_process;
 use super::super::syscall_new_process_enter::enter_new_process_commit;
 use super::super::syscall_new_process_share_finish::share_and_finish_new_process;

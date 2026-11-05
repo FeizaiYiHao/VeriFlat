@@ -10,9 +10,12 @@ verus! {
     /// The call write-locks the cpu and thread once and first enters to read: it read-locks the pagetable and holds the
     /// range's 2M windows. When one of those windows has no L2 page yet, it releases only the pagetable, records the hold
     /// step with the cpu and thread still write-locked, and enters again to fill: the pagetable is write-locked while the
-    /// missing L4 and L3 directories are installed and then downgraded to a read lock. Success records the entering step
-    /// (after the hold step when filling), one step per installed directory page, downgrade, or published leaf, and an
-    /// exiting step. Failure records no step, or the hold step and a release step when the fill section rejected the range.
+    /// missing L4 and L3 directories are installed and then downgraded to a read lock. Before the first leaf it hides the
+    /// empty L1 tables the range's windows still link and, if it hid any, flushes the TLBs and reclaims those tables.
+    /// Success records the entering step (after the hold step when filling), one step per installed directory page, the
+    /// downgrade, at most one TLB flush step per cpu and one step recording the flush, one quota credit per reclaimed L1 table, one
+    /// step per published leaf, and an exiting step. Failure records no step, or the hold step and a release step when the
+    /// fill section rejected the range.
     /// The result is `mmap_2m_syscall_result` of the state `ret.1` the section that decided it starts from: the entry state
     /// for the read section, or the fill section's start, which other cpus may have changed since the hold step.
     pub fn syscall_mmap_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: (RetValueType, Ghost<KernelU>))

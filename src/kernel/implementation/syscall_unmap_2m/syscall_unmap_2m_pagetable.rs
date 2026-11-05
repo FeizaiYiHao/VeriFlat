@@ -93,7 +93,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
         ret is Success ==> {
             let process = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(steps).snapshot_k().prc_mp.spec_index(process).view().pagetable;
-            let va_range = unmap_2m_syscall_va_range(va, len);
+            let va_range = spec_va_range_2m(va, len);
             &&& final(krnl).pt_mp.dom().contains(pt)
             &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < len ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m().dom().contains(va_range.view()[j])
         },
@@ -149,7 +149,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     }
     proof {
         let table = whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable);
-        assert(va_range == unmap_2m_syscall_va_range(va, len));
+        assert(va_range == spec_va_range_2m(va, len));
         assert(!(spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < len
             ==> table.mapping_2m().dom().contains(va_range.view()[j]) && table.mapping_2m()[va_range.view()[j]].present));
     }

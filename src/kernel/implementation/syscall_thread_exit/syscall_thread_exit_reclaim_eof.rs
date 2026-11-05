@@ -7,7 +7,7 @@ verus! {
 proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr, thrd_ptr),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -65,7 +65,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
 )
     requires
         pre.inv(),
-        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr, thrd_ptr),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,

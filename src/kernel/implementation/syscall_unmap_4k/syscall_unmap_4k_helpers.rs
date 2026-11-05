@@ -24,7 +24,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
-        *va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
+        *va_range == spec_va_range_4k(va, range),
         va_range.wf(),
         *old(krnl) == (KernelK {
             cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thrd_mp: old(krnl).thrd_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..old(steps).snapshot_k()

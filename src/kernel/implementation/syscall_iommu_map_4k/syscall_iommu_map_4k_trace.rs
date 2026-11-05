@@ -16,8 +16,8 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let it = krnl.it_mp.spec_index(process.view().iommu_table->Some_0).view();
-            let va_range = iommu_map_4k_syscall_range(va, range);
-            let iova_range = iommu_map_4k_syscall_range(iova, range);
+            let va_range = spec_va_range_4k(va, range);
+            let iova_range = spec_va_range_4k(iova, range);
             let malformed = range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || !spec_va_4k_valid(iova)
                 || iova >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(iova, range);
             let checked = !malformed && !(ret is CpuIdle) && !(ret is ErrorProcessKilled) && !(ret is ErrorThreadKilled);
@@ -61,7 +61,7 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.pagetable);
             assert(forall|v: VAddr| #![trigger u.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k.dom().contains(v)] #![trigger table.mapping_4k().dom().contains(v)]
                 u.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k.dom().contains(v) == (table.mapping_4k().dom().contains(v) && table.mapping_4k()[v].present));
-            assert(user_va_range(u, iommu_map_4k_syscall_range(va, range)) == (spec_v2l4index(va) >= table.kernel_l4_end()));
+            assert(user_va_range(u, spec_va_range_4k(va, range)) == (spec_v2l4index(va) >= table.kernel_l4_end()));
             if !(ret is ErrorPciNoIommuTable) && !(ret is ErrorNoQuota) {
                 kernel_iommu_table_mappings_projection_at(krnl, thread.owning_proc);
             }
@@ -79,10 +79,11 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
         process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         process_iommu_table_wf(pre.prc_mp, pre.it_mp),
+        thread_cpu_wf(pre.thrd_mp, pre.cpu_arr),
         index_valid(NUM_CPUS, cpu_id),
         iommu_map_4k_syscall_result(kernel_k_to_kernel_u(*pre), cpu_id, va, iova, range) is Success,
-        iommu_map_4k_syscall_range(va, range).wf(),
-        iommu_map_4k_syscall_range(iova, range).wf(),
+        spec_va_range_4k(va, range).wf(),
+        spec_va_range_4k(iova, range).wf(),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, ..*pre }),
         !pre.cpu_arr.spec_index(cpu_id).value.locked(),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
@@ -111,7 +112,7 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuMap4k {
-            va_range: iommu_map_4k_syscall_range(va, range), iova_range: iommu_map_4k_syscall_range(iova, range), mapped: 0, directory: Mmap4kDirectory::None }),
+            va_range: spec_va_range_4k(va, range), iova_range: spec_va_range_4k(iova, range), mapped: 0, directory: Mmap4kDirectory::None }),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
         !pre.pt_mp.spec_index(pagetable_ptr).wlocked(),
@@ -122,18 +123,19 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, iommu_map_4k_syscall_range(va, range)),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, spec_va_range_4k(va, range)),
         !pre.it_mp.spec_index(iommu_table_ptr).locked(),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
         post.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
     ensures
-        iommu_map_4k_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, iommu_map_4k_syscall_range(va, range), iommu_map_4k_syscall_range(iova, range)),
-        iommu_map_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, iommu_map_4k_syscall_range(va, range), iommu_map_4k_syscall_range(iova, range)),
+        iommu_map_4k_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, spec_va_range_4k(va, range), spec_va_range_4k(iova, range)),
+        iommu_map_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, spec_va_range_4k(va, range), spec_va_range_4k(iova, range)),
 {
     reveal(iommu_map_4k_enter_step_pre); reveal(iommu_map_4k_enter_step);
     assert(pre.prc_mp.dom().contains(prc_ptr) && !pre.prc_mp.spec_index(prc_ptr).view().zombie && pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr
         && pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_cpu_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
+    thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id);
     kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -397,6 +399,7 @@ pub(super) proof fn iommu_map_4k_trace_push_range_step(steps: Seq<KernelStep>, b
 /// The exit step pushed after the enter step and the range steps completes the IOMMU-map trace.
 pub(super) proof fn iommu_map_4k_trace_exit(steps: Seq<KernelStep>, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va_range: VaRange4K, iova_range: VaRange4K)
     requires
+        va_range == spec_va_range_4k(va_range.start, va_range.len) && iova_range == spec_va_range_4k(iova_range.start, iova_range.len),
         va_range.len + 1 <= before.len() <= 4 * va_range.len + 1,
         iommu_map_4k_enter_step_pre(before[0].old_u, cpu_id, va_range, iova_range),
         iommu_map_4k_enter_step(before[0].old_u, before[0].new_u, cpu_id, va_range, iova_range),
@@ -405,8 +408,8 @@ pub(super) proof fn iommu_map_4k_trace_exit(steps: Seq<KernelStep>, before: Seq<
         iommu_map_4k_exit_step_pre(pre, cpu_id),
         iommu_map_4k_exit_step(pre, post, cpu_id),
     ensures
-        iommu_map_4k_syscall_trace(steps, cpu_id, va_range, iova_range),
+        iommu_map_4k_syscall_trace(steps, cpu_id, va_range.start, iova_range.start, va_range.len),
 {
-    reveal(iommu_map_4k_syscall_trace);
+    reveal(iommu_map_4k_syscall_trace); reveal(iommu_map_4k_enter_step_pre);
 }
 } // verus!

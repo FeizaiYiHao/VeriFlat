@@ -3,14 +3,6 @@ use crate::*;
 use veriflat_syscall_kill_process::syscall_kill_process::syscall_kill_process_spec::*;
 
 verus! {
-/// The container clause of the killed-thread reclaim alternative of `kill_process_middle_step`, as that step states it:
-/// every thread the step changes or removes belongs to the target's container.
-pub open spec fn kill_process_reclaim_in_target(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
-        old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t])
-        ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container
-}
-
 /// Entering a process kill on a cpu of `a` locks the cpu and its running process and thread, and marks a child of that
 /// process, which shares its container, so it leaves the view of `b` unchanged.
 pub proof fn kill_process_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -362,7 +354,7 @@ pub proof fn kill_process_descriptor_dropped_step_lr(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_descriptor_dropped(old_u, new_u),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -400,7 +392,7 @@ pub proof fn kill_process_descriptor_dropped_step_iso(old_u: KernelU, new_u: Ker
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_descriptor_dropped(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
@@ -427,7 +419,7 @@ pub proof fn kill_process_caller_woken_step_lr(old_u: KernelU, new_u: KernelU, c
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -453,7 +445,7 @@ pub proof fn kill_process_caller_woken_step_iso(old_u: KernelU, new_u: KernelU, 
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
@@ -474,7 +466,7 @@ pub proof fn kill_process_caller_taken_over_step_lr(old_u: KernelU, new_u: Kerne
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_caller_taken_over(old_u, new_u),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -500,7 +492,7 @@ pub proof fn kill_process_caller_taken_over_step_iso(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_caller_taken_over(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
@@ -522,7 +514,7 @@ pub proof fn kill_process_dangling_reclaimed_step_lr(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_dangling_thread_reclaimed(old_u, new_u),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -550,7 +542,7 @@ pub proof fn kill_process_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Ker
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_dangling_thread_reclaimed(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
@@ -572,7 +564,7 @@ pub proof fn kill_process_endpoint_released_step_lr(old_u: KernelU, new_u: Kerne
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_endpoint_released(old_u, new_u),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -612,7 +604,7 @@ pub proof fn kill_process_endpoint_released_step_iso(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_in_target(old_u, new_u, cpu_id),
+        killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         kernel_u_killed_endpoint_released(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
@@ -730,7 +722,7 @@ pub proof fn kill_process_table_hidden_step_lr(old_u: KernelU, new_u: KernelU, c
         kill_process_table_hidden_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step);
+    reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step); reveal(process_table_hidden_step);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     assert(in_domain(old_u, a, target.owning_container)) by {
@@ -752,7 +744,7 @@ pub proof fn kill_process_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, 
         kill_process_table_hidden_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step);
+    reveal(kill_process_step_pre); reveal(kill_process_table_hidden_step); reveal(process_table_hidden_step);
     memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 

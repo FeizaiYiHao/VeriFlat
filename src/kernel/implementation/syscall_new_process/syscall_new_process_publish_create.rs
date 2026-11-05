@@ -122,6 +122,7 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == ctn_ptr,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pagetable == ret.1,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().depth == old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().depth + 1,
+        final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pcid == pcid,
         final(krnl).prc_mp.spec_index(ret.0).view().children.view() == Seq::<RwLockProcessPtr>::empty(),
         final(krnl).prc_mp.spec_index(ret.0).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
         final(krnl).prc_mp.spec_index(ret.0).view_ghost().uppertree_seq.view() == old(krnl).prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr),

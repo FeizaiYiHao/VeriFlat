@@ -3,6 +3,7 @@ use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
 use super::syscall_kill_process_walk::*;
+use super::syscall_kill_process_walk_spec::*;
 use super::syscall_kill_process_reclaim::kill_reclaim_target;
 
 verus! {

@@ -412,10 +412,10 @@ pub(super) fn ipc_block_current_release_and_end_step(
             &&& ipc_ordinary_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state,
                 payload, *pt_regs, flushed, RetValueType::CpuIdle)
         }) by {
-            ipc_block_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, *pt_regs, flushed);
             assert(!old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             };
+            ipc_block_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, *pt_regs, flushed);
             ipc_ordinary_trace_block_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state, payload, *pt_regs, flushed);
         };
     }

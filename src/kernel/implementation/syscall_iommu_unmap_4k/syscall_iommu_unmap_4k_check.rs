@@ -40,7 +40,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             let e = ret->Ok_0.0;
             let iommu_table = ret->Ok_0.1;
             let iommu_table_perm = ret->Ok_0.2.view();
-            let iova_range = iommu_unmap_4k_iova_range(iova, range);
+            let iova_range = spec_va_range_4k(iova, range);
             let table = final(krnl).it_mp.spec_index(iommu_table);
             let thread = final(krnl).thrd_mp.spec_index(e.thread_ptr);
             &&& RetValueType::Success == iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, iova, range)
@@ -153,7 +153,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let iova_range = VaRange4K::new(iova, range);
     proof {
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
-        assert(iova_range == iommu_unmap_4k_iova_range(iova, range)) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
+        assert(iova_range == spec_va_range_4k(iova, range)) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
     }
     let present = va2index(iova).0 >= krnl.dflt_pt.borrow().kernel_l4_end && {
         let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(&iommu_table_perm));
@@ -166,7 +166,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         return Err(RetValueType::ErrorIommuIovaNotMapped);
     }
     proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::Success); }
-    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: iommu_unmap_4k_iova_range(iova, range), unmapped: 0, flushed: false })), Tracked(&*lctx),
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: spec_va_range_4k(iova, range), unmapped: 0, flushed: false })), Tracked(&*lctx),
         Tracked(&thread_perm));
     proof {
         let entered_k = *krnl;
@@ -174,7 +174,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         iommu_unmap_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, iova, range);
-        iommu_unmap_4k_trace_enter_step(before, steps.view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, iommu_unmap_4k_iova_range(iova, range));
+        iommu_unmap_4k_trace_enter_step(before, steps.view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, spec_va_range_4k(iova, range));
     }
     Ok((Unmap4kLocked {
         container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm: Tracked(cpu_perm), container_lock_perm: Tracked(container_perm), process_lock_perm: Tracked(process_perm),

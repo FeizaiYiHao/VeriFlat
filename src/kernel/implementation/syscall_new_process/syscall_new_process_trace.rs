@@ -1,12 +1,12 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 use super::syscall_new_process_spec::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 verus! {
 /// Each return path's entry-state K facts give its value as the user-view result.
 pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ep_idx: Option<EndpointIdx>, with_iommu: bool, ret: RetValueType, pcid: Pcid)
@@ -26,7 +26,7 @@ pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va:
             let free = PcidAllocator::free_pcids(allocator.ref_counters.view());
             let has_pcid = allocator.pcid_is_free(pcid);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
-            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let va_range = spec_va_range_4k(va, range);
             let live = !args_bad && cpu.view().view().state is Running && !cpu.being_killed();
             let unkilled = live && !process.being_killed() && !thread.being_killed();
             let endpoint_missing = ep_idx is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) is None;
@@ -76,6 +76,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             let base: usize = if with_iommu { 6 } else { 4 };
             &&& cpu.locking_thread() is None
             &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
             &&& cpu.view().view().current_thread == Some(thrd_ptr)
             &&& krnl.thrd_mp.dom().contains(thrd_ptr)
             &&& thread.locking_thread() is None
@@ -105,7 +106,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
     ensures
         new_process_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, ep_idx, with_iommu),
 {
-    reveal(new_process_enter_step_pre);
+    reveal(new_process_enter_step_pre); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
     assert(PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(pcid));
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, ep_ptr); kernel_l4_end_projection_at(krnl, pagetable_ptr); kernel_process_projection_at(krnl, prc_ptr);
 }
@@ -185,7 +186,7 @@ pub(super) proof fn new_process_publish_step_pre_from_k(
 /// Publishing the staged child while releasing the parent is the publish step on `pre`/`post`.
 pub(super) proof fn new_process_publish_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
-    ctn_ptr: RwLockContainerPtr, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool,
+    ctn_ptr: RwLockContainerPtr, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool, pcid: Pcid,
 )
     requires
         {
@@ -206,8 +207,8 @@ pub(super) proof fn new_process_publish_step_from_u(
             &&& pre.thread_map.dom().contains(thrd_ptr)
             &&& pre.container_map.dom().contains(ctn_ptr)
             &&& pre.thread_map[thrd_ptr].quota_4k >= cost
-            &&& post.container_map[ctn_ptr].free_pcids.subset_of(pre.container_map[ctn_ptr].free_pcids)
-            &&& pre.container_map[ctn_ptr].free_pcids.difference(post.container_map[ctn_ptr].free_pcids).len() == 1
+            &&& pre.container_map[ctn_ptr].free_pcids.contains(pcid)
+            &&& post.container_map[ctn_ptr].free_pcids == pre.container_map[ctn_ptr].free_pcids.remove(pcid)
             &&& post.process_map.dom() == pre.process_map.dom().insert(child_ptr)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
                 lock_state: if p == parent_ptr { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
@@ -217,7 +218,7 @@ pub(super) proof fn new_process_publish_step_from_u(
             })
             &&& post.process_map[child_ptr] == (ProcessU {
                 lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid: post.process_map[child_ptr].pcid, owning_container: ctn_ptr, owned_pci_functions: Set::empty(),
+                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent_ptr), children: Seq::empty(),
                 depth: (pre.process_map[parent_ptr].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
@@ -357,7 +358,10 @@ pub(super) proof fn new_process_trace_publish_step(steps: &KernelSteps, before: 
         new_process_publish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id),
     ensures
         new_process_trace_after_publish(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, range, regs, ep_idx, with_iommu),
-{ reveal(new_process_trace_after_enter); reveal(new_process_trace_after_publish); }
+{
+    reveal(new_process_trace_after_enter); reveal(new_process_trace_after_publish);
+    assert_seqs_equal!(steps.view().subrange(start, steps.view().len() as int).take(1), before.subrange(start, before.len() as int));
+}
 
 /// The share steps pushed after the partial trace that starts at `start` give the partial trace after sharing.
 pub(super) proof fn new_process_trace_share_steps(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool)
@@ -369,7 +373,10 @@ pub(super) proof fn new_process_trace_share_steps(steps: &KernelSteps, before: S
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id),
     ensures
         new_process_trace_after_share(steps.view(), start, pre, cpu_id, range, regs, ep_idx, with_iommu),
-{ reveal(new_process_trace_after_publish); reveal(new_process_trace_after_share); }
+{
+    reveal(new_process_trace_after_publish); reveal(new_process_trace_after_share);
+    assert_seqs_equal!(steps.view().subrange(start, start + 2), before.subrange(start, before.len() as int));
+}
 
 /// The finish step pushed after the shared partial trace that starts at `start` completes the commit trace.
 pub(super) proof fn new_process_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool)
@@ -381,7 +388,11 @@ pub(super) proof fn new_process_trace_finish_step(steps: &KernelSteps, before: S
         new_process_finish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id),
     ensures
         new_process_commit_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, range, regs, ep_idx, with_iommu),
-{ reveal(new_process_trace_after_share); reveal(new_process_commit_trace); }
+{
+    reveal(new_process_trace_after_share); reveal(new_process_commit_trace);
+    assert_seqs_equal!(steps.view().subrange(start, steps.view().len() as int).drop_last(), before.subrange(start, before.len() as int));
+    assert_seqs_equal!(before.subrange(start, before.len() as int).subrange(0, 2), before.subrange(start, start + 2));
+}
 
 /// A rejected call records no step.
 pub(super) proof fn new_process_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool, ret: RetValueType)
@@ -396,7 +407,7 @@ pub(super) proof fn new_process_trace_stutter(trace: Seq<KernelStep>, pre: Kerne
 pub(super) proof fn new_process_syscall_trace_from_commit(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool, ret: RetValueType)
     requires
         trace.len() > 0,
-        new_process_commit_trace(trace, pre, cpu_id, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }, regs, ep_idx, with_iommu),
+        new_process_commit_trace(trace, pre, cpu_id, spec_va_range_4k(va, range), regs, ep_idx, with_iommu),
         trace.last().new_u == post,
         ret is SuccessPairUsize || ret is SuccessThreeUsize,
     ensures

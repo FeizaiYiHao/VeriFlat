@@ -25,7 +25,7 @@ pub(super) fn unmap_2m_unmap_and_finish(
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         !(len == 0 || len > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - len * 0x200000 || !spec_va_2m_range_valid(va, len)),
-        *va_range == unmap_2m_syscall_va_range(va, len),
+        *va_range == spec_va_range_2m(va, len),
         va_range.wf(),
         *cover == va_range.covering_4k_range(),
         cover.wf(),

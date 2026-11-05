@@ -21,7 +21,7 @@ pub(super) fn unmap_2m_release_and_exit(
         old(steps).snapshot_k() == *old(krnl),
         unmap_2m_trace_after_range(old(steps).view(), cpu_id, *va_range),
         len > 0,
-        *va_range == unmap_2m_syscall_va_range(va, len),
+        *va_range == spec_va_range_2m(va, len),
         va_range.wf(),
         *cover == va_range.covering_4k_range(),
         cover.wf(),

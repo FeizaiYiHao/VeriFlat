@@ -50,7 +50,7 @@ pub(super) fn new_process_lock_cpu_owner(
             let cpu = final(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             &&& *final(steps) == *old(steps)
             &&& !(range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - base) / 3 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range))
-            &&& x.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
+            &&& x.source_range == spec_va_range_4k(va, range)
             &&& x.source_range.wf()
             &&& final(krnl).inv()
             &&& final(lctx).kernel_view_locking_state() is Acquire

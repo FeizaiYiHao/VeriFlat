@@ -218,6 +218,7 @@ verus! {
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
             current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed(),
             old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed() == false,
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
@@ -301,7 +302,7 @@ verus! {
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)
             }) by {
-                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false);
+                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false, old(steps).snapshot_k());
             };
         }
     }
@@ -469,6 +470,7 @@ verus! {
             ipc_schedule_waiting_peer_eof_rendezvous_fields(steps.snapshot_k(), *old(krnl), *krnl, cpu_id, prc_ptr, current_thrd_ptr, peer_thrd_ptr, ep_ptr, ep_idx, waiting_state,
                 peer_sched_ptr, wake_cpu, result, lctx.thread_id());
         }
+        proof { assert(!steps.snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); }; }
         ipc_release_scheduled_peer_and_end_step(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, Ghost(ep_idx), Ghost(waiting_state), Ghost(payload),
             peer_thrd_ptr, result, peer_sched_ptr, wake_cpu, Ghost(*old(krnl)), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),

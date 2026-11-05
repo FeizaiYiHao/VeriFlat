@@ -6,8 +6,8 @@ verus! {
 /// and increments the owning thread's pending free-quota counter.
 #[verifier::opaque]
 pub(super) open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(
-    pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
-    depth: usize, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
+    pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize,
+    allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
     let iova = spec_index2va(indices);
     let pg_idx = page_ptr2page_index(pg_ptr);

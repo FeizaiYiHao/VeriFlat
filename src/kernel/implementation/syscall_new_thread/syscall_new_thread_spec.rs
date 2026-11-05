@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 /// The result of `syscall_new_thread` and `syscall_new_thread_with_endpoint` from the state at entry,
@@ -31,21 +31,12 @@ pub open spec fn new_thread_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx
     let prc_ptr = cpu.current_process->Some_0;
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let ep_ptr = thread.endpoint_descriptors[ep_idx->Some_0 as int]->Some_0;
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_process is Some
-    &&& cpu.current_thread is Some
     &&& old_u.container_map.dom().contains(cpu.owning_container)
-    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
     &&& !old_u.process_map.spec_index(prc_ptr).killed
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == prc_ptr
     &&& thread.owning_container == cpu.owning_container
     &&& thread.quota_4k >= 1
     &&& (ep_idx is Some ==> {

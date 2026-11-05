@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::{KillScope, kill_walk_state};
+use super::syscall_kill_process_walk_spec::{KillScope, kill_walk_state};
 
 verus! {
 /// `kill_walk_state` survives a step from `pre` to `post` that keeps the typed lock maps, the containers, processes, and

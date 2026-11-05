@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_walk::*;
+use super::syscall_kill_process_walk_spec::*;
 use super::syscall_kill_process_retire_pages_lock::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_spec::*;

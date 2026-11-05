@@ -2,11 +2,11 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Marking the write-held exiting process `prc_ptr`, whose tables map nothing and whose only thread `thrd_ptr`
+/// Marking the write-held exiting process `prc_ptr`, whose tables map nothing and whose only thread
 /// is parked as an exited zombie, as having emptied its tables while it and its tables are still write-held. Lock
 /// owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub(super) open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr) -> bool {
+pub(super) open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr) -> bool {
     let process = pre.prc_mp.spec_index(prc_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
@@ -33,7 +33,6 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
-    &&& post.irt.view().owners() == pre.irt.view().owners()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
         let owned = pre.irt.view().spec_index_owner(b, d, f) == table.view().proc_ptr;

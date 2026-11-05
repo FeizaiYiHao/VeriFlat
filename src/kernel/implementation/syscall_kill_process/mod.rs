@@ -30,3 +30,4 @@ pub(crate) mod syscall_kill_process_victim;
 pub(crate) mod syscall_kill_process_victim_eof;
 pub(crate) mod syscall_kill_process_victim_spec;
 pub(crate) mod syscall_kill_process_walk;
+pub(crate) mod syscall_kill_process_walk_spec;

@@ -4,11 +4,11 @@ use crate::*;
 use veriflat_alloc_page::free_4k_page::drain_4k_cache_batch;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk_spec::KillScope;
 use super::syscall_kill_process_retire_pages_scoped::kill_retire_next_table_page_scoped;
 use super::syscall_kill_process_retire_table_page_lock::kill_retire_lock_table_page;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::kill_chain_state;
+use super::syscall_kill_process_walk_spec::kill_chain_state;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_spec::{kill_retire_held_state, kill_retire_pages, kill_retire_tables_emptied};
 #[cfg(verus_keep_ghost)]

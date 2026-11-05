@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 /// The result of `syscall_new_container` from the state at entry, in the implementation's check order: malformed
@@ -15,18 +15,20 @@ verus! {
 /// container does not own or that is not Off. `Success` stands for `SuccessThreeUsize`, whose fresh container, process,
 /// and thread pointers the state does not determine.
 pub open spec fn new_container_syscall_result(
-    pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId, ep_idx: Option<EndpointIdx>,
+    pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, ep_idx: Option<EndpointIdx>,
 ) -> RetValueType {
-    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let cpu = pre.cpu_array[cpu_id as int];
+    let thread = pre.thread_map[cpu.current_thread->Some_0];
     let parent = pre.container_map[thread.owning_container];
     let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
-    let transfer = pre.cpu_array[transfer_cpu_id as int];
-    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
-    if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
-        || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
-        || funding_page_count > usize::MAX - 9 - 3 * range {
+    let transfer = pre.cpu_array[transfer_cpu as int];
+    let va_range = spec_va_range_4k(va, range);
+    // The child costs nine 4K pages (its three allocators, scheduler, cpu set, root process, page-table object, L4 page, and
+    // first thread) and two 2M pages (the container and its PCID allocator); each shared page may add three directory pages.
+    if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu >= NUM_CPUS
+        || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota > funding || funding > usize::MAX - 9 - 3 * range {
         RetValueType::Error
-    } else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    } else if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if parent.killed { RetValueType::ErrorContainerKilled }
     else if parent.lock_process_owner is Some && parent.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[thread.owning_proc].depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if parent.zombie { RetValueType::ErrorContainerZombie }
@@ -34,10 +36,9 @@ pub open spec fn new_container_syscall_result(
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if ep_idx is Some && thread.endpoint_descriptors[ep_idx->Some_0 as int] is None { RetValueType::Error }
-    else if thread.quota_4k < 9 + funding_page_count + 3 * range || thread.quota_2m < 2 { RetValueType::ErrorNoQuota }
-    else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present) {
-        RetValueType::Error
-    } else if transfer.owning_container != thread.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
+    else if thread.quota_4k < 9 + funding + 3 * range || thread.quota_2m < 2 { RetValueType::ErrorNoQuota }
+    else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j])) { RetValueType::Error }
+    else if transfer.owning_container != thread.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
     else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }
     else { RetValueType::Success }
 }
@@ -58,26 +59,21 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     let pagetable = process.pagetable->Some_0;
     let transfer = old_u.cpu_array[transfer_cpu as int];
     let ep_ptr = thread.endpoint_descriptors[ep_idx->Some_0 as int]->Some_0;
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_thread is Some
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& container.lock_state is Unlocked
     &&& container.cpu_set_lock is Unlocked
     &&& !container.killed
     &&& !container.zombie
     &&& container.depth < MAX_CONTAINER_TREE_DEPTH
-    &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is Unlocked
     &&& !process.killed
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
     &&& range.wf()
+    // Nine 4K pages and two 2M pages for the child, as in `new_container_syscall_result`, and up to three directory pages per page.
     &&& 0 < range.len <= (usize::MAX - 9) / 3
     &&& user_va_range(old_u, range)
     &&& process_quota <= funding <= usize::MAX - 9 - 3 * range.len
@@ -264,40 +260,31 @@ pub open spec fn new_container_trace_after_enter(trace: Seq<KernelStep>, pre: Ke
     &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
 }
 
-/// The partial trace after publishing: the enter step from `pre` and the publish step.
+/// The partial trace after publishing: the partial trace after entering, then the publish step.
 #[verifier::opaque]
 pub open spec fn new_container_trace_after_publish(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& trace.len() == 2
-    &&& trace[0].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
-    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
+    &&& new_container_trace_after_enter(trace.take(1), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& new_container_publish_step_pre(trace[1].old_u, cpu_id)
     &&& new_container_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
 }
 
-/// The steps from `start` after sharing: enter from `pre`, publish, and then only share steps.
+/// The steps from `start` after sharing: the partial trace after publishing at `start`, then only share steps.
 #[verifier::opaque]
 pub open spec fn new_container_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
     &&& 0 <= start
+    // Enter, publish, and one to four share steps per page: the leaf and up to three new directories.
     &&& start + range.len + 2 <= trace.len() <= start + 4 * range.len + 2
-    &&& trace[start].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
-    &&& new_container_enter_step(pre, trace[start].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
-    &&& new_container_publish_step_pre(trace[start + 1].old_u, cpu_id)
-    &&& new_container_publish_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id)
+    &&& new_container_trace_after_publish(trace.subrange(start, start + 2), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& forall|j: int| #![trigger trace[j]] start + 2 <= j < trace.len() ==> share_4k_range_step(trace[j], cpu_id)
 }
 
-/// The steps of a successful call: enter, publish, the share steps, and finish.
+/// The steps of a successful call: the partial trace after sharing, then the finish step.
 #[verifier::opaque]
 pub open spec fn new_container_commit_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>) -> bool {
+    // Enter, publish, one to four share steps per page, and finish.
     &&& range.len + 3 <= trace.len() <= 4 * range.len + 3
-    &&& trace[0].old_u == pre
-    &&& new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, ep_idx)
-    &&& new_container_enter_step(pre, trace[0].new_u, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
-    &&& new_container_publish_step_pre(trace[1].old_u, cpu_id)
-    &&& new_container_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
-    &&& forall|j: int| #![trigger trace[j]] 2 <= j < trace.len() - 1 ==> share_4k_range_step(trace[j], cpu_id)
+    &&& new_container_trace_after_share(trace.drop_last(), 0, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
     &&& new_container_finish_step_pre(trace.last().old_u, cpu_id)
     &&& new_container_finish_step(trace.last().old_u, trace.last().new_u, cpu_id)
 }
@@ -308,9 +295,8 @@ pub open spec fn new_container_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize,
     process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, result: RetValueType,
 ) -> bool {
-    let range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if result is SuccessThreeUsize {
-        &&& new_container_commit_trace(trace, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx)
+        &&& new_container_commit_trace(trace, pre, cpu_id, spec_va_range_4k(va, range), funding, process_quota, transfer_cpu, regs, ep_idx)
         &&& trace.last().new_u == post
     } else { trace.len() == 0 && post == pre }
 }

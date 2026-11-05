@@ -5,7 +5,7 @@ use super::syscall_new_thread_spec::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 verus! {
 /// Acquiring the caller's context locks and recording the progress is the enter step on `pre`/`post`.
 pub proof fn new_thread_enter_step_from_u(
@@ -19,6 +19,7 @@ pub proof fn new_thread_enter_step_from_u(
             let thread = pre.thread_map.spec_index(thrd_ptr);
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& cpu.owning_container == ctn_ptr

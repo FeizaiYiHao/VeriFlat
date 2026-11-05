@@ -3,16 +3,16 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_unmap_4k` from the state at entry, in the implementation's check order: malformed arguments, a
-/// killed caller, and then a range below the first user L4 index or with a page that has no present 4K leaf.
+/// killed caller, and then a range below the first user L4 index or with a page that has no 4K mapping.
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
-    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    let va_range = spec_va_range_4k(va, range);
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
-    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present {
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
         RetValueType::Success
     } else { RetValueType::Error }
 }
@@ -26,15 +26,9 @@ pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_thread is Some
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
     &&& old_u.container_map.dom().contains(thread.owning_container)
@@ -60,19 +54,6 @@ pub open spec fn unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         ..old_u
     })
-}
-
-/// Exiting happens after every page of the recorded range has been cleared and the flush has been
-/// recorded.
-#[verifier::opaque]
-pub open spec fn unmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    let progress = thread.syscall_progress->Some_0;
-    &&& unmap_4k_locked(old_u, cpu_id)
-    &&& thread.syscall_progress is Some
-    &&& progress is Unmap4k
-    &&& progress->Unmap4k_unmapped == progress->Unmap4k_range.len
-    &&& progress->Unmap4k_flushed
 }
 
 /// Exiting clears unmap progress, unlocks the cpu, which leaves its kernel step for its trap path, its running thread, and the
@@ -107,6 +88,8 @@ pub open spec fn unmap_4k_trace_after_enter(trace: Seq<KernelStep>, cpu_id: CpuI
 /// flushed cpu TLB, recorded flush, or quota refund.
 #[verifier::opaque]
 pub open spec fn unmap_4k_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K) -> bool {
+    // enter + one leaf per page + at most one TLB flush per cpu + the recorded flush + one refund per container of the
+    // caller's chain, at most MAX_CONTAINER_TREE_DEPTH + 1
     &&& range.len + 2 <= trace.len() <= range.len + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 3
     &&& unmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range)
     &&& unmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range)
@@ -117,12 +100,13 @@ pub open spec fn unmap_4k_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuI
 /// TLB, recorded flush, or quota refund; and one exit step.
 #[verifier::opaque]
 pub open spec fn unmap_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
-    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    let va_range = spec_va_range_4k(va, range);
+    // the partial trace after unmapping the range + exit
     &&& range + 3 <= trace.len() <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4
     &&& unmap_4k_enter_step_pre(trace[0].old_u, cpu_id, va_range)
     &&& unmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, va_range)
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> unmap_4k_range_step(trace[j], cpu_id)
-    &&& unmap_4k_exit_step_pre(trace.last().old_u, cpu_id)
+    &&& unmap_4k_refund_step_pre(trace.last().old_u, cpu_id)
     &&& unmap_4k_exit_step(trace.last().old_u, trace.last().new_u, cpu_id)
 }
 } // verus!

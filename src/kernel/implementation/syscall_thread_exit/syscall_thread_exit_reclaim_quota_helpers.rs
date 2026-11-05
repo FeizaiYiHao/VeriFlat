@@ -57,7 +57,8 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(thread_exit_quota_progress_before(size)),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some,
+        thread_exit_quota_progress_after(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0) == Some(SyscallProgress::ThreadExitQuota { returned: size }),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
@@ -168,6 +169,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
         emptied_pt.mapping_4k().dom() =~= Set::<VAddr>::empty(),
         emptied_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
         emptied_pt.mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        emptied_pt.lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         emptied_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         emptied_pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         emptied_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
@@ -235,7 +237,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
     }
     proof {
         process_thread_wf_thread_at(progressed.prc_mp, progressed.thrd_mp, thrd_ptr);
-        assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, prc_ptr, thrd_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
+        assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, prc_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
         thread_exit_tables_emptied_eof(progressed, *krnl, prc_ptr, thrd_ptr, pagetable);
     }
     if let Some(it) = iommu_table {

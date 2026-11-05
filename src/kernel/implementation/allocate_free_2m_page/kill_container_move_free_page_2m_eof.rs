@@ -155,6 +155,25 @@ broadcast proof fn kill_container_move_free_page_2m_eof_region_member(head: Page
         #[trigger] page_2m_all_ptrs(head).contains(pg_ptr),
 { page_2m_all_ptrs_contains_index(head, page_ptr2page_index(pg_ptr)); page_ptr_roundtrip(); }
 
+/// No CPU cache changes, and the moved head stays on a global list while its tails stay merged, so every cached 2M page keeps
+/// its state, owner, and free-list node.
+proof fn kill_container_move_free_page_2m_eof_cpu_cache_2m(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        allocator_free_2m_pages_wf(pre.allc_2m_mp, pre.pg_arr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
+            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
+        kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
+{
+    reveal(kill_container_move_free_page_2m_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_index_roundtrip();
+    reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf);
+}
+
 proof fn kill_container_move_free_page_2m_eof_free_pages(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     pg_ptr: PagePtr, node: usize,
@@ -185,10 +204,10 @@ proof fn kill_container_move_free_page_2m_eof_free_pages(
         allocator_free_page_ptrs_wf(post.allc_2m_mp),
 {
     reveal(kill_container_move_free_page_2m_eof_transition_framing);
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, pg_ptr);
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
+    kill_container_move_free_page_2m_eof_cpu_cache_2m(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
     reveal(allocator_free_2m_pages_wf);
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by {

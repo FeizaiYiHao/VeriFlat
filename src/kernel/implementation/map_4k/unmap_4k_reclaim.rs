@@ -156,7 +156,7 @@ pub fn remove_last_4k_mapping_to_allocator(
     }
 
     proof {
-        assert(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(*old(krnl), *krnl, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
+        assert(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(*old(krnl), *krnl, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
             reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing);
         };
         reclaim_last_4k_mapping_to_cpu_cache_eof(*old(krnl), *krnl, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, *old(counter), *counter, node_addr);

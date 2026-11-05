@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk::*;
+use super::super::syscall_kill_process::syscall_kill_process_walk_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_reclaim::{kill_reclaim_target, kill_reassign_functions, kill_retire_zombie, kill_reclaim_live};
 use super::syscall_kill_container_retire_root::kill_container_retire_root;
 #[cfg(verus_keep_ghost)]

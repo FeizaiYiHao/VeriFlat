@@ -6,7 +6,7 @@ verus! {
 /// CPU between the source and target CPU sets, preserving PCID and hardware cr3/pcid word.
 #[verifier::opaque]
 pub(super) open spec fn ipc_cpu_rendezvous_eof_transition_framing(
-    pre: KernelK, post: KernelK, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr,
+    pre: KernelK, post: KernelK, peer_thrd_ptr: RwLockThreadPtr,
     ep_ptr: RwLockEndpointPtr, peer_sched_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
     source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,

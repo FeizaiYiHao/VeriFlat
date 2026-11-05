@@ -61,7 +61,7 @@ proof fn ipc_cpu_rendezvous_eof_cpu_wf(
             &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
         },
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures
         process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
@@ -119,7 +119,7 @@ proof fn ipc_cpu_rendezvous_eof_endpoint_wf(
             &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
         },
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures
         thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
@@ -177,7 +177,7 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
             &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
         },
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -206,7 +206,7 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
 )
     requires
         pre.inv(),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
@@ -280,7 +280,7 @@ proof fn ipc_cpu_rendezvous_eof_rendezvous_fields(
             &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
         },
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.sched_mp.spec_index(peer_sched_ptr).shards.inv(),
         post.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.wf(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&snapshot, &pre),
@@ -373,7 +373,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
             &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
         },
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.cpu_arr.inv(),
         post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),

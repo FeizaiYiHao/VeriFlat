@@ -2,26 +2,23 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The page-aligned 4K sequence of `len` pages from `va` requested by `syscall_iommu_map_4k`.
-pub open spec fn iommu_map_4k_syscall_range(va: VAddr, len: usize) -> VaRange4K {
-    VaRange4K { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize))) }
-}
-
 /// The result of `syscall_iommu_map_4k` from the state at entry, in the implementation's check order: malformed
 /// arguments, a cpu no longer Running or marked by a killer, a killed process or caller, a process without an IOMMU table, less than
 /// three 4K quota per page (one per IOMMU directory level that may be missing), a va range below the first user L4 index,
 /// a va page not mapped in the page table, and an iova page already mapped in the IOMMU table.
 pub open spec fn iommu_map_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize) -> RetValueType {
-    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let cpu = pre.cpu_array[cpu_id as int];
+    let thread = pre.thread_map[cpu.current_thread->Some_0];
     let process = pre.process_map[thread.owning_proc];
-    let va_range = iommu_map_4k_syscall_range(va, range);
-    let iova_range = iommu_map_4k_syscall_range(iova, range);
+    let va_range = spec_va_range_4k(va, range);
+    let iova_range = spec_va_range_4k(iova, range);
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || !spec_va_4k_valid(iova)
         || iova >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(iova, range) { RetValueType::Error }
-    else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    else if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if process.iommu_table is None { RetValueType::ErrorPciNoIommuTable }
+    // Each page may need a new directory page under its IOMMU L4, L3, and L2 entries, one 4K quota each; the leaf costs none.
     else if thread.quota_4k < 3 * range { RetValueType::ErrorNoQuota }
     else if !user_va_range(pre, va_range) { RetValueType::Error }
     else if !(forall|i: int| #![trigger process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < range ==> process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])) {
@@ -36,16 +33,9 @@ pub open spec fn iommu_map_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VA
 /// The cpu, its running thread, and the thread's process are write-locked, and the process has a read-held page table and
 /// a write-held IOMMU table.
 pub open spec fn iommu_map_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
-    let thrd_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
-    let process = u.process_map.spec_index(u.thread_map.spec_index(thrd_ptr).owning_proc);
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
-    &&& u.cpu_array[cpu_id as int].current_thread is Some
-    &&& u.thread_map.dom().contains(thrd_ptr)
-    &&& u.thread_map.spec_index(thrd_ptr).lock_state is WriteLocked
-    &&& u.process_map.dom().contains(u.thread_map.spec_index(thrd_ptr).owning_proc)
+    let process = u.process_map.spec_index(u.thread_map.spec_index(u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc);
+    &&& thread_pagetable_op_locked(u, cpu_id)
     &&& process.lock_state is WriteLocked
-    &&& process.pagetable is Some
     &&& process.pagetable->Some_0.lock_state is ReadLocked
     &&& process.iommu_table is Some
     &&& process.iommu_table->Some_0.lock_state is WriteLocked
@@ -60,29 +50,25 @@ pub open spec fn iommu_map_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, va_r
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    &&& index_valid(NUM_CPUS, cpu_id)
+    let pagetable = process.pagetable->Some_0;
+    let iommu_table = process.iommu_table->Some_0;
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_thread is Some
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is Unlocked
     &&& !process.killed
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& process.pagetable is Some
-    &&& !(process.pagetable->Some_0.lock_state is WriteLocked)
+    &&& !(pagetable.lock_state is WriteLocked)
     &&& process.iommu_table is Some
-    &&& process.iommu_table->Some_0.lock_state is Unlocked
+    &&& iommu_table.lock_state is Unlocked
     &&& va_range.wf()
     &&& iova_range.wf()
     &&& va_range.len > 0
     &&& iova_range.len == va_range.len
     &&& user_va_range(old_u, va_range)
-    &&& forall|i: int| #![trigger process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < va_range.len ==> process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])
-    &&& forall|i: int| #![trigger process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len ==> !process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < va_range.len ==> pagetable.mapping_4k.dom().contains(va_range.view()[i])
+    &&& forall|i: int| #![trigger iommu_table.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len ==> !iommu_table.mapping_4k.dom().contains(iova_range.view()[i])
 }
 
 /// Entering write-locks the cpu, its running thread, and its process, read-locks the page table and write-locks its existing
@@ -190,7 +176,8 @@ pub open spec fn iommu_map_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 /// windows of the recorded va range, and drops the thread's read lock on its page table, which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn iommu_map_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let thrd_ptr = cpu.current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
@@ -198,9 +185,7 @@ pub open spec fn iommu_map_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let windows = pagetable_window_locks_after_unlocking_range(pagetable.pagetable_window_locks, thread.syscall_progress->Some_0->IommuMap4k_va_range);
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
-            lock_state: LockStateU::Unlocked, op: cpu_op_after_step(old_u.cpu_array[cpu_id as int].state), ..old_u.cpu_array[cpu_id as int]
-        }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..pagetable }),
@@ -217,11 +202,14 @@ pub open spec fn iommu_map_4k_range_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| iommu_map_4k_leaf_step_pre(step.old_u, cpu_id) && iommu_map_4k_leaf_step(step.old_u, step.new_u, cpu_id)
 }
 
-/// The full trace of a successful IOMMU map: one enter step, at most three directory steps and one leaf step per page,
-/// and one exit step.
+/// The full trace of a successful IOMMU map of the `range` pages from `va` at the `range` pages from `iova`: one enter step,
+/// at most three directory steps and one leaf step per page, and one exit step.
 #[verifier::opaque]
-pub open spec fn iommu_map_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va_range: VaRange4K, iova_range: VaRange4K) -> bool {
-    &&& va_range.len + 2 <= trace.len() <= 4 * va_range.len + 2
+pub open spec fn iommu_map_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize) -> bool {
+    let va_range = spec_va_range_4k(va, range);
+    let iova_range = spec_va_range_4k(iova, range);
+    // enter + (one leaf + up to three directories) per page + exit
+    &&& range + 2 <= trace.len() <= 4 * range + 2
     &&& iommu_map_4k_enter_step_pre(trace[0].old_u, cpu_id, va_range, iova_range)
     &&& iommu_map_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, va_range, iova_range)
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> iommu_map_4k_range_step(trace[j], cpu_id)

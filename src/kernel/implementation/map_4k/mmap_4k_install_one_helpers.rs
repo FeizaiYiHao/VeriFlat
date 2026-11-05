@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_create_entry_install::install_staged_4k_page_table_page;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::mmap_4k_build_structure_trace::{mmap_4k_directory_step_from_k, mmap_2m_directory_step_from_k};

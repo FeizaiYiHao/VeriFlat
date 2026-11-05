@@ -231,7 +231,6 @@ pub(super) fn unmap_2m_range(
         let leaf = clear_2m_mapping_present_in_window(krnl, pagetable, va, thrd_ptr, Ghost(*range), Ghost(i), Tracked(&mut *lctx), Tracked(&mut *steps), pagetable_perm, thread_perm,
             Tracked(window_perms.tracked_borrow(window_of(va))));
         proof {
-            assert(range.view().contains(va));
             unmap_2m_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, &leaf.0@, &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable,
                 *range, i, va);
         }

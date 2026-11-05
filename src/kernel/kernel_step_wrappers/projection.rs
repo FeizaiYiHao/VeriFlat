@@ -799,6 +799,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.prc_mp.spec_index(process).view_rodata().view().parent is None,
         after.prc_mp.spec_index(process).view_rodata().view().owning_container == child,
         after.prc_mp.spec_index(process).view_rodata().view().depth == 0,
+        after.prc_mp.spec_index(process).view_rodata().view().pcid == 1usize,
         after.prc_mp.spec_index(process).view().children.view().len() == 0,
         after.prc_mp.spec_index(process).view().owned_threads.view().len() == 0,
         after.prc_mp.spec_index(process).view_ghost().uppertree_seq.view().len() == 0,
@@ -817,7 +818,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
     kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, thread); kernel_cpu_projection_at(before, transfer_cpu);
     kernel_container_root_published_implies_u_cpu_array(before, after, transfer_cpu);
     kernel_container_root_published_implies_u_thread_map(before, after, thread, funding, progress);
-    kernel_container_root_published_implies_u_process_map(before, after, child, process, process_quota);
+    kernel_container_root_published_implies_u_process_map(before, after, child, process, process_quota); kernel_process_projection_at(after, process);
     kernel_container_root_published_implies_u_container_map(before, after, parent, child, process, funding, process_quota, moved, thread_page, pcid_allocator);
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }

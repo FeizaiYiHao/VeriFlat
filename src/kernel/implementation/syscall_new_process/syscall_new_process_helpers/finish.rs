@@ -12,7 +12,7 @@ use veriflat_kernel_core::{create_thread_from_staged_page_merged, kernel_u_new_t
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
 #[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 #[verifier::spinoff_prover]

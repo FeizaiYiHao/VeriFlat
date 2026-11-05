@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk_spec::KillScope;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::{kill_chain_state, kill_scope_progress, kill_walk_state};
+use super::syscall_kill_process_walk_spec::{kill_chain_state, kill_scope_progress, kill_walk_state};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -32,6 +32,7 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -134,11 +135,11 @@ pub(crate) fn kill_reclaim_return_quota(
 {
     hide(kill_reclaim_state);
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), PageSize::SZ4k, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Reclaim { flushed: true }), PageSize::SZ4k, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), PageSize::SZ2m, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Quota { returned: PageSize::SZ4k }), PageSize::SZ2m, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), PageSize::SZ1g, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(KillStage::Quota { returned: PageSize::SZ2m }), PageSize::SZ1g, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
 }
 
 /// Return the whole `size` quota of the target to its container's `size` allocator under that allocator's quota lock, and
@@ -147,8 +148,8 @@ pub(crate) fn kill_reclaim_return_quota_size(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, size: PageSize,
-    Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, Ghost(stage): Ghost<KillStage>,
+    size: PageSize, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
         old(krnl).inv(),
@@ -157,8 +158,9 @@ pub(crate) fn kill_reclaim_return_quota_size(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, kill_process_quota_stage_before(size), *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
+        kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
+        kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
     ensures
@@ -206,9 +208,9 @@ pub(crate) fn kill_reclaim_return_quota_size(
         container_process_wf_process_at(entry_k.ctn_mp, entry_k.prc_mp, target);
         kernel_process_quota_returned_implies_u_step(&entry_k, &returned_k, target, size);
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thrd_ptr);
-        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, kill_process_quota_stage_before(size), scope);
-        kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, kill_process_quota_stage_before(size), pagetable, iommu_table);
-        kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, size, scope);
+        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, stage, scope);
+        kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, stage, pagetable, iommu_table);
+        kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, stage, size, scope);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
@@ -518,6 +520,7 @@ pub(crate) fn kill_reclaim_unlock_table(
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -599,7 +602,7 @@ pub(crate) fn kill_reclaim_unlock_table(
         let before_u = kernel_k_to_kernel_u(unlock_k);
         kill_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, scope);
         kill_reclaim_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, thrd_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, pagetable, iommu_table);
-        kill_user_4k_unmapped_pre_from_k(&unlock_k, target);
+        kill_table_unmapped_pre_from_k(&unlock_k, target);
         if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&unlock_k, target); }
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, target, pagetable, thrd_ptr, false);
         kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thrd_ptr, target, scope);

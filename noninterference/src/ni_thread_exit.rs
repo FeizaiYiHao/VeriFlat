@@ -7,9 +7,7 @@ verus! {
 /// The container clause of the killed-thread reclaim alternative of `thread_exit_middle_step`, as that step states it:
 /// every thread the step changes or removes belongs to the exiting thread's container.
 pub open spec fn thread_exit_reclaim_in_container(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
-        old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t])
-        ==> old_u.thread_map[t].owning_container == old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container
+    killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
 }
 
 /// Entering an exit on a cpu of `a` locks the cpu, its container, the running process and thread, and wakes or takes
@@ -338,10 +336,10 @@ pub proof fn thread_exit_table_hidden_step_lr(old_u: KernelU, new_u: KernelU, cp
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, false),
-        thread_exit_table_hidden_step(old_u, new_u, cpu_id),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: false }),
+        process_table_hidden_step(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(thread_exit_reclaim_step_pre); reveal(process_table_hidden_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `thread_exit_table_hidden_step_lr` preserves isolation: the process's mappings only shrink.
 pub proof fn thread_exit_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -349,11 +347,11 @@ pub proof fn thread_exit_table_hidden_step_iso(old_u: KernelU, new_u: KernelU, c
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, false),
-        thread_exit_table_hidden_step(old_u, new_u, cpu_id),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: false }),
+        process_table_hidden_step(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc),
     ensures isolated(new_u, a, b),
 {
-    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_table_hidden_step);
+    reveal(thread_exit_reclaim_step_pre); reveal(process_table_hidden_step);
     memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
@@ -416,7 +414,7 @@ pub proof fn thread_exit_iommu_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }),
         thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
@@ -427,7 +425,7 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }),
         thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
@@ -435,21 +433,20 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
-/// Refunding 4K or 2M quota on a cpu of `a` may unlock a window of the exiting thread's process, a process of `a`, and raises
-/// the quota of the exiting thread's container, which lies in `a`, or of an ancestor of `a`, neither of which lies in `b`.
+/// Refunding 4K or 2M quota on a cpu of `a` raises the quota of the exiting thread's container, which lies in `a`, or of an
+/// ancestor of `a`, neither of which lies in `b`.
 pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }),
         thread_exit_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
     reveal(kernel_u_cpu_ownership_wf);
     reveal(kernel_u_container_tree_wf);
-    assert(domain_view(KernelU { process_map: new_u.process_map, ..old_u }, b) =~~= domain_view(old_u, b));
 }
 
 /// The step of `thread_exit_refund_step_lr` preserves isolation: it changes no mapping.
@@ -458,21 +455,11 @@ pub proof fn thread_exit_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }),
         thread_exit_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(thread_exit_refund_step);
-    let p = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc;
-    assert(old_u.process_map.dom().contains(p)) by { reveal(thread_exit_reclaim_step_pre); };
-    assert(new_u.process_map.dom() =~= old_u.process_map.dom() && forall|q: RwLockProcessPtr| #![trigger new_u.process_map[q]] {
-        &&& new_u.process_map[q].owning_container == old_u.process_map[q].owning_container && new_u.process_map[q].iommu_table == old_u.process_map[q].iommu_table
-        &&& (new_u.process_map[q].pagetable is Some) == (old_u.process_map[q].pagetable is Some)
-        &&& new_u.process_map[q].pagetable->Some_0.mapping_4k == old_u.process_map[q].pagetable->Some_0.mapping_4k
-        &&& new_u.process_map[q].pagetable->Some_0.mapping_2m == old_u.process_map[q].pagetable->Some_0.mapping_2m
-        &&& new_u.process_map[q].pagetable->Some_0.mapping_1g == old_u.process_map[q].pagetable->Some_0.mapping_1g
-    });
-    reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -487,7 +474,7 @@ pub proof fn thread_exit_quota_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: C
         thread_exit_quota_step_pre(old_u, cpu_id),
         thread_exit_quota_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_quota_step_pre); reveal(thread_exit_quota_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(thread_exit_quota_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_quota_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `thread_exit_quota_step_lr` preserves isolation.
 pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -501,7 +488,7 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
 {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map[thrd_ptr];
-    assert(old_u.thread_map.dom().contains(thrd_ptr) && old_u.process_map.dom().contains(thread.owning_proc) && old_u.container_map.dom().contains(thread.owning_container)) by { reveal(thread_exit_quota_step_pre); };
+    assert(old_u.thread_map.dom().contains(thrd_ptr) && old_u.process_map.dom().contains(thread.owning_proc) && old_u.container_map.dom().contains(thread.owning_container)) by { reveal(thread_exit_quota_step_pre); reveal(thread_exit_reclaim_step_pre); };
     assert(new_u.process_map.dom() =~= old_u.process_map.dom() && forall|q: RwLockProcessPtr| #![trigger new_u.process_map[q]] {
         &&& new_u.process_map[q].owning_container == old_u.process_map[q].owning_container
         &&& new_u.process_map[q].pagetable == old_u.process_map[q].pagetable
@@ -523,7 +510,7 @@ pub proof fn thread_exit_unlock_table_step_lr(old_u: KernelU, new_u: KernelU, cp
         thread_exit_unlock_table_step_pre(old_u, cpu_id),
         thread_exit_unlock_table_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_unlock_table_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unlock_table_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `thread_exit_unlock_table_step_lr` preserves isolation.
 pub proof fn thread_exit_unlock_table_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -535,7 +522,7 @@ pub proof fn thread_exit_unlock_table_step_iso(old_u: KernelU, new_u: KernelU, c
         thread_exit_unlock_table_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_unlock_table_step);
+    reveal(thread_exit_unlock_table_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unlock_table_step);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

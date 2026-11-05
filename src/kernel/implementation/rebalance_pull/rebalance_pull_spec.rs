@@ -68,9 +68,6 @@ pub open spec fn rebalance_pull_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool 
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& queues[cpu_id as int].len() == 0
     &&& first_nonempty_shard(queues, 0, cpu_id) is Some
-    &&& index_valid(NUM_CPUS, victim)
-    &&& victim != cpu_id
-    &&& queues[victim as int].len() > 0
     &&& old_u.thread_map.dom().contains(queues[victim as int][0])
     &&& thread.lock_state is Unlocked
     &&& !thread.killed

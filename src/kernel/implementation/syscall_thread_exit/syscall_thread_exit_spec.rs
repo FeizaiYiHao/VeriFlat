@@ -29,23 +29,14 @@ pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     let prc_ptr = cpu.current_process->Some_0;
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let caller = old_u.thread_map.spec_index(thread.caller->Some_0);
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_process is Some
-    &&& cpu.current_thread is Some
     &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
     &&& !old_u.container_map.spec_index(ctn_ptr).killed
-    &&& old_u.process_map.dom().contains(prc_ptr)
     &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
     &&& !old_u.process_map.spec_index(prc_ptr).killed
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == prc_ptr
     &&& thread.owning_container == ctn_ptr
     &&& thread.caller is Some ==> {
         &&& old_u.thread_map.dom().contains(thread.caller->Some_0)
@@ -190,15 +181,10 @@ pub open spec fn thread_exit_lock_table_step_pre(old_u: KernelU, cpu_id: CpuId) 
     &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
 }
 
-/// Exit detaches every attached function that `prc_ptr` owns.
-pub open spec fn thread_exit_detaches(table: IommuRootTableU, prc_ptr: RwLockProcessPtr, bus: int, device: int, function: int) -> bool {
-    table.attached[bus][device][function] && table.owners[bus][device][function] == prc_ptr
-}
-
-/// The attached flags after exit detaches the functions `prc_ptr` owns.
+/// The attached flags after exit detaches every attached function that `prc_ptr` owns.
 pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, prc_ptr: RwLockProcessPtr) -> Seq3<bool> {
     Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && !thread_exit_detaches(table, prc_ptr, bus, device, function))))
+        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && table.owners[bus][device][function] != prc_ptr)))
 }
 
 /// Locking the process's page table starts reclaiming and the thread records that nothing is flushed yet. A process
@@ -226,57 +212,16 @@ pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu
 }
 
 /// Reclaiming runs while the cpu, the container, the process with its page table, and the running thread are
-/// write-locked and the thread records progress `ThreadExitReclaim { flushed }`.
+/// write-locked and the thread records `progress`.
 #[verifier::opaque]
-pub open spec fn thread_exit_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, flushed: bool) -> bool {
+pub open spec fn thread_exit_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, progress: SyscallProgress) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    &&& unmap_4k_locked(old_u, cpu_id)
+    &&& thread_pagetable_op_locked(old_u, cpu_id)
     &&& old_u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
-    &&& thread.syscall_progress == Some(SyscallProgress::ThreadExitReclaim { flushed })
-}
-
-/// No valid user VA at or above the kernel's L4 end has a 4K mapping in `pagetable`.
-pub open spec fn thread_exit_user_4k_unmapped(u: KernelU, pagetable: PageTableU) -> bool {
-    forall|va: VAddr| #![trigger pagetable.mapping_4k.dom().contains(va)] spec_va_4k_valid(va) && u.kernel_l4_end <= spec_v2l4index(va) ==> !pagetable.mapping_4k.dom().contains(va)
-}
-
-/// `va` keys an entry of `o` in its 4K, 2M or 1G mappings or its window locks that `n` no longer keys.
-pub open spec fn thread_exit_table_key_dropped(o: PageTableU, n: PageTableU, va: VAddr) -> bool {
-    ||| o.mapping_4k.dom().contains(va) && !n.mapping_4k.dom().contains(va)
-    ||| o.mapping_2m.dom().contains(va) && !n.mapping_2m.dom().contains(va)
-    ||| o.mapping_1g.dom().contains(va) && !n.mapping_1g.dom().contains(va)
-    ||| o.pagetable_window_locks.dom().contains(WindowVa { va }) && !n.pagetable_window_locks.dom().contains(WindowVa { va })
-}
-
-/// A table-hidden step drops from the page table of the running thread's process every 4K, 2M and 1G mapping and every window
-/// lock under one root entry chosen by the kernel, and keeps everything else: every dropped key shares one L4 index, and every
-/// key with that index is dropped.
-#[verifier::opaque]
-pub open spec fn thread_exit_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let prc_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
-    let process = old_u.process_map.spec_index(prc_ptr);
-    let o = process.pagetable->Some_0;
-    let n = new_u.process_map.spec_index(prc_ptr).pagetable->Some_0;
-    &&& process.pagetable is Some
-    &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
-    &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
-    &&& forall|a: VAddr, b: VAddr| #![trigger thread_exit_table_key_dropped(o, n, a), thread_exit_table_key_dropped(o, n, b)]
-        thread_exit_table_key_dropped(o, n, a) && thread_exit_table_key_dropped(o, n, b) ==> spec_v2l4index(a) == spec_v2l4index(b)
-    &&& forall|a: VAddr, b: VAddr| #![trigger thread_exit_table_key_dropped(o, n, a), spec_v2l4index(b)]
-        thread_exit_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
-    &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
-            pagetable: Some(PageTableU {
-                mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
-                pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
-            }),
-            ..process
-        }),
-        ..old_u
-    })
+    &&& thread.syscall_progress == Some(progress)
 }
 
 /// An IOMMU leaf step removes exactly one 4K mapping from the process's write-locked IOMMU table and keeps every other
@@ -298,17 +243,15 @@ pub open spec fn thread_exit_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu
     })
 }
 
-/// No IOVA has a 4K mapping in `iommu_table`.
-pub open spec fn thread_exit_iommu_4k_unmapped(iommu_table: PageTableU) -> bool {
-    forall|iova: VAddr| #![trigger iommu_table.mapping_4k.dom().contains(iova)] !iommu_table.mapping_4k.dom().contains(iova)
-}
-
-/// The flush runs once every user 4K mapping of the process's page table is cleared and before it is recorded.
+/// The flush runs before it is recorded, once hiding every user root entry has left the process's page table without any
+/// 4K, 2M or 1G mapping and without any window lock.
 #[verifier::opaque]
 pub open spec fn thread_exit_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    &&& thread_exit_reclaim_step_pre(old_u, cpu_id, false)
-    &&& thread_exit_user_4k_unmapped(old_u, old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0)
+    let table = old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0;
+    &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: false })
+    &&& table.mapping_4k == Map::<VAddr, MapEntry>::empty() && table.mapping_2m == Map::<VAddr, MapEntry>::empty() && table.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& table.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
 }
 
 /// A TLB flush step read-locks the cpu set of the thread's container, or keeps it read-locked, and clears at most one
@@ -338,34 +281,31 @@ pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// The progress a thread records before returning its `size` quota.
-pub open spec fn thread_exit_quota_progress_before(size: PageSize) -> SyscallProgress {
-    match size {
-        PageSize::SZ4k => SyscallProgress::ThreadExitReclaim { flushed: true },
-        PageSize::SZ2m => SyscallProgress::ThreadExitQuota { returned: PageSize::SZ4k },
-        PageSize::SZ1g => SyscallProgress::ThreadExitQuota { returned: PageSize::SZ2m },
+/// The progress a thread records after returning its next size of quota from `progress`: the 4K quota follows the
+/// recorded flush, then the 2M and the 1G quota; nothing follows any other progress.
+pub open spec fn thread_exit_quota_progress_after(progress: SyscallProgress) -> Option<SyscallProgress> {
+    match progress {
+        SyscallProgress::ThreadExitReclaim { flushed } => if flushed { Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ4k }) } else { None },
+        SyscallProgress::ThreadExitQuota { returned } => match returned {
+            PageSize::SZ4k => Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ2m }),
+            PageSize::SZ2m => Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g }),
+            PageSize::SZ1g => None,
+        },
+        _ => None,
     }
 }
 
-/// Returning one size of quota runs after the flush is recorded, while the reclaiming locks are held.
+/// Returning one size of quota runs after the flush is recorded, while the reclaiming locks are held and some quota size
+/// is left to return.
 #[verifier::opaque]
 pub open spec fn thread_exit_quota_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
-    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    &&& unmap_4k_locked(old_u, cpu_id)
-    &&& old_u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
-    &&& old_u.container_map.dom().contains(thread.owning_container)
-    &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
-    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
-    &&& thread.syscall_progress is Some
-    &&& {
-        ||| thread.syscall_progress->Some_0 == (SyscallProgress::ThreadExitReclaim { flushed: true })
-        ||| thread.syscall_progress->Some_0 == (SyscallProgress::ThreadExitQuota { returned: PageSize::SZ4k })
-        ||| thread.syscall_progress->Some_0 == (SyscallProgress::ThreadExitQuota { returned: PageSize::SZ2m })
-    }
+    let progress = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).syscall_progress->Some_0;
+    &&& thread_exit_reclaim_step_pre(old_u, cpu_id, progress)
+    &&& thread_exit_quota_progress_after(progress) is Some
 }
 
-/// The thread returns the next size of quota, named by its new progress: the whole quota of that size of the thread
-/// and of its process moves to their container.
+/// The thread returns the next size of quota after its progress, named by its new progress: the whole quota of that size
+/// of the thread and of its process moves to their container.
 #[verifier::opaque]
 pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -374,9 +314,9 @@ pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let container = old_u.container_map.spec_index(thread.owning_container);
     let progress = new_u.thread_map.spec_index(thrd_ptr).syscall_progress;
     let size = progress->Some_0->ThreadExitQuota_returned;
+    &&& thread.syscall_progress is Some
     &&& progress is Some
-    &&& progress->Some_0 is ThreadExitQuota
-    &&& thread.syscall_progress == Some(thread_exit_quota_progress_before(size))
+    &&& progress == thread_exit_quota_progress_after(thread.syscall_progress->Some_0)
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(thread.owning_container, match size {
             PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k + thread.quota_4k) as usize, ..container },
@@ -397,20 +337,17 @@ pub open spec fn thread_exit_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     })
 }
 
-/// Reclaiming ends once every quota size is returned and no user 4K mapping is left in the locked page table or IOMMU
-/// table.
+/// Reclaiming ends once every quota size is returned, the locked page table keeps no 4K, 2M or 1G mapping and no window
+/// lock, and the locked IOMMU table keeps no 4K mapping.
 #[verifier::opaque]
 pub open spec fn thread_exit_unlock_table_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    &&& unmap_4k_locked(old_u, cpu_id)
-    &&& process.lock_state is WriteLocked
-    &&& old_u.container_map.dom().contains(thread.owning_container)
-    &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
-    &&& process.pagetable->Some_0.lock_state is WriteLocked
-    &&& thread.syscall_progress == Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g })
-    &&& thread_exit_user_4k_unmapped(old_u, process.pagetable->Some_0)
-    &&& process.iommu_table is Some ==> thread_exit_iommu_4k_unmapped(process.iommu_table->Some_0)
+    let table = process.pagetable->Some_0;
+    &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g })
+    &&& table.mapping_4k == Map::<VAddr, MapEntry>::empty() && table.mapping_2m == Map::<VAddr, MapEntry>::empty() && table.mapping_1g == Map::<VAddr, MapEntry>::empty()
+    &&& table.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
+    &&& process.iommu_table is Some ==> process_iommu_4k_unmapped(process.iommu_table->Some_0)
 }
 
 /// Unlocking the reclaimed page table and IOMMU table leaves the thread ready to make its process a zombie.
@@ -430,24 +367,12 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// A refund grows the 4K or 2M quota of the running thread's container or of one of its ancestors and unlocks at most one window
-/// of the page table of the thread's process.
+/// A refund grows the 4K or 2M quota of the running thread's container or of one of its ancestors and changes nothing else;
+/// refunds happen after the flush, when the page table holds no window lock.
 #[verifier::opaque]
 pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    let process = old_u.process_map[thread.owning_proc];
-    let o = process.pagetable->Some_0.pagetable_window_locks;
-    let n = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
-    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
-    &&& new_u.process_map == old_u.process_map || {
-        &&& process.pagetable is Some
-        &&& n.dom() == o.dom()
-        &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
-        &&& unlocked.len() <= 1
-        &&& new_u.process_map == old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..process.pagetable->Some_0 }), ..process })
-    }
-    &&& kernel_u_container_quota_4k_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, thread.owning_container)
-        || kernel_u_container_quota_2m_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, thread.owning_container)
+    kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container) || kernel_u_container_quota_2m_increased(old_u, new_u, thread.owning_container)
 }
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
@@ -459,16 +384,16 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     let old_u = step.old_u;
     let new_u = step.new_u;
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    ||| thread_exit_drop_step_pre(old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id) && (forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
-        old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == thread.owning_container)
+    let flushed = SyscallProgress::ThreadExitReclaim { flushed: true };
+    ||| thread_exit_drop_step_pre(old_u, cpu_id) && killed_thread_reclaim_within_container(old_u, new_u, cpu_id, thread.owning_container)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_table_hidden_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: false }) && process_table_hidden_step(old_u, new_u, thread.owning_proc)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_tlb_flush_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_refund_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, flushed) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, flushed) && thread_exit_refund_step(old_u, new_u, cpu_id)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)
 }
@@ -529,6 +454,7 @@ pub open spec fn thread_exit_finish_step(old_u: KernelU, new_u: KernelU, cpu_id:
 /// The partial trace before finishing: one enter step from `pre` followed by middle steps.
 #[verifier::opaque]
 pub open spec fn thread_exit_partial_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId) -> bool {
+    // the enter step, then any middle steps
     &&& 1 <= trace.len()
     &&& trace[0].old_u == pre
     &&& thread_exit_enter_step_pre(pre, cpu_id)
@@ -536,15 +462,13 @@ pub open spec fn thread_exit_partial_trace(trace: Seq<KernelStep>, pre: KernelU,
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> thread_exit_middle_step(trace[j], cpu_id)
 }
 
-/// Complete trace of the call: on an exit, the enter step, the middle steps, and the finish step; a stutter otherwise.
+/// Complete trace of the call: on an exit, the partial trace followed by the finish step; a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn thread_exit_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, exited: bool) -> bool {
     if exited {
+        // the enter step, any middle steps, and the finish step
         &&& 2 <= trace.len()
-        &&& trace[0].old_u == pre
-        &&& thread_exit_enter_step_pre(pre, cpu_id)
-        &&& thread_exit_enter_step(pre, trace[0].new_u, cpu_id)
-        &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> thread_exit_middle_step(trace[j], cpu_id)
+        &&& thread_exit_partial_trace(trace.drop_last(), pre, cpu_id)
         &&& trace.last().new_u == post
         &&& thread_exit_finish_step_pre(trace.last().old_u, cpu_id)
         &&& thread_exit_finish_step(trace.last().old_u, post, cpu_id)

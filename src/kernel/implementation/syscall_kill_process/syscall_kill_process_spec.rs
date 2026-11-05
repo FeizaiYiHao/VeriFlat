@@ -52,27 +52,17 @@ pub open spec fn kill_killer_at(u: KernelU, cpu_id: CpuId, process: RwLockProces
     ThreadU { syscall_progress: kill_progress_at(u, cpu_id, process, stage), ..u.thread_map[kill_killer(u, cpu_id)] }
 }
 
-/// The cpu runs a live thread of a live process that has no syscall in progress, and the process's child at
+/// The live cpu runs a live thread of a live process that has no syscall in progress, and the process's child at
 /// `child_index` is live. The cpu, the process, and the thread are unlocked.
 #[verifier::opaque]
 pub open spec fn kill_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let process = old_u.process_map[cpu.current_process->Some_0];
-    let thread = old_u.thread_map[cpu.current_thread->Some_0];
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_process is Some
-    &&& cpu.current_thread is Some
-    &&& old_u.process_map.dom().contains(cpu.current_process->Some_0)
     &&& process.lock_state is Unlocked
     &&& !process.killed
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
-    &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == cpu.current_process->Some_0
+    &&& old_u.thread_map[cpu.current_thread->Some_0].lock_state is Unlocked
     &&& child_index < process.children.len()
     &&& old_u.process_map.dom().contains(process.children[child_index as int])
     &&& !old_u.process_map[process.children[child_index as int]].killed
@@ -139,7 +129,7 @@ pub open spec fn kill_process_mark_child_step(old_u: KernelU, new_u: KernelU, cp
 }
 
 /// The target without children works on its first thread.
-pub open spec fn kill_process_thread_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn kill_process_target_has_thread(old_u: KernelU, cpu_id: CpuId) -> bool {
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     &&& kill_stage(old_u, cpu_id) is Walk
     &&& target.children.len() == 0
@@ -163,7 +153,7 @@ pub open spec fn kill_process_dangling_step(old_u: KernelU, new_u: KernelU, cpu_
     let target = old_u.process_map[prc_ptr];
     let victim_ptr = target.owned_threads[0];
     let victim = old_u.thread_map[victim_ptr];
-    &&& kill_process_thread_step_pre(old_u, cpu_id)
+    &&& kill_process_target_has_thread(old_u, cpu_id)
     &&& victim.state is WAITING_REPLY
     &&& victim.lock_state is Unlocked
     &&& new_u == (KernelU {
@@ -180,7 +170,7 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
     let prc_ptr = kill_target(old_u, cpu_id);
     let victim_ptr = old_u.process_map[prc_ptr].owned_threads[0];
     let victim = old_u.thread_map[victim_ptr];
-    &&& kill_process_thread_step_pre(old_u, cpu_id)
+    &&& kill_process_target_has_thread(old_u, cpu_id)
     &&& !victim.state.is_reply_waiting()
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Thread { thread: victim_ptr })),
@@ -189,7 +179,7 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
 }
 
 /// The kill records a marked victim of its target that it write-holds.
-pub open spec fn kill_process_victim_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn kill_process_victim_marked(old_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     &&& kill_stage(old_u, cpu_id) is Thread
     &&& old_u.thread_map.dom().contains(victim_ptr)
@@ -205,7 +195,7 @@ pub open spec fn kill_process_dequeue_scheduled_step(old_u: KernelU, new_u: Kern
     let victim = old_u.thread_map[victim_ptr];
     let shard = victim.state->SCHEDULED_cpu_id;
     let container = old_u.container_map[victim.owning_container];
-    &&& kill_process_victim_step_pre(old_u, cpu_id)
+    &&& kill_process_victim_marked(old_u, cpu_id)
     &&& victim.state is SCHEDULED
     &&& old_u.container_map.dom().contains(victim.owning_container)
     &&& new_u == (KernelU {
@@ -224,7 +214,7 @@ pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: Kerne
     let victim = old_u.thread_map[victim_ptr];
     let ep_ptr = victim.blocking_endpoint_ptr->Some_0;
     let endpoint = old_u.endpoint_map[ep_ptr];
-    &&& kill_process_victim_step_pre(old_u, cpu_id)
+    &&& kill_process_victim_marked(old_u, cpu_id)
     &&& victim.state.is_endpoint_waiting()
     &&& victim.blocking_endpoint_ptr is Some
     &&& old_u.endpoint_map.dom().contains(ep_ptr)
@@ -242,7 +232,7 @@ pub open spec fn kill_process_cpu_to_idle_step(old_u: KernelU, new_u: KernelU, c
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let victim = old_u.thread_map[victim_ptr];
     let remote = victim.state->RUNNING_cpu_id;
-    &&& kill_process_victim_step_pre(old_u, cpu_id)
+    &&& kill_process_victim_marked(old_u, cpu_id)
     &&& victim.state is RUNNING
     &&& index_valid(NUM_CPUS, remote)
     &&& remote != cpu_id
@@ -260,7 +250,7 @@ pub open spec fn kill_process_unlink_step(old_u: KernelU, new_u: KernelU, cpu_id
     let target = old_u.process_map[prc_ptr];
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let victim = old_u.thread_map[victim_ptr];
-    &&& kill_process_victim_step_pre(old_u, cpu_id)
+    &&& kill_process_victim_marked(old_u, cpu_id)
     &&& victim.state is KILLED
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, kill_process_absorb_thread(target, victim_ptr, victim)),
@@ -270,7 +260,7 @@ pub open spec fn kill_process_unlink_step(old_u: KernelU, new_u: KernelU, cpu_id
 }
 
 /// The target has neither children nor threads.
-pub open spec fn kill_process_empty_target_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn kill_process_target_empty(old_u: KernelU, cpu_id: CpuId) -> bool {
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     &&& target.children.len() == 0
     &&& target.owned_threads.len() == 0
@@ -290,7 +280,7 @@ pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: Ker
     let table = old_u.iommu_root_table;
     let target = old_u.process_map[prc_ptr];
     &&& kill_stage(old_u, cpu_id) is Walk
-    &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& kill_process_target_empty(old_u, cpu_id)
     &&& forall|bus: usize, device: usize, function: usize| #![trigger new_u.iommu_root_table.owners[bus as int][device as int][function as int]]
         #![trigger new_u.iommu_root_table.attached[bus as int][device as int][function as int]] pci_bdf_valid(bus, device, function) ==> {
         let reassigned = kill_process_reassigns(table, prc_ptr, bus as int, device as int, function as int);
@@ -321,7 +311,7 @@ pub open spec fn kill_process_lock_table_step(old_u: KernelU, new_u: KernelU, cp
     let prc_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[prc_ptr];
     &&& kill_stage(old_u, cpu_id) is Walk
-    &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& kill_process_target_empty(old_u, cpu_id)
     &&& !target.zombie
     &&& target.owned_pci_functions.is_empty()
     &&& target.pagetable is Some
@@ -345,56 +335,23 @@ pub open spec fn kill_process_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, st
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is WriteLocked
 }
 
-/// `va` keys an entry of `o` in its 4K, 2M or 1G mappings or its window locks that `n` no longer keys.
-pub open spec fn kill_process_table_key_dropped(o: PageTableU, n: PageTableU, va: VAddr) -> bool {
-    ||| o.mapping_4k.dom().contains(va) && !n.mapping_4k.dom().contains(va)
-    ||| o.mapping_2m.dom().contains(va) && !n.mapping_2m.dom().contains(va)
-    ||| o.mapping_1g.dom().contains(va) && !n.mapping_1g.dom().contains(va)
-    ||| o.pagetable_window_locks.dom().contains(WindowVa { va }) && !n.pagetable_window_locks.dom().contains(WindowVa { va })
-}
-
-/// Hiding a root entry of the target's write-locked page table drops from that table every 4K, 2M and 1G mapping and every
-/// window lock under one root entry chosen by the kernel and keeps everything else: every dropped key shares one L4 index,
-/// and every key with that index is dropped.
+/// Hiding a root entry of the target's write-locked page table before the flush drops from that table every 4K, 2M and 1G
+/// mapping and every window lock under one root entry chosen by the kernel and keeps everything else.
 #[verifier::opaque]
 pub open spec fn kill_process_table_hidden_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    let prc_ptr = kill_target(old_u, cpu_id);
-    let target = old_u.process_map[prc_ptr];
-    let o = target.pagetable->Some_0;
-    let n = new_u.process_map[prc_ptr].pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })
-    &&& n.mapping_4k.dom().subset_of(o.mapping_4k.dom()) && n.mapping_2m.dom().subset_of(o.mapping_2m.dom()) && n.mapping_1g.dom().subset_of(o.mapping_1g.dom())
-    &&& n.pagetable_window_locks.dom().subset_of(o.pagetable_window_locks.dom())
-    &&& forall|a: VAddr, b: VAddr| #![trigger kill_process_table_key_dropped(o, n, a), kill_process_table_key_dropped(o, n, b)]
-        kill_process_table_key_dropped(o, n, a) && kill_process_table_key_dropped(o, n, b) ==> spec_v2l4index(a) == spec_v2l4index(b)
-    &&& forall|a: VAddr, b: VAddr| #![trigger kill_process_table_key_dropped(o, n, a), spec_v2l4index(b)]
-        kill_process_table_key_dropped(o, n, a) && spec_v2l4index(b) == spec_v2l4index(a) ==> !n.mapping_4k.dom().contains(b) && !n.mapping_2m.dom().contains(b) && !n.mapping_1g.dom().contains(b) && !n.pagetable_window_locks.dom().contains(WindowVa { va: b })
-    &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU {
-            pagetable: Some(PageTableU {
-                mapping_4k: o.mapping_4k.restrict(n.mapping_4k.dom()), mapping_2m: o.mapping_2m.restrict(n.mapping_2m.dom()), mapping_1g: o.mapping_1g.restrict(n.mapping_1g.dom()),
-                pagetable_window_locks: o.pagetable_window_locks.restrict(n.pagetable_window_locks.dom()), ..o
-            }),
-            ..target
-        }),
-        ..old_u
-    })
+    &&& process_table_hidden_step(old_u, new_u, kill_target(old_u, cpu_id))
 }
 
-/// No valid user VA at or above the kernel's L4 end has a 4K mapping in `pagetable`.
-pub open spec fn kill_process_user_4k_unmapped(u: KernelU, pagetable: PageTableU) -> bool {
-    forall|va: VAddr| #![trigger pagetable.mapping_4k.dom().contains(va)] spec_va_4k_valid(va) && u.kernel_l4_end <= spec_v2l4index(va) ==> !pagetable.mapping_4k.dom().contains(va)
-}
-
-/// No IOVA has a 4K mapping in `iommu_table`.
-pub open spec fn kill_process_iommu_4k_unmapped(iommu_table: PageTableU) -> bool {
-    forall|iova: VAddr| #![trigger iommu_table.mapping_4k.dom().contains(iova)] !iommu_table.mapping_4k.dom().contains(iova)
-}
-
-/// The flush runs once every user 4K mapping of the target's page table is cleared and before it is recorded.
+/// The flush runs once the hidden root entries left the target's page table without a user 4K mapping, a 2M or 1G
+/// mapping, or a window lock, and before it is recorded.
 pub open spec fn kill_process_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let pagetable = old_u.process_map[kill_target(old_u, cpu_id)].pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: false })
-    &&& kill_process_user_4k_unmapped(old_u, old_u.process_map[kill_target(old_u, cpu_id)].pagetable->Some_0)
+    &&& process_user_4k_unmapped(old_u, pagetable)
+    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
+    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
+    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
 }
 
 /// Recording the flush changes only the kill's stage.
@@ -425,26 +382,29 @@ pub open spec fn kill_process_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cp
     })
 }
 
-/// The stage before the target returns its `size` quota.
-pub open spec fn kill_process_quota_stage_before(size: PageSize) -> KillStage {
-    match size {
-        PageSize::SZ4k => KillStage::Reclaim { flushed: true },
-        PageSize::SZ2m => KillStage::Quota { returned: PageSize::SZ4k },
-        PageSize::SZ1g => KillStage::Quota { returned: PageSize::SZ2m },
+/// The stage after the target returns its next size of quota from `stage`: its 4K quota once the flush is recorded,
+/// then its 2M quota, then its 1G quota. No quota is returned from any other stage.
+pub open spec fn kill_process_quota_stage_after(stage: KillStage) -> Option<KillStage> {
+    match stage {
+        KillStage::Reclaim { flushed: true } => Some(KillStage::Quota { returned: PageSize::SZ4k }),
+        KillStage::Quota { returned: PageSize::SZ4k } => Some(KillStage::Quota { returned: PageSize::SZ2m }),
+        KillStage::Quota { returned: PageSize::SZ2m } => Some(KillStage::Quota { returned: PageSize::SZ1g }),
+        _ => None,
     }
 }
 
-/// The target returns the next size of quota, named by the kill's new stage: the target's whole quota of that size
-/// moves to its container.
+/// The target returns the next size of quota after the kill's stage: the target's whole quota of that size moves to its
+/// container.
 #[verifier::opaque]
 pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[prc_ptr];
     let container = old_u.container_map[target.owning_container];
-    let size = kill_stage(new_u, cpu_id)->Quota_returned;
+    let stage = kill_stage(old_u, cpu_id);
+    let size = kill_process_quota_stage_after(stage)->Some_0->Quota_returned;
     &&& old_u.container_map.dom().contains(target.owning_container)
-    &&& kill_stage(new_u, cpu_id) is Quota
-    &&& kill_process_reclaim_step_pre(old_u, cpu_id, kill_process_quota_stage_before(size))
+    &&& kill_process_quota_stage_after(stage) is Some
+    &&& kill_process_reclaim_step_pre(old_u, cpu_id, stage)
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, match size {
             PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + target.quota_4k) as usize, ..container },
@@ -461,15 +421,20 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
     })
 }
 
-/// Unlocking the target's reclaimed page table and IOMMU table, once every quota size is returned and no 4K mapping is
-/// left, readies the target to become a zombie.
+/// Unlocking the target's reclaimed page table and IOMMU table, once every quota size is returned, the page table keeps
+/// no user 4K mapping, 2M or 1G mapping, or window lock, and the IOMMU table no 4K mapping, readies the target to become
+/// a zombie.
 #[verifier::opaque]
 pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[prc_ptr];
+    let pagetable = target.pagetable->Some_0;
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Quota { returned: PageSize::SZ1g })
-    &&& kill_process_user_4k_unmapped(old_u, target.pagetable->Some_0)
-    &&& target.iommu_table is Some ==> kill_process_iommu_4k_unmapped(target.iommu_table->Some_0)
+    &&& process_user_4k_unmapped(old_u, pagetable)
+    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
+    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
+    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
+    &&& target.iommu_table is Some ==> process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..target.pagetable->Some_0 }),
@@ -504,7 +469,7 @@ pub open spec fn kill_process_zombify_step(old_u: KernelU, new_u: KernelU, cpu_i
 pub open spec fn kill_process_zombie_retire_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     &&& kill_stage(old_u, cpu_id) is Walk
-    &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& kill_process_target_empty(old_u, cpu_id)
     &&& target.zombie
     &&& target.owned_pci_functions.is_empty()
     &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, kill_target(old_u, cpu_id), KillStage::Retire)), ..old_u })
@@ -521,7 +486,7 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     let container = old_u.container_map[target.owning_container];
     let quota_4k = new_u.container_map[target.owning_container].quota_4k;
     &&& kill_stage(old_u, cpu_id) is Retire
-    &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& kill_process_target_empty(old_u, cpu_id)
     &&& target.zombie
     &&& target.owned_pci_functions.is_empty()
     &&& target.parent is Some
@@ -540,7 +505,8 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// A refund grows the 4K or 2M quota of the target's container or of one of its ancestors.
+/// A refund grows the 4K or 2M quota of the target's container or of one of its ancestors. Unlike thread_exit's refund it
+/// carries no `flushed` stage and unlocks no window: the kill refunds only after every table it reclaims is unlocked.
 #[verifier::opaque]
 pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
@@ -564,8 +530,7 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_dequeue_endpoint_step(old_u, new_u, cpu_id)
         ||| kill_process_cpu_to_idle_step(old_u, new_u, cpu_id)
         ||| kill_process_unlink_step(old_u, new_u, cpu_id)
-        ||| kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id) && (forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
-            old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
+        ||| killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_reassign_functions_step(old_u, new_u, cpu_id)
         ||| kill_process_lock_table_step(old_u, new_u, cpu_id)
         ||| kill_process_table_hidden_step(old_u, new_u, cpu_id)
@@ -636,15 +601,13 @@ pub open spec fn kill_partial_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id
     }
 }
 
-/// Complete trace of the call: on a kill, the enter step, the middle steps, and the finish step; a stutter otherwise.
+/// Complete trace of the call: on a kill, the partial trace followed by the finish step; a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn kill_process_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize, killed: bool) -> bool {
     if killed {
+        // enter + middle steps + finish
         &&& 2 <= trace.len()
-        &&& trace[0].old_u == pre
-        &&& kill_process_enter_step_pre(pre, cpu_id, child_index)
-        &&& kill_process_enter_step(pre, trace[0].new_u, cpu_id, child_index)
-        &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> kill_process_middle_step(trace[j], cpu_id)
+        &&& kill_process_partial_trace(trace.drop_last(), pre, cpu_id, child_index)
         &&& trace.last().new_u == post
         &&& kill_process_finish_step_pre(trace.last().old_u, cpu_id)
         &&& kill_process_finish_step(trace.last().old_u, post, cpu_id)

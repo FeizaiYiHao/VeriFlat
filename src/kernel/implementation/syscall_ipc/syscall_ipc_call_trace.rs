@@ -65,6 +65,7 @@ pub(super) proof fn ipc_reply_dangling_caller_step_pre_from_k(
         krnl.ep_mp.dom().contains(ep_ptr),
         caller_ptr != callee_ptr,
         krnl.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        !krnl.cpu_arr.spec_index(cpu_id).value.being_killed(),
         krnl.thrd_mp.spec_index(callee_ptr).locking_thread() is None,
         krnl.thrd_mp.spec_index(caller_ptr).locking_thread() is None,
         krnl.ep_mp.spec_index(ep_ptr).locking_thread() is None,
@@ -82,6 +83,7 @@ pub(super) proof fn ipc_reply_dangling_caller_step_pre_from_k(
             &&& krnl.ctn_mp.dom().contains(callee.view().owning_container)
             &&& callee.view().syscall_progress.view() is None
             &&& callee.view().caller == Some(caller_ptr)
+            &&& callee.view().callee is None
             &&& callee.view().endpoint_descriptors.view()[ep_idx as int] == Some(ep_ptr)
         }),
         !krnl.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
@@ -95,16 +97,17 @@ pub(super) proof fn ipc_reply_dangling_caller_step_pre_from_k(
             &&& ipc_reply_dangling_caller_step_pre(pre, cpu_id, ep_idx)
             &&& pre.cpu_array[cpu_id as int].current_thread == Some(callee_ptr)
             &&& pre.thread_map[callee_ptr].caller == Some(caller_ptr)
+            &&& pre.thread_map[callee_ptr].owning_container == krnl.thrd_mp.spec_index(callee_ptr).view().owning_container
             &&& pre.thread_map[caller_ptr].state is DANGLING
             &&& pre.endpoint_map.dom().contains(ep_ptr)
             &&& pre.endpoint_map[ep_ptr].lock_state is Unlocked
         }),
 { reveal(ipc_reply_dangling_caller_step_pre); reveal(ipc_step_pre); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, callee_ptr, Some(ep_ptr)); kernel_thread_projection_at(krnl, caller_ptr); }
 
-/// Locking the cpu, the callee, the dangling caller, and the endpoint, then taking the dangling caller over and releasing the endpoint, is the
-/// taken-over step of a reply to the dangling caller.
+/// Locking the cpu, the callee, the dangling caller, and the endpoint, then taking the dangling caller over, releasing the endpoint, and
+/// recording the reply to the dangling caller in the callee's progress, is the taken-over step of a reply to the dangling caller.
 pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
-    pre_u: KernelU, locked_u: KernelU, post_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
+    pre_u: KernelU, locked_u: KernelU, taken_u: KernelU, post_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
 )
     requires
         locked_u == (KernelU {
@@ -114,11 +117,16 @@ pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
             endpoint_map: pre_u.endpoint_map.insert(ep_ptr, EndpointU { lock_state: LockStateU::WriteLocked, ..pre_u.endpoint_map[ep_ptr] }),
             ..pre_u
         }),
-        post_u == (KernelU {
+        taken_u == (KernelU {
             thread_map: locked_u.thread_map.insert(callee_ptr, ThreadU { caller: None, ..locked_u.thread_map[callee_ptr] })
                 .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked_u.thread_map[caller_ptr] }),
             endpoint_map: locked_u.endpoint_map.insert(ep_ptr, EndpointU { lock_state: LockStateU::Unlocked, ..locked_u.endpoint_map[ep_ptr] }),
             ..locked_u
+        }),
+        taken_u.thread_map.dom().contains(callee_ptr),
+        post_u == (KernelU {
+            thread_map: taken_u.thread_map.insert(callee_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ReplyDangling { caller: caller_ptr }), ..taken_u.thread_map[callee_ptr] }),
+            ..taken_u
         }),
         callee_ptr != caller_ptr,
         pre_u.cpu_array[cpu_id as int].current_thread == Some(callee_ptr),
@@ -130,8 +138,10 @@ pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
         pre_u != post_u,
         ipc_reply_dangling_caller_taken_over_step(pre_u, post_u, cpu_id),
 {
-    assert(post_u.thread_map =~= pre_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked, caller: None, ..pre_u.thread_map[callee_ptr] })
-        .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[caller_ptr] }));
+    reveal(ipc_reply_dangling_caller_taken_over_step);
+    assert(post_u.thread_map =~= pre_u.thread_map.insert(callee_ptr, ThreadU {
+        lock_state: LockStateU::WriteLocked, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: caller_ptr }), ..pre_u.thread_map[callee_ptr]
+    }).insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[caller_ptr] }));
     assert(post_u.endpoint_map =~= pre_u.endpoint_map);
     assert(post_u.thread_map[caller_ptr].state is KILLED);
 }
@@ -144,12 +154,52 @@ pub(super) proof fn ipc_reply_dangling_caller_held_step_pre_from_k(krnl: &Kernel
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         krnl.prc_mp.dom().contains(prc_ptr),
+        krnl.thrd_mp.dom().contains(thrd_ptr),
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().state is Running,
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thrd_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() matches Some(SyscallProgress::ReplyDangling { .. }),
     ensures
         ipc_reply_dangling_caller_held_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); }
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).value.view().view().state,
+{
+    reveal(ipc_reply_dangling_caller_held_step_pre);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr);
+}
+
+/// Reclaim steps recorded from `start` that keep the cpu and its running thread of `entry` are reclaim steps of a reply to a dangling
+/// caller within `container`.
+pub(super) proof fn reclaim_steps_keep_running_thread_implies_dangling_held_reclaim_steps(trace: Seq<KernelStep>, start: int, entry: KernelU, cpu_id: CpuId, container: RwLockContainerPtr)
+    requires
+        forall|j: int| #![trigger trace[j]] start <= j < trace.len() ==> {
+            let cur = entry.cpu_array[cpu_id as int].current_thread->Some_0;
+            &&& killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, container)
+            &&& trace[j].old_u.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int]
+            &&& trace[j].old_u.thread_map.dom().contains(cur)
+            &&& trace[j].old_u.thread_map[cur] == entry.thread_map[cur]
+        },
+        ipc_reply_dangling_caller_held_step_pre(entry, cpu_id),
+    ensures
+        forall|j: int| #![trigger trace[j]] start <= j < trace.len()
+            ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, container),
+{ reveal(ipc_reply_dangling_caller_held_step_pre); }
+
+/// Clearing the running thread's progress and then releasing the cpu and the running thread is the released step of a reply to a dangling
+/// caller.
+pub(super) proof fn ipc_reply_dangling_caller_released_step_from_u(pre_u: KernelU, cleared_u: KernelU, post_u: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, op: CpuOpState)
+    requires
+        pre_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
+        op == cpu_op_after_step(pre_u.cpu_array[cpu_id as int].state),
+        pre_u.thread_map.dom().contains(thrd_ptr),
+        cleared_u == (KernelU { thread_map: pre_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: None, ..pre_u.thread_map[thrd_ptr] }), ..pre_u }),
+        post_u == (KernelU {
+            cpu_array: cleared_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op, ..cleared_u.cpu_array[cpu_id as int] }),
+            thread_map: cleared_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..cleared_u.thread_map[thrd_ptr] }),
+            ..cleared_u
+        }),
+    ensures
+        ipc_reply_dangling_caller_released_step(pre_u, post_u, cpu_id),
+{ reveal(ipc_reply_dangling_caller_released_step); assert(post_u.thread_map =~= pre_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre_u.thread_map[thrd_ptr] })); }
 
 /// The ensures of a reply to a dangling caller recorded since `before` are the ErrorIpcCallerKilled reply_and_receive trace.
 pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
@@ -165,7 +215,8 @@ pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
             &&& trace[n].old_u == pre
             &&& ipc_reply_dangling_caller_step_pre(trace[n].old_u, cpu_id, ep_idx)
             &&& ipc_reply_dangling_caller_taken_over_step(trace[n].old_u, trace[n].new_u, cpu_id)
-            &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(trace[j].old_u, trace[j].new_u, cpu_id)
+            &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
+                && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
             &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
             &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, trace[last].new_u, cpu_id)
             &&& trace[last].new_u == post
@@ -176,8 +227,10 @@ pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
 { reveal(ipc_reply_and_receive_syscall_trace); }
 
 /// The call-handoff wrapper's user-view facts are exactly the call handoff step on `pre`/`post`.
-pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>)
+pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, pre_k: KernelK)
     requires
+        pre == kernel_k_to_kernel_u(pre_k),
+        !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
         kernel_u_ipc_call_handoff_changed(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
@@ -219,11 +272,13 @@ pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cp
     ensures
         ipc_call_handoff_step_pre(pre, cpu_id, ep_idx),
         ipc_call_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
-{ reveal(ipc_call_handoff_step_pre); reveal(ipc_step_pre); }
+{ kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_call_handoff_step_pre); reveal(ipc_step_pre); }
 
 /// The accept-call wrapper's user-view facts are exactly the accept step on `pre`/`post`.
-pub(super) proof fn ipc_accept_call_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
+pub(super) proof fn ipc_accept_call_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, pre_k: KernelK)
     requires
+        pre == kernel_k_to_kernel_u(pre_k),
+        !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
         kernel_u_ipc_accept_call_changed(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         {
             let cpu = pre.cpu_array[cpu_id as int];
@@ -264,11 +319,13 @@ pub(super) proof fn ipc_accept_call_step_from_u(pre: KernelU, post: KernelU, cpu
     ensures
         ipc_accept_call_step_pre(pre, cpu_id, ep_idx),
         ipc_accept_call_step(pre, post, cpu_id, ep_idx),
-{ reveal(ipc_accept_call_step_pre); reveal(ipc_step_pre); }
+{ kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_accept_call_step_pre); reveal(ipc_step_pre); }
 
 /// The reply-handoff wrapper's user-view facts are exactly the reply handoff step on `pre`/`post`.
-pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>)
+pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, pre_k: KernelK)
     requires
+        pre == kernel_k_to_kernel_u(pre_k),
+        !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
         kernel_u_ipc_reply_handoff_changed(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
@@ -307,7 +364,7 @@ pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, c
     ensures
         ipc_reply_handoff_step_pre(pre, cpu_id, ep_idx),
         ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
-{ reveal(ipc_reply_handoff_step_pre); reveal(ipc_step_pre); }
+{ kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_reply_handoff_step_pre); reveal(ipc_step_pre); }
 
 /// A rejected ordinary call records no step and leaves the user view unchanged.
 pub(super) proof fn ipc_rejection_trace_stutters(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
@@ -328,7 +385,7 @@ pub(super) proof fn ipc_call_trace_block_step(steps: &KernelSteps, before: Seq<K
             flushed_default_pcid, RetValueType::CpuIdle),
     ensures
         ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); }
+{ reveal(ipc_call_syscall_trace); }
 
 /// The one block step pushed since `before` is the blocking receive-call trace.
 pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool)
@@ -338,7 +395,7 @@ pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, befor
             IPCPayLoad::Empty, regs, flushed_default_pcid, RetValueType::CpuIdle),
     ensures
         ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, regs, flushed_default_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_receive_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); }
+{ reveal(ipc_receive_call_syscall_trace); }
 
 /// The one rendezvous error step pushed since `before` is the rejected call trace.
 pub(super) proof fn ipc_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
@@ -405,7 +462,7 @@ pub(super) proof fn ipc_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU,
         !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
         ipc_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, ret),
-{ reveal(ipc_call_syscall_trace); reveal(ipc_entry_result); }
+{ reveal(ipc_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_entry_result); }
 
 /// A receive_call rejected before any visible change records no step.
 pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
@@ -415,7 +472,7 @@ pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: 
         !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
         ipc_receive_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, regs, flushed_default_pcid, ret),
-{ reveal(ipc_receive_call_syscall_trace); reveal(ipc_entry_result); }
+{ reveal(ipc_receive_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_entry_result); }
 
 /// A reply_and_receive rejected before any visible change records no step.
 pub(super) proof fn ipc_reply_and_receive_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_pcid: Option<Pcid>, ret: RetValueType)

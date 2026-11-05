@@ -222,7 +222,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& RetValueType::Success == iommu_map_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, iova, range)
             &&& *final(steps) == *old(steps)
             &&& final(lctx).kernel_view_locking_state() is Acquire
-            &&& va_range == iommu_map_4k_syscall_range(va, range) && iova_range == iommu_map_4k_syscall_range(iova, range)
+            &&& va_range == spec_va_range_4k(va, range) && iova_range == spec_va_range_4k(iova, range)
             &&& va_range.wf() && iova_range.wf() && va_range.len == range && iova_range.len == range && range > 0
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).process_lock_map().dom() =~= set![e.process_ptr]
@@ -379,7 +379,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         assert(krnl.it_mp.spec_index(iommu_table_ptr).view() == old(krnl).it_mp.spec_index(iommu_table_ptr).view() && krnl.it_mp.spec_index(iommu_table_ptr).view().leaves_present());
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k());
         assert(krnl.pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view());
-        assert(iova_range == iommu_map_4k_syscall_range(iova, range) && va_range == iommu_map_4k_syscall_range(va, range));
+        assert(iova_range == spec_va_range_4k(iova, range) && va_range == spec_va_range_4k(va, range));
     }
     let ret = if !user_range {
         proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::Error); }

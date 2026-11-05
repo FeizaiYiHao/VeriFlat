@@ -140,6 +140,7 @@ pub(crate) proof fn kill_container_enter_step_from_u(
             let thread = pre.thread_map[thrd_ptr];
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.owning_container == ctn_ptr
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
@@ -304,10 +305,13 @@ pub(crate) proof fn kill_container_finish_step_from_u(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
-        pre.cpu_array[cpu_id as int].lock_state is WriteLocked,
-        pre.cpu_array[cpu_id as int].owning_container == ctn_ptr,
-        pre.cpu_array[cpu_id as int].current_process == Some(prc_ptr),
-        pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
+        ({
+            let cpu = pre.cpu_array[cpu_id as int];
+            &&& cpu.lock_state is WriteLocked
+            &&& cpu.owning_container == ctn_ptr
+            &&& cpu.current_process == Some(prc_ptr)
+            &&& cpu.current_thread == Some(thrd_ptr)
+        }),
         pre.container_map.dom().contains(ctn_ptr),
         pre.container_map[ctn_ptr].lock_state is WriteLocked,
         pre.process_map.dom().contains(prc_ptr),

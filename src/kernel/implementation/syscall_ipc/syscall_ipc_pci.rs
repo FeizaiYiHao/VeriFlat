@@ -208,6 +208,7 @@ verus! {
             assert((result is Success) == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, bdf, sender_proc); };
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, ep_idx, waiting_state, payload, current_thrd_ptr, ep_ptr, peer_thrd_ptr, result);
         }
+        proof { assert(!steps.snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); }; }
         finish_ipc_pci_rendezvous_release(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, peer_sched_ptr, wake_cpu,
             Ghost(ep_idx), Ghost(waiting_state), Ghost(result), Ghost(pci_transfer), Ghost(payload), Tracked(cpu_lock_perm),

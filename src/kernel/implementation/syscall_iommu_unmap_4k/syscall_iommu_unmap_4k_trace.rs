@@ -15,7 +15,7 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
             let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = krnl.it_mp.spec_index(process.view().iommu_table->Some_0).view();
-            let iova_range = iommu_unmap_4k_iova_range(iova, range);
+            let iova_range = spec_va_range_4k(iova, range);
             let unowned = container.lock_process_owner_u() is None;
             let conflict = container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
             let live = !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && !thread.being_killed() && !process.view().zombie;
@@ -135,7 +135,7 @@ pub(super) proof fn iommu_unmap_4k_trace_range_steps(before: Seq<KernelStep>, af
 /// The exit step pushed after the partial trace completes the syscall trace.
 pub(super) proof fn iommu_unmap_4k_trace_exit_step(before: Seq<KernelStep>, trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, iova: VAddr, range: usize)
     requires
-        iommu_unmap_4k_partial_trace(before, cpu_id, iommu_unmap_4k_iova_range(iova, range)),
+        iommu_unmap_4k_partial_trace(before, cpu_id, spec_va_range_4k(iova, range)),
         range + 2 <= before.len() <= range + MAX_CONTAINER_TREE_DEPTH + 3,
         trace == before.push(KernelStep { old_u: pre, new_u: post }),
         iommu_unmap_4k_exit_step_pre(pre, cpu_id),
@@ -151,13 +151,14 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
 )
     requires
         process_iommu_table_wf(pre.prc_mp, pre.it_mp),
+        thread_cpu_wf(pre.thrd_mp, pre.cpu_arr),
         index_valid(NUM_CPUS, cpu_id),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.it_mp.dom().contains(iommu_table_ptr),
         iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*pre), cpu_id, iova, range) is Success,
-        iommu_unmap_4k_iova_range(iova, range).wf(),
+        spec_va_range_4k(iova, range).wf(),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, it_mp: post.it_mp, ..*pre }),
         !pre.cpu_arr.spec_index(cpu_id).value.locked(),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
@@ -192,7 +193,7 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
-        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range: iommu_unmap_4k_iova_range(iova, range), unmapped: 0, flushed: false }),
+        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range: spec_va_range_4k(iova, range), unmapped: 0, flushed: false }),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
         !pre.it_mp.spec_index(iommu_table_ptr).locked(),
@@ -200,10 +201,11 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
         post.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
     ensures
-        iommu_unmap_4k_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, iommu_unmap_4k_iova_range(iova, range)),
-        iommu_unmap_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, iommu_unmap_4k_iova_range(iova, range)),
+        iommu_unmap_4k_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, spec_va_range_4k(iova, range)),
+        iommu_unmap_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, spec_va_range_4k(iova, range)),
 {
     reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step);
+    thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id);
     kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(pre, thrd_ptr); kernel_process_projection_at(pre, prc_ptr); kernel_container_projection_at(pre, ctn_ptr);

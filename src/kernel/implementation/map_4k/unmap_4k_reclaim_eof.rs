@@ -10,7 +10,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_process_management_inv(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -35,7 +35,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_tables(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
@@ -95,7 +95,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_free_4k_pages(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
@@ -141,7 +141,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
@@ -232,7 +232,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
             &&& pre.allc_4k_mp.dom().contains(allc_ptr)
@@ -270,7 +270,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thrd_ptr);
@@ -321,7 +321,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
 )
     requires
         pre.inv(),
-        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
             let old_thread = pre.thrd_mp.spec_index(thrd_ptr);

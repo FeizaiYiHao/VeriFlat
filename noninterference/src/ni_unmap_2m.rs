@@ -31,27 +31,27 @@ pub proof fn unmap_2m_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 }
 
 /// A 2M unmap leaf on a cpu of `a` removes one 2M mapping of a process of `a`.
-pub proof fn unmap_2m_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn unmap_2m_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_2m_leaf_step_pre(old_u, cpu_id, va),
-        unmap_2m_leaf_step(old_u, new_u, cpu_id, va),
+        unmap_2m_leaf_step_pre(old_u, cpu_id),
+        unmap_2m_leaf_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(unmap_2m_leaf_trace_step_pre); reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{ reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `unmap_2m_leaf_step_lr` preserves isolation.
-pub proof fn unmap_2m_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn unmap_2m_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_2m_leaf_step_pre(old_u, cpu_id, va),
-        unmap_2m_leaf_step(old_u, new_u, cpu_id, va),
+        unmap_2m_leaf_step_pre(old_u, cpu_id),
+        unmap_2m_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(unmap_2m_leaf_trace_step_pre); reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); reveal(kernel_u_cpu_ownership_wf);
+    reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); reveal(kernel_u_cpu_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
@@ -115,10 +115,10 @@ pub proof fn unmap_2m_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_2m_refund_step_pre(old_u, cpu_id),
+        unmap_2m_exit_step_pre(old_u, cpu_id),
         kernel_u_container_quota_2m_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(unmap_2m_refund_step_pre); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
+{ reveal(unmap_2m_exit_step_pre); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
 
 /// The step of `unmap_2m_refund_step_lr` preserves isolation.
 pub proof fn unmap_2m_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -126,11 +126,11 @@ pub proof fn unmap_2m_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_2m_refund_step_pre(old_u, cpu_id),
+        unmap_2m_exit_step_pre(old_u, cpu_id),
         kernel_u_container_quota_2m_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures isolated(new_u, a, b),
 {
-    reveal(unmap_2m_refund_step_pre); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_cpu_ownership_wf);
+    reveal(unmap_2m_exit_step_pre); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_cpu_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

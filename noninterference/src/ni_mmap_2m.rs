@@ -37,9 +37,9 @@ pub proof fn mmap_2m_hold_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId,
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         mmap_2m_hold_step_pre(old_u, cpu_id, range),
-        mmap_2m_hold_step(old_u, new_u, cpu_id),
+        mmap_4k_hold_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(mmap_2m_hold_step_pre); reveal(mmap_2m_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{ reveal(mmap_2m_hold_step_pre); reveal(mmap_4k_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `mmap_2m_hold_step_lr` preserves isolation.
 pub proof fn mmap_2m_hold_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange2M, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -48,10 +48,10 @@ pub proof fn mmap_2m_hold_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         mmap_2m_hold_step_pre(old_u, cpu_id, range),
-        mmap_2m_hold_step(old_u, new_u, cpu_id),
+        mmap_4k_hold_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(mmap_2m_hold_step_pre); reveal(mmap_2m_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    reveal(mmap_2m_hold_step_pre); reveal(mmap_4k_hold_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -62,10 +62,10 @@ pub proof fn mmap_2m_release_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_release_step_pre(old_u, cpu_id),
-        mmap_2m_release_step(old_u, new_u, cpu_id),
+        mmap_4k_release_step_pre(old_u, cpu_id),
+        mmap_4k_release_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{ reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `mmap_2m_release_step_lr` preserves isolation.
 pub proof fn mmap_2m_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -73,11 +73,11 @@ pub proof fn mmap_2m_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_release_step_pre(old_u, cpu_id),
-        mmap_2m_release_step(old_u, new_u, cpu_id),
+        mmap_4k_release_step_pre(old_u, cpu_id),
+        mmap_4k_release_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
+    reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -167,10 +167,10 @@ pub proof fn mmap_2m_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_flushed_step_pre(old_u, cpu_id),
+        mmap_2m_flush_step_pre(old_u, cpu_id),
         mmap_2m_flushed_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(mmap_2m_flushed_step_pre); reveal(mmap_2m_flushed_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_flushed_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `mmap_2m_flushed_step_lr` preserves isolation.
 pub proof fn mmap_2m_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -178,11 +178,11 @@ pub proof fn mmap_2m_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_flushed_step_pre(old_u, cpu_id),
+        mmap_2m_flush_step_pre(old_u, cpu_id),
         mmap_2m_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(mmap_2m_flushed_step_pre); reveal(mmap_2m_flushed_step);
+    reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_flushed_step);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -194,10 +194,10 @@ pub proof fn mmap_2m_l1_reclaim_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: 
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_l1_reclaim_step_pre(old_u, cpu_id),
+        mmap_2m_flush_step_pre(old_u, cpu_id),
         kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(mmap_2m_l1_reclaim_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
+{ reveal(mmap_2m_flush_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
 
 /// The step of `mmap_2m_l1_reclaim_step_lr` preserves isolation.
 pub proof fn mmap_2m_l1_reclaim_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -205,11 +205,11 @@ pub proof fn mmap_2m_l1_reclaim_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_2m_l1_reclaim_step_pre(old_u, cpu_id),
+        mmap_2m_flush_step_pre(old_u, cpu_id),
         kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
     ensures isolated(new_u, a, b),
 {
-    reveal(mmap_2m_l1_reclaim_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
+    reveal(mmap_2m_flush_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

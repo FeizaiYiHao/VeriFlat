@@ -454,6 +454,7 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorIommuIovaNotMapped => 47,
         ErrorIommuVaNotMapped => 48,
         ErrorContainerLockOrderConflict => 49,
+        ErrorIpcRangeNotUser => 50,
     }
 }
 

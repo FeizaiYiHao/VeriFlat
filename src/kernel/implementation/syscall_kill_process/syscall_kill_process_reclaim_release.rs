@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk_spec::KillScope;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::kill_scope_progress;
+use super::syscall_kill_process_walk_spec::kill_scope_progress;
 use super::syscall_kill_process_reclaim_scoped::{kill_reclaim_held_4k_page_scoped, kill_reclaim_unmapped_iommu_4k_page_scoped};
 use super::syscall_kill_process_reclaim_scoped_2m::kill_reclaim_held_2m_page_scoped;
 #[cfg(verus_keep_ghost)]
@@ -218,6 +218,9 @@ pub(crate) fn kill_reclaim_flush(
             krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(c, NUM_CPUS),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower,
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+            whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+            whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
+            whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
             iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && krnl.it_mp.spec_index(iommu_table->Some_0).view().did is None,
             c <= NUM_CPUS,
             krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3,
@@ -239,7 +242,7 @@ pub(crate) fn kill_reclaim_flush(
             if tlb_k.cpu_tlb.view() == iter_k.cpu_tlb.view() { krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps); }
             else { krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps); }
             kill_step_pre_from_k(&iter_k, &iter_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
-            kill_reclaim_pre_from_k(&iter_k, &iter_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_user_4k_unmapped_pre_from_k(&iter_k, target);
+            kill_reclaim_pre_from_k(&iter_k, &iter_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_table_unmapped_pre_from_k(&iter_k, target);
             kill_trace_push_tlb_flush(&*steps, iter_before, start, pre, kernel_k_to_kernel_u(iter_k), kernel_k_to_kernel_u(tlb_k), cpu_id, ctx, pcid);
         }
         c = c + 1;
@@ -253,7 +256,7 @@ pub(crate) fn kill_reclaim_flush(
         let flushed_pre = kernel_k_to_kernel_u(flushed_k);
         let flushed_post = kernel_k_to_kernel_u(*krnl);
         kill_step_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
-        kill_reclaim_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_user_4k_unmapped_pre_from_k(&flushed_k, target);
+        kill_reclaim_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_table_unmapped_pre_from_k(&flushed_k, target);
         kernel_thread_syscall_progress_changed_implies_u_step(&flushed_k, &*krnl, thrd_ptr);
         kill_flushed_step_from_u(flushed_pre, flushed_post, cpu_id, thrd_ptr, target, scope);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
@@ -422,6 +425,7 @@ pub(crate) fn kill_reclaim_held_leaves(
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),

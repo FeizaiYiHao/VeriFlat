@@ -6,8 +6,9 @@ verus! {
 /// own `(bus, device, function)`, and have an IOMMU table, and the function must not be attached yet.
 /// A cpu no longer Running or marked by a killer returns CpuIdle first.
 pub open spec fn pci_attach_dma_syscall_result(pre: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> RetValueType {
-    let process = pre.process_map[pre.cpu_array[cpu_id as int].current_process.unwrap()];
-    if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    let cpu = pre.cpu_array[cpu_id as int];
+    let process = pre.process_map[cpu.current_process.unwrap()];
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if !process.owned_pci_functions.contains((bus, device, function)) { RetValueType::ErrorPciOwnerMismatch }
     else if process.iommu_table is None { RetValueType::ErrorPciNoIommuTable }

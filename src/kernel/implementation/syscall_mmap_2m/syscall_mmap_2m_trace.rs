@@ -113,15 +113,20 @@ pub(super) proof fn mmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
     }
 }
 
-/// The entry state's running thread's container is in the user view, as the enter step requires.
+/// The entry state's running thread's container is in the user view, and the cpu's current process `prc_ptr` and the thread's
+/// running state are those of `krnl`, as the enter step requires.
 pub(super) proof fn mmap_2m_enter_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         krnl.prc_mp.dom().contains(prc_ptr),
         krnl.thrd_mp.dom().contains(thrd_ptr),
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
     ensures
         kernel_k_to_kernel_u(*krnl).container_map.dom().contains(kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).owning_container),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(prc_ptr),
+        kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).state == (ThreadState::RUNNING { cpu_id }),
 { kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); }
 /// Write-locking the caller's cpu and thread, which entering to fill already holds, with the cpu inside its kernel step, locking
 /// its pagetable `pagetable_ptr` for `phase`, setting its range windows to `windows`, the window locks of `krnl` after locking
@@ -145,7 +150,9 @@ pub(super) proof fn mmap_2m_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
             let process = pre.process_map.spec_index(prc_ptr);
             let pagetable = process.pagetable->Some_0;
             &&& cpu.current_thread == Some(thrd_ptr)
+            &&& cpu.current_process == Some(prc_ptr)
             &&& pre.thread_map.dom().contains(thrd_ptr)
+            &&& thread.state == (ThreadState::RUNNING { cpu_id })
             &&& thread.syscall_progress is None
             &&& thread.owning_proc == prc_ptr
             &&& pre.container_map.dom().contains(thread.owning_container)
@@ -192,7 +199,9 @@ pub(super) proof fn mmap_2m_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
             let thread = pre.thread_map.spec_index(thrd_ptr);
             let process = pre.process_map.spec_index(prc_ptr);
             &&& cpu.current_thread == Some(thrd_ptr)
+            &&& cpu.current_process == Some(prc_ptr)
             &&& pre.thread_map.dom().contains(thrd_ptr)
+            &&& thread.state == (ThreadState::RUNNING { cpu_id })
             &&& thread.syscall_progress is None
             &&& thread.owning_proc == prc_ptr
             &&& pre.container_map.dom().contains(thread.owning_container)
@@ -240,7 +249,9 @@ pub(super) proof fn mmap_2m_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, 
         mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success || mmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is ErrorVaInUse,
         !krnl.cpu_arr.spec_index(cpu_id).view().locked(),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         krnl.thrd_mp.dom().contains(thrd_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         !krnl.thrd_mp.spec_index(thrd_ptr).locked(),
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
         krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
@@ -260,8 +271,8 @@ pub(super) proof fn mmap_2m_hold_step_from_u(pre: KernelU, post: KernelU, cpu_id
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thrd_ptr) }),
             ..pre
         }),
-    ensures mmap_2m_hold_step(pre, post, cpu_id),
-{ reveal(mmap_2m_hold_step); }
+    ensures mmap_4k_hold_step(pre, post, cpu_id),
+{ reveal(mmap_4k_hold_step); }
 
 /// Unlocking the caller's write-locked cpu and its current thread `thrd_ptr` with no progress recorded, returning the cpu to
 /// its trap path, and changing nothing else is the release step on `pre`/`post`.
@@ -279,9 +290,9 @@ pub(super) proof fn mmap_2m_release_step_from_u(pre: KernelU, post: KernelU, cpu
             ..pre
         }),
     ensures
-        mmap_2m_release_step_pre(pre, cpu_id),
-        mmap_2m_release_step(pre, post, cpu_id),
-{ reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); }
+        mmap_4k_release_step_pre(pre, cpu_id),
+        mmap_4k_release_step(pre, post, cpu_id),
+{ reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); }
 
 /// Turning the fill phase's write lock on the pagetable `pagetable_ptr` into a read lock with its window locks kept as `windows` is
 /// the downgrade step from `krnl`'s projection to `post`.
@@ -462,23 +473,23 @@ pub(super) proof fn mmap_2m_trace_hold_step(steps: &KernelSteps, before: Seq<Ker
         before.len() == 0,
         steps.view() == record_user_view_change(before, pre, post),
         mmap_2m_hold_step_pre(pre, cpu_id, range),
-        mmap_2m_hold_step(pre, post, cpu_id),
+        mmap_4k_hold_step(pre, post, cpu_id),
     ensures
         mmap_2m_trace_after_hold(steps.view(), cpu_id, range),
         steps.view().len() == 1,
-{ reveal(mmap_2m_hold_step_pre); reveal(mmap_2m_hold_step); reveal(mmap_2m_trace_after_hold); }
+{ reveal(mmap_2m_hold_step_pre); reveal(mmap_4k_hold_step); reveal(mmap_2m_trace_after_hold); }
 
 /// The release step recorded after the partial trace after holding is the failure trace.
 pub(super) proof fn mmap_2m_trace_release_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize)
     requires
         mmap_2m_trace_after_hold(before, cpu_id, mmap_2m_syscall_va_range(va, range)),
         steps.view() == record_user_view_change(before, pre, post),
-        mmap_2m_release_step_pre(pre, cpu_id),
-        mmap_2m_release_step(pre, post, cpu_id),
+        mmap_4k_release_step_pre(pre, cpu_id),
+        mmap_4k_release_step(pre, post, cpu_id),
     ensures
         mmap_2m_syscall_failure_trace(steps.view(), cpu_id, va, range),
         steps.view()[1].old_u == pre,
-{ reveal(mmap_2m_release_step_pre); reveal(mmap_2m_release_step); reveal(mmap_2m_trace_after_hold); reveal(mmap_2m_syscall_failure_trace); }
+{ reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); reveal(mmap_2m_trace_after_hold); reveal(mmap_2m_syscall_failure_trace); }
 
 /// The enter step pushed onto an empty trace to read, or onto the partial trace after holding to fill, is the partial trace
 /// after entering.
@@ -658,7 +669,7 @@ pub(super) proof fn mmap_2m_flushed_step_from_k(
     kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
     kernel_container_projection_at(snap, ctn_ptr);
     mmap_2m_flush_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, phase);
-    reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_flushed_step_pre); reveal(mmap_2m_flushed_step);
+    reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_flushed_step);
     let pre_u = kernel_k_to_kernel_u(*snap);
     let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
     if snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == cpu_set_lock {
@@ -723,6 +734,6 @@ pub(super) proof fn mmap_2m_l1_reclaim_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_2m_range_step(steps.view()[j], cpu_id),
 {
     mmap_2m_flush_step_pre_from_k(entry, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, phase);
-    reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_l1_reclaim_step_pre);
+    reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre);
 }
 } // verus!

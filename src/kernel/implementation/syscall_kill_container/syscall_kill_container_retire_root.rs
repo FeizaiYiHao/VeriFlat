@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk::*;
+use super::super::syscall_kill_process::syscall_kill_process_walk_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_retire::{kill_retire_hold_tables, kill_retire_remove_tables};
 use super::super::syscall_kill_process::syscall_kill_process_retire_pages::{kill_retire_structure_pages, kill_retire_lock_cache};
 use super::super::syscall_kill_process::syscall_kill_process_retire_pages_lock::{kill_retire_pages_to_cache, wunlock_kill_retire_pages};

@@ -14,7 +14,7 @@ pub open spec fn cpu_offline_request_syscall_result(pre: KernelU, cpu_id: CpuId,
     else { RetValueType::Success }
 }
 
-/// The request bit of `target` in the caller's container is clear at entry, so the call records a step.
+/// The request bit of `target` in the caller's container is already set at entry, so a successful call records no step.
 pub open spec fn cpu_offline_request_pending(pre: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
     pre.container_map[pre.cpu_array[cpu_id as int].owning_container].cpu_offline_requests[target as int]
 }
@@ -110,11 +110,12 @@ pub open spec fn cpu_online_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, 
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 /// A live caller's container write-held under an owner ordered below the caller's process depth is a lock-order conflict.
 pub open spec fn cpu_offline_request_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
-    let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
+    let cpu = pre.cpu_array[cpu_id as int];
+    let caller = pre.container_map[cpu.owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
-    else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    else if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if caller.killed { RetValueType::ErrorContainerKilled }
-    else if caller.lock_process_owner is Some && caller.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[pre.cpu_array[cpu_id as int].current_process->Some_0].depth) { RetValueType::ErrorContainerLockOrderConflict }
+    else if caller.lock_process_owner is Some && caller.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[cpu.current_process->Some_0].depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }
     else if pre.cpu_array[target as int].state is Off { RetValueType::ErrorCpuAlreadyOff }
@@ -173,11 +174,12 @@ pub open spec fn cpu_offline_request_child_syscall_trace(trace: Seq<KernelStep>,
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 /// A live caller's container write-held under an owner ordered below the caller's process depth is a lock-order conflict.
 pub open spec fn cpu_online_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
-    let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
+    let cpu = pre.cpu_array[cpu_id as int];
+    let caller = pre.container_map[cpu.owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
-    else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    else if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if caller.killed { RetValueType::ErrorContainerKilled }
-    else if caller.lock_process_owner is Some && caller.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[pre.cpu_array[cpu_id as int].current_process->Some_0].depth) { RetValueType::ErrorContainerLockOrderConflict }
+    else if caller.lock_process_owner is Some && caller.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[cpu.current_process->Some_0].depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }
     else if !(pre.cpu_array[target as int].state is Off) { RetValueType::ErrorCpuNotOff }

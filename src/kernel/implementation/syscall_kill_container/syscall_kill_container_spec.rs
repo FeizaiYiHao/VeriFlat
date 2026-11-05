@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::super::syscall_kill_process::syscall_kill_process_spec::{kill_killer, kill_target, kill_stage, kill_process_empty_target_pre, kill_process_middle_step};
+use super::super::syscall_kill_process::syscall_kill_process_spec::{kill_killer, kill_target, kill_stage, kill_process_target_empty, kill_process_middle_step};
 
 verus! {
 /// The result of `syscall_kill_container` from the state at entry, in the implementation's check order: a killed
@@ -38,31 +38,21 @@ pub open spec fn kill_container_killer_at(u: KernelU, cpu_id: CpuId, container: 
     ThreadU { syscall_progress: kill_container_progress(container, stage), ..u.thread_map[kill_killer(u, cpu_id)] }
 }
 
-/// The cpu runs a live thread of a live process in a live container, the thread has no syscall in progress, and the
+/// The live cpu runs a live thread of a live process in a live container, the thread has no syscall in progress, and the
 /// container's child at `child_index` is live. The cpu, the container, the process, and the thread are unlocked.
 #[verifier::opaque]
 pub open spec fn kill_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let container = old_u.container_map[cpu.owning_container];
     let process = old_u.process_map[cpu.current_process->Some_0];
-    let thread = old_u.thread_map[cpu.current_thread->Some_0];
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_process is Some
-    &&& cpu.current_thread is Some
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& container.lock_state is Unlocked
     &&& !container.killed
-    &&& old_u.process_map.dom().contains(cpu.current_process->Some_0)
     &&& process.lock_state is Unlocked
     &&& !process.killed
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
-    &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
-    &&& thread.state == (ThreadState::RUNNING { cpu_id })
-    &&& thread.owning_proc == cpu.current_process->Some_0
+    &&& old_u.thread_map[cpu.current_thread->Some_0].lock_state is Unlocked
     &&& child_index < container.children.len()
     &&& old_u.container_map.dom().contains(container.children[child_index as int])
     &&& !old_u.container_map[container.children[child_index as int]].killed
@@ -163,7 +153,7 @@ pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU,
     &&& kill_container_stage(old_u, cpu_id) is Process
     &&& kill_stage(old_u, cpu_id) is Retire
     &&& old_u.process_map.dom().contains(prc_ptr)
-    &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& kill_process_target_empty(old_u, cpu_id)
     &&& root.zombie
     &&& root.owned_pci_functions.is_empty()
     &&& root.parent is None
@@ -229,7 +219,8 @@ pub open spec fn kill_container_pages_step(old_u: KernelU, new_u: KernelU, cpu_i
 }
 
 /// One free page of `size` moves from the target to the killer's container: the target's owned pages lose the 4K pages
-/// it spans and the killer's container gains them, and one page of `size` of quota moves with it.
+/// it spans and the killer's container gains them, and one page of `size` of quota moves with it. The moved set is the
+/// 4K pages of one aligned 2M or 1G page; the step only counts them, and their alignment lives in the K state.
 #[verifier::opaque]
 pub open spec fn kill_container_move_page_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, size: PageSize) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -380,15 +371,13 @@ pub open spec fn kill_container_partial_trace(trace: Seq<KernelStep>, pre: Kerne
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> kill_container_middle_step(trace[j], cpu_id)
 }
 
-/// Complete trace of the call: on a kill, the enter step, the middle steps, and the finish step; a stutter otherwise.
+/// Complete trace of the call: on a kill, the partial trace followed by the finish step; a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn kill_container_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize, killed: bool) -> bool {
     if killed {
+        // enter + middle steps + finish
         &&& 2 <= trace.len()
-        &&& trace[0].old_u == pre
-        &&& kill_container_enter_step_pre(pre, cpu_id, child_index)
-        &&& kill_container_enter_step(pre, trace[0].new_u, cpu_id, child_index)
-        &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> kill_container_middle_step(trace[j], cpu_id)
+        &&& kill_container_partial_trace(trace.drop_last(), pre, cpu_id, child_index)
         &&& trace.last().new_u == post
         &&& kill_container_finish_step_pre(trace.last().old_u, cpu_id)
         &&& kill_container_finish_step(trace.last().old_u, post, cpu_id)

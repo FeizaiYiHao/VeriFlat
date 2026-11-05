@@ -5,6 +5,11 @@ use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {
+    /// The first absent directory entry on a 4K walk. Each variant installs exactly one already-initialized child table: L4
+    /// installs an L3 table, L3 installs an L2 table, and L2 installs the L1 table that will hold the leaf.
+    #[derive(Clone, Copy)]
+    pub enum MissingPageTableLevel { L4, L3, L2 }
+
     /// Install the missing L4, L3 and L2 directories on the walk to `va` under the table's big write lock. When the L3 entry
     /// already exists this thread holds the 2M window of `va`; when this call creates the L2 page, its windows `lo..=hi` start
     /// held by this thread and their lock perms are returned, keyed by window.

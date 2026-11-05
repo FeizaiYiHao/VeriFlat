@@ -2,11 +2,11 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk_spec::KillScope;
 use super::syscall_kill_process_retire_pages::kill_retire_lock_cache;
 use super::syscall_kill_process_reclaim_scoped::{kill_reclaim_last_held_4k_mapping_scoped_to_cache, kill_reclaim_last_iommu_4k_mapping_scoped_to_cache};
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::kill_scope_progress;
+use super::syscall_kill_process_walk_spec::kill_scope_progress;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_scoped_spec::*;
 
@@ -147,7 +147,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped(
         assert(cache_lctx.page_lock_map().dom().contains(pg_idx) && cache_lctx.pagetable_lock_map().dom().contains(pagetable) && cache_lctx.process_lock_map().dom().contains(target));
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable));
         assert(krnl.pg_arr.spec_index(pg_idx).view().view().mappings().contains((pagetable, va)) && krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k);
-        container_process_page_pagetable_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr, pg_idx, pagetable, va);
+        container_process_page_pagetable_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr, pg_idx, pagetable, va);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         assert(krnl.ctn_mp.dom().contains(origin) && krnl.ctn_mp.dom().contains(owner));
         container_subtree_uppertree_agree_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, origin);

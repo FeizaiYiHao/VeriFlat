@@ -9,7 +9,7 @@ verus! {
 /// table; an absent `bdf` only changes owner.
 #[verifier::opaque]
 pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
-    pre: KernelK, post: KernelK, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr,
+    pre: KernelK, post: KernelK, peer_thrd_ptr: RwLockThreadPtr,
     ep_ptr: RwLockEndpointPtr, peer_sched_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
     iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,

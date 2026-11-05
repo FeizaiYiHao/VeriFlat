@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use super::kernel_step_spec::kernel_u_new_thread_changed;
 
 /// K->U projection lemmas for lock-state, scheduling, process-table, container-publication, and peer-wakeup steps.
 pub mod projection;

@@ -4,6 +4,7 @@ use vstd::set::lemma_set_remove_len;
 
 verus! {
 use crate::*;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::mmap_4k_create_entry_install_eof::*;

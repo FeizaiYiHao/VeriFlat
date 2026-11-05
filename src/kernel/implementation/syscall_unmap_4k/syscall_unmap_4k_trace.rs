@@ -15,7 +15,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
-            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let va_range = spec_va_range_4k(va, range);
             let mapped = spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
                 ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
@@ -69,8 +69,9 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
     range: VaRange4K, windows: Map<WindowVa, LockStateU>,
 )
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        range == (VaRange4K { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize))) }),
+        range == spec_va_range_4k(va, len),
         range.wf(),
         unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -103,7 +104,8 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
         unmap_4k_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range),
         unmap_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range),
 {
-    kernel_u_domains_projection(krnl); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_u_domains_projection(krnl); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
     reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step);
 }
 
@@ -146,9 +148,9 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
         },
         table_lock is Unlocked || table_lock is ReadLocked,
     ensures
-        unmap_4k_exit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        unmap_4k_refund_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         unmap_4k_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
-{ kernel_process_projection_at(krnl, prc_ptr); reveal(unmap_4k_exit_step_pre); reveal(unmap_4k_exit_step); }
+{ kernel_process_projection_at(krnl, prc_ptr); reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_exit_step); }
 
 /// The enter step pushed onto an empty trace is the partial trace after entering.
 pub(super) proof fn unmap_4k_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, range: VaRange4K)
@@ -175,9 +177,9 @@ pub(super) proof fn unmap_4k_trace_range_steps(steps: &KernelSteps, before: Seq<
 /// The exit step pushed after the unmapped partial trace completes the syscall trace.
 pub(super) proof fn unmap_4k_trace_exit_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize)
     requires
-        unmap_4k_trace_after_range(before, cpu_id, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
+        unmap_4k_trace_after_range(before, cpu_id, spec_va_range_4k(va, range)),
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
-        unmap_4k_exit_step_pre(pre, cpu_id),
+        unmap_4k_refund_step_pre(pre, cpu_id),
         unmap_4k_exit_step(pre, post, cpu_id),
     ensures
         unmap_4k_syscall_trace(steps.view(), cpu_id, va, range),

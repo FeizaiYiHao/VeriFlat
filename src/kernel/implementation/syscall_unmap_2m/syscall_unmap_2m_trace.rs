@@ -15,7 +15,7 @@ pub(super) proof fn unmap_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let thread = krnl.thrd_mp.spec_index(thrd_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
-            let va_range = unmap_2m_syscall_va_range(va, range);
+            let va_range = spec_va_range_2m(va, range);
             let mapped = spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
                 ==> table.mapping_2m().dom().contains(va_range.view()[j]) && table.mapping_2m()[va_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
@@ -71,7 +71,7 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
-        range == unmap_2m_syscall_va_range(va, len),
+        range == spec_va_range_2m(va, len),
         range.wf(),
         unmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
@@ -79,6 +79,8 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
         krnl.thrd_mp.dom().contains(thrd_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
         windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range()),
         ({
@@ -104,7 +106,7 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
         unmap_2m_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range),
         unmap_2m_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range),
 {
-    kernel_u_domains_projection(krnl); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
     reveal(unmap_2m_enter_step_pre); reveal(unmap_2m_enter_step);
 }
 
@@ -177,7 +179,7 @@ pub(super) proof fn unmap_2m_trace_range_steps(steps: &KernelSteps, before: Seq<
 /// The exit step pushed after the unmapped partial trace completes the syscall trace.
 pub(super) proof fn unmap_2m_trace_exit_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize)
     requires
-        unmap_2m_trace_after_range(before, cpu_id, unmap_2m_syscall_va_range(va, range)),
+        unmap_2m_trace_after_range(before, cpu_id, spec_va_range_2m(va, range)),
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         unmap_2m_exit_step_pre(pre, cpu_id),
         unmap_2m_exit_step(pre, post, cpu_id),
@@ -185,91 +187,46 @@ pub(super) proof fn unmap_2m_trace_exit_step(steps: &KernelSteps, before: Seq<Ke
         unmap_2m_syscall_trace(steps.view(), cpu_id, va, range),
 { reveal(unmap_2m_trace_after_range); reveal(unmap_2m_syscall_trace); }
 
-/// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode while
-/// the range is not fully cleared satisfies the leaf trace precondition and projects its K anchors.
-pub(super) proof fn unmap_2m_leaf_trace_step_pre_from_k(
-    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange2M, unmapped: usize,
-)
-    requires
-        typed_lock_maps_aligned(krnl, lctx),
-        index_valid(NUM_CPUS, cpu_id),
-        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
-        lctx.pagetable_lock_map().dom().contains(pagetable),
-        krnl.prc_mp.dom().contains(prc_ptr),
-        !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
-        krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
-        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
-        krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
-        krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap2m { range, unmapped, flushed: false }),
-        unmapped < range.len,
-    ensures
-        unmap_2m_leaf_trace_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
-        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
-        kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_proc == prc_ptr,
-        kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap2m { range, unmapped, flushed: false }),
-{
-    reveal(unmap_2m_leaf_trace_step_pre);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
-    if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
-        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-    } else {
-        krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-    }
-    kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
-}
-
-/// Removing a still-mapped page of the range under the unmap locks is the leaf step on `pre`/`post`.
+/// Removing the `unmapped`-th page of the range, still mapped, under the unmap locks is the leaf step on `pre`/`post`.
 pub(super) proof fn unmap_2m_leaf_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, va: VAddr, range: VaRange2M, unmapped: usize, progress: Option<SyscallProgress>,
+    pre: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, range: VaRange2M, unmapped: usize, progress: Option<SyscallProgress>,
 )
     requires
-        unmap_2m_leaf_trace_step_pre(pre, cpu_id),
+        thread_pagetable_op_in_progress(pre, cpu_id),
         pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         pre.thread_map[thrd_ptr].owning_proc == prc_ptr,
         pre.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap2m { range, unmapped, flushed: false }),
         progress == Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false }),
-        range.view().contains(va),
-        pre.process_map.dom().contains(prc_ptr),
-        pre.process_map[prc_ptr].pagetable is Some,
-        pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.dom().contains(va),
-        pre.thread_map.dom().contains(thrd_ptr),
+        unmapped < range.len,
+        pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.dom().contains(range.view()[unmapped as int]),
         post == (KernelU {
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
-                pagetable: Some(PageTableU { mapping_2m: pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.remove(va), ..pre.process_map[prc_ptr].pagetable->Some_0 }),
+                pagetable: Some(PageTableU { mapping_2m: pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.remove(range.view()[unmapped as int]), ..pre.process_map[prc_ptr].pagetable->Some_0 }),
                 ..pre.process_map[prc_ptr]
             }),
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: progress, ..pre.thread_map[thrd_ptr] }),
             ..pre
         }),
     ensures
-        unmap_2m_leaf_step_pre(pre, cpu_id, va),
-        unmap_2m_leaf_step(pre, post, cpu_id, va),
+        unmap_2m_leaf_step_pre(pre, cpu_id),
+        unmap_2m_leaf_step(pre, post, cpu_id),
 { reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); }
 
-/// A leaf step that removes `va`, pushed after range steps that start at `start`, is a range step: without `va` it removes
-/// exactly one key of the range.
-pub(super) proof fn unmap_2m_range_steps_from_leaf(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr)
+/// A leaf step pushed after range steps that start at `start` is a range step.
+pub(super) proof fn unmap_2m_range_steps_from_leaf(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
         0 <= start <= before.len(),
         forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_2m_range_step(before[j], cpu_id),
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
-        unmap_2m_leaf_step_pre(pre, cpu_id, va),
-        unmap_2m_leaf_step(pre, post, cpu_id, va),
+        unmap_2m_leaf_step_pre(pre, cpu_id),
+        unmap_2m_leaf_step(pre, post, cpu_id),
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_2m_range_step(steps.view()[j], cpu_id),
-{
-    reveal(unmap_2m_range_step); reveal(unmap_2m_leaf_step_pre); reveal(unmap_2m_leaf_step); reveal(unmap_2m_leaf_trace_step);
-    let thread = pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0);
-    let mapping = pre.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_2m;
-    let kept = mapping.remove(va).dom();
-    assert(mapping.remove(va) =~= mapping.restrict(kept));
-    assert(mapping.dom().difference(kept) =~= set![va]);
-    assert(thread.syscall_progress->Some_0->Unmap2m_range.view().to_set().contains(va));
-}
+{ reveal(unmap_2m_range_step); }
 
-/// Removing `va`, the `unmapped`-th page of the range, from `pre`'s projection to `post` under the unmap locks, as
-/// `clear_2m_mapping_present_in_window` records it, after range steps that start at `start` leaves only range steps.
+/// Removing `va`, the `unmapped`-th page of the range, from `pre`'s projection to `post` while the caller write-holds its cpu
+/// and thread and holds the pagetable of the thread's present process in either mode, as `clear_2m_mapping_present_in_window`
+/// records it, after range steps that start at `start` leaves only range steps.
 pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange2M, unmapped: usize, va: VAddr,
@@ -295,7 +252,7 @@ pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap2m { range, unmapped, flushed: false }),
         unmapped < range.len,
-        range.view().contains(va),
+        range.view()[unmapped as int] == va,
         *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, thrd_mp: post.thrd_mp, ..*pre }),
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
@@ -317,10 +274,16 @@ pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_2m_range_step(steps.view()[j], cpu_id),
 {
     kernel_pagetable_2m_present_cleared_and_progress_changed_implies_u_step(pre, post, pagetable, va, thrd_ptr);
-    unmap_2m_leaf_trace_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, range, unmapped);
-    unmap_2m_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, va, range, unmapped,
+    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
+        pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+    } else {
+        pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+    }
+    kernel_pagetable_mappings_projection_at(pre, prc_ptr);
+    unmap_2m_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, range, unmapped,
         Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false }));
-    unmap_2m_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, va);
+    unmap_2m_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id);
 }
 
 /// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode after
@@ -570,5 +533,5 @@ pub(super) proof fn unmap_2m_range_steps_from_refund(
         },
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_2m_range_step(steps.view()[j], cpu_id),
-{ reveal(unmap_2m_range_step); reveal(unmap_2m_refund_step_pre); }
+{ reveal(unmap_2m_range_step); reveal(unmap_2m_exit_step_pre); }
 } // verus!

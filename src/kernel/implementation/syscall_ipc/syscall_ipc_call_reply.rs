@@ -201,9 +201,9 @@ verus! {
         );
     }
 
-    /// Under cpu, callee, endpoint, and dangling-thread locks with a dangling caller: take the dangling thread over and release the endpoint,
-    /// reclaim the dangling thread and the killed callers it takes over, and release the cpu and the running thread, one step per
-    /// change.
+    /// Under cpu, callee, endpoint, and dangling-thread locks with a dangling caller: take the dangling thread over, release the endpoint,
+    /// and mark the callee's progress `ReplyDangling`; reclaim the dangling thread and the killed callers it takes over; then clear the
+    /// progress and release the cpu and the running thread, one step per change.
     fn ipc_reply_dangling_caller(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         prc_ptr: RwLockProcessPtr, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
@@ -323,6 +323,8 @@ verus! {
             old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             !old(krnl).ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
             caller_ptr != callee_ptr,
+            old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            old(krnl).thrd_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thrd_mp.spec_index(callee_ptr).view().owning_container,
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -341,28 +343,36 @@ verus! {
                 &&& trace[n].old_u == kernel_k_to_kernel_u(old(steps).snapshot_k())
                 &&& ipc_reply_dangling_caller_step_pre(trace[n].old_u, cpu_id, ep_idx)
                 &&& ipc_reply_dangling_caller_taken_over_step(trace[n].old_u, trace[n].new_u, cpu_id)
-                &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(trace[j].old_u, trace[j].new_u, cpu_id)
+                &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
+                    && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[n].old_u.thread_map[trace[n].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
                 &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
                 &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, trace[last].new_u, cpu_id)
                 &&& trace[last].new_u == kernel_k_to_kernel_u(*final(krnl))
             }),
     {
         hide(Set::is_empty);
-        proof { thread_perms_wf_at(krnl.thrd_mp, caller_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr); }
+        proof {
+            thread_perms_wf_at(krnl.thrd_mp, caller_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, callee_ptr);
+            thread_caller_callee_wf_at(krnl.thrd_mp, callee_ptr);
+        }
         let ghost locked_k = *krnl;
         let ghost locked_lctx = *lctx;
         take_over_dangling_caller(krnl, Tracked(&mut *lctx), callee_ptr, caller_ptr, Tracked(&callee_lock_perm), Tracked(&caller_lock_perm));
         krnl.wunlock_endpoint(ep_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
+        let ghost taken_k = *krnl;
+        krnl.set_thread_syscall_progress(callee_ptr, Ghost(Some(SyscallProgress::ReplyDangling { caller: caller_ptr })), Tracked(&*lctx), Tracked(&callee_lock_perm));
         proof {
             let pre_k = steps.snapshot_k();
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
             reveal(kernel_thread_state_changed);
             locked_k.thrd_mp.typed_lock_map_aligned_write_at(locked_lctx.thread_lock_map(), locked_lctx.thread_id(), caller_ptr);
             kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(&pre_k, &locked_k, &locked_lctx, cpu_id, callee_ptr, caller_ptr, ep_ptr, None);
-            kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &*krnl, callee_ptr, caller_ptr, Some(ep_ptr));
+            kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &taken_k, callee_ptr, caller_ptr, Some(ep_ptr));
+            kernel_thread_syscall_progress_changed_implies_u_step(&taken_k, &*krnl, callee_ptr);
             endpoint_perms_wf_at(locked_k.ep_mp, ep_ptr); locked_k.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len();
             ipc_reply_dangling_caller_step_pre_from_k(&pre_k, cpu_id, ep_idx, prc_ptr, callee_ptr, ep_ptr, caller_ptr);
-            ipc_reply_dangling_caller_taken_over_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, caller_ptr, ep_ptr);
+            ipc_reply_dangling_caller_taken_over_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(taken_k), kernel_k_to_kernel_u(*krnl), cpu_id,
+                callee_ptr, caller_ptr, ep_ptr);
             krnl.kernel_step_boundary_thread_state_changed(&mut *lctx, &mut *steps, caller_ptr, ThreadState::DANGLING, ThreadState::KILLED);
         }
         let ghost reclaim_k = *krnl;
@@ -377,12 +387,23 @@ verus! {
         let ghost release_k = *krnl;
         let ghost release_lctx = *lctx;
         let ghost release_before = steps.view();
-        proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-        release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, callee_ptr, Tracked(callee_lock_perm), Tracked(cpu_lock_perm));
         proof {
             process_cpu_wf_at(release_k.prc_mp, release_k.cpu_arr, cpu_id);
             ipc_reply_dangling_caller_held_step_pre_from_k(&release_k, &release_lctx, cpu_id, prc_ptr, callee_ptr);
-            kernel_cpu_and_thread_unlocked_implies_u_step(&release_k, &*krnl, cpu_id, callee_ptr);
+            reclaim_steps_keep_running_thread_implies_dangling_held_reclaim_steps(release_before, reclaim_before.len() as int, kernel_k_to_kernel_u(reclaim_k), cpu_id,
+                reclaim_k.thrd_mp.spec_index(caller_ptr).view().owning_container);
+        }
+        krnl.set_thread_syscall_progress(callee_ptr, Ghost(None), Tracked(&*lctx), Tracked(&callee_lock_perm));
+        let ghost cleared_k = *krnl;
+        krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof {
+            steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, callee_ptr);
+            kernel_thread_syscall_progress_changed_implies_u_step(&release_k, &cleared_k, callee_ptr);
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&cleared_k, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            kernel_cpu_and_thread_unlocked_implies_u_step(&cleared_k, &*krnl, cpu_id, callee_ptr);
+            ipc_reply_dangling_caller_released_step_from_u(kernel_k_to_kernel_u(release_k), kernel_k_to_kernel_u(cleared_k), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr,
+                krnl.cpu_op.view().view()[cpu_id as int]);
             assert(release_before[reclaim_before.len() - 1] == reclaim_before[reclaim_before.len() - 1]) by { kernel_steps_prefix_unchanged_index(reclaim_before, release_before, reclaim_before.len() - 1); };
         }
     }

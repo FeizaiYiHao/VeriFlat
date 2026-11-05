@@ -47,6 +47,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         old(krnl).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         old(krnl).prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table_ptr),
         va_range.wf() && iova_range.wf() && va_range.len > 0 && iova_range.len == va_range.len,
+        *va_range == spec_va_range_4k(va_range.start, va_range.len) && *iova_range == spec_va_range_4k(iova_range.start, iova_range.len),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
         forall|j: int| #![trigger va_range.view()[j]] 0 <= j < va_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[j])
@@ -115,7 +116,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view()[0] == old(steps).view()[0],
-        iommu_map_4k_syscall_trace(final(steps).view(), cpu_id, *va_range, *iova_range),
+        iommu_map_4k_syscall_trace(final(steps).view(), cpu_id, va_range.start, iova_range.start, va_range.len),
         va_range.len + 2 <= final(steps).view().len() <= 4 * va_range.len + 2,
 {
     let range = va_range.len;

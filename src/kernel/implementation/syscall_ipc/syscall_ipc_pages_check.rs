@@ -549,7 +549,7 @@ pub(super) fn ipc_pages_check_tables(
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is Error,
+        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
         ret == ipc_pages_check_result(kernel_k_to_kernel_u(*final(krnl)), cpu_id),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == final(lctx).cpu_id(),
@@ -700,7 +700,7 @@ pub(super) fn ipc_pages_check_tables(
         };
     }
     let result = if !source_user {
-        RetValueType::Error
+        RetValueType::ErrorIpcRangeNotUser
     } else if !share_mapping_4k_source_precheck(&*krnl, source_range, source_pagetable, Tracked(&*lctx), Tracked(source_pagetable_lock_perm)) {
         RetValueType::ErrorIpcSourceUnmapped
     } else {
@@ -709,7 +709,7 @@ pub(super) fn ipc_pages_check_tables(
             Tracked(if target_thread == current_thrd_ptr { current_thread_lock_perm } else { peer_thread_lock_perm })).quota_4k < 3usize * target_range.len {
             RetValueType::ErrorNoQuota
         } else if !target_user {
-            RetValueType::Error
+            RetValueType::ErrorIpcRangeNotUser
         } else {
             let containers_compatible = if source_container == target_container { true }
                 else { container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, source_container, target_container) };

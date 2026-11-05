@@ -25,8 +25,8 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_block_changed);
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int]->Some_0;
     let container = old_u.thread_map[thrd_ptr].owning_container;
     assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };
     assert(old_u.endpoint_map[ep_ptr].owning_threads.contains((thrd_ptr, ep_idx))) by { reveal(kernel_u_endpoint_ownership_wf); };
@@ -79,8 +79,8 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_rendezvous_changed);
-    let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let ep_ptr = old_u.thread_map[caller_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let ep_ptr = old_u.thread_map[caller_ptr].endpoint_descriptors[ep_idx as int]->Some_0;
     let peer_ptr = old_u.endpoint_map[ep_ptr].queue[0];
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
@@ -216,8 +216,8 @@ pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
     ensures isolated(new_u, a, b),
 {
     reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step);
-    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
-    let channel_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int].unwrap();
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let channel_ptr = old_u.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int]->Some_0;
     let peer_ptr = old_u.endpoint_map[channel_ptr].queue[0];
     let container = old_u.thread_map[thrd_ptr].owning_container;
     assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };

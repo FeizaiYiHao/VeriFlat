@@ -19,6 +19,7 @@ pub proof fn new_endpoint_enter_step_from_u(
             let thread = pre.thread_map.spec_index(thrd_ptr);
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& cpu.owning_container == ctn_ptr

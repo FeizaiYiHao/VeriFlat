@@ -120,6 +120,7 @@ pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& cpu.current_process == Some(thread.owning_proc)
             &&& pre.process_map.dom().contains(thread.owning_proc)
@@ -146,9 +147,11 @@ pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
 pub(super) proof fn ipc_rendezvous_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, peer_thrd_ptr: RwLockThreadPtr, peer_result: RetValueType, cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
-    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool,
+    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool, pre_k: KernelK,
 )
     requires
+        pre == kernel_k_to_kernel_u(pre_k),
+        !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
         kernel_u_ipc_rendezvous_changed(pre, post, cpu_id, caller_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, pci_transfer),
         {
             let result = ipc_rendezvous_result(pre, cpu_id, ep_idx, waiting_state, payload);
@@ -198,7 +201,7 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
     ensures
         ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, waiting_state, payload),
         ipc_rendezvous_step(pre, post, cpu_id, ep_idx, waiting_state, payload),
-{ reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); }
+{ kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); }
 
 /// The unlocked rendezvous context on `krnl` whose queue head carries an Endpoint payload gives the transit pre and the user-view context of the
 /// transit step.
@@ -215,6 +218,7 @@ pub(super) proof fn ipc_endpoint_transit_step_pre_from_k(
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& cpu.locking_thread() is None
             &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
             &&& cpu.view().view().current_process == Some(prc_ptr)
             &&& cpu.view().view().current_thread == Some(thrd_ptr)
             &&& krnl.prc_mp.dom().contains(prc_ptr)
@@ -332,6 +336,7 @@ pub(super) proof fn ipc_endpoint_transit_step_pre_from_u(
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& pre.process_map.dom().contains(prc_ptr)
@@ -440,6 +445,7 @@ pub(super) proof fn ipc_endpoint_finish_step_from_u(
         pre.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: receiver == peer_ptr, payload_index: if receiver == peer_ptr { source_index } else { target_index } }),
         pre.thread_map[peer_ptr].ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver == peer_ptr { target_index } else { source_index } }),
         pre.thread_map[if receiver == peer_ptr { thrd_ptr } else { peer_ptr }].endpoint_descriptors[source_index as int] == Some(payload_ptr),
+        ipc_endpoint_finish_step_pre(pre, cpu_id),
         result == ipc_endpoint_finish_result(pre, cpu_id),
         descriptor == (if result is Success { Some((receiver, target_index)) } else { None }),
         {
@@ -465,7 +471,7 @@ pub(super) proof fn ipc_endpoint_finish_step_from_u(
         },
     ensures
         ipc_endpoint_finish_step(pre, post, cpu_id),
-{ reveal(ipc_endpoint_finish_step); }
+{ reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); }
 
 /// The one block step pushed since `before` is the complete blocking trace.
 pub(super) proof fn ipc_ordinary_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
@@ -496,7 +502,7 @@ pub(super) proof fn ipc_syscall_trace_from_block(steps: &KernelSteps, before: Se
 pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
     requires
         !(ret is CpuIdle),
-        payload is Pages ==> ipc_pages_rendezvous_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
+        payload is Pages ==> ipc_pages_rendezvous_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
             waiting_state, payload->Pages_va_range, ret),
         payload is Endpoint ==> ipc_endpoint_rendezvous_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
             waiting_state, payload->Endpoint_endpoint_index, ret),
@@ -529,7 +535,7 @@ pub(super) proof fn ipc_syscall_trace_stutter(trace: Seq<KernelStep>, pre: Kerne
         payload is Pages ==> ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, ret),
         payload is Endpoint ==> ipc_endpoint_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, ret),
         (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid, ret),
-{ reveal(ipc_entry_result); reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_endpoint_rendezvous_trace); }
+{ reveal(ipc_entry_result); reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_pages_rendezvous_trace); reveal(ipc_endpoint_rendezvous_trace); }
 
 /// A rendezvous abandoned because the queue head died records no step for the Pages and Endpoint payloads.
 pub(super) proof fn ipc_rendezvous_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, ret: RetValueType)
@@ -537,9 +543,9 @@ pub(super) proof fn ipc_rendezvous_trace_stutter(trace: Seq<KernelStep>, pre: Ke
         trace.len() == 0,
         ret is ErrorIpcPeerKilled,
     ensures
-        payload is Pages ==> ipc_pages_rendezvous_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Pages_va_range, ret),
+        payload is Pages ==> ipc_pages_rendezvous_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Pages_va_range, ret),
         payload is Endpoint ==> ipc_endpoint_rendezvous_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index, ret),
-{ reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_endpoint_rendezvous_trace); }
+{ reveal(ipc_pages_rendezvous_trace); reveal(ipc_endpoint_rendezvous_trace); }
 
 /// The one rendezvous error step pushed since `before` is the Pages or Endpoint rendezvous trace.
 pub(super) proof fn ipc_rendezvous_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, ret: RetValueType)
@@ -551,11 +557,11 @@ pub(super) proof fn ipc_rendezvous_trace_error_step(steps: &KernelSteps, before:
         payload is Pages ==> payload->Pages_va_range.wf() && payload->Pages_va_range.len > 0 && (ret is ErrorIpcSameProcess || ret is ErrorIpcTypeMismatch),
         payload is Endpoint ==> ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcTypeMismatch,
     ensures
-        payload is Pages ==> ipc_pages_rendezvous_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
+        payload is Pages ==> ipc_pages_rendezvous_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
             waiting_state, payload->Pages_va_range, ret),
         payload is Endpoint ==> ipc_endpoint_rendezvous_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
             waiting_state, payload->Endpoint_endpoint_index, ret),
-{ reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_endpoint_rendezvous_trace); }
+{ reveal(ipc_pages_rendezvous_trace); reveal(ipc_endpoint_rendezvous_trace); }
 
 /// The transit step pushed since `before` is the partial endpoint trace after transit.
 pub(super) proof fn ipc_endpoint_trace_transit_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx)

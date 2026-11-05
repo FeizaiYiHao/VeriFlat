@@ -3,9 +3,10 @@ use crate::*;
 use super::unmap_4k_spec::*;
 
 verus! {
-/// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode while
-/// the range is not fully cleared satisfies the leaf trace precondition and projects its K anchors.
-pub proof fn unmap_4k_leaf_trace_step_pre_from_k(
+/// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode, while
+/// the range is not fully cleared and its next page has a present 4K leaf, satisfies the leaf precondition and projects its K
+/// anchors.
+pub proof fn unmap_4k_leaf_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange4K, unmapped: usize,
 )
     requires
@@ -17,41 +18,39 @@ pub proof fn unmap_4k_leaf_trace_step_pre_from_k(
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        krnl.pt_mp.dom().contains(pagetable),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
         unmapped < range.len,
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view()[unmapped as int]),
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k()[range.view()[unmapped as int]].present,
     ensures
-        unmap_4k_leaf_trace_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        unmap_4k_leaf_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_proc == prc_ptr,
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
 {
-    reveal(unmap_4k_leaf_trace_step_pre);
+    reveal(unmap_4k_leaf_step_pre);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) {
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     } else {
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
-    kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
+    kernel_pagetable_mappings_projection_at(krnl, prc_ptr); kernel_process_projection_at(krnl, prc_ptr);
 }
 
-/// Clearing a still-mapped page of the range under the unmap locks is the leaf step on `pre`/`post`.
+/// Clearing the next page `va` of the range under the unmap locks and advancing the progress is the leaf step on `pre`/`post`.
 pub proof fn unmap_4k_leaf_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, va: VAddr, range: VaRange4K, unmapped: usize, progress: Option<SyscallProgress>,
 )
     requires
-        unmap_4k_leaf_trace_step_pre(pre, cpu_id),
         pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         pre.thread_map[thrd_ptr].owning_proc == prc_ptr,
         pre.thread_map[thrd_ptr].syscall_progress == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
         progress == Some(SyscallProgress::Unmap4k { range, unmapped: (unmapped + 1) as usize, flushed: false }),
-        range.view().contains(va),
-        pre.process_map.dom().contains(prc_ptr),
-        pre.process_map[prc_ptr].pagetable is Some,
-        pre.process_map[prc_ptr].pagetable->Some_0.mapping_4k.dom().contains(va),
-        pre.thread_map.dom().contains(thrd_ptr),
+        range.view()[unmapped as int] == va,
         post == (KernelU {
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
                 pagetable: Some(PageTableU { mapping_4k: pre.process_map[prc_ptr].pagetable->Some_0.mapping_4k.remove(va), ..pre.process_map[prc_ptr].pagetable->Some_0 }),
@@ -60,10 +59,8 @@ pub proof fn unmap_4k_leaf_step_from_u(
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: progress, ..pre.thread_map[thrd_ptr] }),
             ..pre
         }),
-    ensures
-        unmap_4k_leaf_step_pre(pre, cpu_id, va),
-        unmap_4k_leaf_step(pre, post, cpu_id, va),
-{ reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); }
+    ensures unmap_4k_leaf_step(pre, post, cpu_id),
+{ reveal(unmap_4k_leaf_step); }
 
 /// The caller write-holding its cpu and thread and holding the pagetable of the thread's present process in either mode after
 /// clearing the whole range and before recording the flush, while the thread's container exists, satisfies the flush
@@ -205,26 +202,17 @@ pub proof fn unmap_4k_flushed_step_from_u(
         unmap_4k_flushed_step(pre, post, cpu_id),
 { reveal(unmap_4k_flushed_step); }
 
-/// A leaf step that clears `va`, pushed after range steps that start at `start`, is a range step: without
-/// `va` it removes exactly one key of the range.
-pub proof fn unmap_4k_range_steps_from_leaf(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr)
+/// A leaf step pushed after range steps that start at `start` is a range step.
+pub proof fn unmap_4k_range_steps_from_leaf(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
         0 <= start <= before.len(),
         forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
-        unmap_4k_leaf_step_pre(pre, cpu_id, va),
-        unmap_4k_leaf_step(pre, post, cpu_id, va),
+        unmap_4k_leaf_step_pre(pre, cpu_id),
+        unmap_4k_leaf_step(pre, post, cpu_id),
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
-{
-    reveal(unmap_4k_range_step); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(unmap_4k_leaf_trace_step);
-    let thread = pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0);
-    let mapping = pre.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k;
-    let kept = mapping.remove(va).dom();
-    assert(mapping.remove(va) =~= mapping.restrict(kept));
-    assert(mapping.dom().difference(kept) =~= set![va]);
-    assert(thread.syscall_progress->Some_0->Unmap4k_range.view().to_set().contains(va));
-}
+{ reveal(unmap_4k_range_step); }
 
 /// TLB flushes of the caller's PCID, recorded after range steps that start at `start` while the caller's held
 /// objects keep their projection at `entry`, leave only range steps.
@@ -322,7 +310,7 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
         unmapped < range.len,
-        range.view().contains(va),
+        range.view()[unmapped as int] == va,
         pre.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
         process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
@@ -348,9 +336,9 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
 {
     kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(pre, post, pagetable, va, thrd_ptr);
-    unmap_4k_leaf_trace_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, range, unmapped);
+    unmap_4k_leaf_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, range, unmapped);
     unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, va, range, unmapped, post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view());
-    unmap_4k_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, va);
+    unmap_4k_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id);
 }
 
 /// TLB flushes of the caller's PCID recorded from `entry` after range steps that start at `start`, while the caller

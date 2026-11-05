@@ -193,7 +193,10 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost flush_snap = steps.snapshot_k();
     let ghost flush_k = *krnl;
     let ghost flush_lctx = *lctx;
-    proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k()); }
+    proof {
+        let flushed_pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        let old_pt = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
+    }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: true })), Tracked(&*lctx), Tracked(thread_lock_perm));
     proof {
         let flushed_before = steps.view();
@@ -862,6 +865,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
         emptied_pt.mapping_4k().dom() =~= Set::<VAddr>::empty(),
         emptied_pt.mapping_2m().dom() =~= Set::<VAddr>::empty(),
         emptied_pt.mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        emptied_pt.lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         emptied_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         emptied_pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         emptied_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,

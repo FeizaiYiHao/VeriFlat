@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::mmap_4k_installed_directory;
 
 verus! {

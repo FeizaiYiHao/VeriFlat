@@ -125,7 +125,7 @@ fn ipc_lock_tables_and_share_pages(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is Error,
+        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
         ipc_pages_mapping_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id,
             channel_index, waiting_state, if waiting_state is SENDING { *source_range } else { *target_range }, ret),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
@@ -351,7 +351,7 @@ fn ipc_map_pages_and_release_tables(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is Error,
+        ret is Success || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
         ipc_pages_mapping_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id,
             channel_index, waiting_state, if waiting_state is SENDING { *source_range } else { *target_range }, ret),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
@@ -392,6 +392,7 @@ fn ipc_map_pages_and_release_tables(
             let channel = pre_k.ep_mp.spec_index(ep_ptr);
             &&& cpu.locking_thread() is None
             &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
             &&& cpu.view().view().current_process == Some(prc_ptr)
             &&& cpu.view().view().current_thread == Some(current_thrd_ptr)
             &&& pre_k.prc_mp.dom().contains(prc_ptr)
@@ -621,10 +622,10 @@ pub(super) fn ipc_rendezvous_pages(
     ensures
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        ipc_pages_rendezvous_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+        ipc_pages_rendezvous_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
             kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, channel_index, waiting_state, if waiting_state is SENDING { *source_range } else { *target_range }, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        ret is Success || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is Error,
+        ret is Success || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
         final(steps).snapshot_k() == *final(krnl),

@@ -30,7 +30,7 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, pre_k.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), &pre_k),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
-        *va_range == mmap_4k_syscall_va_range(va, range),
+        *va_range == spec_va_range_4k(va, range),
         va_range.wf(),
         va_range.len > 0,
         pre_k == (KernelK { cpu_arr: pre_k.cpu_arr, cpu_op: pre_k.cpu_op, thrd_mp: pre_k.thrd_mp, ..old(steps).snapshot_k() }),

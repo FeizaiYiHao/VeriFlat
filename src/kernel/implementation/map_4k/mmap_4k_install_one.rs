@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 use super::mmap_4k_install_one_helpers::{install_one_mmap_4k_directory_page_link_and_end_step, install_one_mmap_4k_directory_page_link,
     install_one_mmap_2m_directory_page_end_step};

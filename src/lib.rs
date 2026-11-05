@@ -45,6 +45,7 @@ pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
+use kernel::implementation::map_4k::mmap_4k_build_structure::MissingPageTableLevel;
 pub use kernel::implementation::map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 pub use kernel::implementation::map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;

@@ -98,6 +98,9 @@ pub ghost enum SyscallProgress {
     /// An endpoint rendezvous whose `peer` is in transit; the caller sends when `caller_sends`, and its
     /// own payload names descriptor `payload_index`.
     IpcEndpoint { peer: RwLockThreadPtr, caller_sends: bool, payload_index: EndpointIdx },
+    /// A reply whose recorded caller is dangling (killed): the callee has taken over `caller` and is reclaiming the
+    /// dangling chain before releasing.
+    ReplyDangling { caller: RwLockThreadPtr },
     /// Thread creation that starts the new thread with `regs` and the optional endpoint at `endpoint_index`.
     NewThread { regs: Registers, endpoint_index: Option<EndpointIdx> },
     /// Endpoint creation that installs the new endpoint at descriptor `slot`.

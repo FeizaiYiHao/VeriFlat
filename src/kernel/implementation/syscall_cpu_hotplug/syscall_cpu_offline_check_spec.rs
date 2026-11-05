@@ -228,6 +228,7 @@ pub open spec fn cpu_offline_check_trace_after_hold(trace: Seq<KernelStep>, pre:
 /// after the boundary, where unheld objects may have changed, either the release step or the offline step to `post`.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_entry_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, went_off: bool, flushed_default_pcid: bool) -> bool {
+    // The live, non-Off, requested cpu takes the hold step; any other entry cpu continues without a step.
     if cpu_offline_check_hold_step_pre(pre, cpu_id) {
         &&& trace.len() == 2
         &&& trace[0].old_u == pre

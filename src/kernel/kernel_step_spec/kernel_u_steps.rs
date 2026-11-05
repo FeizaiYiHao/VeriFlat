@@ -600,7 +600,7 @@ pub open spec fn kernel_u_container_root_published(
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-            iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {
@@ -663,7 +663,7 @@ pub open spec fn kernel_u_container_root_created(
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-            iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {
@@ -1074,6 +1074,58 @@ pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: Kern
     ||| kernel_u_killed_caller_taken_over(old_u, new_u)
     ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
     ||| kernel_u_killed_endpoint_released(old_u, new_u)
+}
+
+/// A killed-thread reclaim step that removes or changes only threads owned by `container`.
+pub open spec fn killed_thread_reclaim_within_container(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container: RwLockContainerPtr) -> bool {
+    &&& kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
+    &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
+        old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == container
+}
+
+/// One staging-thread quota funds a new thread scheduled on shard `cpu_id`, and the staging thread's progress becomes `staging_progress`.
+#[verifier::opaque]
+pub open spec fn kernel_u_new_thread_changed(
+    old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, cpu_id: CpuId, new_thrd_ptr: RwLockThreadPtr,
+    initial_regs: Registers, ep_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
+) -> bool {
+    let old_staging = old_u.thread_map.spec_index(staging_thrd_ptr);
+    let new_thread = new_u.thread_map.spec_index(new_thrd_ptr);
+    &&& match ep_ptr {
+        Some(e) => old_u.endpoint_map.dom().contains(e) && new_u.endpoint_map == old_u.endpoint_map.insert(e, EndpointU {
+            owning_threads: old_u.endpoint_map.spec_index(e).owning_threads.insert((new_thrd_ptr, 0usize)), ..old_u.endpoint_map.spec_index(e)
+        }),
+        None => new_u.endpoint_map == old_u.endpoint_map,
+    }
+    &&& new_u.iommu_root_table == old_u.iommu_root_table
+    &&& new_u.cpu_tlb == old_u.cpu_tlb
+    &&& new_u.iommu_tlb == old_u.iommu_tlb
+    &&& new_u.kernel_l4_end == old_u.kernel_l4_end
+    &&& new_u.cpu_array == old_u.cpu_array
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& new_u.container_map == old_u.container_map.insert(ctn_ptr, ContainerU {
+        owned_threads: old_u.container_map.spec_index(ctn_ptr).owned_threads.insert(new_thrd_ptr),
+        scheduler: old_u.container_map.spec_index(ctn_ptr).scheduler.update(cpu_id as int, old_u.container_map.spec_index(ctn_ptr).scheduler[cpu_id as int].push(new_thrd_ptr)),
+        ..old_u.container_map.spec_index(ctn_ptr)
+    })
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& old_u.thread_map.dom().contains(staging_thrd_ptr)
+    &&& !old_u.thread_map.dom().contains(new_thrd_ptr)
+    &&& old_staging.quota_4k > 0
+    &&& new_thread == (ThreadU {
+        lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id }, caller: None, callee: None, owning_container: ctn_ptr,
+        owning_proc: prc_ptr, last_cpu: cpu_id, quota_4k: 0, quota_2m: 0, quota_1g: 0,
+        endpoint_descriptors: Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { ep_ptr } else { None }),
+        blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: None, trap_frame: Some(initial_regs), syscall_progress: None,
+        killed: false,
+    })
+    &&& new_u.thread_map == old_u.thread_map.insert(staging_thrd_ptr, ThreadU {
+        quota_4k: (old_staging.quota_4k as int - 1) as usize, syscall_progress: staging_progress, ..old_staging
+    }).insert(new_thrd_ptr, new_thread)
+    &&& new_u.process_map == old_u.process_map.insert(prc_ptr, ProcessU {
+        owned_threads: old_u.process_map.spec_index(prc_ptr).owned_threads.push(new_thrd_ptr), ..old_u.process_map.spec_index(prc_ptr)
+    })
 }
 
 /// Cpu `cpu_id` runs a thread in user mode, so it can enter its trap path at `syscall` or an interrupt gate.

@@ -207,7 +207,7 @@ verus! {
         callee.endpoint_receiver_to_running(callee_ptr, caller_ptr, Ghost(caller_depth), cpu_id, Tracked(endpoint_node_perm), pt_regs);
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), before_switch.thrd_mp.lock_id_by_key(callee_ptr), krnl.thrd_mp.lock_id_by_key(callee_ptr));
-            assert(ipc_call_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_eof_transition_framing); };
+            assert(ipc_call_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, caller_ptr, ep_ptr, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_eof_transition_framing); };
             assert(krnl.inv()) by { reveal(LockedMap::typed_lock_map_aligned); ipc_call_handoff_eof(before_switch, *krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, *old(pt_regs)); };
         }
         krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -226,7 +226,8 @@ verus! {
             };
             steps.end_kernel_step_ipc_call_handoff(&*krnl, &*lctx, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, *old(pt_regs), flushed_pcid);
             no_locks_held_imply_all_objects_unlocked(krnl, lctx);
-            ipc_call_handoff_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, *old(pt_regs), flushed_pcid);
+            assert(!old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); };
+            ipc_call_handoff_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, *old(pt_regs), flushed_pcid, old(steps).snapshot_k());
             assert(*pt_regs == *old(steps).snapshot_k().thrd_mp.spec_index(callee_ptr).view().trap_frame.get_some_0()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
         }
     }
@@ -400,7 +401,7 @@ verus! {
         callee.accept_queued_caller(caller_ptr, callee_ptr, Ghost(caller_depth));
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), old(krnl).thrd_mp.lock_id_by_key(callee_ptr), krnl.thrd_mp.lock_id_by_key(callee_ptr));
-            assert(ipc_accept_call_eof_transition_framing(*old(krnl), *krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr)) by { reveal(ipc_accept_call_eof_transition_framing); };
+            assert(ipc_accept_call_eof_transition_framing(*old(krnl), *krnl, cpu_id, callee_ptr, ep_ptr, caller_ptr)) by { reveal(ipc_accept_call_eof_transition_framing); };
             assert(krnl.inv()) by { reveal(LockedMap::typed_lock_map_aligned); ipc_accept_call_eof(*old(krnl), *krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr); };
         }
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
@@ -414,7 +415,8 @@ verus! {
                 reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
             };
             steps.end_kernel_step_ipc_accept_call(&*krnl, &*lctx, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
-            ipc_accept_call_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
+            assert(!old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); };
+            ipc_accept_call_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, old(steps).snapshot_k());
         }
         ret
     }

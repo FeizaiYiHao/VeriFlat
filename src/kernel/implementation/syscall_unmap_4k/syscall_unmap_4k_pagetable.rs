@@ -93,7 +93,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         ret is Success ==> {
             let process = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(steps).snapshot_k().prc_mp.spec_index(process).view().pagetable;
-            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let va_range = spec_va_range_4k(va, range);
             &&& range > 0
             &&& va_4k_range_valid(va, range)
             &&& final(krnl).pt_mp.dom().contains(pt)
@@ -145,7 +145,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
     let l4_ok = pt.kernel_l4_end <= indices.0;
-    proof { assert(va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
+    proof { assert(va_range == spec_va_range_4k(va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
         if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {

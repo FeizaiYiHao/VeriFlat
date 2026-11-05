@@ -20,7 +20,7 @@ pub(super) fn new_container_lock_process_and_thread(
         ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(steps).snapshot_k().inv(),
-        source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
+        source_range == spec_va_range_4k(va, range),
         source_range.wf(),
         0 < range <= (usize::MAX - 9) / 3 && range <= usize::MAX / 4096 && va_4k_valid(va) && index_valid(NUM_CPUS, transfer_cpu_id),
         va < usize::MAX - range * 4096 && va_4k_range_valid(va, range),
@@ -101,7 +101,7 @@ pub(super) fn new_container_lock_process_and_thread(
         ret is Ok ==> ({
             let e = ret->Ok_0;
             &&& *final(steps) == *old(steps)
-            &&& e.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
+            &&& e.source_range == spec_va_range_4k(va, range)
             &&& e.source_range.wf()
             &&& 0 < range <= (usize::MAX - 9) / 3 && range <= usize::MAX / 4096 && va_4k_valid(va) && index_valid(NUM_CPUS, transfer_cpu_id)
             &&& va < usize::MAX - range * 4096 && va_4k_range_valid(va, range)

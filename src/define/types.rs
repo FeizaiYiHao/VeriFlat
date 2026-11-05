@@ -263,6 +263,8 @@ pub enum RetValueType {
     ErrorIommuVaNotMapped,
     /// The caller's container is write-held by a live dynamic owner below the caller's requested process owner.
     ErrorContainerLockOrderConflict,
+    /// A pages rendezvous range starts below the user-VA bound of its page table.
+    ErrorIpcRangeNotUser,
 }
 pub type PTType = bool;
 
@@ -417,6 +419,16 @@ impl VaRange2M {
     pub open spec fn covering_4k_range(&self) -> VaRange4K {
         VaRange4K { start: self.start, len: (self.len * 512) as usize, view: Ghost(Seq::new((self.len * 512) as nat, |i: int| spec_va_add_range(self.start, i as usize))) }
     }
+}
+
+/// The `len` consecutive 4K pages starting at `start`.
+pub open spec fn spec_va_range_4k(start: VAddr, len: usize) -> VaRange4K {
+    VaRange4K { start, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(start, i as usize))) }
+}
+
+/// The `len` consecutive 2M pages starting at `start`.
+pub open spec fn spec_va_range_2m(start: VAddr, len: usize) -> VaRange2M {
+    VaRange2M { start, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_2m(start, i as usize))) }
 }
 
 // -------------------- End of Structs -------------------

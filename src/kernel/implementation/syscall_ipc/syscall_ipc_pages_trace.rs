@@ -75,6 +75,7 @@ pub(super) proof fn ipc_pages_enter_step_pre_from_k(
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& cpu.locking_thread() is None
             &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
             &&& cpu.view().view().current_process == Some(prc_ptr)
             &&& cpu.view().view().current_thread == Some(thrd_ptr)
             &&& krnl.prc_mp.dom().contains(prc_ptr)
@@ -289,13 +290,13 @@ pub(super) proof fn ipc_pages_check_result_from_k(
                 &&& !target_table.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 &&& !target_table.mapping_4k().dom().contains(target_range.view().spec_index(j))
             };
-            &&& ret == if spec_va2index(source_range.start).0 < source_table.kernel_l4_end() { RetValueType::Error }
+            &&& ret == if spec_va2index(source_range.start).0 < source_table.kernel_l4_end() { RetValueType::ErrorIpcRangeNotUser }
                 else if !(forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
                     &&& source_table.mapping_4k().dom().contains(source_range.view().spec_index(j))
                     &&& source_table.mapping_4k().spec_index(source_range.view().spec_index(j)).present
                 }) { RetValueType::ErrorIpcSourceUnmapped }
                 else if krnl.thrd_mp.spec_index(target_thread).view().quota_4k < 3 * target_range.len { RetValueType::ErrorNoQuota }
-                else if spec_va2index(target_range.start).0 < target_table.kernel_l4_end() { RetValueType::Error }
+                else if spec_va2index(target_range.start).0 < target_table.kernel_l4_end() { RetValueType::ErrorIpcRangeNotUser }
                 else if !target_clear { RetValueType::ErrorVaInUse }
                 else if !share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, &source_range) { RetValueType::ErrorIpcPageOwnerMismatch }
                 else { RetValueType::Success }
@@ -331,6 +332,33 @@ pub(super) proof fn ipc_pages_check_result_from_k(
             if !checked.leaves_present() { va_range_2m_windows_contains_window_of_every_va_in_range(target_range); checked.wf_mapping_4k_at(f.0, f.1, f.2, f.3); }
             assert(checked.mapping_4k().spec_index(fv).present);
             assert(u_table.mapping_4k.dom().contains(fv));
+            let start = target_range.start;
+            let last = target_range.view()[target_range.len - 1];
+            let (s4, s3, s2, s1) = spec_va2index(start);
+            let (e4, e3, e2, e1) = spec_va2index(last);
+            assert(last == spec_va_add_range(start, (target_range.len - 1) as usize) && spec_va_4k_valid(last) && spec_va_4k_valid(start)) by {
+                target_range.wf_implies_view_index_is_start_plus_offset();
+            };
+            assert(spec_index2va((s4, s3, s2, s1)) == start && spec_index2va((e4, e3, e2, e1)) == last && pei_valid(s4) && pei_valid(s3) && pei_valid(s2) && pei_valid(s1)
+                && pei_valid(e4) && pei_valid(e3) && pei_valid(e2) && pei_valid(e1)) by { broadcast use spec_va_4k_valid_index_roundtrip; };
+            let (l4i, l3i, l2i, l1i) = f;
+            assert(spec_index2va((s4, s3, s2, s1)) <= spec_index2va((l4i, l3i, l2i, l1i)) && spec_index2va((l4i, l3i, l2i, l1i)) <= spec_index2va((e4, e3, e2, e1))
+                && (spec_index2va((l4i, l3i, l2i, l1i)) - spec_index2va((s4, s3, s2, s1))) % 4096 == 0) by (bit_vector)
+                requires
+                    s4 < 512 && s3 < 512 && s2 < 512 && s1 < 512 && e4 < 512 && e3 < 512 && e2 < 512 && e1 < 512 && l4i < 512 && l3i < 512 && l2i < 512 && l1i < 512,
+                    s4 < l4i || (s4 == l4i && (s3 < l3i || (s3 == l3i && (s2 < l2i || (s2 == l2i && s1 <= l1i))))),
+                    l4i < e4 || (l4i == e4 && (l3i < e3 || (l3i == e3 && (l2i < e2 || (l2i == e2 && l1i <= e1))))),
+            ;
+            let k = (fv - start) / 4096;
+            assert(k * 4096 == fv - start && k < target_range.len) by (nonlinear_arith)
+                requires
+                    k == (fv - start) / 4096,
+                    (fv - start) % 4096 == 0,
+                    start <= fv <= last,
+                    last == start + (target_range.len - 1) * 4096,
+                    target_range.len > 0,
+            ;
+            assert(target_range.view()[k as int] == fv) by { target_range.wf_implies_view_index_is_start_plus_offset(); };
         } else {
             reveal(WholePageTable::spec_mapping_4k_va_range_empty);
             if !checked.leaves_present() { va_range_2m_windows_contains_window_of_first_n_pages(target_range, target_range.len as int); }
@@ -407,6 +435,7 @@ pub(super) proof fn ipc_pages_enter_step_pre_from_u(
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& pre.process_map.dom().contains(prc_ptr)
@@ -825,11 +854,11 @@ pub(super) proof fn ipc_pages_rendezvous_trace_finish_step(steps: &KernelSteps, 
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         ipc_pages_finish_step_pre(finish_pre, cpu_id, ep_idx),
         ipc_pages_finish_step(finish_pre, post, cpu_id, ep_idx),
-        result is Success || result is ErrorIpcSourceUnmapped || result is ErrorIpcPageOwnerMismatch || result is ErrorNoQuota || result is ErrorVaInUse || result is Error,
+        result is Success || result is ErrorIpcSourceUnmapped || result is ErrorIpcPageOwnerMismatch || result is ErrorNoQuota || result is ErrorVaInUse || result is ErrorIpcRangeNotUser,
     ensures
-        ipc_pages_rendezvous_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state, range, result),
+        ipc_pages_rendezvous_trace(steps.view().subrange(start, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state, range, result),
 {
-    reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_pages_mapping_trace);
+    reveal(ipc_pages_rendezvous_trace); reveal(ipc_pages_mapping_trace);
     let trace = steps.view().subrange(start, steps.view().len() as int);
     vstd::assert_seqs_equal!(trace.subrange(0, trace.len() - 1) == before.subrange(start, before.len() as int));
 }
@@ -841,7 +870,7 @@ pub(super) proof fn ipc_pages_syscall_trace_stutter(trace: Seq<KernelStep>, pre:
         ret is Error,
     ensures
         ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, range, regs, flushed_default_pcid, ret),
-{ reveal(ipc_pages_syscall_trace); reveal(ipc_pages_rendezvous_syscall_trace); }
+{ reveal(ipc_pages_syscall_trace); reveal(ipc_pages_rendezvous_trace); }
 
 /// The cpu, the running thread that starts sharing a pages rendezvous at its first page, its peer, the sender's page table read-held, and the
 /// receiver's write-held on `krnl` give the downgrade pre and the receiver's process in the user view.

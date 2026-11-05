@@ -441,7 +441,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
             ipc_pages_args_invalid(va, range) ==> ret is Error,
             !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, ThreadState::SENDING, true),
     { syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, ThreadState::SENDING, va, range, pt_regs) }
@@ -478,7 +478,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
             ipc_pages_args_invalid(va, range) ==> ret is Error,
             !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, ThreadState::RECEIVING, true),
     { syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, ThreadState::RECEIVING, va, range, pt_regs) }
@@ -516,7 +516,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
-                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+                || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is ErrorIpcRangeNotUser,
             ipc_pages_args_invalid(va, range) ==> ret is Error,
             !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, waiting_state, true),
     {

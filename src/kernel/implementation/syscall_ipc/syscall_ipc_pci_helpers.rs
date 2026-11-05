@@ -204,6 +204,7 @@ verus! {
             current_thrd_ptr != peer_thrd_ptr,
             old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed(),
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             cpu_lock_perm.state() is WriteLock,
             cpu_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -326,7 +327,7 @@ verus! {
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)
             }) by {
                 ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx,
-                    waiting_state, peer_thrd_ptr, peer_result, None, pci_transfer, payload, false);
+                    waiting_state, peer_thrd_ptr, peer_result, None, pci_transfer, payload, false, old(steps).snapshot_k());
             };
         }
     }
@@ -435,7 +436,7 @@ verus! {
             *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ep_mp: final(krnl).ep_mp, sched_mp: final(krnl).sched_mp, irt: final(krnl).irt,
                 iommu_tlb: final(krnl).iommu_tlb, it_mp: final(krnl).it_mp, ..*old(krnl) }),
             ret.0 == if old(krnl).irt.view().spec_index_owner(bus as usize, dev as usize, fun as usize) == sender_proc { RetValueType::Success } else { RetValueType::ErrorIpcPciOwnerMismatch },
-            ipc_pci_rendezvous_eof_transition_framing(*old(krnl), *final(krnl), current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc,
+            ipc_pci_rendezvous_eof_transition_framing(*old(krnl), *final(krnl), peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc,
                 receiver_proc, (bus as usize, dev as usize, fun as usize), ret.0 is Success, ret.0, old(lctx).thread_id(), ret.1, ret.2.view()),
             !old(krnl).sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
             final(krnl).irt.view().table_base() == old(krnl).irt.view().table_base(),
@@ -523,7 +524,7 @@ verus! {
             lctx.update_lock_id(KernelObjId::Thread(peer_thrd_ptr), old_peer_thread_lock_id, krnl.thrd_mp.lock_id_by_key(peer_thrd_ptr));
             scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_sched_ptr);
             assert(ipc_pci_rendezvous_eof_transition_framing(
-                *old(krnl), *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred,
+                *old(krnl), *krnl, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred,
                 result, lctx.thread_id(), iommu_table, anchor,
             )) by { reveal(ipc_pci_rendezvous_eof_transition_framing); };
         }

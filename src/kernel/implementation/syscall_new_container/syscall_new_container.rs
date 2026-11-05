@@ -214,7 +214,7 @@ fn new_container_lock_owners(
         ret is Ok ==> ({
             let e = ret->Ok_0;
             &&& *final(steps) == *old(steps)
-            &&& e.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
+            &&& e.source_range == spec_va_range_4k(va, range)
             &&& e.source_range.wf()
             &&& 0 < range <= (usize::MAX - 9) / 3 && range <= usize::MAX / 4096 && va_4k_valid(va) && index_valid(NUM_CPUS, transfer_cpu_id)
             &&& va < usize::MAX - range * 4096 && va_4k_range_valid(va, range)
@@ -411,7 +411,7 @@ fn new_container_lock_owners(
         return Err(error);
     }
     proof {
-        assert(source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { source_range.wf_implies_view_index_is_start_plus_offset(); };
+        assert(source_range == spec_va_range_4k(va, range)) by { source_range.wf_implies_view_index_is_start_plus_offset(); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
@@ -460,7 +460,7 @@ fn new_container_lock_entry(
         ret is Ok ==> ({
             let e = ret->Ok_0;
             &&& *final(steps) == *old(steps)
-            &&& e.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
+            &&& e.source_range == spec_va_range_4k(va, range)
             &&& new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, ep_idx) is Success
             &&& index_valid(NUM_CPUS, cpu_id)
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp,

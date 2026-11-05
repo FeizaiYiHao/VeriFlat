@@ -2,6 +2,7 @@ use vstd::prelude::*;
 
 verus! {
 use crate::*;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 use super::map_iommu_4k_spec::*;
 #[cfg(verus_keep_ghost)]

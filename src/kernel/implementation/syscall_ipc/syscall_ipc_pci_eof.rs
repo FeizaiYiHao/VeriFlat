@@ -32,7 +32,7 @@ proof fn ipc_pci_rendezvous_eof_endpoint_wf(
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
     ensures
         thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
@@ -75,7 +75,7 @@ proof fn ipc_pci_rendezvous_eof_process_management_inv(
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -113,7 +113,7 @@ proof fn ipc_pci_rendezvous_eof_quota_wf(
 )
     requires
         pre.inv(),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
     ensures
         container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp),
@@ -153,7 +153,7 @@ proof fn ipc_pci_rendezvous_eof_object_pages_wf(
 )
     requires
         pre.inv(),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
         iommu_table_perms_wf(post.it_mp),
     ensures
@@ -182,7 +182,7 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
 )
     requires
         pre.inv(),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.subsystems_inv(),
         iommu_table_perms_wf(post.it_mp),
     ensures post.memory_management_inv(),
@@ -217,7 +217,7 @@ proof fn ipc_pci_rendezvous_eof_sender_table(
         pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         pre.prc_mp.dom().contains(sender_proc),
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
     ensures
         pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf,
         transferred && iommu_table is None ==> pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None,
@@ -281,7 +281,7 @@ proof fn ipc_pci_rendezvous_eof_iommu_root_table_wf(
         !pre.prc_mp.spec_index(sender_proc).view().zombie,
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.irt.view().wf(),
     ensures iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
@@ -305,7 +305,7 @@ proof fn ipc_pci_rendezvous_eof_pci_ownership_wf(
         !pre.prc_mp.spec_index(sender_proc).view().zombie,
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.irt.view().wf(),
     ensures process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
 {
@@ -326,7 +326,7 @@ proof fn ipc_pci_rendezvous_eof_iotlb(
         pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         pre.prc_mp.dom().contains(sender_proc),
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.iommu_tlb.inv(),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
@@ -353,7 +353,7 @@ proof fn ipc_pci_rendezvous_eof_handoff(
         pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         pre.prc_mp.dom().contains(sender_proc),
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
     ensures
         !transferred ==> post.it_mp == pre.it_mp,
         transferred ==> {
@@ -418,7 +418,7 @@ proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.sched_mp.spec_index(peer_sched_ptr).shards.inv(),
         post.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.wf(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&snapshot, &pre),
@@ -511,7 +511,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),

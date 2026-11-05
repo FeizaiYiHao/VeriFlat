@@ -6,7 +6,7 @@ use super::syscall_new_container_spec::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 verus! {
 /// Acquiring the caller's context locks, the container under the owner `locked_k` records for it, and the source windows
 /// over `range`, which turn `old_windows` into `windows`, and recording the progress is the enter step on `pre`/`post`.
@@ -28,11 +28,14 @@ pub(super) proof fn new_container_enter_step_from_u(
             let transfer = pre.cpu_array[transfer_cpu as int];
             &&& cpu.lock_state is Unlocked
             &&& cpu.state is Running
+            &&& !cpu.killed
+            &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
             &&& pre.thread_map.dom().contains(thrd_ptr)
             &&& thread.lock_state is Unlocked
             &&& thread.syscall_progress is None
             &&& !thread.killed
+            &&& thread.state == (ThreadState::RUNNING { cpu_id })
             &&& thread.owning_proc == prc_ptr
             &&& thread.owning_container == ctn_ptr
             &&& pre.container_map.dom().contains(ctn_ptr)
@@ -268,7 +271,10 @@ pub(super) proof fn new_container_trace_publish_step(steps: &KernelSteps, before
         new_container_publish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id),
     ensures
         new_container_trace_after_publish(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
-{ reveal(new_container_trace_after_enter); reveal(new_container_trace_after_publish); }
+{
+    reveal(new_container_trace_after_enter); reveal(new_container_trace_after_publish);
+    assert_seqs_equal!(steps.view().subrange(start, steps.view().len() as int).take(1), before.subrange(start, before.len() as int));
+}
 
 /// The share steps pushed after the partial trace that starts at `start` give the partial trace after sharing.
 pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
@@ -280,7 +286,10 @@ pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before:
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id),
     ensures
         new_container_trace_after_share(steps.view(), start, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
-{ reveal(new_container_trace_after_publish); reveal(new_container_trace_after_share); }
+{
+    reveal(new_container_trace_after_publish); reveal(new_container_trace_after_share);
+    assert_seqs_equal!(steps.view().subrange(start, start + 2), before.subrange(start, before.len() as int));
+}
 
 /// The finish step pushed after the shared partial trace that starts at `start` completes the commit trace.
 pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>)
@@ -292,7 +301,11 @@ pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before:
         new_container_finish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id),
     ensures
         new_container_commit_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, ep_idx),
-{ reveal(new_container_trace_after_share); reveal(new_container_commit_trace); }
+{
+    reveal(new_container_trace_after_share); reveal(new_container_commit_trace);
+    assert_seqs_equal!(steps.view().subrange(start, steps.view().len() as int).drop_last(), before.subrange(start, before.len() as int));
+    assert_seqs_equal!(before.subrange(start, before.len() as int).subrange(0, 2), before.subrange(start, start + 2));
+}
 
 /// The arguments and the caller's cpu, thread, container, process, page table, and transfer cpu at `krnl` decide the syscall result.
 pub(super) proof fn new_container_result_from_k(
@@ -312,7 +325,7 @@ pub(super) proof fn new_container_result_from_k(
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let transfer = krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view();
             let owner = container.lock_process_owner_u();
-            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let va_range = spec_va_range_4k(va, range);
             let bad_args = range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
                 || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
                 || funding_page_count > usize::MAX - 9 - 3 * range;
@@ -366,7 +379,7 @@ pub(super) proof fn new_container_trace_stutter(trace: Seq<KernelStep>, pre: Ker
 pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, ep_idx: Option<EndpointIdx>, ret: RetValueType)
     requires
         trace.len() > 0,
-        new_container_commit_trace(trace, pre, cpu_id, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) },
+        new_container_commit_trace(trace, pre, cpu_id, spec_va_range_4k(va, range),
             funding, process_quota, transfer_cpu, regs, ep_idx),
         trace.last().new_u == post,
         ret is SuccessThreeUsize,

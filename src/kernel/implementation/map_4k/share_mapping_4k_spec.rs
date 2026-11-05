@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use super::mmap_4k_build_structure::MissingPageTableLevel;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {
@@ -40,7 +41,10 @@ pub open spec fn share_4k_directory_at(
     source: Option<RwLockContainerPtr>,
 ) -> bool {
     let progress = pre.thread_map[progress_thread].syscall_progress->Some_0;
-    let new_progress = post.thread_map[progress_thread].syscall_progress->Some_0;
+    let dir = post.thread_map[progress_thread].syscall_progress->Some_0->Share4k_directory;
+    let new_progress = SyscallProgress::Share4k {
+        source_range: progress->Share4k_source_range, target_range: progress->Share4k_target_range, shared: progress->Share4k_shared, directory: dir, origin: progress->Share4k_origin,
+    };
     let funded = pre.thread_map.insert(quota_thread, ThreadU { quota_4k: (pre.thread_map[quota_thread].quota_4k - 1) as usize, ..pre.thread_map[quota_thread] });
     let process = pre.process_map[target];
     let table = process.pagetable->Some_0;
@@ -60,17 +64,11 @@ pub open spec fn share_4k_directory_at(
         &&& post.container_map[parent].owned_pages.subset_of(pre.container_map[parent].owned_pages)
         &&& post.container_map[target_container].owned_pages == pre.container_map[target_container].owned_pages.union(moved)
     }
-    &&& post.thread_map[progress_thread].syscall_progress is Some
-    &&& new_progress is Share4k
-    &&& new_progress->Share4k_source_range == progress->Share4k_source_range
-    &&& new_progress->Share4k_target_range == progress->Share4k_target_range
-    &&& new_progress->Share4k_shared == progress->Share4k_shared
-    &&& new_progress->Share4k_origin == progress->Share4k_origin
-    &&& !(new_progress->Share4k_directory is None)
-    &&& new_progress->Share4k_directory is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
-    &&& new_progress->Share4k_directory is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
+    &&& !(dir is None)
+    &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
+    &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Share4k_target_range)
-    &&& !(new_progress->Share4k_directory is L3) ==> new_windows == old_windows
+    &&& !(dir is L3) ==> new_windows == old_windows
     &&& post == (KernelU {
         thread_map: funded.insert(progress_thread, ThreadU { syscall_progress: Some(new_progress), ..funded[progress_thread] }),
         container_map: containers,
@@ -128,13 +126,14 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let progress = old_u.thread_map[caller].syscall_progress->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
+    let target = old_u.process_map[objects.target];
     &&& share_4k_locked(old_u, cpu_id)
     &&& progress->Share4k_shared < progress->Share4k_source_range.len
     &&& share_4k_directory_pre_at(old_u, caller, objects.quota_thread)
     &&& old_u.process_map.dom().contains(objects.target)
-    &&& old_u.process_map[objects.target].pagetable is Some
-    &&& (old_u.process_map[objects.target].pagetable->Some_0.lock_state is ReadLocked || old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked)
-    &&& old_u.process_map[objects.target].owning_container == objects.target_container
+    &&& target.pagetable is Some
+    &&& (target.pagetable->Some_0.lock_state is ReadLocked || target.pagetable->Some_0.lock_state is WriteLocked)
+    &&& target.owning_container == objects.target_container
     &&& objects.transfer_source matches Some(source) ==> {
         &&& old_u.container_map.dom().contains(source)
         &&& old_u.container_map[source].lock_state is WriteLocked

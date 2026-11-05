@@ -175,7 +175,7 @@ pub(super) fn enter_new_container_commit(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thrd_ptr);
         assert(new_container_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(steps).snapshot_u(), caller_cpu_id,
             *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt)) by {
-            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); thread_cpu_wf_cpu_at(old(krnl).thrd_mp, old(krnl).cpu_arr, caller_cpu_id); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), caller_cpu_id, parent_prc_ptr,
                 current_thrd_ptr, endpoint, Some(parent_ctn_ptr), Some(KernelK { cpu_set_mp: old(steps).snapshot_k().cpu_set_mp, ..*old(krnl) }));
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thrd_ptr);

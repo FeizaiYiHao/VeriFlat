@@ -39,7 +39,7 @@ pub fn syscall_unmap_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         ret.0 is Success ==> {
             let process = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(krnl).prc_mp.spec_index(process).view().pagetable;
-            let va_range = unmap_2m_syscall_va_range(va, len);
+            let va_range = spec_va_range_2m(va, len);
             &&& final(krnl).pt_mp.dom().contains(pt)
             &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < len ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m().dom().contains(va_range.view()[j])
         },

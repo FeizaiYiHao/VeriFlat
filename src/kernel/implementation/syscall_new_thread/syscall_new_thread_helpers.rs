@@ -9,7 +9,7 @@ pub use veriflat_kernel_core::{create_thread_from_staged_page_merged, kernel_u_n
 #[cfg(not(feature = "split-crates"))]
 pub use crate::kernel::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
 #[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-pub use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+pub use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 verus! {
         /// Commit path: allocate 4k page, create thread, release all locks.
         pub(super) fn add_new_thread_to_proc_container_and_scheduler(

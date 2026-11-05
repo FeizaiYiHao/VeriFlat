@@ -20,7 +20,7 @@ pub(super) fn unmap_4k_release_and_exit(
         old(steps).snapshot_k() == *old(krnl),
         unmap_4k_trace_after_range(old(steps).view(), cpu_id, *va_range),
         range > 0,
-        *va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
+        *va_range == spec_va_range_4k(va, range),
         va_range.wf(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),

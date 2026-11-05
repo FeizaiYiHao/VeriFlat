@@ -27,7 +27,7 @@ pub(super) fn mmap_4k_fill_enter(
         mmap_4k_trace_after_hold(old(steps).view(), cpu_id, *va_range),
         old(steps).view().len() == 1,
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
-        *va_range == mmap_4k_syscall_va_range(va, range),
+        *va_range == spec_va_range_4k(va, range),
         va_range.wf(),
         va_range.len > 0,
         cpu_lock_perm.state() is WriteLock,

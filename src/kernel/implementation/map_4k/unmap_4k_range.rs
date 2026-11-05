@@ -303,7 +303,6 @@ fn clear_4k_range_present(
             let ghost leaf_before = steps.view();
             let ghost leaf_k = *krnl;
             krnl.kernel_step_boundary_process_4k_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable, va, prc_ptr, pagetable, thrd_ptr, thrd_ptr);
-            assert(range.view().contains(va)) by { range.wf_implies_view_index_is_start_plus_offset(); assert(range.view()[i as int] == va); };
             unmap_4k_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, &leaf_k, &leaf_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, *range, i, va);
         }
         i = i + 1;

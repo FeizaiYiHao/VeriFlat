@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk_spec::KillScope;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::kill_scope_progress;
+use super::syscall_kill_process_walk_spec::kill_scope_progress;
 #[cfg(feature = "split-crates")]
 use veriflat_map_4k::map_4k::reclaim_held_4k_page::remove_held_4k_mapping_without_free;
 #[cfg(not(feature = "split-crates"))]

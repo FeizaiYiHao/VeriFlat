@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 use super::syscall_new_process_helpers::commit_new_process;
 use super::syscall_new_process_with_iommu_helpers::commit_new_process_with_iommu_and_endpoint;
 use super::syscall_new_process_spec::*;
@@ -62,7 +62,7 @@ fn new_process_lock_entry(
         ret is Ok ==> ({
             let x = ret->Ok_0;
             &&& *final(steps) == *old(steps)
-            &&& x.source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })
+            &&& x.source_range == spec_va_range_4k(va, range)
             &&& new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, ep_idx, with_iommu) is Success
             &&& new_process_enter_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, x.source_range, ep_idx, with_iommu)
             &&& with_iommu ==> x.endpoint is Some
@@ -326,7 +326,7 @@ pub(super) fn syscall_new_process_shared_body(krnl: &mut KernelK, Tracked(lctx):
             let thrd_ptr = if with_iommu { ret->SuccessThreeUsize_value3 } else { ret->SuccessPairUsize_value2 };
             let descriptors = old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors;
             let endpoint = if ep_idx is Some { descriptors.spec_index(ep_idx->Some_0) } else { None };
-            let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let source_range = spec_va_range_4k(va, range);
             &&& range > 0
             &&& source_range.wf()
             &&& ep_idx is Some ==> descriptors.wf() && endpoint is Some

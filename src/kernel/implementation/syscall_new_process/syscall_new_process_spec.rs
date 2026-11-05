@@ -4,7 +4,7 @@ use crate::*;
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 /// The result of `syscall_new_process` and its endpoint and IOMMU variants from the state at entry, in
@@ -14,19 +14,22 @@ verus! {
 /// the variant's success value, whose fresh process, IOMMU table, and thread pointers the state does
 /// not determine.
 pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> RetValueType {
-    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let cpu = pre.cpu_array[cpu_id as int];
+    let thread = pre.thread_map[cpu.current_thread->Some_0];
     let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
+    // The child's own 4K pages: its process, page-table object, L4 page, and first thread, plus the IOMMU table object and
+    // its root page with an IOMMU table; every shared page may add three directory pages (L3, L2, L1) to the child's table.
     let base: usize = if with_iommu { 6 } else { 4 };
-    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    let va_range = spec_va_range_4k(va, range);
     if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - base) / 3 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) {
         RetValueType::Error
-    } else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
+    } else if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if pre.container_map[thread.owning_container].free_pcids.is_empty() { RetValueType::ErrorNoPcid }
     else if ep_idx is Some && thread.endpoint_descriptors[ep_idx->Some_0 as int] is None { RetValueType::Error }
     else if thread.quota_4k < base + 3 * range { RetValueType::ErrorNoQuota }
-    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present {
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
         RetValueType::Success
     } else { RetValueType::Error }
 }
@@ -44,18 +47,13 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
     let process = old_u.process_map[thread.owning_proc];
     let pagetable = process.pagetable->Some_0;
     let ep_ptr = thread.endpoint_descriptors[ep_idx->Some_0 as int]->Some_0;
+    // The child's own pages, as in `new_process_syscall_result`; each shared page may cost three directory pages.
     let base: usize = if with_iommu { 6 } else { 4 };
-    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu_runs_live_thread_at_entry(old_u, cpu_id)
     &&& cpu.lock_state is Unlocked
-    &&& cpu.state is Running
-    &&& cpu.current_thread is Some
-    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& thread.lock_state is Unlocked
-    &&& thread.syscall_progress is None
-    &&& !thread.killed
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& !container.free_pcids.is_empty()
-    &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is Unlocked
     &&& !process.killed
     &&& process.pagetable is Some
@@ -132,16 +130,17 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let container = thread.owning_container;
     let progress = thread.syscall_progress->Some_0;
     let child = new_u.process_map[parent].children.last();
+    let cp = new_u.process_map[child].pcid;
     let ancestors = old_u.process_map[parent].uppertree_seq.push(parent);
     let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+    // The child's process, page-table object, and L4 page, plus the IOMMU table object and its root page with an IOMMU table.
     let cost: usize = if progress->NewProcess_0.with_iommu { 5 } else { 3 };
     let range = progress->NewProcess_0.range;
     let origin = Share4kOrigin::NewProcess(NewProcessProgress { child: Some(child), ..progress->NewProcess_0 });
     let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
     &&& !old_u.process_map.dom().contains(child)
     &&& thread.quota_4k >= cost
-    &&& new_u.container_map[container].free_pcids.subset_of(old_u.container_map[container].free_pcids)
-    &&& old_u.container_map[container].free_pcids.difference(new_u.container_map[container].free_pcids).len() == 1
+    &&& old_u.container_map[container].free_pcids.contains(cp)
     &&& new_u.process_map.dom() == old_u.process_map.dom().insert(child)
     &&& forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> new_u.process_map[p] == (ProcessU {
         lock_state: if p == parent { LockStateU::Unlocked } else { old_u.process_map[p].lock_state },
@@ -151,14 +150,14 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
     &&& new_u.process_map[child] == (ProcessU {
         lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-        iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: new_u.process_map[child].pcid, owning_container: container,
+        iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: cp, owning_container: container,
         owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
         depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     })
     &&& new_u == (KernelU {
         process_map: new_u.process_map,
         container_map: old_u.container_map.insert(container, ContainerU {
-            owned_processes: old_u.container_map[container].owned_processes.insert(child), free_pcids: new_u.container_map[container].free_pcids,
+            owned_processes: old_u.container_map[container].owned_processes.insert(child), free_pcids: old_u.container_map[container].free_pcids.remove(cp),
             ..old_u.container_map[container]
         }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - cost) as usize, syscall_progress: Some(sharing), ..thread }),
@@ -252,40 +251,31 @@ pub open spec fn new_process_trace_after_enter(trace: Seq<KernelStep>, pre: Kern
     &&& new_process_enter_step(pre, trace[0].new_u, cpu_id, range, regs, ep_idx, with_iommu)
 }
 
-/// The partial trace after publishing: the enter step from `pre` and the publish step.
+/// The partial trace after publishing: the partial trace after entering, then the publish step.
 #[verifier::opaque]
 pub open spec fn new_process_trace_after_publish(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& trace.len() == 2
-    &&& trace[0].old_u == pre
-    &&& new_process_enter_step_pre(pre, cpu_id, range, ep_idx, with_iommu)
-    &&& new_process_enter_step(pre, trace[0].new_u, cpu_id, range, regs, ep_idx, with_iommu)
+    &&& new_process_trace_after_enter(trace.take(1), pre, cpu_id, range, regs, ep_idx, with_iommu)
     &&& new_process_publish_step_pre(trace[1].old_u, cpu_id)
     &&& new_process_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
 }
 
-/// The steps from `start` after sharing: enter from `pre`, publish, and then only share steps.
+/// The steps from `start` after sharing: the partial trace after publishing at `start`, then only share steps.
 #[verifier::opaque]
 pub open spec fn new_process_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& 0 <= start
+    // Enter, publish, and one to four share steps per page: the leaf and up to three new directories.
     &&& start + range.len + 2 <= trace.len() <= start + 4 * range.len + 2
-    &&& trace[start].old_u == pre
-    &&& new_process_enter_step_pre(pre, cpu_id, range, ep_idx, with_iommu)
-    &&& new_process_enter_step(pre, trace[start].new_u, cpu_id, range, regs, ep_idx, with_iommu)
-    &&& new_process_publish_step_pre(trace[start + 1].old_u, cpu_id)
-    &&& new_process_publish_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id)
+    &&& new_process_trace_after_publish(trace.subrange(start, start + 2), pre, cpu_id, range, regs, ep_idx, with_iommu)
     &&& forall|j: int| #![trigger trace[j]] start + 2 <= j < trace.len() ==> share_4k_range_step(trace[j], cpu_id)
 }
 
-/// The steps of a successful call: enter, publish, the share steps, and finish.
+/// The steps of a successful call: the partial trace after sharing, then the finish step.
 #[verifier::opaque]
 pub open spec fn new_process_commit_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> bool {
+    // Enter, publish, one to four share steps per page, and finish.
     &&& range.len as int + 3 <= trace.len() as int <= 4 * range.len as int + 3
-    &&& trace[0].old_u == pre
-    &&& new_process_enter_step_pre(pre, cpu_id, range, ep_idx, with_iommu)
-    &&& new_process_enter_step(pre, trace[0].new_u, cpu_id, range, regs, ep_idx, with_iommu)
-    &&& new_process_publish_step_pre(trace[1].old_u, cpu_id)
-    &&& new_process_publish_step(trace[1].old_u, trace[1].new_u, cpu_id)
-    &&& forall|i: int| #![trigger trace[i]] 2 <= i < trace.len() - 1 ==> share_4k_range_step(trace[i], cpu_id)
+    &&& new_process_trace_after_share(trace.drop_last(), 0, pre, cpu_id, range, regs, ep_idx, with_iommu)
     &&& new_process_finish_step_pre(trace.last().old_u, cpu_id)
     &&& new_process_finish_step(trace.last().old_u, trace.last().new_u, cpu_id)
 }
@@ -293,9 +283,8 @@ pub open spec fn new_process_commit_trace(trace: Seq<KernelStep>, pre: KernelU, 
 /// Complete trace of the call: the commit steps on success, a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn new_process_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, regs: Registers, ep_idx: Option<EndpointIdx>, with_iommu: bool, result: RetValueType) -> bool {
-    let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if result is SuccessPairUsize || result is SuccessThreeUsize {
-        &&& new_process_commit_trace(trace, pre, cpu_id, source_range, regs, ep_idx, with_iommu)
+        &&& new_process_commit_trace(trace, pre, cpu_id, spec_va_range_4k(va, range), regs, ep_idx, with_iommu)
         &&& trace.last().new_u == post
     } else {
         &&& trace.len() == 0

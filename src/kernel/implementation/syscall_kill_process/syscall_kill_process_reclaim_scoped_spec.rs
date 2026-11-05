@@ -2,27 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The owner of the mapped page `p_i` that the leaf at `va` of the page table `pt_ptr` maps is the container of that
-/// table's process or one of its ancestors.
-pub proof fn container_process_page_pagetable_wf_page_at(
-    container_map: ContainerLockedMap, process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, page_array: PageLockedArray, p_i: PageIndex, pt_ptr: RwLockPageTableRoot,
-    va: VAddr,
-)
-    requires
-        container_process_page_pagetable_wf(container_map, process_map, pagetable_map, page_array),
-        index_valid(NUM_PAGES, p_i),
-        page_array.spec_index(p_i).view().view().is_mapped(),
-        page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va)),
-    ensures
-        ({
-            let proc_ptr = pagetable_map.spec_index(pt_ptr).view().proc_ptr;
-            let page_owner = page_array.spec_index(p_i).view().view().owning_container;
-            &&& process_map.dom().contains(proc_ptr)
-            &&& container_map.dom().contains(page_owner)
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
-        }),
-{ reveal(container_process_page_pagetable_wf); }
-
 /// The final mapping of the page `pg_ptr`, the held 4K leaf at `va` of the write-held page table `pagetable` whose root
 /// entry no longer resolves, leaves the table with its record, and the page returns through its free-list node at
 /// `node_addr` to shard `cpu_id` of the 4K allocator `allc_ptr` of its owner, whose quota grows by one.
@@ -166,27 +145,6 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
     &&& new_allocator.quota.locking_thread() == old_allocator.quota.locking_thread()
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
 }
-
-/// The owner of the mapped page `p_i` that the leaf at `iova` of the IOMMU table `it_ptr` maps is the container of that
-/// table's process or one of its ancestors.
-pub proof fn page_iommu_table_wf_page_owner_at(
-    container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray, p_i: PageIndex, it_ptr: RwLockPageTableRoot,
-    iova: VAddr,
-)
-    requires
-        page_iommu_table_wf(container_map, process_map, iommu_table_map, page_array),
-        index_valid(NUM_PAGES, p_i),
-        page_array.spec_index(p_i).view().view().is_mapped(),
-        page_array.spec_index(p_i).view().view().iommu_mappings().contains((it_ptr, iova)),
-    ensures
-        ({
-            let proc_ptr = iommu_table_map.spec_index(it_ptr).view().proc_ptr;
-            let page_owner = page_array.spec_index(p_i).view().view().owning_container;
-            &&& process_map.dom().contains(proc_ptr)
-            &&& container_map.dom().contains(page_owner)
-            &&& process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner || container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(process_map.spec_index(proc_ptr).view_rodata().view().owning_container)
-        }),
-{ reveal(page_iommu_table_wf); }
 
 /// The final mapping of the page `pg_ptr`, the hidden 4K leaf at `indices` of the write-held IOMMU table `iommu_table`,
 /// leaves the table, and the page returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K allocator

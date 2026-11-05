@@ -52,6 +52,7 @@ pub(super) fn end_new_process_publish_step(
         old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().parent == Some(parent_ptr),
         old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().owning_container == ctn_ptr,
         old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().depth == old(steps).snapshot_k().prc_mp.spec_index(parent_ptr).view_rodata().view().depth + 1,
+        old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().pcid == pcid,
         old(krnl).prc_mp.spec_index(child_ptr).view().children.view() == Seq::<RwLockProcessPtr>::empty(),
         old(krnl).prc_mp.spec_index(child_ptr).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
         old(krnl).prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view() == old(steps).snapshot_k().prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr),
@@ -151,7 +152,7 @@ pub(super) fn end_new_process_publish_step(
             kernel_process_published_and_parent_unlocked_implies_u_step(&old(steps).snapshot_k(), &published_k, &published_lctx, parent_ptr, child_ptr, current_thrd_ptr,
                 ctn_ptr, target_pagetable_ptr, iommu_table, pcid_allc_ptr, pcid, sharing);
             new_process_publish_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(published_k), cpu_id, parent_ptr, child_ptr, current_thrd_ptr,
-                ctn_ptr, *source_range, regs, ep_idx, iommu_table is Some);
+                ctn_ptr, *source_range, regs, ep_idx, iommu_table is Some, pcid);
         };
     }
 }

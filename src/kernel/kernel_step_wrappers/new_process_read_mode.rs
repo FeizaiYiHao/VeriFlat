@@ -3,7 +3,7 @@ use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
+use crate::kernel::kernel_step_spec::kernel_u_new_thread_changed;
 
 verus! {
 /// Read-mode creation entry: the cpu, the process, the thread, the optional endpoint, and the optional container with its

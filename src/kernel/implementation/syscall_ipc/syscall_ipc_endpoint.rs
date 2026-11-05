@@ -351,6 +351,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             let channel = pre_k.ep_mp.spec_index(channel_ep_ptr);
             &&& cpu.locking_thread() is None
             &&& cpu.view().view().state is Running
+            &&& !cpu.being_killed()
             &&& cpu.view().view().current_process == Some(prc_ptr)
             &&& cpu.view().view().current_thread == Some(current_thrd_ptr)
             &&& pre_k.prc_mp.dom().contains(prc_ptr)

@@ -5,7 +5,7 @@ use super::syscall_kill_container_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::super::syscall_kill_process::syscall_kill_process_walk::{KillScope, kill_scope_progress};
+use super::super::syscall_kill_process::syscall_kill_process_walk_spec::{KillScope, kill_scope_progress};
 
 verus! {
 /// The killer's write-held cpu container and the marked container `ctn_ptr` below it on `krnl`, and the empty
@@ -57,10 +57,13 @@ pub(crate) proof fn kill_container_retire_root_step_from_u(
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thrd_ptr,
         pre.thread_map[thrd_ptr].syscall_progress == kill_scope_progress(KillScope::Container { container: ctn_ptr }, target, KillStage::Retire),
-        pre.container_map.dom().contains(pre.cpu_array[cpu_id as int].owning_container),
-        pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is WriteLocked,
-        pre.container_map[ctn_ptr].killed,
-        pre.container_map[ctn_ptr].uppertree_seq.contains(pre.cpu_array[cpu_id as int].owning_container),
+        ({
+            let owner_ptr = pre.cpu_array[cpu_id as int].owning_container;
+            &&& pre.container_map.dom().contains(owner_ptr)
+            &&& pre.container_map[owner_ptr].lock_state is WriteLocked
+            &&& pre.container_map[ctn_ptr].killed
+            &&& pre.container_map[ctn_ptr].uppertree_seq.contains(owner_ptr)
+        }),
         pre.process_map[target].children.len() == 0,
         pre.process_map[target].owned_threads.len() == 0,
         pre.process_map[target].zombie,
