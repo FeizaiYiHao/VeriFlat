@@ -11,7 +11,7 @@ verus! {
     }
 
     /// Kernel projection sampled at atomic-section boundaries. Object lock modes
-    /// are visible; ownership tokens, reader counts, and allocator internals are not.
+    /// and the cpus holding each lock are visible; ownership tokens and allocator internals are not.
     pub ghost struct KernelU{
         pub cpu_array: Seq<CpuU>,
         pub container_map: Map<RwLockContainerPtr, ContainerU>,

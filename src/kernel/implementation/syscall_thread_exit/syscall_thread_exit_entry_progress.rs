@@ -93,7 +93,7 @@ pub(super) fn thread_exit_enter_record_progress(
             let caller_ptr = caller->Some_0;
             &&& *old(krnl) == (KernelK { thrd_mp: old(krnl).thrd_mp, ..held_k })
             &&& old(krnl).thrd_mp.spec_index(caller_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..held_k.thrd_mp.spec_index(caller_ptr).view() })
-            &&& old(krnl).thrd_mp.spec_index(caller_ptr).locking_thread() is Write
+            &&& old(krnl).thrd_mp.spec_index(caller_ptr).wlocked_by_thread(cpu_id)
         },
         caller is Some && !dangling ==> {
             let caller_ptr = caller->Some_0;
@@ -140,7 +140,7 @@ pub(super) fn thread_exit_enter_record_progress(
             thread_exit_enter_step_pre_from_k(&pre, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, caller, dangling);
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&pre, &held_k, &held_lctx, cpu_id, prc_ptr, thrd_ptr, None, true, Some(ctn_ptr), false, None);
             if let Some(caller_ptr) = caller {
-                if dangling { kernel_dangling_caller_taken_over_implies_u_step(&held_k, &woken_k, thrd_ptr, caller_ptr, None); } else { kernel_caller_woken_implies_u_step(&held_k, &woken_k, cpu_id, thrd_ptr, caller_ptr); }
+                if dangling { kernel_dangling_caller_taken_over_implies_u_step(&held_k, &woken_k, thrd_ptr, caller_ptr, None, cpu_id); } else { kernel_caller_woken_implies_u_step(&held_k, &woken_k, cpu_id, thrd_ptr, caller_ptr); }
             }
             kernel_thread_syscall_progress_changed_implies_u_step(&woken_k, &entered_k, thrd_ptr);
             thread_exit_enter_step_from_u(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(held_k), kernel_k_to_kernel_u(woken_k), kernel_k_to_kernel_u(entered_k), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, caller, dangling);

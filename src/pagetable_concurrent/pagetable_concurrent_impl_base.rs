@@ -136,7 +136,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             forall|i: L2Index| #![trigger final(lower).l2_owner(page_map_ptr, i)] pei_valid(i) && !(lo <= i <= hi) ==> final(lower).l2_owner(page_map_ptr, i) is None,
             final(lower).pagetable_window_locks == Map::new(
                 old(lower).pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((target_l4i, target_l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-                |w: WindowVa| if old(lower).pagetable_window_locks.dom().contains(w) { old(lower).pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
+                |w: WindowVa| if old(lower).pagetable_window_locks.dom().contains(w) { old(lower).pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: final(lctx).thread_id() } } else { LockStateU::Unlocked }),
             forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (lo <= i <= hi),
             forall|i: L2Index| #![trigger ret.view().index(i)] lo <= i <= hi ==> {
                 &&& final(lower).l2_owner(page_map_ptr, i) == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
@@ -228,7 +228,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             lower.l2_perms.tracked_insert(page_map_ptr, l2_perm);
             lower.pagetable_window_locks = Map::new(
                 old(lower).pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((target_l4i, target_l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-                |w: WindowVa| if old(lower).pagetable_window_locks.dom().contains(w) { old(lower).pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked });
+                |w: WindowVa| if old(lower).pagetable_window_locks.dom().contains(w) { old(lower).pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: lctx.thread_id() } } else { LockStateU::Unlocked });
         }
         proof {
             let pre = WholePageTable { higher: *old(self), lower: *old(lower) };

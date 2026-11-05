@@ -43,55 +43,24 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
         kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
         forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
             krnl.ctn_mp.dom().contains(p) && steps.snapshot_k().ctn_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().ctn_mp.spec_index(p).locking_thread();
-                let after = krnl.ctn_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& krnl.ctn_mp.spec_index(p).lock_state_u() == steps.snapshot_k().ctn_mp.spec_index(p).lock_state_u()
                 &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == steps.snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
             },
         forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
-            krnl.prc_mp.dom().contains(p) && steps.snapshot_k().prc_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().prc_mp.spec_index(p).locking_thread();
-                let after = krnl.prc_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            krnl.prc_mp.dom().contains(p) && steps.snapshot_k().prc_mp.dom().contains(p) ==> krnl.prc_mp.spec_index(p).lock_state_u() == steps.snapshot_k().prc_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
             krnl.pt_mp.dom().contains(p) && steps.snapshot_k().pt_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().pt_mp.spec_index(p).locking_thread();
-                let after = krnl.pt_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& krnl.pt_mp.spec_index(p).lock_state_u() == steps.snapshot_k().pt_mp.spec_index(p).lock_state_u()
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
-            krnl.it_mp.dom().contains(p) && steps.snapshot_k().it_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().it_mp.spec_index(p).locking_thread();
-                let after = krnl.it_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            krnl.it_mp.dom().contains(p) && steps.snapshot_k().it_mp.dom().contains(p) ==> krnl.it_mp.spec_index(p).lock_state_u() == steps.snapshot_k().it_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockThreadPtr| #![trigger krnl.thrd_mp.spec_index(p)]
-            krnl.thrd_mp.dom().contains(p) && steps.snapshot_k().thrd_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().thrd_mp.spec_index(p).locking_thread();
-                let after = krnl.thrd_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            krnl.thrd_mp.dom().contains(p) && steps.snapshot_k().thrd_mp.dom().contains(p) ==> krnl.thrd_mp.spec_index(p).lock_state_u() == steps.snapshot_k().thrd_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(p)]
-            krnl.ep_mp.dom().contains(p) && steps.snapshot_k().ep_mp.dom().contains(p) ==> {
-                let before = steps.snapshot_k().ep_mp.spec_index(p).locking_thread();
-                let after = krnl.ep_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            krnl.ep_mp.dom().contains(p) && steps.snapshot_k().ep_mp.dom().contains(p) ==> krnl.ep_mp.spec_index(p).lock_state_u() == steps.snapshot_k().ep_mp.spec_index(p).lock_state_u(),
         forall|i: CpuId| #![trigger krnl.cpu_arr.spec_index(i)]
-            index_valid(NUM_CPUS, i) ==> {
-                let before = steps.snapshot_k().cpu_arr.spec_index(i).value.locking_thread();
-                let after = krnl.cpu_arr.spec_index(i).value.locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            index_valid(NUM_CPUS, i) ==> krnl.cpu_arr.spec_index(i).value.lock_state_u() == steps.snapshot_k().cpu_arr.spec_index(i).value.lock_state_u(),
     ensures
         steps.snapshot_u() == kernel_k_to_kernel_u(*krnl),
 {

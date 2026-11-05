@@ -69,8 +69,8 @@ pub ghost struct PageTableU {
 }
 
 /// `m` with every window of `range` that it holds write-locked.
-pub open spec fn pagetable_window_locks_after_locking_range(m: Map<WindowVa, LockStateU>, range: VaRange4K) -> Map<WindowVa, LockStateU> {
-    Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::WriteLocked } else { m[w] })
+pub open spec fn pagetable_window_locks_after_locking_range(m: Map<WindowVa, LockStateU>, range: VaRange4K, cpu_id: CpuId) -> Map<WindowVa, LockStateU> {
+    Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::WriteLocked { writer: cpu_id } } else { m[w] })
 }
 
 /// `m` with every window of `range` that it holds unlocked.
@@ -80,13 +80,13 @@ pub open spec fn pagetable_window_locks_after_unlocking_range(m: Map<WindowVa, L
 
 /// `m` plus the 512 windows of a new L2 page under L3 entry `(l4i, l3i)`: those in `locked_range` start
 /// write-locked, the others unlocked.
-pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockStateU>, l4i: L4Index, l3i: L3Index, locked_range: VaRange4K) -> Map<WindowVa, LockStateU> {
+pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockStateU>, l4i: L4Index, l3i: L3Index, locked_range: VaRange4K, cpu_id: CpuId) -> Map<WindowVa, LockStateU> {
     Map::new(m.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-        |w: WindowVa| if m.dom().contains(w) { m[w] } else if va_range_2m_windows(locked_range).contains(w) { LockStateU::WriteLocked } else { LockStateU::Unlocked })
+        |w: WindowVa| if m.dom().contains(w) { m[w] } else if va_range_2m_windows(locked_range).contains(w) { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked })
 }
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
-    /// The owner of the outer LockCell supplies its mode; the payload has no lock state.
+    /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state.
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,

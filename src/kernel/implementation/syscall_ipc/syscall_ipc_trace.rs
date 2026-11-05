@@ -384,12 +384,12 @@ pub(super) proof fn ipc_endpoint_transit_step_from_u(
         pre.thread_map[thrd_ptr].endpoint_descriptors[ep_idx as int] == Some(channel_ptr),
         pre.endpoint_map[channel_ptr].queue[0] == peer_ptr,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
-                lock_state: LockStateU::WriteLocked,
+                lock_state: LockStateU::WriteLocked { writer: cpu_id },
                 syscall_progress: Some(SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: waiting_state is SENDING, payload_index }),
                 ..pre.thread_map[thrd_ptr]
-            }).insert(peer_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+            }).insert(peer_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: thrd_ptr, wait: if pre.thread_map[peer_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_ptr] }),
             endpoint_map: pre.endpoint_map.insert(channel_ptr, EndpointU { queue: pre.endpoint_map[channel_ptr].queue.skip(1), ..pre.endpoint_map[channel_ptr] }),
             ..pre

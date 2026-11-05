@@ -66,7 +66,8 @@ pub fn reclaim_unmapped_4k_page(
         whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
-        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked),
+        whole_pagetable(window_locked.view().pt_mp, window_locked.view().pt_lower.view(), pagetable).lower.pagetable_window_locks
+            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked { writer: old(lctx).cpu_id() }),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(window_of(va)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks[window_of(va)] is Unlocked,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..final(steps).snapshot_k() }),

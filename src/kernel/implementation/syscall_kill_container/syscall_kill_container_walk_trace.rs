@@ -162,16 +162,16 @@ pub(crate) proof fn kill_container_enter_step_from_u(
             &&& !pre.container_map[child_ptr].killed
         }),
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(ctn_ptr, ContainerU {
-                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[prc_ptr].depth)), ..pre.container_map[ctn_ptr]
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[prc_ptr].depth)), ..pre.container_map[ctn_ptr]
             }),
-            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr] }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map[thrd_ptr] }),
+            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr] }),
+            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[thrd_ptr] }),
             ..pre
         }),
         marked == (KernelU {
-            container_map: locked.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..locked.container_map[child_ptr] }), ..locked
+            container_map: locked.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..locked.container_map[child_ptr] }), ..locked
         }),
         post == (KernelU {
             thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..marked.thread_map[thrd_ptr] }),
@@ -183,7 +183,7 @@ pub(crate) proof fn kill_container_enter_step_from_u(
 {
     reveal(kill_container_enter_step_pre); reveal(kill_container_enter_step);
     assert(post.thread_map =~= pre.thread_map.insert(thrd_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..pre.thread_map[thrd_ptr]
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..pre.thread_map[thrd_ptr]
     }));
 }
 
@@ -227,7 +227,7 @@ pub(crate) proof fn kill_container_mark_child_step_from_u(
         pre.container_map[target].children[0] == child_ptr,
         pre.container_map.dom().contains(child_ptr),
         marked == (KernelU {
-            container_map: pre.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.container_map[child_ptr] }), ..pre
+            container_map: pre.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.container_map[child_ptr] }), ..pre
         }),
         post == (KernelU {
             thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..marked.thread_map[thrd_ptr] }),
@@ -251,7 +251,7 @@ pub(crate) proof fn kill_container_mark_root_step_from_u(
         pre.container_map[target].root_process == root_ptr,
         pre.process_map.dom().contains(root_ptr),
         marked == (KernelU {
-            process_map: pre.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[root_ptr] }), ..pre
+            process_map: pre.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[root_ptr] }), ..pre
         }),
         post == (KernelU {
             thread_map: marked.thread_map.insert(thrd_ptr, ThreadU {

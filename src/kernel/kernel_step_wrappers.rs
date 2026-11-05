@@ -187,8 +187,7 @@ impl KernelSteps {
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
-            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Write),
-            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Read),
+            krnl.cpu_arr.spec_index(cpu).value.lock_state_u() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.lock_state_u(),
             krnl.it_mp == old(self).snapshot_k().it_mp,
             krnl.cpu_set_mp == old(self).snapshot_k().cpu_set_mp,
             krnl.sched_mp == old(self).snapshot_k().sched_mp,
@@ -210,8 +209,7 @@ impl KernelSteps {
                     &&& krnl.ctn_mp.spec_index(p).view_rodata() == old(self).snapshot_k().ctn_mp.spec_index(p).view_rodata()
                     &&& krnl.ctn_mp.spec_index(p).view_ghost() == old(self).snapshot_k().ctn_mp.spec_index(p).view_ghost()
                     &&& krnl.ctn_mp.spec_index(p).being_killed() == old(self).snapshot_k().ctn_mp.spec_index(p).being_killed()
-                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_state_u()
                     &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
                 None => krnl.ctn_mp == old(self).snapshot_k().ctn_mp,
@@ -223,8 +221,7 @@ impl KernelSteps {
                     &&& krnl.prc_mp.spec_index(p).view_rodata() == old(self).snapshot_k().prc_mp.spec_index(p).view_rodata()
                     &&& krnl.prc_mp.spec_index(p).view_ghost() == old(self).snapshot_k().prc_mp.spec_index(p).view_ghost()
                     &&& krnl.prc_mp.spec_index(p).being_killed() == old(self).snapshot_k().prc_mp.spec_index(p).being_killed()
-                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.prc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().prc_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.prc_mp == old(self).snapshot_k().prc_mp,
             },
@@ -233,8 +230,7 @@ impl KernelSteps {
                     &&& krnl.thrd_mp.unchanged_except(&old(self).snapshot_k().thrd_mp, p)
                     &&& krnl.thrd_mp.spec_index(p).view() == old(self).snapshot_k().thrd_mp.spec_index(p).view()
                     &&& krnl.thrd_mp.spec_index(p).being_killed() == old(self).snapshot_k().thrd_mp.spec_index(p).being_killed()
-                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.thrd_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().thrd_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.thrd_mp == old(self).snapshot_k().thrd_mp,
             },
@@ -243,8 +239,7 @@ impl KernelSteps {
                     &&& krnl.ep_mp.unchanged_except(&old(self).snapshot_k().ep_mp, p)
                     &&& krnl.ep_mp.spec_index(p).view() == old(self).snapshot_k().ep_mp.spec_index(p).view()
                     &&& krnl.ep_mp.spec_index(p).being_killed() == old(self).snapshot_k().ep_mp.spec_index(p).being_killed()
-                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ep_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ep_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.ep_mp == old(self).snapshot_k().ep_mp,
             },
@@ -252,8 +247,7 @@ impl KernelSteps {
                 Some(p) => {
                     &&& krnl.pt_mp.unchanged_except(&old(self).snapshot_k().pt_mp, p)
                     &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
-                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
@@ -296,14 +290,12 @@ impl KernelSteps {
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
-            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Write),
-            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Read),
+            krnl.cpu_arr.spec_index(cpu).value.lock_state_u() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.lock_state_u(),
             match iommu_table {
                 Some(p) => {
                     &&& krnl.it_mp.unchanged_except(&old(self).snapshot_k().it_mp, p)
                     &&& krnl.it_mp.spec_index(p).view() == old(self).snapshot_k().it_mp.spec_index(p).view()
-                    &&& (krnl.it_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().it_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.it_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().it_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.it_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().it_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.it_mp == old(self).snapshot_k().it_mp,
             },
@@ -327,8 +319,7 @@ impl KernelSteps {
                     &&& krnl.ctn_mp.spec_index(p).view_rodata() == old(self).snapshot_k().ctn_mp.spec_index(p).view_rodata()
                     &&& krnl.ctn_mp.spec_index(p).view_ghost() == old(self).snapshot_k().ctn_mp.spec_index(p).view_ghost()
                     &&& krnl.ctn_mp.spec_index(p).being_killed() == old(self).snapshot_k().ctn_mp.spec_index(p).being_killed()
-                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_state_u()
                     &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
                 None => krnl.ctn_mp == old(self).snapshot_k().ctn_mp,
@@ -340,8 +331,7 @@ impl KernelSteps {
                     &&& krnl.prc_mp.spec_index(p).view_rodata() == old(self).snapshot_k().prc_mp.spec_index(p).view_rodata()
                     &&& krnl.prc_mp.spec_index(p).view_ghost() == old(self).snapshot_k().prc_mp.spec_index(p).view_ghost()
                     &&& krnl.prc_mp.spec_index(p).being_killed() == old(self).snapshot_k().prc_mp.spec_index(p).being_killed()
-                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.prc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().prc_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.prc_mp == old(self).snapshot_k().prc_mp,
             },
@@ -350,8 +340,7 @@ impl KernelSteps {
                     &&& krnl.thrd_mp.unchanged_except(&old(self).snapshot_k().thrd_mp, p)
                     &&& krnl.thrd_mp.spec_index(p).view() == old(self).snapshot_k().thrd_mp.spec_index(p).view()
                     &&& krnl.thrd_mp.spec_index(p).being_killed() == old(self).snapshot_k().thrd_mp.spec_index(p).being_killed()
-                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.thrd_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.thrd_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().thrd_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.thrd_mp == old(self).snapshot_k().thrd_mp,
             },
@@ -360,8 +349,7 @@ impl KernelSteps {
                     &&& krnl.ep_mp.unchanged_except(&old(self).snapshot_k().ep_mp, p)
                     &&& krnl.ep_mp.spec_index(p).view() == old(self).snapshot_k().ep_mp.spec_index(p).view()
                     &&& krnl.ep_mp.spec_index(p).being_killed() == old(self).snapshot_k().ep_mp.spec_index(p).being_killed()
-                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ep_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ep_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.ep_mp == old(self).snapshot_k().ep_mp,
             },
@@ -369,8 +357,7 @@ impl KernelSteps {
                 Some(p) => {
                     &&& krnl.pt_mp.unchanged_except(&old(self).snapshot_k().pt_mp, p)
                     &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
-                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
-                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
@@ -415,55 +402,24 @@ impl KernelSteps {
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread();
-                    let after = krnl.ctn_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_state_u()
                     &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
             forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
-                krnl.prc_mp.dom().contains(p) && old(self).snapshot_k().prc_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().prc_mp.spec_index(p).locking_thread();
-                    let after = krnl.prc_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
-                },
+                krnl.prc_mp.dom().contains(p) && old(self).snapshot_k().prc_mp.dom().contains(p) ==> krnl.prc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().prc_mp.spec_index(p).lock_state_u(),
             forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
                 krnl.pt_mp.dom().contains(p) && old(self).snapshot_k().pt_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().pt_mp.spec_index(p).locking_thread();
-                    let after = krnl.pt_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
+                    &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
-                krnl.it_mp.dom().contains(p) && old(self).snapshot_k().it_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().it_mp.spec_index(p).locking_thread();
-                    let after = krnl.it_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
-                },
+                krnl.it_mp.dom().contains(p) && old(self).snapshot_k().it_mp.dom().contains(p) ==> krnl.it_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().it_mp.spec_index(p).lock_state_u(),
             forall|p: RwLockThreadPtr| #![trigger krnl.thrd_mp.spec_index(p)]
-                krnl.thrd_mp.dom().contains(p) && old(self).snapshot_k().thrd_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().thrd_mp.spec_index(p).locking_thread();
-                    let after = krnl.thrd_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
-                },
+                krnl.thrd_mp.dom().contains(p) && old(self).snapshot_k().thrd_mp.dom().contains(p) ==> krnl.thrd_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().thrd_mp.spec_index(p).lock_state_u(),
             forall|p: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(p)]
-                krnl.ep_mp.dom().contains(p) && old(self).snapshot_k().ep_mp.dom().contains(p) ==> {
-                    let before = old(self).snapshot_k().ep_mp.spec_index(p).locking_thread();
-                    let after = krnl.ep_mp.spec_index(p).locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
-                },
+                krnl.ep_mp.dom().contains(p) && old(self).snapshot_k().ep_mp.dom().contains(p) ==> krnl.ep_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ep_mp.spec_index(p).lock_state_u(),
             forall|i: CpuId| #![trigger krnl.cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> {
-                    let before = old(self).snapshot_k().cpu_arr.spec_index(i).value.locking_thread();
-                    let after = krnl.cpu_arr.spec_index(i).value.locking_thread();
-                    &&& (after is Write) == (before is Write)
-                    &&& (after is Read) == (before is Read)
-                },
+                index_valid(NUM_CPUS, i) ==> krnl.cpu_arr.spec_index(i).value.lock_state_u() == old(self).snapshot_k().cpu_arr.spec_index(i).value.lock_state_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),

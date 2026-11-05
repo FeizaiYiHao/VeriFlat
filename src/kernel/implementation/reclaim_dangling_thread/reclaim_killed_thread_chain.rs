@@ -246,7 +246,7 @@ pub fn release_killed_thread_caller(
     if caller_dangling {
         take_over_dangling_caller(krnl, Tracked(&mut *lctx), thrd_ptr, caller_ptr, Tracked(thread_lock_perm), Tracked(&caller_lock_perm));
         proof {
-            kernel_killed_caller_taken_over_implies_u_step(&section_pre, &*krnl, thrd_ptr, caller_ptr);
+            kernel_killed_caller_taken_over_implies_u_step(&section_pre, &*krnl, thrd_ptr, caller_ptr, cpu_id);
             assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map().insert(caller_ptr, TypedHeldLock { lock_id: krnl.thrd_mp.lock_id_by_key(caller_ptr), mode: TypedLockMode::Write }));
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container)) by {

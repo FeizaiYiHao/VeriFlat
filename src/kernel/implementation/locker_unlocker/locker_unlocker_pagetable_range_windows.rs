@@ -80,7 +80,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
-                == pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
+                == pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range, final(lctx).thread_id()),
             forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
                 va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
@@ -455,7 +455,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
-                == pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
+                == pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range, final(lctx).thread_id()),
             forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
                 va_range_2m_windows(*range).contains(w) && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),

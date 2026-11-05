@@ -20,6 +20,7 @@ pub(super) fn publish_staged_process(
     requires
         old(steps).snapshot_k() == *old(krnl),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,

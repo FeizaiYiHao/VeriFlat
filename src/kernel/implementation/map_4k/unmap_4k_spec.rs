@@ -44,30 +44,29 @@ pub open spec fn unmap_4k_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool 
     &&& !progress->Unmap4k_flushed
 }
 
-/// A TLB flush step read-locks the cpu set of the thread's container, or keeps it read-locked, and clears at most one
+/// A TLB flush step takes or keeps this cpu's read hold on the cpu set of the thread's container and clears at most one
 /// TLB entry for the process's PCID.
 #[verifier::opaque]
 pub open spec fn unmap_4k_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let locked = KernelU {
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     };
     new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
 }
 
-/// Recording the flush changes unmap progress and releases this thread's read hold on the cpu set of the thread's
-/// container, which no writer holds afterwards.
+/// Recording the flush changes unmap progress and releases this cpu's read hold on the cpu set of the thread's container.
 #[verifier::opaque]
 pub open spec fn unmap_4k_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let progress = thread.syscall_progress->Some_0;
-    let cpu_set_lock = new_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
-    &&& !(cpu_set_lock is WriteLocked)
+    let cpu_set_lock = old_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
+    &&& cpu_set_lock.read_held_by(cpu_id)
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: cpu_set_lock.without_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     })
 }

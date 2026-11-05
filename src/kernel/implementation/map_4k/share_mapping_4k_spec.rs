@@ -38,7 +38,7 @@ pub open spec fn share_4k_directory_pre_at(old_u: KernelU, progress_thread: RwLo
 #[verifier::opaque]
 pub open spec fn share_4k_directory_at(
     pre: KernelU, post: KernelU, progress_thread: RwLockThreadPtr, quota_thread: RwLockThreadPtr, target: RwLockProcessPtr, target_container: RwLockContainerPtr,
-    source: Option<RwLockContainerPtr>,
+    source: Option<RwLockContainerPtr>, cpu_id: CpuId,
 ) -> bool {
     let progress = pre.thread_map[progress_thread].syscall_progress->Some_0;
     let dir = post.thread_map[progress_thread].syscall_progress->Some_0->Share4k_directory;
@@ -67,7 +67,7 @@ pub open spec fn share_4k_directory_at(
     &&& !(dir is None)
     &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
-        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Share4k_target_range)
+        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Share4k_target_range, cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows
     &&& post == (KernelU {
         thread_map: funded.insert(progress_thread, ThreadU { syscall_progress: Some(new_progress), ..funded[progress_thread] }),
@@ -149,7 +149,7 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
 pub open spec fn share_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
-    share_4k_directory_at(old_u, new_u, caller, objects.quota_thread, objects.target, objects.target_container, objects.transfer_source)
+    share_4k_directory_at(old_u, new_u, caller, objects.quota_thread, objects.target, objects.target_container, objects.transfer_source, cpu_id)
 }
 
 /// A leaf step shares the next recorded source page into the next recorded target address of a

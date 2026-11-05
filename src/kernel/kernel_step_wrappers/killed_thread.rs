@@ -103,7 +103,7 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
 /// Taking over `caller_ptr`, the unlocked dangling thread of the killed caller of the write-held killed thread `thrd_ptr`
 /// in the same container, projects to `kernel_u_killed_caller_taken_over`, changes the projection, and changes no thread
 /// outside that container.
-pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
+pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, cpu_id: CpuId)
     requires
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.dom().contains(caller_ptr),
@@ -123,10 +123,10 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
         after.thrd_mp.spec_index(thrd_ptr).locking_thread() == before.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         after.thrd_mp.spec_index(thrd_ptr).being_killed() == before.thrd_mp.spec_index(thrd_ptr).being_killed(),
         after.thrd_mp.spec_index(caller_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thrd_mp.spec_index(caller_ptr).view() }),
-        after.thrd_mp.spec_index(caller_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(caller_ptr).wlocked_by_thread(cpu_id),
         after.thrd_mp.spec_index(caller_ptr).being_killed() == before.thrd_mp.spec_index(caller_ptr).being_killed(),
     ensures
-        kernel_u_killed_caller_taken_over(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        kernel_u_killed_caller_taken_over(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
@@ -135,7 +135,7 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
 {
-    kernel_dangling_caller_taken_over_implies_u_step(before, after, thrd_ptr, caller_ptr, None);
+    kernel_dangling_caller_taken_over_implies_u_step(before, after, thrd_ptr, caller_ptr, None, cpu_id);
     kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(before, caller_ptr); kernel_thread_projection_at(after, caller_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
@@ -146,7 +146,7 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
 /// A callee taking over its dangling caller `dangling_ptr` drops its caller link and turns the write-locked dangling thread into a
 /// killed thread without a callee; the write-held `endpoint`, if any, is released.
 pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
-    before: &KernelK, after: &KernelK, callee_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>,
+    before: &KernelK, after: &KernelK, callee_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>, cpu_id: CpuId,
 )
     requires
         before.thrd_mp.dom().contains(callee_ptr),
@@ -164,13 +164,13 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
         after.thrd_mp.spec_index(callee_ptr).locking_thread() == before.thrd_mp.spec_index(callee_ptr).locking_thread(),
         after.thrd_mp.spec_index(callee_ptr).being_killed() == before.thrd_mp.spec_index(callee_ptr).being_killed(),
         after.thrd_mp.spec_index(dangling_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thrd_mp.spec_index(dangling_ptr).view() }),
-        after.thrd_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(dangling_ptr).wlocked_by_thread(cpu_id),
         after.thrd_mp.spec_index(dangling_ptr).being_killed() == before.thrd_mp.spec_index(dangling_ptr).being_killed(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                thread_map: pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre.thread_map[dangling_ptr] }),
+                thread_map: pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[dangling_ptr] }),
                 endpoint_map: match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map },
                 ..pre
             })
@@ -179,7 +179,8 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    assert_maps_equal!(post.thread_map, pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] }) .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre.thread_map[dangling_ptr] }), t => {
+    assert_maps_equal!(post.thread_map, pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] })
+        .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[dangling_ptr] }), t => {
         if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
     assert_maps_equal!(post.endpoint_map, match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map }, e => {

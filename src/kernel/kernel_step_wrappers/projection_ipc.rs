@@ -61,6 +61,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
     requires
         after.inv(),
         typed_lock_maps_aligned(after, lctx),
+        lctx.cpu_id() == cpu_id,
         before.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         forall|i: CpuId| #![trigger after.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> after.cpu_op.view().view()[i as int] == before.cpu_op.view().view()[i as int],
         entry.thrd_mp.dom().contains(current_thrd_ptr),
@@ -123,13 +124,13 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             post == (KernelU {
-                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }),
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }),
                 thread_map: pre.thread_map.insert(current_thrd_ptr, ThreadU {
-                    lock_state: LockStateU::WriteLocked, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
-                }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+                    lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
+                }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
                     state: ThreadState::IPC_TRANSIT { partner: current_thrd_ptr, wait: if pre.thread_map[peer_thrd_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thrd_ptr] }),
                 endpoint_map: pre.endpoint_map.insert(channel_ep_ptr, EndpointU {
-                    lock_state: if channel_held { LockStateU::WriteLocked } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
+                    lock_state: if channel_held { LockStateU::WriteLocked { writer: cpu_id } } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
                     ..pre.endpoint_map[channel_ep_ptr]
                 }),
                 ..pre
@@ -147,17 +148,17 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
     after.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), current_thrd_ptr);
     after.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thrd_ptr);
     if channel_held { after.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), channel_ep_ptr); }
-    assert(index_valid(NUM_CPUS, cpu_id) && after.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) by { reveal(LockedArray::typed_lock_map_aligned); };
+    assert(index_valid(NUM_CPUS, cpu_id) && after.cpu_arr.spec_index(cpu_id).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(post.iommu_root_table == pre.iommu_root_table) by { reveal(IommuRootTable::user_view); };
     assert(pre.thread_map.dom().contains(current_thrd_ptr) && pre.thread_map[current_thrd_ptr].syscall_progress == entry.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     };
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     });
-    kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(before, entry, after, current_thrd_ptr, peer_thrd_ptr);
-    kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(before, entry, after, channel_ep_ptr, channel_held);
+    kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(before, entry, after, current_thrd_ptr, peer_thrd_ptr, cpu_id);
+    kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(before, entry, after, channel_ep_ptr, channel_held, cpu_id);
     kernel_thread_dequeued_implies_u_container_map(before, entry, after);
     kernel_thread_dequeued_implies_u_process_map(before, entry, after, lctx);
 }
@@ -165,7 +166,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
 /// Write-locking both threads, recording the running thread's progress, and moving the channel head into transit with
 /// the running thread projects to exactly those two thread entries.
 proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
-    before: &KernelK, entry: &KernelK, after: &KernelK, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr,
+    before: &KernelK, entry: &KernelK, after: &KernelK, current_thrd_ptr: RwLockThreadPtr, peer_thrd_ptr: RwLockThreadPtr, cpu_id: CpuId,
 )
     requires
         entry.thrd_mp.dom().contains(current_thrd_ptr),
@@ -179,7 +180,7 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
             syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress, ..entry.thrd_mp.spec_index(current_thrd_ptr).view()
         }),
         after.thrd_mp.spec_index(current_thrd_ptr).being_killed() == entry.thrd_mp.spec_index(current_thrd_ptr).being_killed(),
-        after.thrd_mp.spec_index(current_thrd_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(current_thrd_ptr).wlocked_by_thread(cpu_id),
         after.thrd_mp.spec_index(peer_thrd_ptr).view().non_ipc_fields_unchanged(&entry.thrd_mp.spec_index(peer_thrd_ptr).view()),
         after.thrd_mp.spec_index(peer_thrd_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thrd_ptr, wait: if entry.thrd_mp.spec_index(peer_thrd_ptr).view().state is SENDING { IpcWait::Send } else { IpcWait::Receive } }),
         after.thrd_mp.spec_index(peer_thrd_ptr).view().blocking_endpoint_ptr is None,
@@ -190,15 +191,15 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
         after.thrd_mp.spec_index(peer_thrd_ptr).view().trap_frame == entry.thrd_mp.spec_index(peer_thrd_ptr).view().trap_frame,
         after.thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress == entry.thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress,
         after.thrd_mp.spec_index(peer_thrd_ptr).being_killed() == entry.thrd_mp.spec_index(peer_thrd_ptr).being_killed(),
-        after.thrd_mp.spec_index(peer_thrd_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(peer_thrd_ptr).wlocked_by_thread(cpu_id),
         forall|p: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(p)] before.thrd_mp.dom().contains(p) && after.thrd_mp.dom().contains(p) && p != current_thrd_ptr && p != peer_thrd_ptr ==>
             after.thrd_mp.spec_index(p).locking_thread() == before.thrd_mp.spec_index(p).locking_thread(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(current_thrd_ptr, ThreadU {
-                lock_state: LockStateU::WriteLocked, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
-            }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
+            }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: current_thrd_ptr, wait: if pre.thread_map[peer_thrd_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thrd_ptr] })
         }),
 {
@@ -206,8 +207,8 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(current_thrd_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
-    }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: after.thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thrd_ptr]
+    }).insert(peer_thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
         state: ThreadState::IPC_TRANSIT { partner: current_thrd_ptr, wait: if pre.thread_map[peer_thrd_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thrd_ptr] }), p => {
         if before.thrd_mp.dom().contains(p) { kernel_thread_projection_at(before, p); } if after.thrd_mp.dom().contains(p) { kernel_thread_projection_at(after, p); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
@@ -217,7 +218,7 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_thread_map(
 /// Dequeuing the channel head projects to the channel endpoint with its queue advanced, write-locked exactly when
 /// `channel_held`.
 proof fn kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(
-    before: &KernelK, entry: &KernelK, after: &KernelK, channel_ep_ptr: RwLockEndpointPtr, channel_held: bool,
+    before: &KernelK, entry: &KernelK, after: &KernelK, channel_ep_ptr: RwLockEndpointPtr, channel_held: bool, cpu_id: CpuId,
 )
     requires
         kernel_endpoint_nonlock_fields_unchanged(before.ep_mp, entry.ep_mp),
@@ -227,12 +228,12 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(
         after.ep_mp.spec_index(channel_ep_ptr).being_killed() == entry.ep_mp.spec_index(channel_ep_ptr).being_killed(),
         forall|p: RwLockEndpointPtr| #![trigger after.ep_mp.spec_index(p)] before.ep_mp.dom().contains(p) && after.ep_mp.dom().contains(p) && !(channel_held && p == channel_ep_ptr) ==>
             after.ep_mp.spec_index(p).locking_thread() == before.ep_mp.spec_index(p).locking_thread(),
-        channel_held ==> after.ep_mp.spec_index(channel_ep_ptr).locking_thread() is Write,
+        channel_held ==> after.ep_mp.spec_index(channel_ep_ptr).wlocked_by_thread(cpu_id),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after).endpoint_map == pre.endpoint_map.insert(channel_ep_ptr, EndpointU {
-                lock_state: if channel_held { LockStateU::WriteLocked } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
+                lock_state: if channel_held { LockStateU::WriteLocked { writer: cpu_id } } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
                 ..pre.endpoint_map[channel_ep_ptr]
             })
         }),
@@ -241,7 +242,7 @@ proof fn kernel_thread_dequeued_and_locks_changed_implies_u_endpoint_map(
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(channel_ep_ptr, EndpointU {
-        lock_state: if channel_held { LockStateU::WriteLocked } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
+        lock_state: if channel_held { LockStateU::WriteLocked { writer: cpu_id } } else { pre.endpoint_map[channel_ep_ptr].lock_state }, queue: pre.endpoint_map[channel_ep_ptr].queue.skip(1),
         ..pre.endpoint_map[channel_ep_ptr]
     }), p => {
         if before.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(before, p); } if after.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(after, p); }
@@ -313,12 +314,12 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
             let processes = before.process_map;
             let locked_processes = processes.insert(source, ProcessU {
                 pagetable: Some(PageTableU {
-                    lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                    lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                     ..processes[source].pagetable->Some_0
                 }), ..processes[source]
             }).insert(target, ProcessU {
                 pagetable: Some(PageTableU {
-                    lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                    lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
                     ..processes[target].pagetable->Some_0
                 }), ..processes[target]
             });
@@ -334,12 +335,12 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
     let processes = before.process_map;
     let locked_processes = processes.insert(source, ProcessU {
         pagetable: Some(PageTableU {
-            lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+            lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
             ..processes[source].pagetable->Some_0
         }), ..processes[source]
     }).insert(target, ProcessU {
         pagetable: Some(PageTableU {
-            lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+            lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
             ..processes[target].pagetable->Some_0
         }), ..processes[target]
     });
@@ -410,21 +411,21 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
                 None => processes,
                 Some((source, target)) => processes.insert(source, ProcessU {
                     pagetable: Some(PageTableU {
-                        lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                        lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                         ..processes[source].pagetable->Some_0
                     }), ..processes[source]
                 }).insert(target, ProcessU {
                     pagetable: Some(PageTableU {
-                        lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                        lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
                         ..processes[target].pagetable->Some_0
                     }), ..processes[target]
                 }),
             };
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: before.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu as int], ..before.cpu_array[cpu as int] }),
+                cpu_array: before.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, op: post.cpu_op.view().view()[cpu as int], ..before.cpu_array[cpu as int] }),
                 process_map: locked_processes,
-                thread_map: before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[caller] }).insert(peer, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[peer] }),
-                endpoint_map: before.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked, ..before.endpoint_map[endpoint] }),
+                thread_map: before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, ..before.thread_map[caller] }).insert(peer, ThreadU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, ..before.thread_map[peer] }),
+                endpoint_map: before.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, ..before.endpoint_map[endpoint] }),
                 ..before
             })
         }),
@@ -433,7 +434,7 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), caller);
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer);
     post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), endpoint);
-    assert(post.cpu_arr.spec_index(cpu).value.locking_thread() is Write) by { reveal(LockedArray::typed_lock_map_aligned); };
+    assert(post.cpu_arr.spec_index(cpu).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
@@ -442,12 +443,12 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
         None => processes,
         Some((source, target)) => processes.insert(source, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                 ..processes[source].pagetable->Some_0
             }), ..processes[source]
         }).insert(target, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: LockStateU::WriteLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
                 ..processes[target].pagetable->Some_0
             }), ..processes[target]
         }),
@@ -456,7 +457,7 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     if pre.thrd_mp.dom().contains(caller) { kernel_thread_projection_at(pre, caller); } if post.thrd_mp.dom().contains(caller) { kernel_thread_projection_at(post, caller); }
     if pre.thrd_mp.dom().contains(peer) { kernel_thread_projection_at(pre, peer); } if post.thrd_mp.dom().contains(peer) { kernel_thread_projection_at(post, peer); }
     if pre.ep_mp.dom().contains(endpoint) { kernel_endpoint_projection_at(pre, endpoint); }
-    assert_seqs_equal!(after.cpu_array == before.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu as int], ..before.cpu_array[cpu as int] }), i => {
+    assert_seqs_equal!(after.cpu_array == before.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, op: post.cpu_op.view().view()[cpu as int], ..before.cpu_array[cpu as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     });
@@ -468,31 +469,32 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
         }
     };
     kernel_lock_states_unchanged_implies_u_container_map(pre, post);
-    kernel_two_threads_write_locked_implies_u_thread_map(pre, post, caller, peer);
-    kernel_endpoint_write_locked_implies_u_endpoint_map(pre, post, endpoint);
+    kernel_two_threads_write_locked_implies_u_thread_map(pre, post, caller, peer, lctx.cpu_id());
+    kernel_endpoint_write_locked_implies_u_endpoint_map(pre, post, endpoint, lctx.cpu_id());
     assert(after.iommu_root_table == before.iommu_root_table) by { reveal(IommuRootTable::user_view); };
 }
 
 /// Write-locking `caller` and `peer`, all other thread locks and nonlock thread fields unchanged, projects to those two
 /// thread-map lock-state updates.
-proof fn kernel_two_threads_write_locked_implies_u_thread_map(pre: &KernelK, post: &KernelK, caller: RwLockThreadPtr, peer: RwLockThreadPtr)
+proof fn kernel_two_threads_write_locked_implies_u_thread_map(pre: &KernelK, post: &KernelK, caller: RwLockThreadPtr, peer: RwLockThreadPtr, cpu_id: CpuId)
     requires
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         pre.thrd_mp.dom().contains(caller) && pre.thrd_mp.dom().contains(peer),
-        post.thrd_mp.spec_index(caller).locking_thread() is Write && post.thrd_mp.spec_index(peer).locking_thread() is Write,
+        post.thrd_mp.spec_index(caller).wlocked_by_thread(cpu_id) && post.thrd_mp.spec_index(peer).wlocked_by_thread(cpu_id),
         forall|p: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(p)] #![trigger post.thrd_mp.spec_index(p)]
             pre.thrd_mp.dom().contains(p) && post.thrd_mp.dom().contains(p) && p != caller && p != peer ==> post.thrd_mp.spec_index(p).locking_thread() == pre.thrd_mp.spec_index(p).locking_thread(),
     ensures
         ({
             let before = kernel_k_to_kernel_u(*pre);
-            kernel_k_to_kernel_u(*post).thread_map == before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[caller] }).insert(peer, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[peer] })
+            kernel_k_to_kernel_u(*post).thread_map == before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[caller] })
+                .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[peer] })
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(after.thread_map, before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[caller] })
-        .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked, ..before.thread_map[peer] }), p => {
+    assert_maps_equal!(after.thread_map, before.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[caller] })
+        .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.thread_map[peer] }), p => {
             if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); }
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
         });
@@ -500,20 +502,20 @@ proof fn kernel_two_threads_write_locked_implies_u_thread_map(pre: &KernelK, pos
 
 /// Write-locking `endpoint`, all other endpoint locks and nonlock endpoint fields unchanged, projects to that
 /// endpoint-map lock-state update.
-proof fn kernel_endpoint_write_locked_implies_u_endpoint_map(pre: &KernelK, post: &KernelK, endpoint: RwLockEndpointPtr)
+proof fn kernel_endpoint_write_locked_implies_u_endpoint_map(pre: &KernelK, post: &KernelK, endpoint: RwLockEndpointPtr, cpu_id: CpuId)
     requires
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         pre.ep_mp.dom().contains(endpoint),
-        post.ep_mp.spec_index(endpoint).locking_thread() is Write,
+        post.ep_mp.spec_index(endpoint).wlocked_by_thread(cpu_id),
         forall|p: RwLockEndpointPtr| #![trigger pre.ep_mp.spec_index(p)] #![trigger post.ep_mp.spec_index(p)]
             pre.ep_mp.dom().contains(p) && post.ep_mp.dom().contains(p) && p != endpoint ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread(),
     ensures
-        kernel_k_to_kernel_u(*post).endpoint_map == kernel_k_to_kernel_u(*pre).endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked, ..kernel_k_to_kernel_u(*pre).endpoint_map[endpoint] }),
+        kernel_k_to_kernel_u(*post).endpoint_map == kernel_k_to_kernel_u(*pre).endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..kernel_k_to_kernel_u(*pre).endpoint_map[endpoint] }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(after.endpoint_map, before.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked, ..before.endpoint_map[endpoint] }), p => {
+    assert_maps_equal!(after.endpoint_map, before.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..before.endpoint_map[endpoint] }), p => {
         if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
         reveal(kernel_endpoint_nonlock_fields_unchanged);
     });
@@ -526,6 +528,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         typed_lock_maps_aligned(post, lctx),
+        write_locked ==> lctx.cpu_id() == cpu_id,
         index_valid(NUM_CPUS, cpu_id),
         *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, sched_mp: post.sched_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pcid_allc_mp: post.pcid_allc_mp, cpu_set_mp: post.cpu_set_mp, ..*pre }),
         match container {
@@ -576,7 +579,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
         pagetable && post.inv() ==> kernel_k_to_kernel_u(*pre).kernel_l4_end == post.pt_mp.spec_index(post.prc_mp.spec_index(prc_ptr).view().pagetable).view().kernel_l4_end,
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let mode = if write_locked { LockStateU::WriteLocked } else { LockStateU::Unlocked };
+            let mode = if write_locked { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
             kernel_k_to_kernel_u(*post) == (KernelU {
                 cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, op: post.cpu_op.view().view()[cpu_id as int], ..old_u.cpu_array[cpu_id as int] }),
                 container_map: match container {
@@ -651,12 +654,12 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
         post.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr);
         post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
         if ep_ptr is Some { post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), ep_ptr->Some_0); }
-        assert(post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) by { reveal(LockedArray::typed_lock_map_aligned); };
+        assert(post.cpu_arr.spec_index(cpu_id).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-    let mode = if write_locked { LockStateU::WriteLocked } else { LockStateU::Unlocked };
+    let mode = if write_locked { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
     kernel_cpu_lock_mode_changed_implies_u_cpu_array(pre, post, cpu_id, mode);
     kernel_container_lock_mode_changed_implies_u_container_map(pre, post, container, mode, cpu_set_unlocked);
     kernel_process_lock_mode_changed_implies_u_process_map(pre, post, prc_ptr, mode, pagetable);

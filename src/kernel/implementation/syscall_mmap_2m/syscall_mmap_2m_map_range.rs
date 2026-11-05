@@ -11,7 +11,7 @@ verus! {
 /// leaf step each. Every window keeps its lock state, its stale CPUs and its 4K leaves, and owns no L1 page.
 fn mmap_2m_map_leaf_range(
     krnl: &mut KernelK, va_range: &VaRange2M, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot,
-    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
+    Ghost(phase): Ghost<Mmap2mPhase>, Ghost(flushed): Ghost<bool>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
@@ -39,7 +39,7 @@ fn mmap_2m_map_leaf_range(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_2m >= va_range.len,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed }),
         !(phase is Fill),
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -97,7 +97,7 @@ fn mmap_2m_map_leaf_range(
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(thrd_ptr).view().state,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: va_range.len, directory: Mmap2mDirectory::None, phase }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: va_range.len, directory: Mmap2mDirectory::None, phase, flushed }),
         thread_lock_perm.lock_id() == final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
@@ -166,7 +166,7 @@ fn mmap_2m_map_leaf_range(
             krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             krnl.thrd_mp.spec_index(thrd_ptr).view().quota_2m + i == quota,
             quota >= va_range.len,
-            krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: i, directory: Mmap2mDirectory::None, phase }),
+            krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: i, directory: Mmap2mDirectory::None, phase, flushed }),
             !(phase is Fill),
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -218,7 +218,7 @@ fn mmap_2m_map_leaf_range(
             assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher == t0.higher);
             spec_va_2m_valid_index_roundtrip(va);
         }
-        mmap_2m_page(krnl, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, va, Ghost(*va_range), Ghost(i), Ghost(phase), Tracked(&mut *lctx), Tracked(&mut *steps),
+        mmap_2m_page(krnl, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, va, Ghost(*va_range), Ghost(i), Ghost(phase), Ghost(flushed), Tracked(&mut *lctx), Tracked(&mut *steps),
             Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(window_of(va))));
         proof {
             assert forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() implies steps.view()[j] == before[j] by { assert(steps.view().drop_last()[j] == steps.view()[j]); };
@@ -238,7 +238,8 @@ fn mmap_2m_map_leaf_range(
 fn mmap_2m_clear_range_windows(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange2M,
     thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>,
-    Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
+    Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -263,7 +264,10 @@ fn mmap_2m_clear_range_windows(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: false }),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == old(lctx).thread_id(),
+        thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -319,7 +323,13 @@ fn mmap_2m_clear_range_windows(
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr) == old(krnl).thrd_mp.spec_index(thrd_ptr),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m {
+            range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_flushed
+        }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
@@ -372,7 +382,7 @@ fn mmap_2m_clear_range_windows(
     let hidden = mmap_2m_hide_linked_l1_range(krnl, va_range, pagetable_ptr, Ghost(t4k), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(window_perms));
     if hidden {
         mmap_2m_flush_and_reclaim_hidden_l1_range(krnl, va_range, cpu_id, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, Ghost(phase), Ghost(t4k), Tracked(&mut *lctx), Tracked(&mut *steps),
-            Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms));
+            Tracked(cpu_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms));
     }
 }
 
@@ -428,7 +438,7 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_2m >= range,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m {
-            range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: if enter_phase is Read { Mmap2mPhase::Read } else { Mmap2mPhase::Filled },
+            range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: if enter_phase is Read { Mmap2mPhase::Read } else { Mmap2mPhase::Filled }, flushed: false
         }),
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -544,12 +554,13 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         };
     }
     mmap_2m_clear_range_windows(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, Ghost(phase), Ghost(t4k),
-        Tracked(&cpu_lock_perm), Tracked(&pagetable_lock_perm), Tracked(&window_perms));
+        Tracked(&cpu_lock_perm), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(&window_perms));
+    let ghost flushed = krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_flushed;
     proof {
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     }
-    mmap_2m_map_leaf_range(krnl, va_range, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, Ghost(phase), Ghost(t4k), Tracked(&mut *lctx), Tracked(&mut *steps),
+    mmap_2m_map_leaf_range(krnl, va_range, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, Ghost(phase), Ghost(flushed), Ghost(t4k), Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(&window_perms));
     let ghost range_steps = steps.view();
     let ghost exit_start = *krnl;
@@ -582,7 +593,7 @@ pub(super) fn mmap_2m_map_leaves_and_finish(
         assert(mmap_2m_syscall_trace(steps.view(), cpu_id, va, range, enter_phase)) by {
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
             process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
-            mmap_2m_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, *va_range, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u(),
+            mmap_2m_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, *va_range,
                 whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_2m_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);
         };

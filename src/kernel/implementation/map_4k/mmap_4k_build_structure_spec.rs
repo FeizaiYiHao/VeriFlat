@@ -73,7 +73,7 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& !(progress->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(dir)
     &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
-        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap4k_range)
+        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap4k_range, cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
@@ -85,7 +85,7 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
 /// Installing an L4 or L3 directory for a 2M page records that level in mmap progress and leaves other progress unchanged.
 pub open spec fn mmap_2m_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
     match progress {
-        Some(SyscallProgress::Mmap2m { range, mapped, directory: _, phase }) => Some(SyscallProgress::Mmap2m { range, mapped, directory: if level is L4 { Mmap2mDirectory::L4 } else { Mmap2mDirectory::L3 }, phase }),
+        Some(SyscallProgress::Mmap2m { range, mapped, directory: _, phase, flushed }) => Some(SyscallProgress::Mmap2m { range, mapped, directory: if level is L4 { Mmap2mDirectory::L4 } else { Mmap2mDirectory::L3 }, phase, flushed }),
         _ => progress,
     }
 }
@@ -111,7 +111,7 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let progress = thread.syscall_progress->Some_0;
     let dir = new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0->Mmap2m_directory;
-    let new_progress = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: dir, phase: progress->Mmap2m_phase };
+    let new_progress = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: dir, phase: progress->Mmap2m_phase, flushed: progress->Mmap2m_flushed };
     let process = old_u.process_map[thread.owning_proc];
     let table = process.pagetable->Some_0;
     let old_windows = table.pagetable_window_locks;
@@ -119,7 +119,7 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& dir is L4 || dir is L3
     &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
-        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap2m_range.covering_4k_range())
+        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap2m_range.covering_4k_range(), cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
@@ -135,8 +135,8 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
 pub open spec fn mmap_4k_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     })
 }

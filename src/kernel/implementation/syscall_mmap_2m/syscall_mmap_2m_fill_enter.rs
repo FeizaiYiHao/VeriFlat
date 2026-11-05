@@ -130,7 +130,7 @@ pub(super) fn mmap_2m_fill_enter(
         return ret;
     }
     proof { mmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success, Some(checked), None, 0); }
-    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Fill })),
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Fill, flushed: false })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
     proof {
@@ -163,7 +163,7 @@ pub(super) fn mmap_2m_fill_enter(
     let ghost filled_lctx = *lctx;
     let ghost filled_steps = steps.view();
     let Tracked(pagetable_read_perm) = krnl.downgrade_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
-    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Filled })),
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Filled, flushed: false })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost downgraded_k = *krnl;
     proof {

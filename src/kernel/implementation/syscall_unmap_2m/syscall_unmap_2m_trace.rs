@@ -82,7 +82,7 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
-        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range()),
+        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range(), cpu_id),
         ({
             let pre = kernel_k_to_kernel_u(*krnl);
             let cpu = pre.cpu_array[cpu_id as int];
@@ -96,9 +96,9 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
             &&& thread.owning_proc == prc_ptr
             &&& !(pagetable.lock_state is WriteLocked)
             &&& post == (KernelU {
-                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap2m { range, unmapped: 0, flushed: false }), ..thread }),
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pagetable }), ..process }),
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(SyscallProgress::Unmap2m { range, unmapped: 0, flushed: false }), ..thread }),
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: pagetable.lock_state.with_reader(cpu_id), pagetable_window_locks: windows, ..pagetable }), ..process }),
                 ..pre
             })
         }),
@@ -111,15 +111,16 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
 }
 
 /// Clearing the progress, unlocking the caller's cpu, which leaves its kernel step for its trap path, and its running thread,
-/// and leaving the pagetable `pagetable_ptr` of its process in `table_lock` with `windows`, the window locks of `krnl` after
-/// unlocking the windows of the range's covering 4K range, after the flushed range is the exit step from `krnl`'s projection
-/// to `post`.
+/// and releasing this cpu's read hold on the pagetable `pagetable_ptr` of its process, which it holds, with `windows`, the
+/// window locks of `krnl` after unlocking the windows of the range's covering 4K range, after the flushed range is the exit step
+/// from `krnl`'s projection to `post`.
 pub(super) proof fn unmap_2m_exit_step_from_u(
-    krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, range: VaRange2M,
-    table_lock: LockStateU, windows: Map<WindowVa, LockStateU>,
+    krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot,
+    range: VaRange2M, windows: Map<WindowVa, LockStateU>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        krnl.pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(cpu_id),
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
@@ -136,6 +137,7 @@ pub(super) proof fn unmap_2m_exit_step_from_u(
             &&& thread.lock_state is WriteLocked
             &&& thread.owning_proc == prc_ptr
             &&& !(process.pagetable->Some_0.lock_state is Unlocked)
+            &&& process.pagetable->Some_0.lock_state == krnl.pt_mp.spec_index(pagetable_ptr).lock_state_u()
             &&& thread.syscall_progress is Some
             &&& progress is Unmap2m
             &&& progress->Unmap2m_range == range
@@ -144,11 +146,10 @@ pub(super) proof fn unmap_2m_exit_step_from_u(
             &&& post == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process }),
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.without_reader(cpu_id), pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process }),
                 ..pre
             })
         }),
-        table_lock is Unlocked || table_lock is ReadLocked,
     ensures
         unmap_2m_exit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         unmap_2m_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
@@ -343,7 +344,7 @@ pub(super) proof fn unmap_2m_range_steps_from_tlb_flush(
         entry.process_map[prc_ptr].pcid == pcid,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
@@ -387,7 +388,7 @@ pub(super) proof fn unmap_2m_tlb_flush_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
@@ -406,11 +407,10 @@ pub(super) proof fn unmap_2m_tlb_flush_range_steps_from_k(
     unmap_2m_range_steps_from_tlb_flush(steps, before, start, kernel_k_to_kernel_u(*entry), cpu_id, thrd_ptr, prc_ptr, ctn_ptr, pcid);
 }
 
-/// Recording the flush in the progress and releasing the read hold on the cpu set of the thread's container, which no writer
-/// holds afterwards, is the flushed step on `pre`/`post`.
+/// Recording the flush in the progress and releasing this cpu's read hold on the cpu set of the thread's container is the
+/// flushed step on `pre`/`post`.
 pub(super) proof fn unmap_2m_flushed_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, range: VaRange2M, unmapped: usize, progress: Option<SyscallProgress>,
-    cpu_set_lock: LockStateU,
 )
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
@@ -418,10 +418,10 @@ pub(super) proof fn unmap_2m_flushed_step_from_u(
         pre.thread_map[thrd_ptr].owning_container == ctn_ptr,
         progress == Some(SyscallProgress::Unmap2m { range, unmapped, flushed: true }),
         pre.thread_map.dom().contains(thrd_ptr),
-        !(cpu_set_lock is WriteLocked),
+        pre.container_map[ctn_ptr].cpu_set_lock.read_held_by(cpu_id),
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: progress, ..pre.thread_map[thrd_ptr] }),
-            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre.container_map[ctn_ptr] }),
+            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: pre.container_map[ctn_ptr].cpu_set_lock.without_reader(cpu_id), ..pre.container_map[ctn_ptr] }),
             ..pre
         }),
     ensures
@@ -441,7 +441,7 @@ pub(super) proof fn unmap_2m_range_steps_from_flushed(steps: &KernelSteps, befor
 { reveal(unmap_2m_range_step); }
 
 /// Recording the flush in the progress from `pre` to `post` after range steps that start at `start`, where `pre` extends the
-/// step's start `snap` by page-table ghost state and by this thread's released read hold on the cpu set of its container,
+/// step's start `snap` by page-table ghost state and by this cpu's released read hold on the cpu set of its container,
 /// while the caller write-holds its cpu and thread and holds the pagetable of the thread's present process with the whole
 /// range cleared, leaves only range steps.
 pub(super) proof fn unmap_2m_flushed_range_steps_from_k(
@@ -479,7 +479,9 @@ pub(super) proof fn unmap_2m_flushed_range_steps_from_k(
         pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
         pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
             == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
-        !(pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Write),
+        snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().read_held_by(cpu_id),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+            == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().without_reader(cpu_id),
         *post == (KernelK { thrd_mp: post.thrd_mp, ..*pre }),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
@@ -491,15 +493,13 @@ pub(super) proof fn unmap_2m_flushed_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_2m_range_step(steps.view()[j], cpu_id),
 {
     let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap); kernel_container_projection_at(snap, ctn_ptr);
     kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
     kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
     unmap_2m_flush_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, range);
     assert(unmap_2m_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(unmap_2m_flush_step_pre); };
-    unmap_2m_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr, range, range.len, post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
-        cpu_set_lock);
+    unmap_2m_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr, range, range.len, post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view());
     unmap_2m_range_steps_from_flushed(steps, before, start, kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id);
 }
 

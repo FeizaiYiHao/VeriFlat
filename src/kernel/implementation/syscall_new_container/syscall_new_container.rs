@@ -479,12 +479,13 @@ fn new_container_lock_entry(
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, e.source_pagetable_ptr)
             &&& final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(e.source_pagetable_ptr, final(krnl).pt_lower.view().spec_index(e.source_pagetable_ptr))
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), e.source_pagetable_ptr).lower.pagetable_window_locks
-                == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), e.source_pagetable_ptr).lower.pagetable_window_locks, e.source_range)
+                == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), e.source_pagetable_ptr).lower.pagetable_window_locks, e.source_range, cpu_id)
             &&& old(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None
             &&& old(krnl).ctn_mp.spec_index(e.parent_container_ptr).locking_thread() is None
             &&& old(krnl).prc_mp.spec_index(e.parent_process_ptr).locking_thread() is None
             &&& old(krnl).thrd_mp.spec_index(e.current_thread_ptr).locking_thread() is None
             &&& !(old(krnl).pt_mp.spec_index(e.source_pagetable_ptr).locking_thread() is Write)
+            &&& final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).lock_state_u() == old(krnl).pt_mp.spec_index(e.source_pagetable_ptr).lock_state_u().with_reader(cpu_id)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(e.current_thread_ptr)
             &&& final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view() == old(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view()

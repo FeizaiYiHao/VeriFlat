@@ -162,7 +162,7 @@ pub open spec fn cpu_offline_check_hold_step_pre(old_u: KernelU, cpu_id: CpuId) 
 /// else.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
 }
 
 /// Releasing happens with cpu `cpu_id` write-locked since the hold step.

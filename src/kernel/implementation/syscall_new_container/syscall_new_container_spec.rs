@@ -104,19 +104,19 @@ pub open spec fn new_container_enter_step(
     let process = old_u.process_map[thread.owning_proc];
     let progress = SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index: ep_idx, child_container: None });
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), cpu_set_lock: LockStateU::WriteLocked, ..old_u.container_map[thread.owning_container]
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(process.depth)), cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.container_map[thread.owning_container]
         }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU {
-                lock_state: LockStateU::ReadLocked, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range),
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, pagetable: Some(PageTableU {
+                lock_state: process.pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range, cpu_id),
                 ..process.pagetable->Some_0
             }), ..process
         }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..thread }),
         endpoint_map: match ep_idx {
-            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
+            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
             None => old_u.endpoint_map,
         },
         ..old_u
@@ -166,7 +166,7 @@ pub open spec fn new_container_publish_step(old_u: KernelU, new_u: KernelU, cpu_
     let origin = Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child), ..progress->NewContainer_0 });
     let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
     kernel_u_container_root_created(old_u, new_u, thread.owning_container, child, new_u.container_map[child].root_process, thrd_ptr,
-        progress->NewContainer_0.transfer_cpu, progress->NewContainer_0.funding, progress->NewContainer_0.process_quota, Some(sharing))
+        progress->NewContainer_0.transfer_cpu, progress->NewContainer_0.funding, progress->NewContainer_0.process_quota, Some(sharing), cpu_id)
 }
 
 /// Finishing runs after the whole recorded range has been shared into the root process of the recorded
@@ -200,7 +200,7 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& parent.lock_state is WriteLocked
     &&& parent.pagetable is Some
-    &&& parent.pagetable->Some_0.lock_state is ReadLocked
+    &&& parent.pagetable->Some_0.lock_state.read_held_by(cpu_id)
     &&& old_u.process_map.dom().contains(old_u.container_map[child].root_process)
     &&& root.lock_state is WriteLocked
     &&& root.pagetable is Some
@@ -215,7 +215,7 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
 
 /// The last step creates the root process's first thread with the recorded registers and endpoint,
 /// clears the caller's progress, and releases every retained observable lock, including the windows over the recorded
-/// range of the parent's and the root process's page tables; other readers may still hold the parent's page table.
+/// range of the parent's and the root process's page tables, and the caller's read hold on the parent's page table.
 #[verifier::opaque]
 pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -227,18 +227,17 @@ pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_i
     let parent = thread.owning_proc;
     let root = old_u.container_map[child].root_process;
     let endpoint = match origin->NewContainer_0.endpoint_index { Some(i) => thread.endpoint_descriptors[i as int], None => None };
-    let table_lock = new_u.process_map[parent].pagetable->Some_0.lock_state;
     let range = origin->NewContainer_0.range;
     let parent_table = old_u.process_map[parent].pagetable->Some_0;
     let root_table = old_u.process_map[root].pagetable->Some_0;
-    &&& table_lock is Unlocked || table_lock is ReadLocked
-    &&& kernel_u_new_thread_changed(KernelU {
+    kernel_u_new_thread_changed(KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         container_map: old_u.container_map.insert(container, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[container] })
             .insert(child, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[child] }),
         process_map: old_u.process_map.insert(parent, ProcessU { lock_state: LockStateU::Unlocked,
             pagetable: Some(PageTableU {
-                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_unlocking_range(parent_table.pagetable_window_locks, range), ..parent_table
+                lock_state: parent_table.lock_state.without_reader(cpu_id), pagetable_window_locks: pagetable_window_locks_after_unlocking_range(parent_table.pagetable_window_locks, range),
+                ..parent_table
             }), ..old_u.process_map[parent]
         }).insert(root, ProcessU { lock_state: LockStateU::Unlocked,
             pagetable: Some(PageTableU {

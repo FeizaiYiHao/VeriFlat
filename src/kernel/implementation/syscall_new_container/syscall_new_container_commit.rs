@@ -34,12 +34,13 @@ pub(super) fn commit_new_container(
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
         old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(source_pagetable_ptr, old(krnl).pt_lower.view().spec_index(source_pagetable_ptr)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range, caller_cpu_id),
         old(steps).snapshot_k().cpu_arr.spec_index(caller_cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().ctn_mp.spec_index(parent_ctn_ptr).locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_prc_ptr).locking_thread() is None,
         old(steps).snapshot_k().thrd_mp.spec_index(current_thrd_ptr).locking_thread() is None,
         !(old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).locking_thread() is Write),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).lock_state_u() == old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).lock_state_u().with_reader(caller_cpu_id),
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state == CpuState::Running,
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
         old(krnl).inv(),
@@ -236,12 +237,13 @@ fn commit_new_container_publish(
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
         old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(source_pagetable_ptr, old(krnl).pt_lower.view().spec_index(source_pagetable_ptr)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range, caller_cpu_id),
         old(steps).snapshot_k().cpu_arr.spec_index(caller_cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().ctn_mp.spec_index(parent_ctn_ptr).locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_prc_ptr).locking_thread() is None,
         old(steps).snapshot_k().thrd_mp.spec_index(current_thrd_ptr).locking_thread() is None,
         !(old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).locking_thread() is Write),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).lock_state_u() == old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).lock_state_u().with_reader(caller_cpu_id),
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state == CpuState::Running,
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
         old(krnl).inv(),
@@ -896,11 +898,11 @@ fn commit_new_container_publish_staged(
             let progress = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0,
                 directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(container_page), ..record }) });
             new_container_root_published_from_k(&publish_k, &publish_ks.0, &publish_ks.1, &publish_ks.2, parent_ctn_ptr, current_thrd_ptr, transfer_cpu_id,
-                container_page, pcid_allocator_page, pages_4k.view(), funding_page_count, funding_pages, allocator_quota_4k, process_quota_4k, progress);
+                container_page, pcid_allocator_page, pages_4k.view(), funding_page_count, funding_pages, allocator_quota_4k, process_quota_4k, progress, caller_cpu_id);
             kernel_container_publication_composes(steps.view().last().old_u, kernel_k_to_kernel_u(published_k), steps.view().last().new_u,
                 parent_ctn_ptr, container_page, child_prc_ptr, current_thrd_ptr, transfer_cpu_id, funding_page_count,
                 process_quota_4k, new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-                    allocator_1g_page, child_sched_ptr, child_cpu_set, child_prc_ptr, child_pagetable_ptr, l4_page).union(funding_pages.to_set()), thread_pg_ptr, progress);
+                    allocator_1g_page, child_sched_ptr, child_cpu_set, child_prc_ptr, child_pagetable_ptr, l4_page).union(funding_pages.to_set()), thread_pg_ptr, progress, caller_cpu_id);
             new_container_publish_step_from_u(steps.view().last().old_u, steps.view().last().new_u, caller_cpu_id, current_thrd_ptr, parent_ctn_ptr, container_page, child_prc_ptr, record);
             new_container_trace_publish_step(&*steps, publish_before, start, pre, caller_cpu_id, *source_range,
                 funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt);

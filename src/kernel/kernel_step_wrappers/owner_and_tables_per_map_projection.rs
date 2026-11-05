@@ -103,9 +103,9 @@ pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, 
     });
 }
 
-/// Setting the lock owners of process `process`'s page table and IOMMU table to `lock`'s mode and changing only its K-only
-/// state, every other process and table lock owner unchanged, projects to that process-map update.
-pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, process: RwLockProcessPtr, pagetable: RwLockPageTableRoot, lock: bool)
+/// Write-locking process `process`'s page table and IOMMU table by cpu `cpu_id` when `lock`, else unlocking them, changing only its K-only
+/// state and keeping every other process and table lock state, projects to that process-map update.
+pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, process: RwLockProcessPtr, pagetable: RwLockPageTableRoot, lock: bool, cpu_id: CpuId)
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
@@ -124,20 +124,20 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
             &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
             &&& p != pagetable ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
         },
-        lock ==> post.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        lock ==> post.pt_mp.spec_index(pagetable).wlocked_by_thread(cpu_id),
         !lock ==> post.pt_mp.spec_index(pagetable).locking_thread() is None,
         post.it_mp.dom() == pre.it_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] pre.it_mp.dom().contains(p) ==> {
             &&& post.it_mp.spec_index(p).view() == pre.it_mp.spec_index(p).view()
             &&& Some(p) != pre.prc_mp.spec_index(process).view().iommu_table ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
         },
-        pre.prc_mp.spec_index(process).view().iommu_table is Some && lock ==> post.it_mp.spec_index(pre.prc_mp.spec_index(process).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.prc_mp.spec_index(process).view().iommu_table is Some && lock ==> post.it_mp.spec_index(pre.prc_mp.spec_index(process).view().iommu_table->Some_0).wlocked_by_thread(cpu_id),
         pre.prc_mp.spec_index(process).view().iommu_table is Some && !lock ==> post.it_mp.spec_index(pre.prc_mp.spec_index(process).view().iommu_table->Some_0).locking_thread() is None,
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
             let process_u = a.process_map[process];
-            let state = if lock { LockStateU::WriteLocked } else { LockStateU::Unlocked };
+            let state = if lock { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
             kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(process, ProcessU {
                 pagetable: Some(PageTableU { lock_state: state, ..process_u.pagetable->Some_0 }),
                 iommu_table: match process_u.iommu_table { Some(t) => Some(PageTableU { lock_state: state, ..t }), None => None },
@@ -150,7 +150,7 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let process_u = a.process_map[process];
-    let state = if lock { LockStateU::WriteLocked } else { LockStateU::Unlocked };
+    let state = if lock { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
     let new_process_u = ProcessU {
         pagetable: Some(PageTableU { lock_state: state, ..process_u.pagetable->Some_0 }),
         iommu_table: match process_u.iommu_table { Some(t) => Some(PageTableU { lock_state: state, ..t }), None => None },

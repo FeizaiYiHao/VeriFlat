@@ -207,9 +207,9 @@ pub open spec fn ipc_endpoint_transit_step(old_u: KernelU, new_u: KernelU, cpu_i
     let peer_ptr = channel.queue[0];
     let progress = SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: waiting_state is SENDING, payload_index };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..old_u.thread_map[thrd_ptr] })
-            .insert(peer_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..old_u.thread_map[thrd_ptr] })
+            .insert(peer_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: thrd_ptr, wait: if old_u.thread_map[peer_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..old_u.thread_map[peer_ptr] }),
         endpoint_map: old_u.endpoint_map.insert(channel_ptr, EndpointU { queue: channel.queue.skip(1), ..channel }),
         ..old_u
@@ -420,11 +420,11 @@ pub open spec fn ipc_pages_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     let sends = waiting_state is SENDING;
     let progress = SyscallProgress::IpcPages { source_range: if sends { range } else { peer_range }, target_range: if sends { peer_range } else { range }, peer, tables: IpcPagesTables::Unlocked, released: None };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        thread_map: old_u.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..old_u.thread_map[caller] })
-            .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+        thread_map: old_u.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..old_u.thread_map[caller] })
+            .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: caller, wait: if old_u.thread_map[peer].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..old_u.thread_map[peer] }),
-        endpoint_map: old_u.endpoint_map.insert(channel, EndpointU { lock_state: LockStateU::WriteLocked, queue: old_u.endpoint_map[channel].queue.skip(1), ..old_u.endpoint_map[channel] }),
+        endpoint_map: old_u.endpoint_map.insert(channel, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, queue: old_u.endpoint_map[channel].queue.skip(1), ..old_u.endpoint_map[channel] }),
         ..old_u
     })
 }
@@ -457,14 +457,14 @@ pub open spec fn ipc_pages_lock_tables_step(old_u: KernelU, new_u: KernelU, cpu_
     let user = user_va_range(old_u, progress->IpcPages_source_range) && user_va_range(old_u, progress->IpcPages_target_range);
     let source_table = old_u.process_map[source].pagetable->Some_0;
     let target_table = old_u.process_map[target].pagetable->Some_0;
-    let source_windows = if user { pagetable_window_locks_after_locking_range(source_table.pagetable_window_locks, progress->IpcPages_source_range) } else { source_table.pagetable_window_locks };
-    let target_windows = if user { pagetable_window_locks_after_locking_range(target_table.pagetable_window_locks, progress->IpcPages_target_range) } else { target_table.pagetable_window_locks };
+    let source_windows = if user { pagetable_window_locks_after_locking_range(source_table.pagetable_window_locks, progress->IpcPages_source_range, cpu_id) } else { source_table.pagetable_window_locks };
+    let target_windows = if user { pagetable_window_locks_after_locking_range(target_table.pagetable_window_locks, progress->IpcPages_target_range, cpu_id) } else { target_table.pagetable_window_locks };
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(locked), ..old_u.thread_map[caller] }),
         process_map: old_u.process_map.insert(source, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
+            pagetable: Some(PageTableU { lock_state: source_table.lock_state.with_reader(cpu_id), pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
         }).insert(target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: if tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }, pagetable_window_locks: target_windows, ..target_table }),
+            pagetable: Some(PageTableU { lock_state: if tables is Fill { LockStateU::WriteLocked { writer: cpu_id } } else { target_table.lock_state.with_reader(cpu_id) }, pagetable_window_locks: target_windows, ..target_table }),
             ..old_u.process_map[target]
         }),
         ..old_u
@@ -482,8 +482,8 @@ pub open spec fn ipc_pages_check_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx:
     &&& progress->IpcPages_tables is Read || progress->IpcPages_tables is Fill
     &&& progress->IpcPages_released is None
     &&& ipc_pages_tables_present(old_u, cpu_id)
-    &&& source.lock_state is ReadLocked
-    &&& target.lock_state == if progress->IpcPages_tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }
+    &&& source.lock_state.read_held_by(cpu_id)
+    &&& if progress->IpcPages_tables is Fill { target.lock_state == LockStateU::WriteLocked { writer: cpu_id } } else { target.lock_state.read_held_by(cpu_id) }
 }
 
 /// A passed check starts sharing the recorded ranges at their first page; a failed check releases both page tables, which
@@ -495,8 +495,6 @@ pub open spec fn ipc_pages_check_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     let result = ipc_pages_check_result(old_u, cpu_id);
     let source = old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc;
     let target = old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc;
-    let source_state = new_u.process_map[source].pagetable->Some_0.lock_state;
-    let target_state = new_u.process_map[target].pagetable->Some_0.lock_state;
     let user = user_va_range(old_u, progress->IpcPages_source_range) && user_va_range(old_u, progress->IpcPages_target_range);
     let source_table = old_u.process_map[source].pagetable->Some_0;
     let target_table = old_u.process_map[target].pagetable->Some_0;
@@ -509,14 +507,12 @@ pub open spec fn ipc_pages_check_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     };
     let threads = old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(next), ..old_u.thread_map[caller] });
     if result is Success { new_u == (KernelU { thread_map: threads, ..old_u }) } else {
-        &&& source_state is Unlocked || source_state is ReadLocked
-        &&& target_state is Unlocked || target_state is ReadLocked
-        &&& new_u == (KernelU {
+        new_u == (KernelU {
             thread_map: threads,
             process_map: old_u.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_table.lock_state.without_reader(cpu_id), pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: target_state, pagetable_window_locks: target_windows, ..target_table }), ..old_u.process_map[target]
+                pagetable: Some(PageTableU { lock_state: target_table.lock_state.without_reader(cpu_id), pagetable_window_locks: target_windows, ..target_table }), ..old_u.process_map[target]
             }),
             ..old_u
         })
@@ -550,7 +546,7 @@ pub open spec fn ipc_pages_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id
     let target = share_4k_objects(old_u, cpu_id).target;
     new_u == (KernelU {
         process_map: old_u.process_map.insert(target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
+            pagetable: Some(PageTableU { lock_state: old_u.process_map[target].pagetable->Some_0.lock_state.with_reader(cpu_id), ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
         }),
         ..old_u
     })
@@ -573,8 +569,8 @@ pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId)
     &&& old_u.process_map.dom().contains(objects.target)
     &&& source_table is Some
     &&& target_table is Some
-    &&& source_table->Some_0.lock_state is ReadLocked
-    &&& target_table->Some_0.lock_state is ReadLocked
+    &&& source_table->Some_0.lock_state.read_held_by(cpu_id)
+    &&& target_table->Some_0.lock_state.read_held_by(cpu_id)
 }
 
 /// Releasing both page tables, which other readers may still hold, and the 2M windows of both ranges records that the rendezvous
@@ -585,8 +581,6 @@ pub open spec fn ipc_pages_unlock_tables_step(old_u: KernelU, new_u: KernelU, cp
     let progress = old_u.thread_map[caller].syscall_progress->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
     let source = old_u.thread_map[objects.source_thread].owning_proc;
-    let source_state = new_u.process_map[source].pagetable->Some_0.lock_state;
-    let target_state = new_u.process_map[objects.target].pagetable->Some_0.lock_state;
     let source_table = old_u.process_map[source].pagetable->Some_0;
     let target_table = old_u.process_map[objects.target].pagetable->Some_0;
     let source_windows = pagetable_window_locks_after_unlocking_range(source_table.pagetable_window_locks, progress->Share4k_source_range);
@@ -595,14 +589,12 @@ pub open spec fn ipc_pages_unlock_tables_step(old_u: KernelU, new_u: KernelU, cp
         source_range: progress->Share4k_source_range, target_range: progress->Share4k_target_range, peer: progress->Share4k_origin->IpcPages_peer,
         tables: IpcPagesTables::Unlocked, released: Some(RetValueType::Success),
     };
-    &&& source_state is Unlocked || source_state is ReadLocked
-    &&& target_state is Unlocked || target_state is ReadLocked
-    &&& new_u == (KernelU {
+    new_u == (KernelU {
         thread_map: old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(released), ..old_u.thread_map[caller] }),
         process_map: old_u.process_map.insert(source, ProcessU {
-            pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
+            pagetable: Some(PageTableU { lock_state: source_table.lock_state.without_reader(cpu_id), pagetable_window_locks: source_windows, ..source_table }), ..old_u.process_map[source]
         }).insert(objects.target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: target_state, pagetable_window_locks: target_windows, ..target_table }), ..old_u.process_map[objects.target]
+            pagetable: Some(PageTableU { lock_state: target_table.lock_state.without_reader(cpu_id), pagetable_window_locks: target_windows, ..target_table }), ..old_u.process_map[objects.target]
         }),
         ..old_u
     })

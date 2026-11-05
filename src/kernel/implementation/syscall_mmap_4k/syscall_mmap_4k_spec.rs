@@ -81,13 +81,13 @@ pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase };
-    let table_lock = if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked };
+    let table_lock = if phase is Read { process.pagetable->Some_0.lock_state.with_reader(cpu_id) } else { LockStateU::WriteLocked { writer: cpu_id } };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range), ..process.pagetable->Some_0
+                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range, cpu_id), ..process.pagetable->Some_0
             }),
             ..process
         }),
@@ -135,7 +135,7 @@ pub open spec fn mmap_4k_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let filled = SyscallProgress::Mmap4k { range: progress->Mmap4k_range, mapped: progress->Mmap4k_mapped, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Filled };
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.with_reader(cpu_id), ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }
@@ -186,12 +186,14 @@ pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Exiting happens outside the fill phase after every page of the recorded range has been mapped.
+/// Exiting happens outside the fill phase with the cpu reading its thread's pagetable after every page of the recorded range
+/// has been mapped.
 #[verifier::opaque]
 pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     &&& thread_pagetable_op_in_progress(old_u, cpu_id)
+    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state.read_held_by(cpu_id)
     &&& progress is Mmap4k
     &&& !(progress->Mmap4k_phase is Fill)
     &&& progress->Mmap4k_mapped == progress->Mmap4k_range.len
@@ -199,16 +201,15 @@ pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 }
 
 /// Exiting clears mmap progress, unlocks the cpu, its running thread, and the recorded range's 2M
-/// windows, returns the cpu to its trap path, and drops the thread's read lock on its pagetable,
+/// windows, returns the cpu to its trap path, and drops the cpu's read hold on the thread's pagetable,
 /// which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
-    &&& table_lock is Unlocked || table_lock is ReadLocked
-    &&& new_u == (KernelU {
+    let table_lock = process.pagetable->Some_0.lock_state.without_reader(cpu_id);
+    new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {

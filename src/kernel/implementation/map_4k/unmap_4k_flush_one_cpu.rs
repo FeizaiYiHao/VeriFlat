@@ -33,6 +33,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed()
             == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
+        old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(local_cpu),
         old(krnl).inv(),
         entry.inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -97,7 +98,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
             let old_u = final(steps).view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(entry);
             let prc_ptr = entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, final(steps).view()[j].new_u, pcid)
             &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
             &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)

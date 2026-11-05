@@ -19,7 +19,7 @@ pub open spec fn lock_window_eof_transition_framing(pre: WholePageTable<PT_TYPE>
     &&& post.lower.l2_page(p).entry_lock(l2i).l1() == pre.lower.l2_page(p).entry_lock(l2i).l1()
     &&& pre.lower.l2_owner(p, l2i) is None
     &&& post.lower.l2_owner(p, l2i) == (RwLockState::Write { thread_id, lock_id: lock_token })
-    &&& post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked)
+    &&& post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked { writer: thread_id })
     &&& post.lower.l1_rev_map == pre.lower.l1_rev_map
     &&& post.lower.mapping_4k == pre.lower.mapping_4k
     &&& post.lower.mapping_2m == pre.lower.mapping_2m

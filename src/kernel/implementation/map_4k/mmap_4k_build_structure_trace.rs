@@ -28,6 +28,7 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
         pre.prc_mp.dom().contains(prc_ptr) && pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
@@ -46,7 +47,7 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
-                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
+                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
@@ -64,7 +65,7 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range;
-        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range));
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range, cpu_id));
     }
 }
 
@@ -108,7 +109,7 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
-                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
+                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
@@ -125,7 +126,7 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range();
-        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range));
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range, cpu_id));
     }
 }
 } // verus!

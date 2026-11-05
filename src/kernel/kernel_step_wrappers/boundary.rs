@@ -653,8 +653,7 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
-        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write),
-        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Read) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Read),
+        post.cpu_arr.spec_index(cpu_id).value.lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
@@ -663,8 +662,7 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
         post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
-        (post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write),
-        (post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Read),
+        post.pt_mp.spec_index(pagetable_ptr).lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
@@ -739,8 +737,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
-        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write),
-        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Read) == (post.thrd_mp.spec_index(thrd_ptr).locking_thread() is Read),
+        post.cpu_arr.spec_index(cpu_id).value.lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == pre.thrd_mp.spec_index(thrd_ptr).view(),
@@ -749,8 +746,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
             Some(p) => {
                 &&& post.pt_mp.unchanged_except(&pre.pt_mp, p)
                 &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
-                &&& (post.pt_mp.spec_index(p).locking_thread() is Write) == (pre.pt_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.pt_mp.spec_index(p).locking_thread() is Read) == (pre.pt_mp.spec_index(p).locking_thread() is Read)
+                &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
             },
             None => post.pt_mp == pre.pt_mp,
         },
@@ -809,30 +805,24 @@ pub proof fn kernel_cpu_lock_mode_changed_implies_u_step(pre: &KernelK, post: &K
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> {
-            &&& (post.ctn_mp.spec_index(p).locking_thread() is Write) == (pre.ctn_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.ctn_mp.spec_index(p).locking_thread() is Read) == (pre.ctn_mp.spec_index(p).locking_thread() is Read)
+            &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
             &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
         },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) ==> {
-            &&& (post.prc_mp.spec_index(p).locking_thread() is Write) == (pre.prc_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.prc_mp.spec_index(p).locking_thread() is Read) == (pre.prc_mp.spec_index(p).locking_thread() is Read)
+            &&& post.prc_mp.spec_index(p).lock_state_u() == pre.prc_mp.spec_index(p).lock_state_u()
         },
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> {
-            &&& (post.pt_mp.spec_index(p).locking_thread() is Write) == (pre.pt_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.pt_mp.spec_index(p).locking_thread() is Read) == (pre.pt_mp.spec_index(p).locking_thread() is Read)
+            &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
         },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] pre.it_mp.dom().contains(p) ==> {
-            &&& (post.it_mp.spec_index(p).locking_thread() is Write) == (pre.it_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.it_mp.spec_index(p).locking_thread() is Read) == (pre.it_mp.spec_index(p).locking_thread() is Read)
+            &&& post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u()
         },
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)] pre.thrd_mp.dom().contains(p) ==> {
-            &&& (post.thrd_mp.spec_index(p).locking_thread() is Write) == (pre.thrd_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.thrd_mp.spec_index(p).locking_thread() is Read) == (pre.thrd_mp.spec_index(p).locking_thread() is Read)
+            &&& post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u()
         },
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)] pre.ep_mp.dom().contains(p) ==> {
-            &&& (post.ep_mp.spec_index(p).locking_thread() is Write) == (pre.ep_mp.spec_index(p).locking_thread() is Write)
-            &&& (post.ep_mp.spec_index(p).locking_thread() is Read) == (pre.ep_mp.spec_index(p).locking_thread() is Read)
+            &&& post.ep_mp.spec_index(p).lock_state_u() == pre.ep_mp.spec_index(p).lock_state_u()
         },
     ensures
         ({

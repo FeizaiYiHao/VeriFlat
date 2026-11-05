@@ -8,6 +8,7 @@ verus! {
 pub proof fn kernel_thread_write_held_section_implies_u_eq(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thrd_ptr: RwLockThreadPtr)
     requires
         post.inv(),
+        post_lctx.cpu_id() == pre_lctx.cpu_id(),
         pre.thrd_mp.typed_lock_map_aligned(pre_lctx.thread_lock_map(), pre_lctx.thread_id()),
         post.thrd_mp.typed_lock_map_aligned(post_lctx.thread_lock_map(), post_lctx.thread_id()),
         typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
@@ -40,55 +41,24 @@ pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
             post.ctn_mp.dom().contains(p) && pre.ctn_mp.dom().contains(p) ==> {
-                let before = pre.ctn_mp.spec_index(p).locking_thread();
-                let after = post.ctn_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
                 &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
             },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
-            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> {
-                let before = pre.prc_mp.spec_index(p).locking_thread();
-                let after = post.prc_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).lock_state_u() == pre.prc_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             post.pt_mp.dom().contains(p) && pre.pt_mp.dom().contains(p) ==> {
-                let before = pre.pt_mp.spec_index(p).locking_thread();
-                let after = post.pt_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
-            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) ==> {
-                let before = pre.it_mp.spec_index(p).locking_thread();
-                let after = post.it_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
-            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
-                let before = pre.thrd_mp.spec_index(p).locking_thread();
-                let after = post.thrd_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
-            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> {
-                let before = pre.ep_mp.spec_index(p).locking_thread();
-                let after = post.ep_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).lock_state_u() == pre.ep_mp.spec_index(p).lock_state_u(),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
-            index_valid(NUM_CPUS, i) ==> {
-                let before = pre.cpu_arr.spec_index(i).value.locking_thread();
-                let after = post.cpu_arr.spec_index(i).value.locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.lock_state_u() == pre.cpu_arr.spec_index(i).value.lock_state_u(),
     ensures
         kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
 { kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, post, None); }
@@ -111,55 +81,24 @@ pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &Ke
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
             post.ctn_mp.dom().contains(p) && pre.ctn_mp.dom().contains(p) ==> {
-                let before = pre.ctn_mp.spec_index(p).locking_thread();
-                let after = post.ctn_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
                 &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
             },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
-            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> {
-                let before = pre.prc_mp.spec_index(p).locking_thread();
-                let after = post.prc_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).lock_state_u() == pre.prc_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             post.pt_mp.dom().contains(p) && pre.pt_mp.dom().contains(p) && (zombie is Some ==> p != post.prc_mp.spec_index(zombie->Some_0).view().pagetable) ==> {
-                let before = pre.pt_mp.spec_index(p).locking_thread();
-                let after = post.pt_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
-            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> {
-                let before = pre.it_mp.spec_index(p).locking_thread();
-                let after = post.it_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
-            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
-                let before = pre.thrd_mp.spec_index(p).locking_thread();
-                let after = post.thrd_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
-            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> {
-                let before = pre.ep_mp.spec_index(p).locking_thread();
-                let after = post.ep_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).lock_state_u() == pre.ep_mp.spec_index(p).lock_state_u(),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
-            index_valid(NUM_CPUS, i) ==> {
-                let before = pre.cpu_arr.spec_index(i).value.locking_thread();
-                let after = post.cpu_arr.spec_index(i).value.locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.lock_state_u() == pre.cpu_arr.spec_index(i).value.lock_state_u(),
     ensures
         kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
 {
@@ -180,12 +119,7 @@ proof fn kernel_lock_states_unchanged_implies_u_cpu_array(pre: &KernelK, post: &
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         post.cpu_op.view().view() == pre.cpu_op.view().view(),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
-            index_valid(NUM_CPUS, i) ==> {
-                let before = pre.cpu_arr.spec_index(i).value.locking_thread();
-                let after = post.cpu_arr.spec_index(i).value.locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.lock_state_u() == pre.cpu_arr.spec_index(i).value.lock_state_u(),
     ensures kernel_k_to_kernel_u(*pre).cpu_array == kernel_k_to_kernel_u(*post).cpu_array,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -203,10 +137,7 @@ pub(super) proof fn kernel_lock_states_unchanged_implies_u_container_map(pre: &K
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
             post.ctn_mp.dom().contains(p) && pre.ctn_mp.dom().contains(p) ==> {
-                let before = pre.ctn_mp.spec_index(p).locking_thread();
-                let after = post.ctn_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
                 &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
             },
     ensures kernel_k_to_kernel_u(*pre).container_map == kernel_k_to_kernel_u(*post).container_map,
@@ -230,27 +161,14 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
         zombie is Some ==> post.prc_mp.spec_index(zombie->Some_0).view().zombie,
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
-            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> {
-                let before = pre.prc_mp.spec_index(p).locking_thread();
-                let after = post.prc_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.prc_mp.dom().contains(p) && pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).lock_state_u() == pre.prc_mp.spec_index(p).lock_state_u(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             post.pt_mp.dom().contains(p) && pre.pt_mp.dom().contains(p) && (zombie is Some ==> p != post.prc_mp.spec_index(zombie->Some_0).view().pagetable) ==> {
-                let before = pre.pt_mp.spec_index(p).locking_thread();
-                let after = post.pt_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
+                &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
-            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> {
-                let before = pre.it_mp.spec_index(p).locking_thread();
-                let after = post.it_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> post.it_mp.spec_index(p).lock_state_u() == pre.it_mp.spec_index(p).lock_state_u(),
     ensures kernel_k_to_kernel_u(*pre).process_map == kernel_k_to_kernel_u(*post).process_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -270,12 +188,7 @@ proof fn kernel_lock_states_unchanged_implies_u_thread_map(pre: &KernelK, post: 
     requires
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
-            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> {
-                let before = pre.thrd_mp.spec_index(p).locking_thread();
-                let after = post.thrd_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u(),
     ensures kernel_k_to_kernel_u(*pre).thread_map == kernel_k_to_kernel_u(*post).thread_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -292,12 +205,7 @@ proof fn kernel_lock_states_unchanged_implies_u_endpoint_map(pre: &KernelK, post
     requires
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
-            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> {
-                let before = pre.ep_mp.spec_index(p).locking_thread();
-                let after = post.ep_mp.spec_index(p).locking_thread();
-                &&& (after is Write) == (before is Write)
-                &&& (after is Read) == (before is Read)
-            },
+            post.ep_mp.dom().contains(p) && pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).lock_state_u() == pre.ep_mp.spec_index(p).lock_state_u(),
     ensures kernel_k_to_kernel_u(*pre).endpoint_map == kernel_k_to_kernel_u(*post).endpoint_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -582,7 +490,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         ({
             let a = kernel_k_to_kernel_u(*pre);
             let process_u = a.process_map[process];
-            let state = if lock { LockStateU::WriteLocked } else { LockStateU::Unlocked };
+            let state = if lock { LockStateU::WriteLocked { writer: lctx.cpu_id() } } else { LockStateU::Unlocked };
             &&& a.thread_map.dom().contains(thread)
             &&& a.process_map.dom().contains(process)
             &&& process_u.pagetable is Some
@@ -611,7 +519,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     kernel_thread_projection_at(pre, thread); kernel_process_projection_at(pre, process);
     kernel_thread_progress_changed_implies_u_thread_map(pre, post, thread);
-    kernel_process_tables_lock_state_changed_implies_u_process_map(pre, post, process, pagetable, lock);
+    kernel_process_tables_lock_state_changed_implies_u_process_map(pre, post, process, pagetable, lock, lctx.cpu_id());
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
@@ -627,16 +535,14 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu),
         post.cpu_op.view().view() == pre.cpu_op.view().view(),
-        (post.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (pre.cpu_arr.spec_index(cpu).value.locking_thread() is Write),
-        (post.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (pre.cpu_arr.spec_index(cpu).value.locking_thread() is Read),
+        post.cpu_arr.spec_index(cpu).value.lock_state_u() == pre.cpu_arr.spec_index(cpu).value.lock_state_u(),
         post.it_mp == pre.it_mp,
         forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
             pre.pt_mp.dom().contains(p) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         match container {
             Some(p) => {
                 &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, p)
-                &&& (post.ctn_mp.spec_index(p).locking_thread() is Write) == (pre.ctn_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.ctn_mp.spec_index(p).locking_thread() is Read) == (pre.ctn_mp.spec_index(p).locking_thread() is Read)
+                &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
                 &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
             },
             None => post.ctn_mp == pre.ctn_mp,
@@ -644,32 +550,28 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
         match process {
             Some(p) => {
                 &&& post.prc_mp.unchanged_except(&pre.prc_mp, p)
-                &&& (post.prc_mp.spec_index(p).locking_thread() is Write) == (pre.prc_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.prc_mp.spec_index(p).locking_thread() is Read) == (pre.prc_mp.spec_index(p).locking_thread() is Read)
+                &&& post.prc_mp.spec_index(p).lock_state_u() == pre.prc_mp.spec_index(p).lock_state_u()
             },
             None => post.prc_mp == pre.prc_mp,
         },
         match thread {
             Some(p) => {
                 &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, p)
-                &&& (post.thrd_mp.spec_index(p).locking_thread() is Write) == (pre.thrd_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.thrd_mp.spec_index(p).locking_thread() is Read) == (pre.thrd_mp.spec_index(p).locking_thread() is Read)
+                &&& post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u()
             },
             None => post.thrd_mp == pre.thrd_mp,
         },
         match endpoint {
             Some(p) => {
                 &&& post.ep_mp.unchanged_except(&pre.ep_mp, p)
-                &&& (post.ep_mp.spec_index(p).locking_thread() is Write) == (pre.ep_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.ep_mp.spec_index(p).locking_thread() is Read) == (pre.ep_mp.spec_index(p).locking_thread() is Read)
+                &&& post.ep_mp.spec_index(p).lock_state_u() == pre.ep_mp.spec_index(p).lock_state_u()
             },
             None => post.ep_mp == pre.ep_mp,
         },
         match table {
             Some(p) => {
                 &&& post.pt_mp.unchanged_except(&pre.pt_mp, p)
-                &&& (post.pt_mp.spec_index(p).locking_thread() is Write) == (pre.pt_mp.spec_index(p).locking_thread() is Write)
-                &&& (post.pt_mp.spec_index(p).locking_thread() is Read) == (pre.pt_mp.spec_index(p).locking_thread() is Read)
+                &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
             },
             None => post.pt_mp == pre.pt_mp,
         },
@@ -679,7 +581,7 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
 pub proof fn kernel_container_root_published_implies_u_step(
     before: &KernelK, after: &KernelK, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr, thread: RwLockThreadPtr,
     transfer_cpu: CpuId, funding: usize, process_quota: usize, moved: Set<PagePtr>, thread_page: PagePtr, pcid_allocator: RwLockPcidAllocatorPtr,
-    progress: Option<SyscallProgress>,
+    progress: Option<SyscallProgress>, cpu_id: CpuId,
 )
     requires
         before.inv(),
@@ -691,7 +593,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         before.cpu_arr.spec_index(transfer_cpu).value.view().view().owning_container == parent,
         kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
         after.cpu_op.view().view() == before.cpu_op.view().view(),
-        after.cpu_arr.spec_index(transfer_cpu).value.locking_thread() is Write,
+        after.cpu_arr.spec_index(transfer_cpu).value.wlocked_by_thread(cpu_id),
         forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu ==>
             after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
         after.ep_mp == before.ep_mp,
@@ -750,9 +652,9 @@ pub proof fn kernel_container_root_published_implies_u_step(
         moved.contains(child),
         moved.contains(process),
         moved.contains(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set),
-        after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).locking_thread() is Write,
+        after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).wlocked_by_thread(cpu_id),
         !after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).being_killed(),
-        after.ctn_mp.spec_index(child).locking_thread() is Write,
+        after.ctn_mp.spec_index(child).wlocked_by_thread(cpu_id),
         after.ctn_mp.spec_index(child).lock_process_owner_u() == Some(LockOwnerId::Some(0)),
         !after.ctn_mp.spec_index(child).being_killed(),
         !after.ctn_mp.spec_index(child).view().zombie,
@@ -788,7 +690,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
             after.allc_1g_mp.spec_index(p).quota.view().view() == before.allc_1g_mp.spec_index(p).quota.view().view(),
         after.prc_mp.dom() == before.prc_mp.dom().insert(process),
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> after.prc_mp.spec_index(p) == before.prc_mp.spec_index(p),
-        after.prc_mp.spec_index(process).locking_thread() is Write,
+        after.prc_mp.spec_index(process).wlocked_by_thread(cpu_id),
         !after.prc_mp.spec_index(process).being_killed(),
         !after.prc_mp.spec_index(process).view().zombie,
         after.prc_mp.spec_index(process).view().iommu_table is None,
@@ -807,41 +709,41 @@ pub proof fn kernel_container_root_published_implies_u_step(
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
-        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).locking_thread() is Write,
+        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
     ensures
         kernel_k_to_kernel_u(*before).thread_map.dom().contains(thread),
         kernel_k_to_kernel_u(*before).thread_map[thread].syscall_progress == before.thrd_mp.spec_index(thread).view().syscall_progress.view(),
-        kernel_u_container_root_published(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), parent, child, process, thread, transfer_cpu, funding, process_quota, moved, thread_page, progress),
+        kernel_u_container_root_published(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), parent, child, process, thread, transfer_cpu, funding, process_quota, moved, thread_page, progress, cpu_id),
 {
     reveal(kernel_u_container_root_published);
     kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, thread); kernel_cpu_projection_at(before, transfer_cpu);
-    kernel_container_root_published_implies_u_cpu_array(before, after, transfer_cpu);
+    kernel_container_root_published_implies_u_cpu_array(before, after, transfer_cpu, cpu_id);
     kernel_container_root_published_implies_u_thread_map(before, after, thread, funding, progress);
-    kernel_container_root_published_implies_u_process_map(before, after, child, process, process_quota); kernel_process_projection_at(after, process);
-    kernel_container_root_published_implies_u_container_map(before, after, parent, child, process, funding, process_quota, moved, thread_page, pcid_allocator);
+    kernel_container_root_published_implies_u_process_map(before, after, child, process, process_quota, cpu_id); kernel_process_projection_at(after, process);
+    kernel_container_root_published_implies_u_container_map(before, after, parent, child, process, funding, process_quota, moved, thread_page, pcid_allocator, cpu_id);
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 /// Publishing a container root projects to the cpu array with only `transfer_cpu` write-locked.
-proof fn kernel_container_root_published_implies_u_cpu_array(before: &KernelK, after: &KernelK, transfer_cpu: CpuId)
+proof fn kernel_container_root_published_implies_u_cpu_array(before: &KernelK, after: &KernelK, transfer_cpu: CpuId, cpu_id: CpuId)
     requires
         index_valid(NUM_CPUS, transfer_cpu),
         kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
         after.cpu_op.view().view() == before.cpu_op.view().view(),
-        after.cpu_arr.spec_index(transfer_cpu).value.locking_thread() is Write,
+        after.cpu_arr.spec_index(transfer_cpu).value.wlocked_by_thread(cpu_id),
         forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu ==>
             after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
-            kernel_k_to_kernel_u(*after).cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] })
+            kernel_k_to_kernel_u(*after).cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.cpu_array[transfer_cpu as int] })
         }),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after); reveal(kernel_cpu_nonlock_fields_unchanged);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] }), i => {
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.cpu_array[transfer_cpu as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
     });
 }
@@ -887,14 +789,14 @@ proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, 
 }
 
 /// Publishing a container root projects to the process map with only the new write-locked root `process` added.
-proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK, after: &KernelK, child: RwLockContainerPtr, process: RwLockProcessPtr, process_quota: usize)
+proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK, after: &KernelK, child: RwLockContainerPtr, process: RwLockProcessPtr, process_quota: usize, cpu_id: CpuId)
     requires
         process_pagetable_wf(before.prc_mp, before.pt_mp),
         !before.prc_mp.dom().contains(process),
         after.it_mp == before.it_mp,
         after.prc_mp.dom() == before.prc_mp.dom().insert(process),
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> after.prc_mp.spec_index(p) == before.prc_mp.spec_index(p),
-        after.prc_mp.spec_index(process).locking_thread() is Write,
+        after.prc_mp.spec_index(process).wlocked_by_thread(cpu_id),
         !after.prc_mp.spec_index(process).being_killed(),
         !after.prc_mp.spec_index(process).view().zombie,
         after.prc_mp.spec_index(process).view().iommu_table is None,
@@ -912,15 +814,15 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
-        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).locking_thread() is Write,
+        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             post.process_map == pre.process_map.insert(process, ProcessU {
-                lock_state: LockStateU::WriteLocked, zombie: false,
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
                 iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
                 parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
             })
@@ -934,8 +836,8 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
     assert_seqs_equal!(post.process_map[process].uppertree_seq == Seq::empty());
     assert_seqs_equal!(post.process_map[process].owned_threads == Seq::empty());
     assert_maps_equal!(post.process_map, pre.process_map.insert(process, ProcessU {
-        lock_state: LockStateU::WriteLocked, zombie: false,
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
+        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
         iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     }), p => {
@@ -947,7 +849,7 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
 /// from `parent`, and `child` recorded in every ancestor's subtree.
 proof fn kernel_container_root_published_implies_u_container_map(
     before: &KernelK, after: &KernelK, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr, funding: usize, process_quota: usize,
-    moved: Set<PagePtr>, thread_page: PagePtr, pcid_allocator: RwLockPcidAllocatorPtr,
+    moved: Set<PagePtr>, thread_page: PagePtr, pcid_allocator: RwLockPcidAllocatorPtr, cpu_id: CpuId,
 )
     requires
         container_scheduler_wf(before.ctn_mp, before.sched_mp),
@@ -985,9 +887,9 @@ proof fn kernel_container_root_published_implies_u_container_map(
         after.ctn_mp.spec_index(parent).view().owned_pages.view() == before.ctn_mp.spec_index(parent).view().owned_pages.view().difference(moved),
         after.ctn_mp.spec_index(parent).view().owned_pages.view().contains(thread_page),
         moved.contains(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set),
-        after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).locking_thread() is Write,
+        after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).wlocked_by_thread(cpu_id),
         !after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).being_killed(),
-        after.ctn_mp.spec_index(child).locking_thread() is Write,
+        after.ctn_mp.spec_index(child).wlocked_by_thread(cpu_id),
         after.ctn_mp.spec_index(child).lock_process_owner_u() == Some(LockOwnerId::Some(0)),
         !after.ctn_mp.spec_index(child).being_killed(),
         !after.ctn_mp.spec_index(child).view().zombie,
@@ -1039,10 +941,10 @@ proof fn kernel_container_root_published_implies_u_container_map(
             &&& post.container_map[parent].owned_pages.contains(thread_page)
             &&& moved.contains(post.container_map[child].cpu_set)
             &&& post.container_map[child] == (ContainerU {
-                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
                 root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
                 parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
-                cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
+                cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id },
                 cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
                 quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
             })

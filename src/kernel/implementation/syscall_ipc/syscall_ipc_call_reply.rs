@@ -367,7 +367,7 @@ verus! {
             reveal(kernel_thread_state_changed);
             locked_k.thrd_mp.typed_lock_map_aligned_write_at(locked_lctx.thread_lock_map(), locked_lctx.thread_id(), caller_ptr);
             kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(&pre_k, &locked_k, &locked_lctx, cpu_id, callee_ptr, caller_ptr, ep_ptr, None);
-            kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &taken_k, callee_ptr, caller_ptr, Some(ep_ptr));
+            kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &taken_k, callee_ptr, caller_ptr, Some(ep_ptr), cpu_id);
             kernel_thread_syscall_progress_changed_implies_u_step(&taken_k, &*krnl, callee_ptr);
             endpoint_perms_wf_at(locked_k.ep_mp, ep_ptr); locked_k.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len();
             ipc_reply_dangling_caller_step_pre_from_k(&pre_k, cpu_id, ep_idx, prc_ptr, callee_ptr, ep_ptr, caller_ptr);

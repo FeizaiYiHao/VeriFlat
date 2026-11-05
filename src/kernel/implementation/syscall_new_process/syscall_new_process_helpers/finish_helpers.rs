@@ -231,7 +231,12 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
             old(krnl).ep_mp.dom().contains(p) ==> if endpoint == Some(p) { final(krnl).ep_mp.spec_index(p).locking_thread() is None } else { final(krnl).ep_mp.spec_index(p).locking_thread() == old(krnl).ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)]
             old(krnl).pt_mp.dom().contains(p) ==> if p == target_pagetable_ptr { final(krnl).pt_mp.spec_index(p).locking_thread() is None }
-                else if p == source_pagetable_ptr { !(final(krnl).pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == source_pagetable_ptr {
+                    &&& old(krnl).pt_mp.spec_index(p).rlocked_by_thread(cpu_id)
+                    &&& final(krnl).pt_mp.spec_index(p).locking_thread() == (if old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id).dom().is_empty() { RwLockState::None } else {
+                        RwLockState::Read { reader_map: old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id) }
+                    })
+                }
                 else { final(krnl).pt_mp.spec_index(p).locking_thread() == old(krnl).pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)]
             old(krnl).it_mp.dom().contains(p) ==> if iommu_table == Some(p) { final(krnl).it_mp.spec_index(p).locking_thread() is None } else { final(krnl).it_mp.spec_index(p).locking_thread() == old(krnl).it_mp.spec_index(p).locking_thread() },

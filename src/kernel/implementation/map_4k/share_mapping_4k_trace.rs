@@ -279,11 +279,12 @@ pub proof fn share_4k_directory_step_from_k(
         post.thrd_mp.spec_index(progress_thread).being_killed() == mid.thrd_mp.spec_index(progress_thread).being_killed(),
         post.thrd_mp.spec_index(progress_thread).view().syscall_progress.view() == share_4k_progress_after_directory(pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view(), level),
         pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr == prc_ptr,
+        mid.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
         level is L3 ==> whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
-                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
+                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
@@ -312,7 +313,7 @@ pub proof fn share_4k_directory_step_from_k(
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range;
-        assert(whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range));
+        assert(whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range, cpu_id));
     }
     if !typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) {
         pre.pt_mp.typed_lock_map_aligned_read_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr); kernel_process_projection_at(pre, prc_ptr);

@@ -285,6 +285,7 @@ fn end_new_process_finish_step(
         kernel_new_thread_fields(&finish_k, krnl, child_ptr, current_thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, *initial_regs, endpoint, None),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(&finish_k, &finish_lctx),
+        finish_lctx.cpu_id() == cpu_id,
         typed_lock_map_contains_mode(finish_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(finish_lctx.process_lock_map(), child_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(finish_lctx.thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
@@ -322,7 +323,12 @@ fn end_new_process_finish_step(
             finish_k.ep_mp.dom().contains(p) ==> if endpoint == Some(p) { krnl.ep_mp.spec_index(p).locking_thread() is None } else { krnl.ep_mp.spec_index(p).locking_thread() == finish_k.ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
             finish_k.pt_mp.dom().contains(p) ==> if p == finish_k.prc_mp.spec_index(child_ptr).view().pagetable { krnl.pt_mp.spec_index(p).locking_thread() is None }
-                else if p == finish_k.prc_mp.spec_index(parent_ptr).view().pagetable { !(krnl.pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == finish_k.prc_mp.spec_index(parent_ptr).view().pagetable {
+                    &&& finish_k.pt_mp.spec_index(p).rlocked_by_thread(cpu_id)
+                    &&& krnl.pt_mp.spec_index(p).locking_thread() == (if finish_k.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id).dom().is_empty() { RwLockState::None } else {
+                        RwLockState::Read { reader_map: finish_k.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id) }
+                    })
+                }
                 else { krnl.pt_mp.spec_index(p).locking_thread() == finish_k.pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
             finish_k.it_mp.dom().contains(p) ==> if finish_k.prc_mp.spec_index(child_ptr).view().iommu_table == Some(p) { krnl.it_mp.spec_index(p).locking_thread() is None }

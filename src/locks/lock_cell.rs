@@ -34,8 +34,22 @@ pub enum DynamicWLockResult {
     DepthConflict { observed_owner: LockOwnerId },
 }
 
-/// Observable mode of a lock, independent of ownership and reader count.
-pub ghost enum LockStateU { Unlocked, ReadLocked, WriteLocked }
+/// Observable mode of a lock and the cpus holding it.
+#[verifier::ext_equal]
+pub ghost enum LockStateU { Unlocked, ReadLocked { readers: Set<CpuId> }, WriteLocked { writer: CpuId } }
+
+impl LockStateU {
+    /// The cpus holding the lock for reading; empty unless read-locked.
+    pub open spec fn readers(self) -> Set<CpuId> { if self is ReadLocked { self->readers } else { Set::empty() } }
+    /// The lock after `cpu_id` takes or keeps a read hold.
+    pub open spec fn with_reader(self, cpu_id: CpuId) -> LockStateU { LockStateU::ReadLocked { readers: self.readers().insert(cpu_id) } }
+    /// The lock after `cpu_id` releases its read hold: unlocked once no reader remains.
+    pub open spec fn without_reader(self, cpu_id: CpuId) -> LockStateU {
+        if self.readers().remove(cpu_id).is_empty() { LockStateU::Unlocked } else { LockStateU::ReadLocked { readers: self.readers().remove(cpu_id) } }
+    }
+    /// `cpu_id` holds a read hold on the lock.
+    pub open spec fn read_held_by(self, cpu_id: CpuId) -> bool { self is ReadLocked && self->readers.contains(cpu_id) }
+}
 
 pub enum RwLockState {
     Write { thread_id: LockThreadId, lock_id: LockToken },
@@ -60,7 +74,7 @@ pub struct LockCell<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     control: Ghost<LockControl>,
     /// The lock object has been initialized.
     is_init: Ghost<bool>,
-    /// Current holders: the writer's thread and lock id, or the lock id of each reader thread.
+    /// Current holders: the writer's cpu and lock id, or the lock id of each reader cpu.
     locking_thread: Ghost<RwLockState>,
 }
 
@@ -104,8 +118,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS
     pub open spec fn lock_state_u(&self) -> LockStateU {
         match self.locking_thread() {
             RwLockState::None => LockStateU::Unlocked,
-            RwLockState::Read { .. } => LockStateU::ReadLocked,
-            RwLockState::Write { .. } => LockStateU::WriteLocked,
+            RwLockState::Read { reader_map } => LockStateU::ReadLocked { readers: reader_map.dom() },
+            RwLockState::Write { thread_id, .. } => LockStateU::WriteLocked { writer: thread_id },
         }
     }
 

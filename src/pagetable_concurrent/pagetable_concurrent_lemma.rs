@@ -275,7 +275,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.kernel_l4_end() <= spec_v2l4index(w.va),
             self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)),
             self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
-                LockStateU::WriteLocked
+                LockStateU::WriteLocked { writer: self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id }
             } else {
                 LockStateU::Unlocked
             },

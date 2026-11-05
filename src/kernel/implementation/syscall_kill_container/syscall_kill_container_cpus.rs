@@ -302,7 +302,7 @@ fn kill_container_cpus_enter(
     proof {
         let entered_k = *krnl;
         kill_container_cpus_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, ContainerKillStage::Walk);
-        kernel_cpu_set_locked_and_marked_implies_u_step(&before, &marked_k, ctn_ptr);
+        kernel_cpu_set_locked_and_marked_implies_u_step(&before, &marked_k, ctn_ptr, cpu_id);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
         kill_container_cpus_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, ctn_ptr);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };

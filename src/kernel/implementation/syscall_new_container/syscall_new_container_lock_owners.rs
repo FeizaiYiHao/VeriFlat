@@ -309,7 +309,8 @@ pub(super) fn new_container_lock_source_windows(
         ret.0 ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         ret.0 ==> kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         ret.0 ==> kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks, *range),
+        ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks, *range, final(lctx).thread_id()),
         ret.0 ==> pagetable_window_locks_after_unlocking_range(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks, *range) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks,
         ret.0 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
             va_range_2m_windows(*range).contains(w) && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> ret.2.view().dom().contains(w),

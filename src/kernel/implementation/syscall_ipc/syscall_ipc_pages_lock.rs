@@ -75,8 +75,10 @@ fn ipc_pages_lock_pair_windows(
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_1g(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus,
         (target_pagetable_lock_perm.state() is WriteLock) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
-        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range),
-        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range, final(lctx).thread_id()),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range, final(lctx).thread_id()),
         pagetable_window_locks_after_unlocking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
         pagetable_window_locks_after_unlocking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks,
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
@@ -503,6 +505,9 @@ fn ipc_pages_lock_tables_and_windows(
             { old(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Read_reader_map } else { Map::empty() }).insert(final(lctx).thread_id(), ret.2.view().lock_id()) }),
         !write_target ==> final(krnl).pt_mp.spec_index(target_pagetable).locking_thread() == (RwLockState::Read { reader_map: (if old(krnl).pt_mp.spec_index(target_pagetable).locking_thread() is Read
             { old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Read_reader_map } else { Map::empty() }).insert(final(lctx).thread_id(), ret.3.view().lock_id()) }),
+        final(krnl).pt_mp.spec_index(source_pagetable).lock_state_u() == old(krnl).pt_mp.spec_index(source_pagetable).lock_state_u().with_reader(cpu_id),
+        final(krnl).pt_mp.spec_index(target_pagetable).lock_state_u()
+            == if write_target { LockStateU::WriteLocked { writer: cpu_id } } else { old(krnl).pt_mp.spec_index(target_pagetable).lock_state_u().with_reader(cpu_id) },
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -547,10 +552,10 @@ fn ipc_pages_lock_tables_and_windows(
         ret.0 == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         ret.1 == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks == if ret.0 && ret.1 {
-            pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range)
+            pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range, cpu_id)
         } else { whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks },
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == if ret.0 && ret.1 {
-            pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range)
+            pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range, cpu_id)
         } else { whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks },
         ret.0 && ret.1 ==> pagetable_window_locks_after_unlocking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range)
             == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
@@ -726,9 +731,9 @@ fn ipc_pages_unlock_tables_and_windows(
         old(krnl).pt_mp.spec_index(target_pagetable).locking_thread() == (RwLockState::Read { reader_map: (if old(steps).snapshot_k().pt_mp.spec_index(target_pagetable).locking_thread() is Read
             { old(steps).snapshot_k().pt_mp.spec_index(target_pagetable).locking_thread()->Read_reader_map } else { Map::empty() }).insert(old(lctx).thread_id(), target_pagetable_lock_perm.lock_id()) }),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range, cpu_id),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range, cpu_id),
         pagetable_window_locks_after_unlocking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range)
             == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
         pagetable_window_locks_after_unlocking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range)
@@ -922,6 +927,9 @@ fn ipc_pages_lock_tables_attempt(
         ret.7.view().thread_lock_map() == old(lctx).thread_lock_map(),
         ret.7.view().endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         ret.0 ==> final(krnl).pt_mp.spec_index(target_pagetable).locking_thread() is Write,
+        final(krnl).pt_mp.spec_index(source_pagetable).lock_state_u() == final(steps).snapshot_k().pt_mp.spec_index(source_pagetable).lock_state_u().with_reader(cpu_id),
+        final(krnl).pt_mp.spec_index(target_pagetable).lock_state_u()
+            == if ret.0 { LockStateU::WriteLocked { writer: cpu_id } } else { final(steps).snapshot_k().pt_mp.spec_index(target_pagetable).lock_state_u().with_reader(cpu_id) },
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == final(lctx).cpu_id(),
         current_thrd_ptr != peer_thrd_ptr,
@@ -1016,10 +1024,10 @@ fn ipc_pages_lock_tables_attempt(
         ret.1 == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         ret.2 == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).lower.pagetable_window_locks == if ret.1 && ret.2 {
-            pagetable_window_locks_after_locking_range(whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range)
+            pagetable_window_locks_after_locking_range(whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks, *source_range, cpu_id)
         } else { whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), source_pagetable).lower.pagetable_window_locks },
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == if ret.1 && ret.2 {
-            pagetable_window_locks_after_locking_range(whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range)
+            pagetable_window_locks_after_locking_range(whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks, *target_range, cpu_id)
         } else { whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), target_pagetable).lower.pagetable_window_locks },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable && ret.5.view().dom().contains(w) || p == target_pagetable && ret.6.view().dom().contains(w)),
@@ -1370,14 +1378,14 @@ pub(super) fn ipc_pages_lock_tables(
         ipc_pages_lock_tables_step_pre_from_k(&lock_pre_k, &lock_pre_lctx, cpu_id, current_thrd_ptr, peer_thrd_ptr, ep_ptr, channel_index, source_thread, target_thread, source_process,
             target_process, source_pagetable, target_pagetable, tables);
         assert(ipc_pages_lock_tables_step(kernel_k_to_kernel_u(lock_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, tables)) by {
-            if fill { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
             assert(krnl.pt_lower.view() =~= lock_pre_k.pt_lower.view().insert(source_pagetable, krnl.pt_lower.view().spec_index(source_pagetable))
                 .insert(target_pagetable, krnl.pt_lower.view().spec_index(target_pagetable)));
             kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&lock_pre_k, &*krnl, source_process, target_process, source_pagetable, target_pagetable,
                 current_thrd_ptr);
             ipc_pages_lock_tables_step_from_u(kernel_k_to_kernel_u(lock_pre_k), kernel_k_to_kernel_u(*krnl), &lock_pre_k, cpu_id, current_thrd_ptr, *source_range, *target_range,
-                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, tables,
-                whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).lower.pagetable_window_locks, whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).lower.pagetable_window_locks);
+                peer_thrd_ptr, source_process, target_process, source_pagetable, target_pagetable, tables, krnl.pt_mp.spec_index(source_pagetable).lock_state_u(),
+                krnl.pt_mp.spec_index(target_pagetable).lock_state_u(), whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).lower.pagetable_window_locks,
+                whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).lower.pagetable_window_locks);
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         let ghost lock_before = steps.view();
@@ -1530,6 +1538,8 @@ pub(super) fn ipc_pages_release_tables_and_progress(
         } else { whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks },
         !(ret.view().pt_mp.spec_index(source_pagetable).locking_thread() is Write),
         !(ret.view().pt_mp.spec_index(target_pagetable).locking_thread() is Write),
+        ret.view().pt_mp.spec_index(source_pagetable).lock_state_u() == old(krnl).pt_mp.spec_index(source_pagetable).lock_state_u().without_reader(cpu_id),
+        ret.view().pt_mp.spec_index(target_pagetable).lock_state_u() == old(krnl).pt_mp.spec_index(target_pagetable).lock_state_u().without_reader(cpu_id),
         ret.view().thrd_mp.unchanged_except(&old(krnl).thrd_mp, current_thrd_ptr),
         ret.view().thrd_mp.spec_index(current_thrd_ptr).view() == (Thread { syscall_progress: ret.view().thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(current_thrd_ptr).view() }),
         ret.view().thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thrd_ptr, tables: IpcPagesTables::Unlocked, released: Some(result) }),
@@ -1545,7 +1555,10 @@ pub(super) fn ipc_pages_release_tables_and_progress(
         final(krnl).ep_mp.dom().contains(ep_ptr),
         final(krnl).ep_mp.spec_index(ep_ptr) == old(krnl).ep_mp.spec_index(ep_ptr),
 {
-    proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable); }
+    proof {
+        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+        if target_write { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
+    }
     if user {
         ipc_pages_unlock_pair_windows(krnl, source_range, target_range, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&source_pagetable_lock_perm),
             Tracked(&target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows));

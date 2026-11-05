@@ -192,7 +192,10 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     &&& i > 0 ==> {
         &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
         &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
-        &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state
+        &&& if typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
+            &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
+            &&& kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: pre_lctx.cpu_id() })
+        } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(pre_lctx.cpu_id()) }
     }
     &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
     &&& post.ctn_mp.spec_index(target_container).view_rodata() == pre.ctn_mp.spec_index(target_container).view_rodata()
@@ -302,7 +305,10 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
             let source_process = mid.pt_mp.spec_index(source_pagetable).view().proc_ptr;
             &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
             &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
-            &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state
+            &&& if typed_lock_map_contains_mode(mid_lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
+                &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
+                &&& kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: mid_lctx.cpu_id() })
+            } else { post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(mid_lctx.cpu_id()) }
         },
         held_pages_unchanged(mid.pg_arr, post.pg_arr, mid_lctx),
         held_containers_unchanged(mid.ctn_mp, post.ctn_mp, mid_lctx),

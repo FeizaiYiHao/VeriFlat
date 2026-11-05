@@ -39,7 +39,7 @@ pub(super) proof fn cpu_outside_container_implies_no_tlb_of_container_pagetable(
 /// read-locking the cpu set of container `ctn_ptr` and clearing at most one cpu's TLB for `pcid` while the thread
 /// `thrd_ptr`, its process `pre` names, and the process and container locks `held` keeps stay as in `pre`; the containers,
 /// IOMMU tables, pages, and cpus `held` holds, and the lock and kill state of cpu `local_cpu`, are unchanged; table
-/// `pagetable` keeps its kill mark, this thread's read count, and, unless `table_write_held`, its higher half; every window
+/// `pagetable` keeps its kill mark, the reader entry of `held`'s cpu, and, unless `table_write_held`, its higher half; every window
 /// of it that `held` holds keeps its lock state, L1 table, L2 entry, and 2M and 4K mappings.
 #[verifier::opaque]
 pub(super) open spec fn flush_pagetable_tlbs_eol_loop_framing(pre: KernelK, cur: KernelK, held: &LocalContext, pre_steps: &KernelSteps, cur_steps: &KernelSteps, flushed: nat,
@@ -53,7 +53,7 @@ pub(super) open spec fn flush_pagetable_tlbs_eol_loop_framing(pre: KernelK, cur:
         let old_u = cur_steps.view()[j].old_u;
         let entry_u = kernel_k_to_kernel_u(pre);
         let prc_ptr = pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-        let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+        let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
         &&& cur_steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, cur_steps.view()[j].new_u, pcid)
         &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
         &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)
@@ -112,7 +112,7 @@ pub(super) proof fn flush_pagetable_tlbs_eol_flush_step(pre: KernelK, mid: Kerne
             let old_u = post_steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(pre);
             let prc_ptr = pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& post_steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, post_steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
             &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)
@@ -216,7 +216,7 @@ pub(super) proof fn flush_pagetable_tlbs_eol_exit(pre: KernelK, cur: KernelK, po
             let entry_u = kernel_k_to_kernel_u(pre);
             let prc_ptr = pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
             let ctn_ptr = pre.thrd_mp.spec_index(thrd_ptr).view().owning_container;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
             &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)

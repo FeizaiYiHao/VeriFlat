@@ -73,7 +73,7 @@ pub(crate) proof fn kill_container_cpus_step_from_u(pre: KernelU, marked: Kernel
         pre.container_map[ctn_ptr].children.len() == 0,
         pre.container_map[ctn_ptr].owned_processes.is_empty(),
         marked == (KernelU {
-            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
+            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
         }),
         post == (KernelU {
             thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_container_progress(ctn_ptr, ContainerKillStage::Cpus), ..marked.thread_map[thrd_ptr] }),

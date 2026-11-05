@@ -77,10 +77,10 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let thrd_ptr = cpu.current_thread->Some_0;
     let child_ptr = old_u.process_map[prc_ptr].children[child_index as int];
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[prc_ptr] }) .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.process_map[prc_ptr] }) .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.process_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
-            lock_state: LockStateU::WriteLocked, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..old_u.thread_map[thrd_ptr]
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..old_u.thread_map[thrd_ptr]
         }),
         ..old_u
     })
@@ -122,7 +122,7 @@ pub open spec fn kill_process_mark_child_step(old_u: KernelU, new_u: KernelU, cp
     &&& 0 < target.children.len()
     &&& old_u.process_map.dom().contains(child_ptr)
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
+        process_map: old_u.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.process_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, child_ptr, KillStage::Walk)),
         ..old_u
     })
@@ -173,7 +173,7 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
     &&& kill_process_target_has_thread(old_u, cpu_id)
     &&& !victim.state.is_reply_waiting()
     &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Thread { thread: victim_ptr })),
+        thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Thread { thread: victim_ptr })),
         ..old_u
     })
 }
@@ -317,8 +317,8 @@ pub open spec fn kill_process_lock_table_step(old_u: KernelU, new_u: KernelU, cp
     &&& target.pagetable is Some
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..target.pagetable->Some_0 }),
-            iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..target.pagetable->Some_0 }),
+            iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..t }), None => None },
             ..target
         }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Reclaim { flushed: false })),

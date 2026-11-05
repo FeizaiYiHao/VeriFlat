@@ -138,7 +138,7 @@ pub(super) fn publish_new_container_staged_root(
         ret.6.view().0 == (KernelK { pg_arr: ret.6.view().0.pg_arr, cpu_arr: ret.6.view().0.cpu_arr, ..*old(krnl) }),
         kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, ret.6.view().0.cpu_arr),
         ret.6.view().0.cpu_arr.spec_index(transfer_cpu_id).value.view().view().state is Off,
-        ret.6.view().0.cpu_arr.spec_index(transfer_cpu_id).value.locking_thread() is Write,
+        ret.6.view().0.cpu_arr.spec_index(transfer_cpu_id).value.wlocked_by_thread(old(lctx).thread_id()),
         forall|i: CpuId| #![trigger ret.6.view().0.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu_id ==>
             ret.6.view().0.cpu_arr.spec_index(i).value.locking_thread() == old(krnl).cpu_arr.spec_index(i).value.locking_thread(),
         old(krnl).cpu_arr.spec_index(transfer_cpu_id).value.view().view().owning_container == parent_ctn_ptr,
@@ -160,9 +160,10 @@ pub(super) fn publish_new_container_staged_root(
             }) }),
         ret.6.view().2.thrd_mp.spec_index(current_thrd_ptr).locking_thread() == ret.6.view().1.thrd_mp.spec_index(current_thrd_ptr).locking_thread(),
         ret.6.view().2.thrd_mp.spec_index(current_thrd_ptr).being_killed() == ret.6.view().1.thrd_mp.spec_index(current_thrd_ptr).being_killed(),
-        ret.6.view().2.ctn_mp.spec_index(container_page).locking_thread() is Write,
-        ret.6.view().2.pt_mp.spec_index(pages_4k.view()[5]).locking_thread() is Write,
-        ret.6.view().2.cpu_set_mp.spec_index(pages_4k.view()[8]).locking_thread() is Write,
+        ret.6.view().2.ctn_mp.spec_index(container_page).wlocked_by_thread(old(lctx).thread_id()),
+        ret.6.view().2.prc_mp.spec_index(pages_4k.view()[4]).wlocked_by_thread(old(lctx).thread_id()),
+        ret.6.view().2.pt_mp.spec_index(pages_4k.view()[5]).wlocked_by_thread(old(lctx).thread_id()),
+        ret.6.view().2.cpu_set_mp.spec_index(pages_4k.view()[8]).wlocked_by_thread(old(lctx).thread_id()),
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.6.view().2),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pages_4k.view().spec_index(5)).is_empty(),
@@ -377,6 +378,10 @@ pub(super) fn publish_new_container_staged_root(
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(staged_k.pt_mp, staged_k.pt_lower.view(), source_pagetable_ptr)
             &&& krnl.pt_mp.spec_index(pagetable_page).view().table_stale_cpus.view() == Set::<CpuId>::empty()
         }) by { reveal(publish_staged_container_root_eof_transition_framing); };
+        krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container_page);
+        krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_page);
+        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_page);
+        krnl.cpu_set_mp.typed_lock_map_aligned_write_at(lctx.cpu_set_lock_map(), lctx.thread_id(), cpu_set_page);
     }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress {
         range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,

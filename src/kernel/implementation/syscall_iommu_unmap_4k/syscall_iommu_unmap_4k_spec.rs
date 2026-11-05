@@ -88,14 +88,14 @@ pub open spec fn iommu_unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::IommuUnmap4k { iova_range, unmapped: 0, flushed: false };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..old_u.container_map.spec_index(thread.owning_container)
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..old_u.container_map.spec_index(thread.owning_container)
         }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            lock_state: LockStateU::WriteLocked, iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.iommu_table->Some_0 }), ..process
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process.iommu_table->Some_0 }), ..process
         }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..thread }),
         ..old_u
     })
 }

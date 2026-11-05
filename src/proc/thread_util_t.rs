@@ -231,7 +231,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, I: SpinLockInner>
     LockedMap<usize, T, ROT, GhostT, NO_KILL_STATE, I> {
-    pub fn retype_4k_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
+    pub fn retype_4k_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
             !(rodata.container_source() is Dynamic),
             !(rodata.process_source() is Dynamic),
@@ -252,12 +252,12 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !final(self).spec_index(pg_ptr).being_killed(),
             final(self).spec_index(pg_ptr).locking_thread() is None,
     {
-        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
         let Tracked(lock_perm) = self.retype_4k_and_insert(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id));
         self.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
-    pub fn retype_2m_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
+    pub fn retype_2m_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
             !(rodata.container_source() is Dynamic),
             !(rodata.process_source() is Dynamic),
@@ -278,7 +278,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !final(self).spec_index(pg_ptr).being_killed(),
             final(self).spec_index(pg_ptr).locking_thread() is None,
     {
-        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
         let Tracked(lock_perm) = self.retype_2m_and_insert(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id), LockControl::Clear);
         self.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
@@ -286,7 +286,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, I: KillableLockInner>
     LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {
-    pub fn retype_4k_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
+    pub fn retype_4k_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
             !(rodata.container_source() is Dynamic),
             !(rodata.process_source() is Dynamic),
@@ -307,14 +307,14 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !final(self).spec_index(pg_ptr).being_killed(),
             final(self).spec_index(pg_ptr).locking_thread() is None,
     {
-        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
         let Tracked(lock_perm) = self.retype_4k_and_insert(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id));
         self.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
     /// Boot-only: retype a dynamic lock held under the concrete owner `requested`, then release it.
     pub fn retype_2m_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>,
-        cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>, requested: LockOwnerId)
+        cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>, requested: LockOwnerId)
         requires
             !(rodata.container_source() is Dynamic),
             rodata.process_source() is Dynamic,
@@ -336,7 +336,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !final(self).spec_index(pg_ptr).being_killed(),
             final(self).spec_index(pg_ptr).locking_thread() is None,
     {
-        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
         let Tracked(lock_perm) = self.retype_2m_and_insert(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id), LockControl::DynamicProcess(requested));
         self.dynamic_wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
@@ -383,7 +383,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         ret.3.view().addr() == ret.2,
         ret.3.view().value().view() == thrd_ptr,
 {
-    let tracked mut lctx = LocalContext::new_bootstrap(0, thrd_ptr);
+    let tracked mut lctx = LocalContext::new_bootstrap(0);
     let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thrd_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thrd_ptr)));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thrd_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }

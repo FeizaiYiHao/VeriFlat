@@ -561,7 +561,7 @@ pub open spec fn kernel_u_container_quota_2m_increased(pre: KernelU, post: Kerne
 pub open spec fn kernel_u_container_root_published(
     pre: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr,
     process: RwLockProcessPtr, thread: RwLockThreadPtr, transfer_cpu: CpuId, funding: usize, process_quota: usize,
-    moved: Set<PagePtr>, thread_page: PagePtr, progress: Option<SyscallProgress>,
+    moved: Set<PagePtr>, thread_page: PagePtr, progress: Option<SyscallProgress>, cpu_id: CpuId,
 ) -> bool {
     let actual_moved = pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages);
     let ancestors = pre.container_map[parent].uppertree_seq.push(parent);
@@ -587,19 +587,19 @@ pub open spec fn kernel_u_container_root_published(
     &&& post.container_map[parent].owned_pages.contains(thread_page)
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
-        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
+        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id },
         cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
         quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
     })
     &&& post == (KernelU {
-        cpu_array: pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] }),
+        cpu_array: pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.cpu_array[transfer_cpu as int] }),
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
-            lock_state: LockStateU::WriteLocked, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
             iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
@@ -625,7 +625,7 @@ pub open spec fn kernel_u_cpu_and_page_owner_changed(pre: KernelU, post: KernelU
 #[verifier::opaque]
 pub open spec fn kernel_u_container_root_created(
     pre: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr,
-    thread: RwLockThreadPtr, transfer_cpu: CpuId, funding: usize, process_quota: usize, progress: Option<SyscallProgress>,
+    thread: RwLockThreadPtr, transfer_cpu: CpuId, funding: usize, process_quota: usize, progress: Option<SyscallProgress>, cpu_id: CpuId,
 ) -> bool {
     let moved = pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages);
     let ancestors = pre.container_map[parent].uppertree_seq.push(parent);
@@ -650,7 +650,7 @@ pub open spec fn kernel_u_container_root_created(
     &&& moved.len() == 2 * 512 + 9 + funding
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
@@ -661,8 +661,8 @@ pub open spec fn kernel_u_container_root_created(
         cpu_array: pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::Unlocked, owning_container: child, ..pre.cpu_array[transfer_cpu as int] }),
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
-            lock_state: LockStateU::WriteLocked, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
             iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
@@ -1045,7 +1045,7 @@ pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cp
 /// The unlocked dangling thread of the killed caller of one write-locked killed thread is taken over as a write-locked killed thread
 /// without a callee, and the killed thread drops its caller; the kernel chooses the killed thread (R1).
 #[verifier::opaque]
-pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: KernelU) -> bool {
+pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
     &&& taken.len() == 1
     &&& forall|caller_ptr: RwLockThreadPtr| #![trigger taken.contains(caller_ptr)] taken.contains(caller_ptr) ==> {
@@ -1059,7 +1059,7 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
         &&& thread.caller == Some(caller_ptr)
         &&& caller.lock_state is Unlocked
         &&& new_u == (KernelU {
-            thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..thread }) .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..caller }),
+            thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..thread }) .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..caller }),
             ..old_u
         })
     }
@@ -1071,7 +1071,7 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
 pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     ||| kernel_u_killed_descriptor_dropped(old_u, new_u)
     ||| kernel_u_killed_caller_woken(old_u, new_u, cpu_id)
-    ||| kernel_u_killed_caller_taken_over(old_u, new_u)
+    ||| kernel_u_killed_caller_taken_over(old_u, new_u, cpu_id)
     ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
     ||| kernel_u_killed_endpoint_released(old_u, new_u)
 }

@@ -11,7 +11,7 @@ verus! {
 /// one leaf step. Inside the held windows only the 2M leaf of `va` changes.
 pub(super) fn mmap_2m_page(
     krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
-    Ghost(range): Ghost<VaRange2M>, Ghost(mapped): Ghost<usize>, Ghost(phase): Ghost<Mmap2mPhase>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
+    Ghost(range): Ghost<VaRange2M>, Ghost(mapped): Ghost<usize>, Ghost(phase): Ghost<Mmap2mPhase>, Ghost(flushed): Ghost<bool>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perm): Tracked<&LockPerm>,
 )
     requires
@@ -39,7 +39,7 @@ pub(super) fn mmap_2m_page(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_2m >= 1,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range, mapped, directory: Mmap2mDirectory::None, phase }),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range, mapped, directory: Mmap2mDirectory::None, phase, flushed }),
         !(phase is Fill),
         mapped < range.len,
         range.view()[mapped as int] == va,
@@ -93,7 +93,7 @@ pub(super) fn mmap_2m_page(
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_2m == old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_2m - 1,
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range, mapped: (mapped + 1) as usize, directory: Mmap2mDirectory::None, phase }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range, mapped: (mapped + 1) as usize, directory: Mmap2mDirectory::None, phase, flushed }),
         thread_lock_perm.lock_id() == final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),

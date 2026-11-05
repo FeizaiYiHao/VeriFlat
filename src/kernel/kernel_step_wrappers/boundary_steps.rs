@@ -424,7 +424,8 @@ impl KernelK {
 
     /// Records the section that changed `va` of `prc_ptr`'s pagetable when the tables are held in either mode: the
     /// changed table is write-held or its window around `va` is held. Only the held windows of the stable table keep
-    /// their 4K mappings, and the stable table keeps its lock state.
+    /// their 4K mappings, and this cpu keeps its hold on the stable table: the same write hold, or a read hold among readers
+    /// that other cpus may change across the boundary.
     pub proof fn kernel_step_boundary_process_4k_mapping_changed_windowed(
         tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, prc_ptr: RwLockProcessPtr,
         pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_prc_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
@@ -465,7 +466,17 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
             final(steps).view().last().new_u.process_map.dom().contains(stable_prc_ptr) && final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable is Some,
             kernel_k_to_kernel_u(*final(self)).process_map.dom().contains(stable_prc_ptr) && kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable is Some,
-            final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state,
+            ({
+                let recorded = final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state;
+                let current = kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state;
+                if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), stable_pagetable_ptr, TypedLockMode::Write) {
+                    &&& recorded == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                    &&& current == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                } else {
+                    &&& recorded.read_held_by(old(lctx).cpu_id())
+                    &&& current.read_held_by(old(lctx).cpu_id())
+                }
+            }),
     {
         use_type_invariant(&*steps);
         assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_4k_mapping_changed); };

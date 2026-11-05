@@ -37,7 +37,7 @@ pub(super) open spec fn lock_pagetable_range_windows_eol_loop_framing(pre: Kerne
     &&& after.lower.pagetable_window_locks.dom() =~= before.lower.pagetable_window_locks.dom()
     &&& forall|w: WindowVa| #![trigger whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)]
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)
-            == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) { LockStateU::WriteLocked }
+            == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) { LockStateU::WriteLocked { writer: pre_lctx.thread_id() } }
                 else { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w) }
     &&& forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
         va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
@@ -127,7 +127,7 @@ pub(super) proof fn lock_pagetable_range_windows_eol_step(pre: KernelK, mid: Ker
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.l1_rev_map,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.window_stale_cpus,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-            == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.insert(window_va, LockStateU::WriteLocked),
+            == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.insert(window_va, LockStateU::WriteLocked { writer: post_lctx.thread_id() }),
         whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(window_va),
         whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks[window_va] is Unlocked,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).page_closure() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).page_closure(),
@@ -190,7 +190,7 @@ pub(super) proof fn lock_pagetable_range_windows_eol_exit(pre: KernelK, post: Ke
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.l1_rev_map,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.window_stale_cpus,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range, post_lctx.thread_id()),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
             va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
                 ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
@@ -239,7 +239,7 @@ pub(super) proof fn lock_pagetable_range_windows_eol_exit(pre: KernelK, post: Ke
 {
     reveal(lock_pagetable_range_windows_eol_loop_framing);
     assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-        =~= pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range));
+        =~= pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range, post_lctx.thread_id()));
     assert(kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
 }
@@ -277,7 +277,7 @@ pub(super) open spec fn lock_pagetable_range_existing_windows_eol_loop_framing(p
     &&& after.lower.pagetable_window_locks.dom() =~= before.lower.pagetable_window_locks.dom()
     &&& forall|w: WindowVa| #![trigger whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)]
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w) ==> whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w)
-            == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) { LockStateU::WriteLocked }
+            == if va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) { LockStateU::WriteLocked { writer: pre_lctx.thread_id() } }
                 else { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.spec_index(w) }
     &&& forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
         va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
@@ -373,7 +373,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_step(pre: KernelK,
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.l1_rev_map
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.window_stale_cpus
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-                == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.insert(window_va, LockStateU::WriteLocked)
+                == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.insert(window_va, LockStateU::WriteLocked { writer: post_lctx.thread_id() })
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(window_va)
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).lower.pagetable_window_locks[window_va] is Unlocked
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).page_closure() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), root).page_closure()
@@ -436,7 +436,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_exit(pre: KernelK,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.l1_rev_map,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.window_stale_cpus,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range, post_lctx.thread_id()),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
             va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
                 ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
@@ -487,7 +487,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_exit(pre: KernelK,
 {
     reveal(lock_pagetable_range_existing_windows_eol_loop_framing);
     assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.pagetable_window_locks
-        =~= pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range));
+        =~= pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range, post_lctx.thread_id()));
     assert(kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
 }

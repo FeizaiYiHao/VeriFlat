@@ -71,7 +71,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
-                == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked),
+                == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked { writer: final(lctx).thread_id() }),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }] is Unlocked,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),

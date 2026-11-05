@@ -648,7 +648,10 @@ fn create_new_container_root_thread_and_unlock(
                 else { final(krnl).ep_mp.spec_index(p).locking_thread() == old(krnl).ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)]
             old(krnl).pt_mp.dom().contains(p) ==> if p == child_pagetable_ptr { final(krnl).pt_mp.spec_index(p).locking_thread() is None }
-                else if p == source_pagetable_ptr { !(final(krnl).pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == source_pagetable_ptr {
+                    final(krnl).pt_mp.spec_index(p).locking_thread() == if old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(caller_cpu_id).dom().is_empty() { RwLockState::None }
+                        else { RwLockState::Read { reader_map: old(krnl).pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(caller_cpu_id) } }
+                }
                 else { final(krnl).pt_mp.spec_index(p).locking_thread() == old(krnl).pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)]
             old(krnl).it_mp.dom().contains(p) ==> final(krnl).it_mp.spec_index(p).locking_thread() == old(krnl).it_mp.spec_index(p).locking_thread(),
@@ -948,6 +951,7 @@ fn end_new_container_finish_step(
         lctx.kernel_view_locking_state() is Release,
         old(steps).snapshot_k().inv(),
         index_valid(NUM_CPUS, caller_cpu_id),
+        finish_lctx.cpu_id() == caller_cpu_id,
         parent_ctn_ptr != child_ctn_ptr,
         parent_prc_ptr != child_prc_ptr,
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &finish_lctx),
@@ -998,7 +1002,10 @@ fn end_new_container_finish_step(
                 else { krnl.ep_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
             old(steps).snapshot_k().pt_mp.dom().contains(p) ==> if p == child_pagetable_ptr { krnl.pt_mp.spec_index(p).locking_thread() is None }
-                else if p == source_pagetable_ptr { !(krnl.pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == source_pagetable_ptr {
+                    krnl.pt_mp.spec_index(p).locking_thread() == if old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(caller_cpu_id).dom().is_empty() { RwLockState::None }
+                        else { RwLockState::Read { reader_map: old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(caller_cpu_id) } }
+                }
                 else { krnl.pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
             old(steps).snapshot_k().it_mp.dom().contains(p) ==> krnl.it_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().it_mp.spec_index(p).locking_thread(),
@@ -1019,7 +1026,7 @@ fn end_new_container_finish_step(
         steps.end_kernel_step_new_thread(krnl, lctx, child_prc_ptr, current_thrd_ptr, child_ctn_ptr, caller_cpu_id, new_thrd_ptr, *initial_regs, endpoint, None);
         assert(new_container_finish_step_pre(steps.view().last().old_u, caller_cpu_id) && new_container_finish_step(steps.view().last().old_u, steps.view().last().new_u, caller_cpu_id)) by {
             new_container_finish_step_pre_from_k(&pre, &finish_lctx, caller_cpu_id, parent_prc_ptr, current_thrd_ptr, parent_ctn_ptr, child_ctn_ptr, child_prc_ptr, endpoint);
-            process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, current_thrd_ptr);
+            process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, current_thrd_ptr); pre.pt_mp.typed_lock_map_aligned_read_at(finish_lctx.pagetable_lock_map(), finish_lctx.thread_id(), source_pagetable_ptr);
             kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implies_u_step(&pre, krnl, caller_cpu_id, child_prc_ptr, current_thrd_ptr, child_ctn_ptr,
                 new_thrd_ptr, *initial_regs, endpoint, parent_prc_ptr, parent_ctn_ptr);
             new_container_finish_step_from_u(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(*krnl), caller_cpu_id, parent_prc_ptr, current_thrd_ptr, parent_ctn_ptr,

@@ -193,10 +193,6 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost flush_snap = steps.snapshot_k();
     let ghost flush_k = *krnl;
     let ghost flush_lctx = *lctx;
-    proof {
-        let flushed_pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        let old_pt = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
-    }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: true })), Tracked(&*lctx), Tracked(thread_lock_perm));
     proof {
         let flushed_before = steps.view();

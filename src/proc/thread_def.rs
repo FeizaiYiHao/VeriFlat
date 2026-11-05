@@ -77,8 +77,9 @@ pub ghost enum ContainerKillStage {
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory, phase: Mmap4kPhase },
     Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
-    /// Anonymous 2M mapping of `range`; the first `mapped` pages are done and `directory` is the level installed for the next one.
-    Mmap2m { range: VaRange2M, mapped: usize, directory: Mmap2mDirectory, phase: Mmap2mPhase },
+    /// Anonymous 2M mapping of `range`; the first `mapped` pages are done, `directory` is the level installed for the next one, and
+    /// `flushed` records that the hidden empty L1 tables of the range were flushed from every cpu, so reclaiming them may proceed.
+    Mmap2m { range: VaRange2M, mapped: usize, directory: Mmap2mDirectory, phase: Mmap2mPhase, flushed: bool },
     /// Unmapping of the 2M pages of `range`; the first `unmapped` leaves are hidden, and `flushed` records the TLB flush.
     Unmap2m { range: VaRange2M, unmapped: usize, flushed: bool },
     /// IOMMU mapping of the caller's pages at `va_range` into its IOMMU table at `iova_range`; the first `mapped` pages are done.

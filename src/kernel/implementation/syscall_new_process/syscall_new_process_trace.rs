@@ -126,17 +126,17 @@ pub(super) proof fn new_process_enter_step_from_u(
             &&& (ep_idx is None ==> ep_ptr is None)
         },
         pre.process_map[prc_ptr].pagetable->Some_0.pagetable_window_locks == old_windows,
-        windows == pagetable_window_locks_after_locking_range(old_windows, range),
+        windows == pagetable_window_locks_after_locking_range(old_windows, range, cpu_id),
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
-                lock_state: LockStateU::WriteLocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
+                lock_state: LockStateU::WriteLocked { writer: cpu_id },
+                pagetable: Some(PageTableU { lock_state: pre.process_map[prc_ptr].pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: windows, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
                 ..pre.process_map[prc_ptr]
             }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thrd_ptr) }),
+            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map.spec_index(thrd_ptr) }),
             endpoint_map: match ep_ptr {
-                Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::WriteLocked, ..pre.endpoint_map.spec_index(e) }),
+                Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.endpoint_map.spec_index(e) }),
                 None => pre.endpoint_map,
             },
             ..pre
@@ -153,7 +153,7 @@ pub(super) proof fn new_process_enter_step_from_u(
 {
     reveal(new_process_enter_step);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: None })),
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: None })),
         ..pre.thread_map.spec_index(thrd_ptr)
     }));
 }
@@ -198,7 +198,7 @@ pub(super) proof fn new_process_publish_step_from_u(
         },
         {
             let ancestors = pre.process_map[parent_ptr].uppertree_seq.push(parent_ptr);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
             let cost: usize = if with_iommu { 5 } else { 3 };
             let origin = Share4kOrigin::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: Some(child_ptr) });
             let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
@@ -217,7 +217,7 @@ pub(super) proof fn new_process_publish_step_from_u(
                 ..pre.process_map[p]
             })
             &&& post.process_map[child_ptr] == (ProcessU {
-                lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
                 iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent_ptr), children: Seq::empty(),
                 depth: (pre.process_map[parent_ptr].depth + 1) as usize, uppertree_seq: ancestors,
@@ -247,6 +247,7 @@ pub(super) proof fn new_process_finish_step_pre_from_k(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        lctx.cpu_id() == cpu_id,
         typed_lock_maps_aligned(krnl, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), child_ptr, TypedLockMode::Write),
@@ -283,8 +284,9 @@ pub(super) proof fn new_process_finish_step_pre_from_k(
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, parent_ptr);
 }
 
-/// Creating the child's first thread while releasing every retained lock, which turns the window maps `old_source_windows` and
-/// `old_child_windows` into `source_windows` and `child_windows`, is the finish step on `pre`/`post`.
+/// Creating the child's first thread while releasing every retained lock and the cpu's read hold on the parent's page table,
+/// which turns the window maps `old_source_windows` and `old_child_windows` into `source_windows` and `child_windows`, is the
+/// finish step on `pre`/`post`.
 pub(super) proof fn new_process_finish_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, new_thrd_ptr: RwLockThreadPtr, ep_ptr: Option<RwLockEndpointPtr>, regs: Registers,
@@ -310,7 +312,7 @@ pub(super) proof fn new_process_finish_step_from_u(
             &&& (record.endpoint_index is None ==> ep_ptr is None)
         },
         post.process_map.spec_index(child_ptr).owned_threads.last() == new_thrd_ptr,
-        post.process_map[parent_ptr].pagetable->Some_0.lock_state is Unlocked || post.process_map[parent_ptr].pagetable->Some_0.lock_state is ReadLocked,
+        post.process_map[parent_ptr].pagetable->Some_0.lock_state == pre.process_map[parent_ptr].pagetable->Some_0.lock_state.without_reader(cpu_id),
         pre.process_map[parent_ptr].pagetable->Some_0.pagetable_window_locks == old_source_windows,
         pre.process_map[child_ptr].pagetable->Some_0.pagetable_window_locks == old_child_windows,
         source_windows == pagetable_window_locks_after_unlocking_range(old_source_windows, pre.thread_map[thrd_ptr].syscall_progress->Some_0->Share4k_origin->NewProcess_0.range),

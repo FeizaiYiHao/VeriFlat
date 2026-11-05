@@ -222,7 +222,7 @@ pub(crate) fn kill_container_mark_root(
         let before_u = kernel_k_to_kernel_u(before);
         kill_container_cpus_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, ContainerKillStage::Walk);
         kill_container_mark_root_pre_from_k(&before, target, root_ptr);
-        kernel_process_locked_and_marked_implies_u_step(&before, &marked_k, root_ptr);
+        kernel_process_locked_and_marked_implies_u_step(&before, &marked_k, root_ptr, cpu_id);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
         kill_container_mark_root_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, target, root_ptr);
         kill_container_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);

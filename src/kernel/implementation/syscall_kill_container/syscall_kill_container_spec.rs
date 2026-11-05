@@ -68,13 +68,13 @@ pub open spec fn kill_container_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let thrd_ptr = cpu.current_thread->Some_0;
     let child_ptr = old_u.container_map[owner_ptr].children[child_index as int];
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(owner_ptr, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[prc_ptr].depth)), ..old_u.container_map[owner_ptr]
-        }).insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[prc_ptr] }),
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[prc_ptr].depth)), ..old_u.container_map[owner_ptr]
+        }).insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.container_map[child_ptr] }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.process_map[prc_ptr] }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
-            lock_state: LockStateU::WriteLocked, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..old_u.thread_map[thrd_ptr]
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..old_u.thread_map[thrd_ptr]
         }),
         ..old_u
     })
@@ -115,7 +115,7 @@ pub open spec fn kill_container_mark_child_step(old_u: KernelU, new_u: KernelU, 
     &&& 0 < target.children.len()
     &&& old_u.container_map.dom().contains(child_ptr)
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
+        container_map: old_u.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.container_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, child_ptr, ContainerKillStage::Walk)),
         ..old_u
     })
@@ -133,7 +133,7 @@ pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, c
     &&& !target.owned_processes.is_empty()
     &&& old_u.process_map.dom().contains(root_ptr)
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[root_ptr] }),
+        process_map: old_u.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.process_map[root_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id),
             kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Process { process: root_ptr, stage: KillStage::Walk })),
         ..old_u
@@ -176,7 +176,7 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& target.children.len() == 0
     &&& target.owned_processes.is_empty()
     &&& new_u == (KernelU {
-        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..target }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..target }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Cpus)),
         ..old_u
     })

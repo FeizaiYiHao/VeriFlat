@@ -96,7 +96,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
             let cost: usize = if (iommu is Some) { 5 } else { 3 };
             &&& pre.process_map.dom().contains(parent)
             &&& !pre.process_map.dom().contains(child)
@@ -114,7 +114,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
                 ..pre.process_map[p]
             })
             &&& post.process_map[child] == (ProcessU {
-                lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
+                lock_state: LockStateU::WriteLocked { writer: lctx.cpu_id() }, zombie: false, pagetable: Some(empty_table),
                 iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid, owning_container: container, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
                 depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,
@@ -139,7 +139,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
     kernel_process_published_and_parent_unlocked_implies_u_thread_map(before, after, thread, iommu, progress);
     kernel_process_published_and_parent_unlocked_implies_u_container_map(before, after, child, container, pcid_allocator, pcid);
-    kernel_process_published_and_parent_unlocked_implies_u_process_map(before, after, parent, child, container, table, iommu);
+    kernel_process_published_and_parent_unlocked_implies_u_process_map(before, after, parent, child, container, table, iommu, lctx.cpu_id());
     kernel_process_projection_at(after, child);
 }
 
@@ -214,7 +214,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
 /// and `child` recorded in every ancestor's subtree.
 proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
     before: &KernelK, after: &KernelK, parent: RwLockProcessPtr, child: RwLockProcessPtr, container: RwLockContainerPtr, table: RwLockPageTableRoot,
-    iommu: Option<RwLockPageTableRoot>,
+    iommu: Option<RwLockPageTableRoot>, cpu_id: CpuId,
 )
     requires
         process_pagetable_wf(before.prc_mp, before.pt_mp),
@@ -234,7 +234,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             &&& after.prc_mp.spec_index(p).being_killed() == before.prc_mp.spec_index(p).being_killed()
             &&& if p == parent { after.prc_mp.spec_index(p).locking_thread() is None } else { after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread() }
         },
-        after.prc_mp.spec_index(child).locking_thread() is Write,
+        after.prc_mp.spec_index(child).wlocked_by_thread(cpu_id),
         !after.prc_mp.spec_index(child).being_killed(),
         !after.prc_mp.spec_index(child).view().zombie,
         after.prc_mp.spec_index(child).view().pagetable == table,
@@ -252,13 +252,13 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
         after.prc_mp.spec_index(child).view_ghost().subtree_set.view().is_empty(),
         after.pt_mp.dom() == before.pt_mp.dom().insert(table),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
-        after.pt_mp.spec_index(table).locking_thread() is Write,
+        after.pt_mp.spec_index(table).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), table).is_empty(),
         iommu is None ==> after.it_mp == before.it_mp,
         iommu matches Some(t) ==> {
             &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
             &&& forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) ==> after.it_mp.spec_index(p) == before.it_mp.spec_index(p)
-            &&& after.it_mp.spec_index(t).locking_thread() is Write
+            &&& after.it_mp.spec_index(t).wlocked_by_thread(cpu_id)
             &&& after.it_mp.spec_index(t).view().is_empty()
             &&& after.it_mp.spec_index(t).view().did is None
         },
@@ -267,7 +267,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
             &&& post.process_map.dom() == pre.process_map.dom().insert(child)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
                 lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
@@ -276,7 +276,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
                 ..pre.process_map[p]
             })
             &&& post.process_map[child] == (ProcessU {
-                lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
                 iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid: post.process_map[child].pcid, owning_container: container, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
                 depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,

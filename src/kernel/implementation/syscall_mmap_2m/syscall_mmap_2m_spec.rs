@@ -47,7 +47,7 @@ pub open spec fn mmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, 
 /// Publishing a leaf moves mmap progress to the next page with no directory installed.
 pub open spec fn mmap_2m_progress_after_leaf(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
     match progress {
-        Some(SyscallProgress::Mmap2m { range, mapped, directory: _, phase }) => Some(SyscallProgress::Mmap2m { range, mapped: (mapped + 1) as usize, directory: Mmap2mDirectory::None, phase }),
+        Some(SyscallProgress::Mmap2m { range, mapped, directory: _, phase, flushed }) => Some(SyscallProgress::Mmap2m { range, mapped: (mapped + 1) as usize, directory: Mmap2mDirectory::None, phase, flushed }),
         _ => progress,
     }
 }
@@ -86,14 +86,14 @@ pub open spec fn mmap_2m_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    let progress = SyscallProgress::Mmap2m { range, mapped: 0, directory: Mmap2mDirectory::None, phase };
-    let table_lock = if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked };
+    let progress = SyscallProgress::Mmap2m { range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: false };
+    let table_lock = if phase is Read { process.pagetable->Some_0.lock_state.with_reader(cpu_id) } else { LockStateU::WriteLocked { writer: cpu_id } };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range.covering_4k_range()),
+                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range.covering_4k_range(), cpu_id),
                 ..process.pagetable->Some_0
             }),
             ..process
@@ -140,10 +140,10 @@ pub open spec fn mmap_2m_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = thread.syscall_progress->Some_0;
-    let filled = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Filled };
+    let filled = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Filled, flushed: progress->Mmap2m_flushed };
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.with_reader(cpu_id), ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }
@@ -194,12 +194,14 @@ pub open spec fn mmap_2m_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Exiting happens outside the fill phase after every page of the recorded range has been mapped.
+/// Exiting happens outside the fill phase, while this cpu read-holds the thread's pagetable, after every page of the recorded
+/// range has been mapped.
 #[verifier::opaque]
 pub open spec fn mmap_2m_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     &&& thread_pagetable_op_in_progress(old_u, cpu_id)
+    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state.read_held_by(cpu_id)
     &&& progress is Mmap2m
     &&& !(progress->Mmap2m_phase is Fill)
     &&& progress->Mmap2m_mapped == progress->Mmap2m_range.len
@@ -207,21 +209,19 @@ pub open spec fn mmap_2m_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 }
 
 /// Exiting clears mmap progress, unlocks the cpu, its running thread, and the recorded range's 2M
-/// windows, returns the cpu to its trap path, and drops the thread's read lock on its pagetable,
+/// windows, returns the cpu to its trap path, and releases this cpu's read hold on the thread's pagetable,
 /// which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn mmap_2m_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thrd_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
-    &&& table_lock is Unlocked || table_lock is ReadLocked
-    &&& new_u == (KernelU {
+    new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: table_lock,
+                lock_state: process.pagetable->Some_0.lock_state.without_reader(cpu_id),
                 pagetable_window_locks: pagetable_window_locks_after_unlocking_range(process.pagetable->Some_0.pagetable_window_locks, thread.syscall_progress->Some_0->Mmap2m_range.covering_4k_range()),
                 ..process.pagetable->Some_0
             }),
@@ -231,9 +231,9 @@ pub open spec fn mmap_2m_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Flushing the TLBs once after hiding the empty L1 tables of the range's windows, recording that flush, and reclaiming the
-/// hidden L1 tables happen outside the fill phase, before the first leaf, under the three mmap locks, in an existing container.
-// The flush, its record, and the L1 reclaims share this pre: the flush exists only when a hidden L1 made it necessary, and the steps differ by their bodies.
+/// Flushing the TLBs once after hiding the empty L1 tables of the range's windows and recording that flush happen outside the
+/// fill phase, before the first leaf and before the flush is recorded, under the three mmap locks, in an existing container.
+// The flush and its record share this pre: the flush exists only when a hidden L1 made it necessary, and the steps differ by their bodies.
 #[verifier::opaque]
 pub open spec fn mmap_2m_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -243,16 +243,38 @@ pub open spec fn mmap_2m_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress is Mmap2m
     &&& !(progress->Mmap2m_phase is Fill)
     &&& progress->Mmap2m_mapped == 0
+    &&& !progress->Mmap2m_flushed
 }
 
-/// Recording the flush releases this thread's read hold on the cpu set of the thread's container, which no writer holds
-/// afterwards, and changes nothing else.
+/// Recording the flush, while this cpu read-holds the cpu set of the thread's container, releases that read hold and marks the
+/// hidden L1 tables of the range flushed from every cpu, and changes nothing else.
 #[verifier::opaque]
 pub open spec fn mmap_2m_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let container = old_u.container_map.spec_index(thread.owning_container);
+    let progress = thread.syscall_progress->Some_0;
+    let flushed = SyscallProgress::Mmap2m { range: progress->Mmap2m_range, mapped: progress->Mmap2m_mapped, directory: progress->Mmap2m_directory, phase: progress->Mmap2m_phase, flushed: true };
+    &&& container.cpu_set_lock.read_held_by(cpu_id)
+    &&& new_u == (KernelU {
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(flushed), ..thread }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: container.cpu_set_lock.without_reader(cpu_id), ..container }),
+        ..old_u
+    })
+}
+
+/// Reclaiming a hidden L1 table happens outside the fill phase, before the first leaf, after the flush of the hidden tables
+/// was recorded, under the three mmap locks, in an existing container.
+#[verifier::opaque]
+pub open spec fn mmap_2m_l1_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    let cpu_set_lock = new_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
-    &&& !(cpu_set_lock is WriteLocked)
-    &&& new_u == (KernelU { container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(thread.owning_container) }), ..old_u })
+    let progress = thread.syscall_progress->Some_0;
+    &&& thread_pagetable_op_in_progress(old_u, cpu_id)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& progress is Mmap2m
+    &&& !(progress->Mmap2m_phase is Fill)
+    &&& progress->Mmap2m_mapped == 0
+    &&& progress->Mmap2m_flushed
 }
 
 /// A step inside the mmap loop installs one directory page, downgrades the pagetable lock, flushes the TLBs after hiding the
@@ -265,7 +287,7 @@ pub open spec fn mmap_2m_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     ||| mmap_2m_downgrade_step_pre(step.old_u, cpu_id) && mmap_2m_downgrade_step(step.old_u, step.new_u, cpu_id)
     ||| mmap_2m_flush_step_pre(step.old_u, cpu_id) && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
     ||| mmap_2m_flush_step_pre(step.old_u, cpu_id) && mmap_2m_flushed_step(step.old_u, step.new_u, cpu_id)
-    ||| mmap_2m_flush_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
+    ||| mmap_2m_l1_reclaim_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
     ||| mmap_2m_leaf_step_pre(step.old_u, cpu_id) && mmap_2m_leaf_step(step.old_u, step.new_u, cpu_id)
 }
 

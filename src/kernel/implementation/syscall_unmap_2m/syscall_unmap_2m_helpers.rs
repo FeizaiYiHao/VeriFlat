@@ -54,6 +54,10 @@ pub(super) fn unmap_2m_unmap_and_finish(
         old(krnl).pt_mp.spec_index(pagetable).view() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).view(),
         old(krnl).pt_mp.spec_index(pagetable).being_killed() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).being_killed(),
         old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_perm.lock_id()),
+        old(krnl).pt_mp.spec_index(pagetable).locking_thread() == (RwLockState::Read {
+            reader_map: (if old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread() is Read { old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map } else { Map::empty() })
+                .insert(old(lctx).thread_id(), pagetable_perm.lock_id()),
+        }),
         pagetable_perm.state() is ReadLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_4k(),
@@ -79,7 +83,7 @@ pub(super) fn unmap_2m_unmap_and_finish(
             },
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable && window_perms.dom().contains(w)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks, *cover),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks, *cover, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
@@ -163,6 +167,7 @@ pub(super) fn unmap_2m_unmap_and_finish(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         assert(unmap_2m_trace_after_enter(steps.view(), cpu_id, *va_range)) by {
             unmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, len, RetValueType::Success);
+            assert(entered_k.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.dom() =~= old(steps).snapshot_k().pt_mp.spec_index(pagetable).lock_state_u().readers().insert(cpu_id));
             kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_implies_u_step(&old(steps).snapshot_k(), &entered_k, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
             unmap_2m_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, len, *va_range,
                 whole_pagetable(entered_k.pt_mp, entered_k.pt_lower.view(), pagetable).lower.pagetable_window_locks);

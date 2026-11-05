@@ -870,6 +870,7 @@ fn ipc_pages_downgrade_target(
     proof {
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
         ipc_pages_downgrade_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thrd_ptr, peer_thrd_ptr, source_thread, target_thread, source_process, target_process,
             source_pagetable, target_pagetable, *source_range, *target_range);
     }
@@ -881,7 +882,7 @@ fn ipc_pages_downgrade_target(
         kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&pre_k, &*krnl, source_process, target_process, source_pagetable, target_pagetable,
             current_thrd_ptr);
         ipc_pages_downgrade_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), &pre_k, cpu_id, current_thrd_ptr, source_process, target_process, source_pagetable,
-            target_pagetable, LockStateU::ReadLocked);
+            target_pagetable, pre_k.pt_mp.spec_index(source_pagetable).lock_state_u(), krnl.pt_mp.spec_index(target_pagetable).lock_state_u());
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         ipc_pages_trace_downgrade_step(&*steps, before, start, kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(downgraded_k), cpu_id);

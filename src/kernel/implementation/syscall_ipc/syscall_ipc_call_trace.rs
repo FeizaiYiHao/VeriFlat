@@ -111,15 +111,15 @@ pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
 )
     requires
         locked_u == (KernelU {
-            cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre_u.cpu_array[cpu_id as int] }),
-            thread_map: pre_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[callee_ptr] })
-                .insert(caller_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[caller_ptr] }),
-            endpoint_map: pre_u.endpoint_map.insert(ep_ptr, EndpointU { lock_state: LockStateU::WriteLocked, ..pre_u.endpoint_map[ep_ptr] }),
+            cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre_u.cpu_array[cpu_id as int] }),
+            thread_map: pre_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre_u.thread_map[callee_ptr] })
+                .insert(caller_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre_u.thread_map[caller_ptr] }),
+            endpoint_map: pre_u.endpoint_map.insert(ep_ptr, EndpointU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre_u.endpoint_map[ep_ptr] }),
             ..pre_u
         }),
         taken_u == (KernelU {
             thread_map: locked_u.thread_map.insert(callee_ptr, ThreadU { caller: None, ..locked_u.thread_map[callee_ptr] })
-                .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked_u.thread_map[caller_ptr] }),
+                .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..locked_u.thread_map[caller_ptr] }),
             endpoint_map: locked_u.endpoint_map.insert(ep_ptr, EndpointU { lock_state: LockStateU::Unlocked, ..locked_u.endpoint_map[ep_ptr] }),
             ..locked_u
         }),
@@ -140,8 +140,8 @@ pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
 {
     reveal(ipc_reply_dangling_caller_taken_over_step);
     assert(post_u.thread_map =~= pre_u.thread_map.insert(callee_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: caller_ptr }), ..pre_u.thread_map[callee_ptr]
-    }).insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[caller_ptr] }));
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: caller_ptr }), ..pre_u.thread_map[callee_ptr]
+    }).insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre_u.thread_map[caller_ptr] }));
     assert(post_u.endpoint_map =~= pre_u.endpoint_map);
     assert(post_u.thread_map[caller_ptr].state is KILLED);
 }

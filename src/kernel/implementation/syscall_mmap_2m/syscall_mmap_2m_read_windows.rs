@@ -150,7 +150,7 @@ pub(super) fn mmap_2m_read_lock_windows_and_map(
         return RetValueType::ErrorVaInUse;
     }
     proof { mmap_2m_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success, Some(checked), None, 0); }
-    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Read })),
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase: Mmap2mPhase::Read, flushed: false })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
     proof {

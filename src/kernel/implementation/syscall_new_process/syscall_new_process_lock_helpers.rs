@@ -445,6 +445,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         old(krnl).pt_mp.spec_index(pagetable_ptr).inv() && !old(krnl).pt_mp.spec_index(pagetable_ptr).wlocked(),
         !old(krnl).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id()),
+        final(krnl).pt_mp.spec_index(pagetable_ptr).lock_state_u() == old(krnl).pt_mp.spec_index(pagetable_ptr).lock_state_u().with_reader(cpu_id),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Read {
             reader_map: (if old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() is Read { old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map } else { Map::empty() })
                 .insert(old(lctx).thread_id(), ret.1.view().lock_id()),
@@ -500,6 +501,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
     let source_pagetable_lock_perm = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+        assert(krnl.pt_mp.spec_index(pagetable_ptr).lock_state_u().readers() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).lock_state_u().readers().insert(cpu_id));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
@@ -556,7 +558,8 @@ pub(super) fn new_process_lock_source_windows(
         }),
         !ret.0 ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
         !ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks,
-        ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks, *range),
+        ret.0 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).lower.pagetable_window_locks, *range, final(lctx).thread_id()),
         ret.0 ==> final(lctx).kernel_view_locking_state() is Acquire,
         ret.0 ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         ret.0 ==> kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),

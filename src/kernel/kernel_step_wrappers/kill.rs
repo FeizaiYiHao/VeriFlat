@@ -4,7 +4,7 @@ use crate::*;
 
 verus! {
 /// Write-locking and marking the unmarked process `prc_ptr` changes only its lock mode, kill mark, and K-only state.
-pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, prc_ptr: RwLockProcessPtr)
+pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, prc_ptr: RwLockProcessPtr, cpu_id: CpuId)
     requires
         *after == (KernelK { prc_mp: after.prc_mp, ..*before }),
         before.prc_mp.dom().contains(prc_ptr),
@@ -12,21 +12,21 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
         after.prc_mp.spec_index(prc_ptr).view() == (Process { state: after.prc_mp.spec_index(prc_ptr).view().state, ..before.prc_mp.spec_index(prc_ptr).view() }),
         after.prc_mp.spec_index(prc_ptr).view_rodata() == before.prc_mp.spec_index(prc_ptr).view_rodata(),
         after.prc_mp.spec_index(prc_ptr).view_ghost() == before.prc_mp.spec_index(prc_ptr).view_ghost(),
-        after.prc_mp.spec_index(prc_ptr).locking_thread() is Write,
+        after.prc_mp.spec_index(prc_ptr).wlocked_by_thread(cpu_id),
         after.prc_mp.spec_index(prc_ptr).being_killed(),
     ensures
         kernel_k_to_kernel_u(*before).process_map.dom().contains(prc_ptr),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[prc_ptr] }), ..pre
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[prc_ptr] }), ..pre
             })
         }),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    assert_maps_equal!(post.process_map, pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[prc_ptr] }), p => {
+    assert_maps_equal!(post.process_map, pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[prc_ptr] }), p => {
         if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
     });
     kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);
@@ -35,13 +35,13 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
 
 /// Write-locking and marking the unmarked thread `thrd_ptr` changes only its lock mode and kill mark, and changes the
 /// projection.
-pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr)
+pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId)
     requires
         *after == (KernelK { thrd_mp: after.thrd_mp, ..*before }),
         before.thrd_mp.dom().contains(thrd_ptr),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
         after.thrd_mp.spec_index(thrd_ptr).view() == before.thrd_mp.spec_index(thrd_ptr).view(),
-        after.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        after.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         !before.thrd_mp.spec_index(thrd_ptr).being_killed(),
         after.thrd_mp.spec_index(thrd_ptr).being_killed(),
     ensures
@@ -49,7 +49,7 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[thrd_ptr] }), ..pre
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.thread_map[thrd_ptr] }), ..pre
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
@@ -58,7 +58,7 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
-    assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[thrd_ptr] }), t => {
+    assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.thread_map[thrd_ptr] }), t => {
         if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
     kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);

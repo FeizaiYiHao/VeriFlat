@@ -118,19 +118,19 @@ pub(super) proof fn thread_exit_enter_step_from_u(
         pre.thread_map[thrd_ptr].caller == caller,
         caller matches Some(caller_ptr) ==> (pre.thread_map[caller_ptr].state is DANGLING) == dangling,
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(ctn_ptr, ContainerU {
-                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[prc_ptr].depth)), ..pre.container_map[ctn_ptr]
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[prc_ptr].depth)), ..pre.container_map[ctn_ptr]
             }),
-            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr] }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thrd_ptr) }),
+            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr] }),
+            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map.spec_index(thrd_ptr) }),
             ..pre
         }),
         woken == match caller {
             Some(caller_ptr) => if dangling {
                 KernelU {
                     thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..locked.thread_map[thrd_ptr] }).insert(caller_ptr, ThreadU {
-                        state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked.thread_map[caller_ptr]
+                        state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..locked.thread_map[caller_ptr]
                     }),
                     ..locked
                 }
@@ -356,8 +356,8 @@ pub(super) proof fn thread_exit_lock_table_step_from_u(
         mid == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..pre.thread_map[thrd_ptr] }),
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
-                iommu_table: match pre.process_map[prc_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
+                iommu_table: match pre.process_map[prc_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..t }), None => None },
                 ..pre.process_map[prc_ptr]
             }),
             ..pre
@@ -388,8 +388,8 @@ pub(super) proof fn thread_exit_lock_table_step_from_u(
             assert_seqs_equal!(attached[bus], expected[bus], device => { assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {}); });
         });
         assert(post.process_map =~= pre.process_map.insert(prc_ptr, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
-            iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, ..pre.process_map[prc_ptr].iommu_table->Some_0 }), ..pre.process_map[prc_ptr]
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
+            iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..pre.process_map[prc_ptr].iommu_table->Some_0 }), ..pre.process_map[prc_ptr]
         }));
     }
 }
@@ -667,17 +667,17 @@ pub(super) proof fn thread_exit_flush_step_pre_from_k(
     reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre);
 }
 
-/// Recording the flush, with the cpu set of the thread's container left in a mode no writer holds, is the flushed step
+/// Recording the flush and releasing this cpu's read hold on the cpu set of the thread's container is the flushed step
 /// on `pre`/`post`.
-pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, cpu_set_lock: LockStateU)
+pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         pre.thread_map.dom().contains(thrd_ptr),
         pre.thread_map[thrd_ptr].owning_container == ctn_ptr,
-        !(cpu_set_lock is WriteLocked),
+        pre.container_map[ctn_ptr].cpu_set_lock.read_held_by(cpu_id),
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..pre.thread_map[thrd_ptr] }),
-            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..pre.container_map[ctn_ptr] }),
+            container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: pre.container_map[ctn_ptr].cpu_set_lock.without_reader(cpu_id), ..pre.container_map[ctn_ptr] }),
             ..pre
         }),
     ensures
@@ -686,7 +686,7 @@ pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU,
 
 /// Recording the flush (`pre` to `post`) by the running thread `thrd_ptr` of the process `prc_ptr` with PCID `pcid`,
 /// once its page table `pagetable` keeps no mapping and no window lock, where `pre` extends the step's start `snap` by page-table
-/// ghost state and by this thread's released read hold on the cpu set of its container, is a middle step on `snap`/`post`.
+/// ghost state and by this cpu's released read hold on the cpu set of its container, is a middle step on `snap`/`post`.
 pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
     snap: &KernelK, pre: &KernelK, lctx: &LocalContext, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, pcid: Pcid,
@@ -725,7 +725,9 @@ pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
         pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed() == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
-        !(pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Write),
+        snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().read_held_by(cpu_id),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+            == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().without_reader(cpu_id),
         *post == (KernelK { thrd_mp: post.thrd_mp, ..*pre }),
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
@@ -736,14 +738,13 @@ pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
     ensures thread_exit_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap); kernel_container_projection_at(snap, ctn_ptr);
     kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
     kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
     thread_exit_flush_step_pre_from_k(pre, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, pcid);
     assert(thread_exit_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); };
-    thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr, cpu_set_lock);
+    thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr);
 }
 
 /// A state holding the cpu, `ctn_ptr`, `prc_ptr` with its page table `pagetable`, and the running `thrd_ptr`
@@ -955,7 +956,7 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
         entry.process_map[prc_ptr].pcid == pcid,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(cpu_id), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)

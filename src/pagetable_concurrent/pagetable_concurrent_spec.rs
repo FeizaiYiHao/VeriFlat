@@ -408,7 +408,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_2m }
     pub open spec fn mapping_1g(&self) -> Map<VAddr, MapEntry> { self.higher.mapping_1g.view() }
 
-    /// The owner of the outer LockCell supplies its mode; the payload has no lock state.
+    /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state.
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
@@ -827,7 +827,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
-                    LockStateU::WriteLocked
+                    LockStateU::WriteLocked { writer: self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id }
                 } else {
                     LockStateU::Unlocked
                 }

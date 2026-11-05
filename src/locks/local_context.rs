@@ -39,7 +39,6 @@ pub open spec fn typed_lock_map_contains_mode<K>(map: Map<K, TypedHeldLock>, key
 /// `lock_id_acyclic`. If a held object's dynamic ordering id changes during
 /// Release, the entry is replaced explicitly by `update_lock_id`.
 pub tracked struct LocalContext {
-    ghost thread_id: LockThreadId,
     ghost cpu_id: CpuId,
     ghost page_lock_map: Map<PageIndex, TypedHeldLock>,
     ghost cpu_lock_map: Map<CpuId, TypedHeldLock>,
@@ -66,12 +65,11 @@ pub tracked struct LocalContext {
 }
 
 impl LocalContext {
-    pub proof fn new_bootstrap(cpu_id: CpuId, thread_id: LockThreadId) -> (tracked ret: Self)
+    pub proof fn new_bootstrap(cpu_id: CpuId) -> (tracked ret: Self)
         requires
             index_valid(NUM_CPUS, cpu_id),
         ensures
             ret.cpu_id() == cpu_id,
-            ret.thread_id() == thread_id,
             ret.kernel_view_locking_state() is Acquire,
             ret.no_locks_held(),
             ret.pagetable_window_lock_map().dom().is_empty(),
@@ -79,7 +77,7 @@ impl LocalContext {
     {
         let tracked state = LCtxtState { kernel_view_locking_state: LCtxtLockState::Acquire };
         let tracked ret = LocalContext {
-            thread_id, cpu_id, page_lock_map: Map::empty(), cpu_lock_map: Map::empty(), pcid_needflush_lock_map: Map::empty(), cpu_offline_flag_lock_map: Map::empty(),
+            cpu_id, page_lock_map: Map::empty(), cpu_lock_map: Map::empty(), pcid_needflush_lock_map: Map::empty(), cpu_offline_flag_lock_map: Map::empty(),
             container_lock_map: Map::empty(), process_lock_map: Map::empty(), thread_lock_map: Map::empty(), endpoint_lock_map: Map::empty(), scheduler_lock_map: Map::empty(),
             pcid_allocator_lock_map: Map::empty(), cpu_set_lock_map: Map::empty(), pagetable_lock_map: Map::empty(), pagetable_window_lock_map: Map::empty(), iommu_table_lock_map: Map::empty(),
             iommu_root_table_lock_map: Map::empty(),
@@ -93,7 +91,8 @@ impl LocalContext {
 
     /// The executing CPU, fixed for this kernel execution; must be bound at entry.
     pub closed spec fn cpu_id(&self) -> CpuId { self.cpu_id }
-    pub closed spec fn thread_id(&self) -> LockThreadId { self.thread_id }
+    /// The lock-holder id of this execution: its cpu.
+    pub open spec fn thread_id(&self) -> LockThreadId { self.cpu_id() }
     pub closed spec fn page_lock_map(&self) -> Map<PageIndex, TypedHeldLock> { self.page_lock_map }
     pub closed spec fn cpu_lock_map(&self) -> Map<CpuId, TypedHeldLock> { self.cpu_lock_map }
     pub closed spec fn pcid_needflush_lock_map(&self) -> Map<(CpuId, Pcid), TypedHeldLock> { self.pcid_needflush_lock_map }

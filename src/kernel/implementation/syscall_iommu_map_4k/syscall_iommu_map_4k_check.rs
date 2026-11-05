@@ -292,32 +292,32 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).value.killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).value.killer_info()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).value.being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).value.being_killed()
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is Write
+            &&& final(krnl).cpu_arr.spec_index(cpu_id).value.lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id })
             &&& !old(krnl).prc_mp.spec_index(e.process_ptr).locked()
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, e.process_ptr)
             &&& process == old(krnl).prc_mp.spec_index(e.process_ptr).view()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata() == old(krnl).prc_mp.spec_index(e.process_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view_ghost() == old(krnl).prc_mp.spec_index(e.process_ptr).view_ghost()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).being_killed() == old(krnl).prc_mp.spec_index(e.process_ptr).being_killed()
-            &&& final(krnl).prc_mp.spec_index(e.process_ptr).locking_thread() is Write
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id })
             &&& old(krnl).thrd_mp.dom().contains(e.thread_ptr) && !old(krnl).thrd_mp.spec_index(e.thread_ptr).locked()
             &&& final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, e.thread_ptr)
             &&& thread == old(krnl).thrd_mp.spec_index(e.thread_ptr).view()
             &&& final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed() == old(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
-            &&& final(krnl).thrd_mp.spec_index(e.thread_ptr).locking_thread() is Write
+            &&& final(krnl).thrd_mp.spec_index(e.thread_ptr).lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id })
             &&& !old(krnl).pt_mp.spec_index(ptp).wlocked()
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, ptp)
             &&& final(krnl).pt_mp.spec_index(ptp).view() == old(krnl).pt_mp.spec_index(ptp).view()
-            &&& final(krnl).pt_mp.spec_index(ptp).locking_thread() is Read
+            &&& final(krnl).pt_mp.spec_index(ptp).lock_state_u() == old(krnl).pt_mp.spec_index(ptp).lock_state_u().with_reader(cpu_id)
             &&& final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(ptp, final(krnl).pt_lower.view().spec_index(ptp))
             &&& pt.mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_4k()
             &&& pt.mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_2m()
             &&& pt.mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_1g()
-            &&& pt.lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).lower.pagetable_window_locks, va_range)
+            &&& pt.lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).lower.pagetable_window_locks, va_range, cpu_id)
             &&& !old(krnl).it_mp.spec_index(e.iommu_table_ptr).locked()
             &&& final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, e.iommu_table_ptr)
             &&& it == old(krnl).it_mp.spec_index(e.iommu_table_ptr).view()
-            &&& final(krnl).it_mp.spec_index(e.iommu_table_ptr).locking_thread() is Write
+            &&& final(krnl).it_mp.spec_index(e.iommu_table_ptr).lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id })
         }),
 {
     if range == 0 || range > usize::MAX / 4096usize || !va_4k_valid(va) || !va_4k_valid(iova) {
@@ -366,7 +366,11 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     }
     let iommu_table_ptr = iommu_table.unwrap();
     proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
+    let ghost pt_before_rlock = krnl.pt_mp.spec_index(pagetable_ptr).locking_thread();
     let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
+    proof {
+        assert(krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.dom() =~= (if pt_before_rlock is Read { pt_before_rlock->Read_reader_map.dom() } else { Set::empty() }).insert(cpu_id));
+    }
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     proof { krnl.default_pagetable_wf_at(pagetable_ptr); }
     let user_range = va2index(va).0 >= krnl.dflt_pt.borrow().kernel_l4_end;

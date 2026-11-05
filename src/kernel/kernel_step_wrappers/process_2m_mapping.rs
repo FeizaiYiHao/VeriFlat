@@ -15,7 +15,8 @@ pub proof fn kernel_process_2m_mapping_changed_implies_u_neq(pre: &KernelK, post
 impl KernelK {
     /// Records the section that changed the 2M leaf `va` of `prc_ptr`'s pagetable when the tables are held in either mode: the
     /// changed table is write-held or its window around `va` is held. Only the held windows of the stable table keep their 4K
-    /// mappings, and the stable table keeps its lock state.
+    /// mappings, and this cpu keeps its hold on the stable table: the same write hold, or a read hold among readers that
+    /// other cpus may change across the boundary.
     pub proof fn kernel_step_boundary_process_2m_mapping_changed_windowed(
         tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, prc_ptr: RwLockProcessPtr,
         pagetable_ptr: RwLockPageTableRoot, va: VAddr, stable_prc_ptr: RwLockProcessPtr, stable_pagetable_ptr: RwLockPageTableRoot,
@@ -56,7 +57,17 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
             final(steps).view().last().new_u.process_map.dom().contains(stable_prc_ptr) && final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable is Some,
             kernel_k_to_kernel_u(*final(self)).process_map.dom().contains(stable_prc_ptr) && kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable is Some,
-            final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state,
+            ({
+                let recorded = final(steps).view().last().new_u.process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state;
+                let current = kernel_k_to_kernel_u(*final(self)).process_map.spec_index(stable_prc_ptr).pagetable->Some_0.lock_state;
+                if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), stable_pagetable_ptr, TypedLockMode::Write) {
+                    &&& recorded == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                    &&& current == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                } else {
+                    &&& recorded.read_held_by(old(lctx).cpu_id())
+                    &&& current.read_held_by(old(lctx).cpu_id())
+                }
+            }),
     {
         use_type_invariant(&*steps);
         assert(old(self).prc_mp.dom().contains(prc_ptr) && !old(self).prc_mp.spec_index(prc_ptr).view().zombie && old(self).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr) by { reveal(kernel_process_2m_mapping_changed); };
@@ -248,6 +259,7 @@ pub proof fn kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rloc
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(va),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va)),

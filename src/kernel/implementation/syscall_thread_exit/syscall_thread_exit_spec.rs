@@ -57,19 +57,19 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let prc_ptr = cpu.current_process->Some_0;
     let thrd_ptr = cpu.current_thread->Some_0;
     let locked = KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(ctn_ptr, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(prc_ptr).depth)), ..old_u.container_map.spec_index(ctn_ptr)
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(prc_ptr).depth)), ..old_u.container_map.spec_index(ctn_ptr)
         }),
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(prc_ptr) }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.process_map.spec_index(prc_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     };
     let woken = match old_u.thread_map.spec_index(thrd_ptr).caller {
         Some(caller_ptr) => if locked.thread_map[caller_ptr].state is DANGLING {
             KernelU {
                 thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { caller: None, ..locked.thread_map[thrd_ptr] }).insert(caller_ptr, ThreadU {
-                    state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked.thread_map[caller_ptr]
+                    state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..locked.thread_map[caller_ptr]
                 }),
                 ..locked
             }
@@ -199,8 +199,8 @@ pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }),
-            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, ..t }), None => None },
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process.pagetable->Some_0 }),
+            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..t }), None => None },
             ..process
         }),
         iommu_root_table: if process.iommu_table is Some { IommuRootTableU { attached: thread_exit_detached_attached(table, thread.owning_proc), ..table } } else { table },
@@ -260,23 +260,23 @@ pub open spec fn thread_exit_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 pub open spec fn thread_exit_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let locked = KernelU {
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: old_u.container_map.spec_index(thread.owning_container).cpu_set_lock.with_reader(cpu_id), ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     };
     new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
 }
 
-/// Recording the flush changes the thread's progress and releases this thread's read hold on the cpu set of the
-/// thread's container, which no writer holds afterwards.
+/// Recording the flush changes the thread's progress and releases this cpu's read hold on the cpu set of the thread's
+/// container.
 #[verifier::opaque]
 pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let ctn_ptr = old_u.thread_map.spec_index(thrd_ptr).owning_container;
-    let cpu_set_lock = new_u.container_map.spec_index(ctn_ptr).cpu_set_lock;
-    &&& !(cpu_set_lock is WriteLocked)
+    let cpu_set_lock = old_u.container_map.spec_index(ctn_ptr).cpu_set_lock;
+    &&& cpu_set_lock.read_held_by(cpu_id)
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..old_u.thread_map.spec_index(thrd_ptr) }),
-        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(ctn_ptr) }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: cpu_set_lock.without_reader(cpu_id), ..old_u.container_map.spec_index(ctn_ptr) }),
         ..old_u
     })
 }

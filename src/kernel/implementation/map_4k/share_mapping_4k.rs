@@ -282,8 +282,13 @@ fn share_one_mapping_4k(
             let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
             &&& final(steps).view().last().new_u.process_map.dom().contains(source_process) && final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable is Some
             &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable is Some
-            &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state
-                == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state
+            &&& if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
+                &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+            } else {
+                &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(old(lctx).cpu_id())
+                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(old(lctx).cpu_id())
+            }
         },
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -968,7 +973,13 @@ pub fn share_mapping_4k_build_and_share(
             let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
             &&& final(steps).view().last().new_u.process_map.dom().contains(source_process) && final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable is Some
             &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable is Some
-            &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state
+            &&& if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Write) {
+                &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: old(lctx).cpu_id() })
+            } else {
+                &&& final(steps).view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(old(lctx).cpu_id())
+                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable->Some_0.lock_state.read_held_by(old(lctx).cpu_id())
+            }
         },
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),

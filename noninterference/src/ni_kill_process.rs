@@ -467,7 +467,7 @@ pub proof fn kill_process_caller_taken_over_step_lr(old_u: KernelU, new_u: Kerne
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
-        kernel_u_killed_caller_taken_over(old_u, new_u),
+        kernel_u_killed_caller_taken_over(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(kill_process_step_pre); reveal(kernel_u_killed_caller_taken_over);
@@ -493,7 +493,7 @@ pub proof fn kill_process_caller_taken_over_step_iso(old_u: KernelU, new_u: Kern
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
-        kernel_u_killed_caller_taken_over(old_u, new_u),
+        kernel_u_killed_caller_taken_over(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_killed_caller_taken_over);

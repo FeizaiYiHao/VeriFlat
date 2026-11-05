@@ -116,8 +116,9 @@ pub(super) fn unmap_4k_release_and_exit(
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         assert(unmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
             process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
+            exit_start.pt_mp.typed_lock_map_aligned_read_at(exit_lctx.pagetable_lock_map(), exit_lctx.thread_id(), pagetable);
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
-            unmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, *va_range, exit_k.pt_mp.spec_index(pagetable).lock_state_u(),
+            unmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, prc_ptr, thrd_ptr, pagetable, *va_range,
                 whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable).lower.pagetable_window_locks);
             unmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range);
         };

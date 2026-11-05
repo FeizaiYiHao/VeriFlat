@@ -221,11 +221,11 @@ pub open spec fn ipc_reply_dangling_caller_taken_over_step(old_u: KernelU, new_u
     let callee_ptr = cpu.current_thread->Some_0;
     let dangling_ptr = old_u.thread_map.spec_index(callee_ptr).caller->Some_0;
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU {
-            lock_state: LockStateU::WriteLocked, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: dangling_ptr }), ..old_u.thread_map.spec_index(callee_ptr)
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, caller: None, syscall_progress: Some(SyscallProgress::ReplyDangling { caller: dangling_ptr }), ..old_u.thread_map.spec_index(callee_ptr)
         })
-            .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(dangling_ptr) }),
+            .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.thread_map.spec_index(dangling_ptr) }),
         ..old_u
     })
 }

@@ -477,19 +477,19 @@ pub(crate) proof fn kill_enter_step_from_u(
             &&& !pre.process_map[child_ptr].killed
         },
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
-            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr] }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map[thrd_ptr] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr] }),
+            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map[thrd_ptr] }),
             ..pre
         }),
-        marked == (KernelU { process_map: locked.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..locked.process_map[child_ptr] }), ..locked }),
+        marked == (KernelU { process_map: locked.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..locked.process_map[child_ptr] }), ..locked }),
         post == (KernelU { thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..marked.thread_map[thrd_ptr] }), ..marked }),
     ensures
         kill_process_enter_step_pre(pre, cpu_id, child_index),
         kill_process_enter_step(pre, post, cpu_id, child_index),
 {
     reveal(kill_process_enter_step_pre); reveal(kill_process_enter_step);
-    assert(post.thread_map =~= pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..pre.thread_map[thrd_ptr] }));
+    assert(post.thread_map =~= pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..pre.thread_map[thrd_ptr] }));
 }
 
 /// Marking and write-locking the first child `child_ptr` of the target and recording its walk is a middle step.
@@ -503,7 +503,7 @@ pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, p
         0 < pre.process_map[target].children.len(),
         pre.process_map[target].children[0] == child_ptr,
         pre.process_map.dom().contains(child_ptr),
-        marked == (KernelU { process_map: pre.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[child_ptr] }), ..pre }),
+        marked == (KernelU { process_map: pre.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[child_ptr] }), ..pre }),
         post == (KernelU { thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, child_ptr, KillStage::Walk), ..marked.thread_map[thrd_ptr] }), ..marked }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_mark_child_step); }
@@ -550,7 +550,7 @@ pub(crate) proof fn kill_mark_thread_step_from_u(
         pre.thread_map.dom().contains(victim_ptr),
         !pre.thread_map[victim_ptr].state.is_reply_waiting(),
         victim_ptr != thrd_ptr,
-        marked == (KernelU { thread_map: pre.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[victim_ptr] }), ..pre }),
+        marked == (KernelU { thread_map: pre.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.thread_map[victim_ptr] }), ..pre }),
         post == (KernelU {
             thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Thread { thread: victim_ptr }), ..marked.thread_map[thrd_ptr] }),
             ..marked
@@ -751,8 +751,8 @@ pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Reclaim { flushed: false }), ..pre.thread_map[thrd_ptr] }),
             process_map: pre.process_map.insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[target].pagetable->Some_0 }),
-                iommu_table: match pre.process_map[target].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[target].pagetable->Some_0 }),
+                iommu_table: match pre.process_map[target].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..t }), None => None },
                 ..pre.process_map[target]
             }),
             ..pre

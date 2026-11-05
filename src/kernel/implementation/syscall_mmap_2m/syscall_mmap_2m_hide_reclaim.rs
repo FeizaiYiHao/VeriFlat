@@ -271,12 +271,12 @@ pub(super) fn mmap_2m_hide_linked_l1_range(
 
 /// Flush every CPU's TLB for the caller's page table `pagetable_ptr`, whose held 2M windows of `va_range` hide their empty
 /// L1 pages, then return each hidden L1 page to the 4K pool of its owner, the caller's container. Records the flush steps,
-/// the release of the container's cpu set, if visible, and one quota credit per returned page; afterwards no window of
-/// the range owns an L1 page or lists a stale CPU.
+/// the release of the container's cpu set together with the thread's progress marked flushed, and one quota credit per
+/// returned page; afterwards no window of the range owns an L1 page or lists a stale CPU.
 pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
     krnl: &mut KernelK, va_range: &VaRange2M, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
     Ghost(phase): Ghost<Mmap2mPhase>, Ghost(t4k): Ghost<WholePageTable<PT_TYPE>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
-    Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
+    Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -296,10 +296,13 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         old(krnl).thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == old(lctx).thread_id(),
+        thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: false }),
         !(phase is Fill),
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).page_lock_map().dom().is_empty(),
@@ -355,7 +358,12 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
+        final(krnl).thrd_mp.dom().contains(thrd_ptr),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: true }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
@@ -402,14 +410,14 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
     let ghost flushed_snap = steps.snapshot_k();
     let ghost flushed_pre = *krnl;
     let ghost flushed_before = steps.view();
+    krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: true })),
+        Tracked(&*lctx), Tracked(thread_lock_perm));
+    let ghost flushed_post = *krnl;
     proof {
-        let cs = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set;
-        process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        mmap_2m_flushed_step_from_k(&flushed_snap, &flushed_pre, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
-        if flushed_snap.cpu_set_mp.spec_index(cs).lock_state_u() == krnl.cpu_set_mp.spec_index(cs).lock_state_u() {
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        } else { krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps); }
-        mmap_2m_flushed_range_steps_from_u(&*steps, flushed_before, start, kernel_k_to_kernel_u(flushed_snap), kernel_k_to_kernel_u(flushed_pre), cpu_id);
+        process_thread_wf_thread_at(flushed_pre.prc_mp, flushed_pre.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(flushed_pre.prc_mp, flushed_pre.pt_mp, prc_ptr);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
+        mmap_2m_flushed_range_steps_from_k(&*steps, flushed_before, start, &flushed_snap, &flushed_pre, &flushed_post, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr,
+            *va_range, phase);
     }
     let ghost t1 = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     let ghost reclaim_start = steps.view().len();
@@ -440,13 +448,19 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
             krnl.cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
             krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-            held_threads_unchanged(old(krnl).thrd_mp, krnl.thrd_mp, old(lctx)),
+            held_threads_unchanged(flushed_post.thrd_mp, krnl.thrd_mp, old(lctx)),
+            flushed_post.thrd_mp.dom().contains(thrd_ptr),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: flushed_post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: true }),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
-            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase }),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: false }),
             !(phase is Fill),
             held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
             old(lctx).page_lock_map().dom().is_empty(),

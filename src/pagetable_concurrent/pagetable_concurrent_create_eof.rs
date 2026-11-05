@@ -280,7 +280,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             lo <= i <= hi ==> post.lower.l2_owner(page_map_ptr, i) is Write && post.lower.l2_owner(page_map_ptr, i)->Write_thread_id == thread_id
         &&& post.lower.pagetable_window_locks == Map::new(
             pre.lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((target_l4i, target_l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-            |w: WindowVa| if pre.lower.pagetable_window_locks.dom().contains(w) { pre.lower.pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked })
+            |w: WindowVa| if pre.lower.pagetable_window_locks.dom().contains(w) { pre.lower.pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: thread_id } } else { LockStateU::Unlocked })
     }
 
     /// EOF closure of `create_entry_l3`: every page-table invariant leaf.
@@ -469,7 +469,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
-                    LockStateU::WriteLocked
+                    LockStateU::WriteLocked { writer: post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id }
                 } else {
                     LockStateU::Unlocked
                 }
@@ -523,7 +523,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
                 &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
-                    LockStateU::WriteLocked
+                    LockStateU::WriteLocked { writer: post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id }
                 } else {
                     LockStateU::Unlocked
                 }

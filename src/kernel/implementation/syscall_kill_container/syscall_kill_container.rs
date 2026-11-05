@@ -194,7 +194,7 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &locked_k)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, locked_k.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
         kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(old(krnl), &locked_k, &locked_lctx, cpu_id, prc_ptr, thrd_ptr, None, true, Some(ctn_ptr), false, None);
-        kernel_container_locked_and_marked_implies_u_step(&locked_k, &marked_k, child_ptr);
+        kernel_container_locked_and_marked_implies_u_step(&locked_k, &marked_k, child_ptr, cpu_id);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
         kill_container_enter_pre_from_k(&*old(krnl), cpu_id, child_index, ctn_ptr, prc_ptr, thrd_ptr, child_ptr);
         kill_container_enter_step_from_u(pre, kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, child_index, ctn_ptr,

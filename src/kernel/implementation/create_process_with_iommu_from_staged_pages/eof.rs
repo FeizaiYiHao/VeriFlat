@@ -201,7 +201,10 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations(
         pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp),
 {
     hide(Seq::contains);
-    create_process_with_iommu_from_staged_pages_eof_page_table_relations_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_page_mappings_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_container_process_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_pagetable_pages(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_process_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_with_iommu_from_staged_pages_eof_page_table_relations_iommu(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
@@ -217,8 +220,139 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations(
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
 }
 
-/// The new page table and its root page close the page-table relations.
-proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations_pagetable(
+/// The new page table and its root page close `page_mappings_pagetable_wf`, split per mapped size for monolith order stability.
+proof fn create_process_with_iommu_from_staged_pages_eof_page_mappings_pagetable(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
+        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    create_process_with_iommu_from_staged_pages_eof_mapped_4k_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_mapped_2m_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_with_iommu_from_staged_pages_eof_mapped_1g_page_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+}
+
+/// The new page table and its root page close `mapped_4k_page_pagetable_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_mapped_4k_page_pagetable(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
+        mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    hide(Seq::contains);
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    // Ground the pre-side held-leaf facts of the existing tables: the deep pre-side `spec_held_4k_l1` pattern is reachable only through S's `whole_pagetable` equality (monolith order flip, #35506).
+    assert forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+        #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        pre.pt_mp.dom().contains(pt) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some implies {
+            let pg_idx = page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
+            &&& index_valid(NUM_PAGES, pg_idx)
+            &&& pre.pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
+            &&& pre.pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, l2i, l1i))))
+        } by { mapped_4k_page_pagetable_wf_held_leaf_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, pt, l4i, l3i, l2i, l1i); };
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid(); };
+}
+
+/// The new page table and its root page close `mapped_2m_page_pagetable_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_mapped_2m_page_pagetable(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
+        mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    hide(Seq::contains);
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid(); };
+}
+
+/// The new page table and its root page close `mapped_1g_page_pagetable_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_mapped_1g_page_pagetable(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
+        mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    hide(Seq::contains);
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
+}
+
+/// The new page table and its root page close `container_process_page_pagetable_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_container_process_page_pagetable(
     pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
     iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
@@ -259,18 +393,89 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations_pa
         pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().owning_container == ctn_ptr,
         create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
     ensures
-        page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
+{
+    hide(Seq::contains);
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
+}
+
+/// The new page table and its root page close `pagetable_pages_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_pagetable_pages(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    hide(Seq::contains);
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
+}
+
+/// The new page table and its root page close `process_pagetable_wf`.
+proof fn create_process_with_iommu_from_staged_pages_eof_process_pagetable(
+    pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr,
+    iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        page_ptr_valid(process_pg_ptr),
+        page_ptr_valid(pagetable_pg_ptr),
+        page_ptr_valid(l4_pg_ptr),
+        page_ptr_valid(iommu_table_pg_ptr),
+        page_ptr_valid(iommu_l4_pg_ptr),
+        process_pg_ptr != pagetable_pg_ptr,
+        process_pg_ptr != l4_pg_ptr,
+        process_pg_ptr != iommu_table_pg_ptr,
+        process_pg_ptr != iommu_l4_pg_ptr,
+        pagetable_pg_ptr != l4_pg_ptr,
+        pagetable_pg_ptr != iommu_table_pg_ptr,
+        pagetable_pg_ptr != iommu_l4_pg_ptr,
+        l4_pg_ptr != iommu_table_pg_ptr,
+        l4_pg_ptr != iommu_l4_pg_ptr,
+        iommu_table_pg_ptr != iommu_l4_pg_ptr,
+        !pre.prc_mp.dom().contains(process_pg_ptr),
+        !pre.pt_mp.dom().contains(pagetable_pg_ptr),
+        !pre.it_mp.dom().contains(iommu_table_pg_ptr),
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.thrd_mp.dom().contains(staging_thrd_ptr),
+        pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= set![process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr],
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().owning_container == ctn_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_pg_ptr)).view().view().owning_container == ctn_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().owning_container == ctn_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_table_pg_ptr)).view().view().owning_container == ctn_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(iommu_l4_pg_ptr)).view().view().owning_container == ctn_ptr,
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+    ensures
         process_pagetable_wf(post.prc_mp, post.pt_mp),
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); };
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid(); };
-    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
 }
 

@@ -30,9 +30,10 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_ptr),
         old(krnl).thrd_mp.unchanged_except(&old(steps).snapshot_k().thrd_mp, current_thrd_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).lock_state_u() == old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).lock_state_u().with_reader(cpu_id),
         old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(source_pagetable_ptr, old(krnl).pt_lower.view().spec_index(source_pagetable_ptr)),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks
-            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range),
+            == pagetable_window_locks_after_locking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range, cpu_id),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_ptr).locking_thread() is None,
         old(steps).snapshot_k().thrd_mp.spec_index(current_thrd_ptr).locking_thread() is None,

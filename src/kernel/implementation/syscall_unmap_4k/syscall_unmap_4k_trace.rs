@@ -80,7 +80,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
         krnl.pt_mp.dom().contains(pagetable_ptr),
         krnl.thrd_mp.dom().contains(thrd_ptr),
         krnl.ctn_mp.dom().contains(krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container),
-        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range, cpu_id),
         {
             let pre = kernel_k_to_kernel_u(*krnl);
             let cpu = pre.cpu_array[cpu_id as int];
@@ -94,9 +94,9 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
             &&& thread.owning_proc == prc_ptr
             &&& !(pagetable.lock_state is WriteLocked)
             &&& post == (KernelU {
-                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }), ..thread }),
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pagetable }), ..process }),
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }), ..thread }),
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: pagetable.lock_state.with_reader(cpu_id), pagetable_window_locks: windows, ..pagetable }), ..process }),
                 ..pre
             })
         },
@@ -110,14 +110,16 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
 }
 
 /// Clearing the progress, unlocking the caller's cpu, which leaves its kernel step for its trap path, and its running thread,
-/// and leaving the pagetable `pagetable_ptr` of its process in `table_lock` with `windows`, the window locks of `krnl` after
-/// unlocking the range's windows, after the flushed range is the exit step from `krnl`'s projection to `post`.
+/// and releasing this cpu's read hold on the pagetable `pagetable_ptr` of its process, which it holds, with `windows`, the
+/// window locks of `krnl` after unlocking the range's windows, after the flushed range is the exit step from `krnl`'s projection
+/// to `post`.
 pub(super) proof fn unmap_4k_exit_step_from_u(
-    krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, range: VaRange4K,
-    table_lock: LockStateU, windows: Map<WindowVa, LockStateU>,
+    krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot,
+    range: VaRange4K, windows: Map<WindowVa, LockStateU>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        krnl.pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(cpu_id),
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
@@ -134,6 +136,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
             &&& thread.lock_state is WriteLocked
             &&& thread.owning_proc == prc_ptr
             &&& !(process.pagetable->Some_0.lock_state is Unlocked)
+            &&& process.pagetable->Some_0.lock_state == krnl.pt_mp.spec_index(pagetable_ptr).lock_state_u()
             &&& thread.syscall_progress is Some
             &&& progress is Unmap4k
             &&& progress->Unmap4k_range == range
@@ -142,11 +145,10 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
             &&& post == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process }),
+                process_map: pre.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: process.pagetable->Some_0.lock_state.without_reader(cpu_id), pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process }),
                 ..pre
             })
         },
-        table_lock is Unlocked || table_lock is ReadLocked,
     ensures
         unmap_4k_refund_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         unmap_4k_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),

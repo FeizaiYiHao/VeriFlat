@@ -16,6 +16,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         typed_lock_maps_aligned(post, lctx),
+        lctx.cpu_id() == cpu_id,
         index_valid(NUM_CPUS, cpu_id),
         *post == (KernelK {
             cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, sched_mp: post.sched_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp,
@@ -30,6 +31,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
             &&& !post.prc_mp.spec_index(prc_ptr).view().zombie
             &&& post.pt_mp.unchanged_except(&pre.pt_mp, table)
             &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Read)
+            &&& post.pt_mp.spec_index(table).lock_state_u() == pre.pt_mp.spec_index(table).lock_state_u().with_reader(cpu_id)
         }),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
@@ -68,7 +70,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
         post.inv() ==> kernel_k_to_kernel_u(*pre).kernel_l4_end == post.pt_mp.spec_index(post.prc_mp.spec_index(prc_ptr).view().pagetable).view().kernel_l4_end,
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let mode = LockStateU::WriteLocked;
+            let mode = LockStateU::WriteLocked { writer: cpu_id };
             let table = post.prc_mp.spec_index(prc_ptr).view().pagetable;
             kernel_k_to_kernel_u(*post) == (KernelU {
                 cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, op: post.cpu_op.view().view()[cpu_id as int], ..old_u.cpu_array[cpu_id as int] }),
@@ -81,7 +83,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
                 },
                 process_map: old_u.process_map.insert(prc_ptr, ProcessU {
                     lock_state: mode, pagetable: Some(PageTableU {
-                        lock_state: LockStateU::ReadLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks,
+                        lock_state: old_u.process_map[prc_ptr].pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks,
                         ..old_u.process_map[prc_ptr].pagetable->Some_0
                     }), ..old_u.process_map[prc_ptr]
                 }),
@@ -144,11 +146,11 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
     post.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr);
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     if ep_ptr is Some { post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), ep_ptr->Some_0); }
-    assert(post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) by { reveal(LockedArray::typed_lock_map_aligned); };
+    assert(post.cpu_arr.spec_index(cpu_id).value.wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-    let mode = LockStateU::WriteLocked;
+    let mode = LockStateU::WriteLocked { writer: cpu_id };
     kernel_cpu_lock_mode_changed_implies_u_cpu_array(pre, post, cpu_id, mode);
     kernel_container_lock_mode_changed_implies_u_container_map(pre, post, container, mode, cpu_set_unlocked);
     kernel_thread_lock_mode_changed_implies_u_thread_map(pre, post, thrd_ptr, mode);
@@ -157,7 +159,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
     let new_u = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(new_u.process_map, old_u.process_map.insert(prc_ptr, ProcessU {
         lock_state: mode, pagetable: Some(PageTableU {
-            lock_state: LockStateU::ReadLocked, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks,
+            lock_state: old_u.process_map[prc_ptr].pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks,
             ..old_u.process_map[prc_ptr].pagetable->Some_0
         }), ..old_u.process_map[prc_ptr]
     }), p => {
@@ -174,7 +176,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
 }
 
 /// Read-mode new-process finish: the child's first thread is published while the cpu, the thread, the child, its tables,
-/// and the endpoint are released and the thread's read hold on the parent's page table is dropped (other readers may remain);
+/// and the endpoint are released and cpu `cpu_id`'s read hold on the parent's page table is dropped (other readers stay);
 /// the parent's and the child's page tables take their window lock states from `post`.
 pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
@@ -198,7 +200,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
             pre.ep_mp.dom().contains(p) ==> if ep_ptr == Some(p) { post.ep_mp.spec_index(p).locking_thread() is None } else { post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) ==> if p == pre.prc_mp.spec_index(prc_ptr).view().pagetable { post.pt_mp.spec_index(p).locking_thread() is None }
-                else if p == pre.prc_mp.spec_index(source).view().pagetable { !(post.pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == pre.prc_mp.spec_index(source).view().pagetable {
+                    &&& pre.pt_mp.spec_index(p).rlocked_by_thread(cpu_id)
+                    &&& post.pt_mp.spec_index(p).locking_thread() == (if pre.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id).dom().is_empty() { RwLockState::None } else {
+                        RwLockState::Read { reader_map: pre.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id) }
+                    })
+                }
                 else { post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) ==> if pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(p) { post.it_mp.spec_index(p).locking_thread() is None }
@@ -225,7 +232,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
         kernel_k_to_kernel_u(*post).process_map.spec_index(prc_ptr).owned_threads.last() == new_thrd_ptr,
         ({
             let lock = kernel_k_to_kernel_u(*post).process_map[source].pagetable->Some_0.lock_state;
-            lock is Unlocked || lock is ReadLocked
+            lock == kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.lock_state.without_reader(cpu_id)
         }),
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
@@ -289,9 +296,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
     if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_projection_at(pre, thrd_ptr); }
     if post.thrd_mp.dom().contains(new_thrd_ptr) { kernel_thread_projection_at(post, new_thrd_ptr); }
     if let Some(e) = ep_ptr { if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); } if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } }
-    assert(lock is Unlocked || lock is ReadLocked) by {
+    assert(lock == kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.lock_state.without_reader(cpu_id)) by {
         reveal(kernel_new_thread_fields); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source);
         assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
+        let table = pre.prc_mp.spec_index(source).view().pagetable;
+        assert(table != pre.prc_mp.spec_index(prc_ptr).view().pagetable) by { reveal(process_pagetable_wf); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); };
+        assert(pre.pt_mp.spec_index(table).locking_thread()->Read_reader_map.remove(cpu_id).dom() =~= pre.pt_mp.spec_index(table).lock_state_u().readers().remove(cpu_id));
     };
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
     kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_process_map(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, source);
@@ -308,7 +318,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
 
 /// Read-mode new-container finish: the child root's first thread is published while the cpu, both containers, the parent
 /// and root processes, the root's page table, the thread, and the endpoint are released and the thread's read hold on the
-/// parent's page table is dropped (other readers may remain); the parent's and the root's page tables take their window
+/// parent's page table by cpu `cpu_id` is dropped (other readers stay); the parent's and the root's page tables take their window
 /// lock states from `post`.
 pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
@@ -336,7 +346,12 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
             pre.ep_mp.dom().contains(p) ==> if ep_ptr == Some(p) { post.ep_mp.spec_index(p).locking_thread() is None } else { post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) ==> if p == pre.prc_mp.spec_index(prc_ptr).view().pagetable { post.pt_mp.spec_index(p).locking_thread() is None }
-                else if p == pre.prc_mp.spec_index(source).view().pagetable { !(post.pt_mp.spec_index(p).locking_thread() is Write) }
+                else if p == pre.prc_mp.spec_index(source).view().pagetable {
+                    &&& pre.pt_mp.spec_index(p).rlocked_by_thread(cpu_id)
+                    &&& post.pt_mp.spec_index(p).locking_thread() == (if pre.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id).dom().is_empty() { RwLockState::None } else {
+                        RwLockState::Read { reader_map: pre.pt_mp.spec_index(p).locking_thread()->Read_reader_map.remove(cpu_id) }
+                    })
+                }
                 else { post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread() },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
@@ -363,7 +378,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         kernel_k_to_kernel_u(*post).process_map.spec_index(prc_ptr).owned_threads.last() == new_thrd_ptr,
         ({
             let lock = kernel_k_to_kernel_u(*post).process_map[source].pagetable->Some_0.lock_state;
-            lock is Unlocked || lock is ReadLocked
+            lock == kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.lock_state.without_reader(cpu_id)
         }),
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
@@ -427,9 +442,12 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         reveal(kernel_new_thread_fields); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source);
     };
     kernel_cpu_projection_at(pre, cpu_id); kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, source); kernel_process_projection_at(post, source); kernel_thread_projection_at(pre, thrd_ptr);
-    assert(lock is Unlocked || lock is ReadLocked) by {
+    assert(lock == kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.lock_state.without_reader(cpu_id)) by {
         reveal(kernel_new_thread_fields); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, source);
         assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
+        let table = pre.prc_mp.spec_index(source).view().pagetable;
+        assert(table != pre.prc_mp.spec_index(prc_ptr).view().pagetable) by { reveal(process_pagetable_wf); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr); };
+        assert(pre.pt_mp.spec_index(table).locking_thread()->Read_reader_map.remove(cpu_id).dom() =~= pre.pt_mp.spec_index(table).lock_state_u().readers().remove(cpu_id));
     };
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
     assert(post_u.process_map.spec_index(prc_ptr).owned_threads.last() == new_thrd_ptr && old_u.process_map[prc_ptr].iommu_table is None

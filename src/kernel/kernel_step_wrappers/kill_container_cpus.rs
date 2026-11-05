@@ -5,20 +5,20 @@ use crate::*;
 verus! {
 /// Write-locking and marking the cpu set of the container `ctn_ptr` changes only that container's cpu-set lock
 /// mode and mark in the projection.
-pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, ctn_ptr: RwLockContainerPtr)
+pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, ctn_ptr: RwLockContainerPtr, cpu_id: CpuId)
     requires
         container_cpu_set_wf(before.ctn_mp, before.cpu_set_mp),
         *after == (KernelK { cpu_set_mp: after.cpu_set_mp, ..*before }),
         before.ctn_mp.dom().contains(ctn_ptr),
         after.cpu_set_mp.unchanged_except(&before.cpu_set_mp, before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
-        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Write,
+        after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).wlocked_by_thread(cpu_id),
         after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
     ensures
         kernel_k_to_kernel_u(*before).container_map.dom().contains(ctn_ptr),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
+                container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
             })
         }),
 {
@@ -26,7 +26,7 @@ pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, a
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, ctn_ptr);
-    assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), c => {
+    assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), c => {
         if before.ctn_mp.dom().contains(c) {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, c);
         }

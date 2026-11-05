@@ -113,7 +113,7 @@ pub(crate) fn kill_mark_child(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         let before_u = kernel_k_to_kernel_u(before);
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_mark_child_pre_from_k(&before, target, child_ptr);
-        kernel_process_locked_and_marked_implies_u_step(&before, &marked_k, child_ptr);
+        kernel_process_locked_and_marked_implies_u_step(&before, &marked_k, child_ptr, cpu_id);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
         kill_mark_child_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, target, child_ptr, scope);
         kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
@@ -237,7 +237,7 @@ pub(crate) fn kill_first_thread(
             krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
             let before_u = kernel_k_to_kernel_u(before);
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_mark_thread_pre_from_k(&before, target, victim_ptr);
-            kernel_thread_locked_and_marked_implies_u_step(&before, &marked_k, victim_ptr);
+            kernel_thread_locked_and_marked_implies_u_step(&before, &marked_k, victim_ptr, cpu_id);
             kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
             kill_mark_thread_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, target, victim_ptr, scope);
             kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);

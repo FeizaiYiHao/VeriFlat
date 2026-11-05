@@ -48,7 +48,7 @@ impl PageTableHigher<PT_TYPE> {
         let ret = l2_entry_lock(&PPtr::<L2PageMap>::from_usize(l3_entry.addr), Tracked(&mut l2_perm), l2i, Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
             lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
-            lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked);
+            lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked { writer: lctx.thread_id() });
             lock_window_eof(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
             lock_window_eof_hidden_l1_tables_in_locked_windows(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
             lock_window_eof_held_chain(pre, WholePageTable { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());

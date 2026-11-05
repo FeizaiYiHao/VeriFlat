@@ -16,6 +16,7 @@ pub(super) fn end_new_process_publish_step(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         new_process_publish_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id),
         old(steps).snapshot_k().inv(),
         old(krnl).inv(),

@@ -75,7 +75,8 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
             &&& final(krnl).cpu_set_mp.unchanged_except(&final(steps).snapshot_k().cpu_set_mp, cpu_set_ptr)
             &&& final(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed() == final(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
-            &&& !(final(krnl).cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is Write)
+            &&& final(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().read_held_by(local_cpu)
+            &&& final(krnl).cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() == final(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().without_reader(local_cpu)
         }),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + NUM_CPUS,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
@@ -86,7 +87,7 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             let entry_u = kernel_k_to_kernel_u(*old(krnl));
             let prc_ptr = old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc;
             let ctn_ptr = old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container;
-            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[ctn_ptr] }), ..old_u };
+            let locked = KernelU { container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: old_u.container_map[ctn_ptr].cpu_set_lock.with_reader(local_cpu), ..old_u.container_map[ctn_ptr] }), ..old_u };
             &&& final(steps).view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, final(steps).view()[j].new_u, pcid)
             &&& old_u.cpu_array[local_cpu as int].lock_state is WriteLocked
             &&& old_u.cpu_array[local_cpu as int].current_thread == Some(thrd_ptr)
@@ -200,6 +201,9 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             !krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
             krnl.cpu_set_mp.spec_index(cpu_set_ptr).view() == *cpu_set,
             cpu_set.owned_cpus.wf(),
+            cpu_set.owned_cpus.view().contains(local_cpu),
+            krnl.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() == steps.snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().with_reader(local_cpu),
+            local_cpu < cpu_id ==> steps.snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().read_held_by(local_cpu),
             krnl.cpu_set_mp.spec_index(cpu_set_ptr).read_lock_perm_match(&cpu_set_perm),
             cpu_set_perm.state() is ReadLock,
             cpu_set_perm.thread_id() == lctx.thread_id(),

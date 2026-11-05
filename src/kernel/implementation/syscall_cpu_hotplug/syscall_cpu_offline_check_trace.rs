@@ -56,7 +56,7 @@ pub(super) proof fn cpu_offline_check_hold_step_pre_from_k(krnl: &KernelK, cpu_i
 /// `after`.
 pub(super) proof fn cpu_offline_check_hold_step_from_u(before: &KernelK, after: &KernelK, cpu_id: CpuId)
     requires
-        after.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
+        after.cpu_arr.spec_index(cpu_id).value.lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id }),
         after.cpu_op.view().view()[cpu_id as int] is InStep,
         ({
             let pre_u = kernel_k_to_kernel_u(*before);

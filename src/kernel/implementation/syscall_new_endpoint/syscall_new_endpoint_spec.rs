@@ -54,12 +54,12 @@ pub open spec fn new_endpoint_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let prc_ptr = cpu.current_process->Some_0;
     let thrd_ptr = cpu.current_thread->Some_0;
     let locked = KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(ctn_ptr, ContainerU {
-            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(prc_ptr).depth)), ..old_u.container_map.spec_index(ctn_ptr)
+            lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(prc_ptr).depth)), ..old_u.container_map.spec_index(ctn_ptr)
         }),
-        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(prc_ptr) }),
-        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thrd_ptr) }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.process_map.spec_index(prc_ptr) }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.thread_map.spec_index(thrd_ptr) }),
         ..old_u
     };
     new_u == (KernelU { thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewEndpoint { slot: ep_idx }), ..locked.thread_map[thrd_ptr] }), ..locked })

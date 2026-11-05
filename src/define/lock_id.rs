@@ -96,7 +96,8 @@ pub open spec fn allocator_quota_major(size: usize) -> LockMajorId {
 // -------------------- End of const --------------------------
 
 // -------------------- Begin of lock thread id  --------------
-pub type LockThreadId = usize;
+/// A lock is held by the kernel execution of one cpu, so the holder id is the cpu id.
+pub type LockThreadId = CpuId;
 // -------------------- End of lock thread id  ----------------
 
 // -------------------- Begin of lock id  ---------------------

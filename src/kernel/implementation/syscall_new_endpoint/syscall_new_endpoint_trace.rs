@@ -41,12 +41,12 @@ pub proof fn new_endpoint_enter_step_from_u(
             &&& thread.quota_4k >= 1
         },
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(ctn_ptr, ContainerU {
-                lock_state: LockStateU::WriteLocked, lock_process_owner: locked_k.ctn_mp.spec_index(ctn_ptr).lock_process_owner_u(), ..pre.container_map[ctn_ptr]
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, lock_process_owner: locked_k.ctn_mp.spec_index(ctn_ptr).lock_process_owner_u(), ..pre.container_map[ctn_ptr]
             }),
-            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[prc_ptr] }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thrd_ptr) }),
+            process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.process_map[prc_ptr] }),
+            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..pre.thread_map.spec_index(thrd_ptr) }),
             ..pre
         }),
         post == (KernelU { thread_map: locked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewEndpoint { slot: ep_idx }), ..locked.thread_map[thrd_ptr] }), ..locked }),
