@@ -95,7 +95,7 @@ proof fn release_endpoint_eof_page_relations(
     assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { container_pages_wf_preserved_for_page_state_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_pages_wf_preserved_for_page_state_eq(pre.prc_mp, post.prc_mp, pre.pg_arr, post.pg_arr); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
@@ -252,6 +252,7 @@ pub(super) proof fn release_endpoint_eof_fields(
         page_ptr_valid(ep_ptr),
         entry.ctn_mp.dom().contains(owner),
         entry.pg_arr.spec_index(page_ptr2page_index(ep_ptr)).view().view().owning_container == owner,
+        !entry.pg_arr.spec_index(page_ptr2page_index(ep_ptr)).view().view().is_merged(),
         entry.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
         post == (KernelK { pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..mid }),
         kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &post),

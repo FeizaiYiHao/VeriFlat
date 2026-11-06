@@ -27,7 +27,7 @@ pub(super) proof fn wlock_container_eof(pre: KernelK, post: KernelK, ctn_ptr: Rw
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp)) by { container_lock_op_preserves_invariant_fields(pre.ctn_mp, post.ctn_mp, ctn_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_container_invariant_fields(pre, post); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -77,7 +77,7 @@ pub(super) proof fn mark_kill_container_eof(pre: KernelK, post: KernelK, pre_lct
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp)) by { container_lock_op_preserves_invariant_fields(pre.ctn_mp, post.ctn_mp, ctn_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_container_invariant_fields(pre, post); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -122,7 +122,7 @@ pub(super) proof fn wunlock_container_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp)) by { container_lock_op_preserves_invariant_fields(pre.ctn_mp, post.ctn_mp, ctn_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
-        reveal(page_object_owner_wf); reveal(container_owned_pages_wf);
+        reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf);
         reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
         broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
         pre.ctn_mp.typed_lock_map_aligned_write_at(pre_lctx.container_lock_map(), pre_lctx.thread_id(), ctn_ptr);

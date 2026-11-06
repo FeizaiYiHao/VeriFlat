@@ -27,14 +27,14 @@ pub(crate) fn kill_container_retire_commit(
     Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_1g): Tracked<Map<CpuId, LockPerm>>,
     Tracked(pools_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pool_1g): Tracked<LockPerm>,
     Tracked(quotas_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quota_1g): Tracked<LockPerm>,
-    Tracked(page_perms): Tracked<Map<PageIndex, LockPerm>>, Tracked(tails_container): Tracked<Map<PageIndex, LockPerm>>, Tracked(tails_pcid): Tracked<Map<PageIndex, LockPerm>>,
+    Tracked(page_perms): Tracked<Map<PageIndex, LockPerm>>,
 )
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         kill_container_retire_held_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g, pools_4k,
-            pools_2m, pool_1g, quotas_4k, quotas_2m, quota_1g, page_perms, tails_container, tails_pcid),
+            pools_2m, pool_1g, quotas_4k, quotas_2m, quota_1g, page_perms),
         ({
             let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
@@ -174,7 +174,7 @@ pub(crate) fn kill_container_retire_commit(
     let tracked mut quotas_2m = quotas_2m;
     let Tracked(objects) = kill_container_retire_detach(krnl, Tracked(&mut *lctx), ctn_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
         Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms), Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(&mut pools_4k),
-        Tracked(&mut pools_2m), Tracked(pool_1g), Tracked(&mut quotas_4k), Tracked(&mut quotas_2m), Tracked(quota_1g), Tracked(&page_perms), Tracked(&tails_container), Tracked(&tails_pcid));
+        Tracked(&mut pools_2m), Tracked(pool_1g), Tracked(&mut quotas_4k), Tracked(&mut quotas_2m), Tracked(quota_1g), Tracked(&page_perms));
     let tracked (container_page, pcid_page, page_objects) = objects;
     proof {
         assert(lctx.allocator_global_pool_4k_lock_map().dom() =~= set![o4] && lctx.allocator_quota_4k_lock_map().dom() =~= set![o4]);
@@ -191,7 +191,7 @@ pub(crate) fn kill_container_retire_commit(
     let container_head = page_ptr2page_index(ctn_ptr);
     let pcid_head = page_ptr2page_index(pcid_ptr);
     kill_container_retire_fill_pools(krnl, Tracked(&mut *lctx), o4, o2, owner_ptr, &pages, Tracked(page_objects), container_head, Tracked(container_page), pcid_head, Tracked(pcid_page),
-        Tracked(&page_perms), Tracked(&tails_container), Tracked(&tails_pcid), Tracked(pools_4k.tracked_borrow(o4)), Tracked(quotas_4k.tracked_borrow(o4)), Tracked(pools_2m.tracked_borrow(o2)),
+        Tracked(&page_perms), Tracked(pools_4k.tracked_borrow(o4)), Tracked(quotas_4k.tracked_borrow(o4)), Tracked(pools_2m.tracked_borrow(o2)),
         Tracked(quotas_2m.tracked_borrow(o2)));
     let ghost mid = *krnl;
     proof {
@@ -200,7 +200,7 @@ pub(crate) fn kill_container_retire_commit(
         kill_container_retire_eof(entry, mid, ctn_ptr, parent_ptr, owner_ptr);
     }
     kill_container_retire_unlock(krnl, Tracked(&mut *lctx), o4, o2, container_head, pcid_head, &pages, Tracked(pools_4k), Tracked(pools_2m), Tracked(quotas_4k),
-        Tracked(quotas_2m), Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid));
+        Tracked(quotas_2m), Tracked(page_perms));
     proof { reveal(kill_container_retire_eof_transition_framing); }
 }
 
@@ -215,14 +215,14 @@ fn kill_container_retire_detach(
     Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_1g): Tracked<Map<CpuId, LockPerm>>,
     Tracked(pools_4k): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_2m): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pool_1g): Tracked<LockPerm>,
     Tracked(quotas_4k): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_2m): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quota_1g): Tracked<LockPerm>,
-    Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(tails_container): Tracked<&Map<PageIndex, LockPerm>>, Tracked(tails_pcid): Tracked<&Map<PageIndex, LockPerm>>,
+    Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>,
 ) -> (ret: Tracked<(PagePerm2m, PagePerm2m, Map<PageIndex, PagePerm4k>)>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         kill_container_retire_held_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g,
-            *old(pools_4k), *old(pools_2m), pool_1g, *old(quotas_4k), *old(quotas_2m), quota_1g, *page_perms, *tails_container, *tails_pcid),
+            *old(pools_4k), *old(pools_2m), pool_1g, *old(quotas_4k), *old(quotas_2m), quota_1g, *page_perms),
         ({
             let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
@@ -409,15 +409,12 @@ fn kill_container_retire_detach(
     Tracked((container_page, pcid_page, page_objects))
 }
 
-/// In a released view, return the five 4K object pages `pages` to the 4K global pool `o4` and the 2M heads
-/// `container_head` and `pcid_head` to the 2M global pool `o2` of the killer's container `owner_ptr`, which takes them
-/// and the heads' tails over, and raise both allocators' quotas by the pages returned.
+/// In a released view, return the five 4K object pages `pages` to the 4K global pool `o4` and the 2M heads `container_head` and `pcid_head` to the 2M global pool `o2` of `owner_ptr`, and raise both quotas by the pages returned.
 fn kill_container_retire_fill_pools(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, o4: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, owner_ptr: RwLockContainerPtr,
     pages: &ArrayVec<PageIndex, 5>, Tracked(page_objects): Tracked<Map<PageIndex, PagePerm4k>>, container_head: PageIndex, Tracked(container_page): Tracked<PagePerm2m>,
-    pcid_head: PageIndex, Tracked(pcid_page): Tracked<PagePerm2m>, Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(tails_container): Tracked<&Map<PageIndex, LockPerm>>,
-    Tracked(tails_pcid): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pool_4k): Tracked<&LockPerm>, Tracked(quota_4k): Tracked<&LockPerm>, Tracked(pool_2m): Tracked<&LockPerm>,
-    Tracked(quota_2m): Tracked<&LockPerm>,
+    pcid_head: PageIndex, Tracked(pcid_page): Tracked<PagePerm2m>, Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pool_4k): Tracked<&LockPerm>,
+    Tracked(quota_4k): Tracked<&LockPerm>, Tracked(pool_2m): Tracked<&LockPerm>, Tracked(quota_2m): Tracked<&LockPerm>,
 )
     requires
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -474,7 +471,6 @@ fn kill_container_retire_fill_pools(
         page_perms[container_head].state() is WriteLock && page_perms[container_head].thread_id() == old(lctx).thread_id(),
         page_perms[container_head].lock_id() == old(krnl).pg_arr.spec_index(container_head).view().locking_thread()->Write_lock_id,
         !old(krnl).allc_2m_mp.spec_index(o2).global_pool.view().view().contains(page_index2page_ptr(container_head)),
-        owned_2m_tail_lock_perms_wf(*tails_container, old(krnl).pg_arr, old(lctx), container_head),
         page_index_2m_valid(pcid_head),
         old(krnl).pg_arr.spec_index(pcid_head).view().view().state is Allocated2m,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), pcid_head, TypedLockMode::Write),
@@ -482,7 +478,6 @@ fn kill_container_retire_fill_pools(
         page_perms[pcid_head].state() is WriteLock && page_perms[pcid_head].thread_id() == old(lctx).thread_id(),
         page_perms[pcid_head].lock_id() == old(krnl).pg_arr.spec_index(pcid_head).view().locking_thread()->Write_lock_id,
         !old(krnl).allc_2m_mp.spec_index(o2).global_pool.view().view().contains(page_index2page_ptr(pcid_head)),
-        owned_2m_tail_lock_perms_wf(*tails_pcid, old(krnl).pg_arr, old(lctx), pcid_head),
         container_head != pcid_head,
         container_page.is_init() && container_page.addr() == page_index2page_ptr(container_head),
         pcid_page.is_init() && pcid_page.addr() == page_index2page_ptr(pcid_head),
@@ -511,12 +506,9 @@ fn kill_container_retire_fill_pools(
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-        owned_2m_tail_lock_perms_wf(*tails_container, final(krnl).pg_arr, final(lctx), container_head),
-        owned_2m_tail_lock_perms_wf(*tails_pcid, final(krnl).pg_arr, final(lctx), pcid_head),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
         ({
             let heads = seq![container_head, pcid_head];
-            let tails = kill_container_retire_tails(heads);
             &&& final(krnl).allc_4k_mp.perms_wf()
             &&& final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom()
             &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
@@ -571,7 +563,7 @@ fn kill_container_retire_fill_pools(
             })
             &&& page_array_wf(final(krnl).pg_arr)
             &&& forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)]
-                index_valid(NUM_PAGES, i) && !pages.view().contains(i) && !heads.contains(i) && !tails.contains(i) ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i)
+                index_valid(NUM_PAGES, i) && !pages.view().contains(i) && !heads.contains(i) ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i)
             &&& forall|k: int| #![trigger pages.view()[k]] 0 <= k < 5 ==> {
                 let pre_page = old(krnl).pg_arr.spec_index(pages.view()[k]).view();
                 let post_page = final(krnl).pg_arr.spec_index(pages.view()[k]).view();
@@ -590,18 +582,12 @@ fn kill_container_retire_fill_pools(
                 &&& post_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(o2), state: FreePageAllocatorState::GlobalList },
                     owning_container: owner_ptr, free_list_node_storage: post_page.view().free_list_node_storage, perm_2m: post_page.view().perm_2m, ..pre_page.view() })
             }
-            &&& forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)] tails.contains(i) ==> {
-                &&& final(krnl).pg_arr.spec_index(i).view().view() == (Page { owning_container: owner_ptr, ..old(krnl).pg_arr.spec_index(i).view().view() })
-                &&& final(krnl).pg_arr.spec_index(i).view().is_init() == old(krnl).pg_arr.spec_index(i).view().is_init()
-                &&& final(krnl).pg_arr.spec_index(i).view().locking_thread() == old(krnl).pg_arr.spec_index(i).view().locking_thread()
-            }
         }),
 {
     kill_container_retire_pages_4k_to_pool(krnl, pages, Tracked(page_objects), o4, owner_ptr, Tracked(&mut *lctx), Tracked(page_perms), Tracked(pool_4k));
     kill_container_retire_head_2m_to_pool(krnl, container_head, Tracked(container_page), o2, owner_ptr, Tracked(&mut *lctx), Tracked(page_perms.tracked_borrow(container_head)),
-        Tracked(tails_container), Tracked(pool_2m));
-    kill_container_retire_head_2m_to_pool(krnl, pcid_head, Tracked(pcid_page), o2, owner_ptr, Tracked(&mut *lctx), Tracked(page_perms.tracked_borrow(pcid_head)), Tracked(tails_pcid),
         Tracked(pool_2m));
+    kill_container_retire_head_2m_to_pool(krnl, pcid_head, Tracked(pcid_page), o2, owner_ptr, Tracked(&mut *lctx), Tracked(page_perms.tracked_borrow(pcid_head)), Tracked(pool_2m));
     {
         let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(o4, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
             Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(quota_4k));
@@ -615,14 +601,11 @@ fn kill_container_retire_fill_pools(
     proof { page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); }
 }
 
-/// With the transition committed and every kernel invariant restored, release the global pools and quotas `o4` and
-/// `o2` of the killer's container's allocators, the five 4K pages `pages`, the 2M heads `container_head` and
-/// `pcid_head`, and their tails.
+/// With the transition committed and every invariant restored, release the pools and quotas `o4` and `o2`, the five 4K pages `pages`, and the 2M heads `container_head` and `pcid_head`.
 fn kill_container_retire_unlock(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, o4: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, container_head: PageIndex, pcid_head: PageIndex,
     pages: &ArrayVec<PageIndex, 5>, Tracked(pools_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(quotas_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(page_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(tails_container): Tracked<Map<PageIndex, LockPerm>>, Tracked(tails_pcid): Tracked<Map<PageIndex, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -664,12 +647,10 @@ fn kill_container_retire_unlock(
             &&& page_perms[p].state() is WriteLock && page_perms[p].thread_id() == old(lctx).thread_id()
             &&& page_perms[p].lock_id() == old(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
         },
-        old(lctx).page_lock_map().dom() == page_perms.dom() + page_2m_tail_indices(container_head) + page_2m_tail_indices(pcid_head),
+        old(lctx).page_lock_map().dom() == page_perms.dom(),
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> old(krnl).pg_arr.spec_index(pages.view()[k]).view().view().state is Free4k,
         old(krnl).pg_arr.spec_index(container_head).view().view().state is Free2m,
         old(krnl).pg_arr.spec_index(pcid_head).view().view().state is Free2m,
-        owned_2m_tail_lock_perms_wf(tails_container, old(krnl).pg_arr, old(lctx), container_head),
-        owned_2m_tail_lock_perms_wf(tails_pcid, old(krnl).pg_arr, old(lctx), pcid_head),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -708,8 +689,6 @@ fn kill_container_retire_unlock(
     let tracked mut quotas_2m = quotas_2m;
     let tracked mut page_perms = page_perms;
     let ghost entry = *krnl;
-    wunlock_owned_2m_page_tails(krnl, container_head, Tracked(&mut *lctx), Tracked(tails_container));
-    wunlock_owned_2m_page_tails(krnl, pcid_head, Tracked(&mut *lctx), Tracked(tails_pcid));
     let tracked perm = quotas_4k.tracked_remove(o4);
     krnl.wunlock_allocator_quota_4k(o4, Tracked(&mut *lctx), Tracked(perm));
     let tracked perm = quotas_2m.tracked_remove(o2);

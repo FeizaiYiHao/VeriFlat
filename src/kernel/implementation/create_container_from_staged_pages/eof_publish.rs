@@ -94,37 +94,23 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().state]
         #![trigger pre.pg_arr.spec_index(index).view().view().state]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
+        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().state == pre.pg_arr.spec_index(index).view().view().state
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().owning_container]
         #![trigger pre.pg_arr.spec_index(index).view().view().owning_container]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
+        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().owning_container == pre.pg_arr.spec_index(index).view().view().owning_container
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().is_io_page]
         #![trigger pre.pg_arr.spec_index(index).view().view().is_io_page]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
+        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().is_io_page == pre.pg_arr.spec_index(index).view().view().is_io_page
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().free_list_node_storage]
         #![trigger pre.pg_arr.spec_index(index).view().view().free_list_node_storage]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
+        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().free_list_node_storage == pre.pg_arr.spec_index(index).view().view().free_list_node_storage
-    &&& forall|index: PageIndex|
-        #![trigger page_2m_tail_indices(container_head).contains(index)]
-        page_2m_tail_indices(container_head).contains(index) ==> {
-            &&& spec_page_index_merge_2m_valid(container_head, index)
-            &&& post.pg_arr.spec_index(index).view().view().state is Merged2m
-            &&& post.pg_arr.spec_index(index).view().view().owning_container == container_page
-        }
-    &&& forall|index: PageIndex|
-        #![trigger page_2m_tail_indices(pcid_allocator_head).contains(index)]
-        page_2m_tail_indices(pcid_allocator_head).contains(index) ==> {
-            &&& spec_page_index_merge_2m_valid(pcid_allocator_head, index)
-            &&& post.pg_arr.spec_index(index).view().view().state is Merged2m
-            &&& post.pg_arr.spec_index(index).view().view().owning_container == container_page
-        }
     &&& forall|pg_ptr: PagePtr|
         #![trigger funding_pages.to_set().contains(pg_ptr)]
         #![trigger funding_pages.contains(pg_ptr)]

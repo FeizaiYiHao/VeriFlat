@@ -146,7 +146,7 @@ proof fn reclaim_dangling_thread_eof_thread_pages(
     vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_4k.view()); vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_2m.view());
     vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_1g.view());
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
-        reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
+        reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
     };
     assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_4k_pages_wf); };
     assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by {

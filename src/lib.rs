@@ -42,7 +42,7 @@ pub use kernel::implementation::allocate_free_2m_page::allocate_free_2m_impl_bas
 pub use kernel::implementation::create_endpoint_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
-pub use kernel::implementation::lock_owned_2m_page_tails::*;
+pub use kernel::implementation::page_2m_region::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 use kernel::implementation::map_4k::mmap_4k_build_structure::MissingPageTableLevel;

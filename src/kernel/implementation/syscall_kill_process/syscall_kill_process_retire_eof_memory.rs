@@ -442,7 +442,7 @@ proof fn kill_retire_eof_page_object_owner(
 {
     reveal(kill_retire_eof_transition_framing);
     page_ptr_roundtrip(); page_index_roundtrip();
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
 }
 
 proof fn kill_retire_eof_page_pagetable(

@@ -362,8 +362,8 @@ proof fn kill_container_move_free_page_4k_eof_page_owners(
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { page_array_wf_at(pre.pg_arr, page_ptr2page_index(pg_ptr)); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); reveal(hugepage_1g_wf); page_ptr_roundtrip(); };
+    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
 }
 
 proof fn kill_container_move_free_page_4k_eof_page_tables(

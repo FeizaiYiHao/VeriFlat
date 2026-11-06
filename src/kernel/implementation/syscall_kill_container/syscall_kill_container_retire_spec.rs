@@ -15,19 +15,12 @@ pub open spec fn kill_container_retire_heads(ctn_ptr: RwLockContainerPtr, ro: Co
     seq![page_ptr2page_index(ctn_ptr), page_ptr2page_index(ro.pcid_allocator)]
 }
 
-/// The merged tails of both 2M object pages `heads`.
-pub open spec fn kill_container_retire_tails(heads: Seq<PageIndex>) -> Set<PageIndex> { page_2m_tail_indices(heads[0]) + page_2m_tail_indices(heads[1]) }
-
-/// Besides containers, the killer write-holds with the permissions given exactly what retiring the marked container
-/// `ctn_ptr` into the killer's container `owner_ptr` takes: the container's marked cpu set, its offline request
-/// cell, scheduler shard, and allocator caches on every cpu, its PCID allocator and allocator pools and quotas, the 4K
-/// and 2M pools and quotas of `owner_ptr`'s allocators, and the container's object pages with their tails.
+/// Besides containers, the killer write-holds what retiring `ctn_ptr` into `owner_ptr` takes: its marked cpu set, per-cpu flags, shards, and caches, its PCID allocator, pools, and quotas, `owner_ptr`'s 4K and 2M pools and quotas, and its object pages.
 pub open spec fn kill_container_retire_held_locks(
     k: KernelK, lctx: LocalContext, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, cpu_set_perm: LockPerm, flag_perms: Map<CpuId, LockPerm>,
     pcid_perm: LockPerm, shard_perms: Map<CpuId, LockPerm>, caches_4k: Map<CpuId, LockPerm>, caches_2m: Map<CpuId, LockPerm>, caches_1g: Map<CpuId, LockPerm>,
     pools_4k: Map<RwLockPageAllocatorPtr, LockPerm>, pools_2m: Map<RwLockPageAllocatorPtr, LockPerm>, pool_1g: LockPerm, quotas_4k: Map<RwLockPageAllocatorPtr, LockPerm>,
-    quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>, quota_1g: LockPerm, page_perms: Map<PageIndex, LockPerm>, tails_container: Map<PageIndex, LockPerm>,
-    tails_pcid: Map<PageIndex, LockPerm>,
+    quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>, quota_1g: LockPerm, page_perms: Map<PageIndex, LockPerm>,
 ) -> bool {
     let ro = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let owner_ro = k.ctn_mp.spec_index(owner_ptr).view_rodata().view();
@@ -118,12 +111,10 @@ pub open spec fn kill_container_retire_held_locks(
     &&& typed_lock_map_contains_mode(lctx.allocator_quota_1g_lock_map(), a1, TypedLockMode::Write)
     &&& quota_1g.state() is WriteLock && quota_1g.thread_id() == lctx.thread_id() && quota_1g.lock_id() == k.allc_1g_mp.spec_index(a1).quota.locking_thread()->Write_lock_id
     &&& page_perms.dom() == pages_4k.to_set().insert(heads[0]).insert(heads[1])
-    &&& lctx.page_lock_map().dom() == page_perms.dom() + page_2m_tail_indices(heads[0]) + page_2m_tail_indices(heads[1])
+    &&& lctx.page_lock_map().dom() == page_perms.dom()
     &&& forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] page_perms.dom().contains(p) ==> {
         &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)
         &&& page_perms[p].state() is WriteLock && page_perms[p].thread_id() == lctx.thread_id() && page_perms[p].lock_id() == k.pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
     }
-    &&& owned_2m_tail_lock_perms_wf(tails_container, k.pg_arr, &lctx, heads[0])
-    &&& owned_2m_tail_lock_perms_wf(tails_pcid, k.pg_arr, &lctx, heads[1])
 }
 } // verus!

@@ -37,7 +37,7 @@ pub open spec fn hugepage_2m_head_aligned_wf(pg_arr: PageLockedArray) -> bool {
             page_index_2m_valid(p_i)
 }
 
-/// Each page in a 2M head's region is a Merged2m tail with the head's container.
+/// Each page in a 2M head's region is a Merged2m tail.
 // Proof dependencies (confirmed): hugepage_2m_head_aligned_wf.
 pub open spec fn hugepage_2m_tail_forward_wf(pg_arr: PageLockedArray) -> bool {
     forall|p_i: PageIndex, p_j: PageIndex|
@@ -55,10 +55,7 @@ pub open spec fn hugepage_2m_tail_forward_wf(pg_arr: PageLockedArray) -> bool {
                 ||| pg_arr.spec_index(p_i).view().view().state is Mapped2m
             }
             && spec_page_index_merge_2m_valid(p_i, p_j)
-            ==> {
-                &&& pg_arr.spec_index(p_j).view().view().state is Merged2m
-                &&& pg_arr.spec_index(p_j).view().view().owning_container == pg_arr.spec_index(p_i).view().view().owning_container
-            }
+            ==> pg_arr.spec_index(p_j).view().view().state is Merged2m
 }
 
 /// A Merged2m tail's region head is in a 2M head state.
@@ -82,7 +79,7 @@ pub open spec fn hugepage_2m_wf(pg_arr: PageLockedArray) -> bool {
     &&& hugepage_2m_tail_backward_wf(pg_arr)
 }
 
-/// Page `tail_idx` inside the 2M region headed by the 2M head page `head_idx` is merged into it with the head's container.
+/// Page `tail_idx` inside the 2M region headed by the 2M head page `head_idx` is merged into it.
 pub proof fn hugepage_2m_wf_tail_forward_at(pg_arr: PageLockedArray, head_idx: PageIndex, tail_idx: PageIndex)
     requires
         hugepage_2m_wf(pg_arr),
@@ -96,10 +93,7 @@ pub proof fn hugepage_2m_wf_tail_forward_at(pg_arr: PageLockedArray, head_idx: P
                 ||| pg_arr.spec_index(head_idx).view().view().state is Mapped2m
             }
             && spec_page_index_merge_2m_valid(head_idx, tail_idx)
-            ==> {
-                &&& pg_arr.spec_index(tail_idx).view().view().state is Merged2m
-                &&& pg_arr.spec_index(tail_idx).view().view().owning_container == pg_arr.spec_index(head_idx).view().view().owning_container
-            },
+            ==> pg_arr.spec_index(tail_idx).view().view().state is Merged2m,
 { reveal(hugepage_2m_wf); }
 
 /// A 2M head page `pg_idx` starts a 2M-aligned region.
@@ -132,7 +126,7 @@ pub open spec fn hugepage_1g_head_aligned_wf(pg_arr: PageLockedArray) -> bool {
             page_index_1g_valid(p_i)
 }
 
-/// Each page in a 1G head's region is a Merged1g tail with the head's container.
+/// Each page in a 1G head's region is a Merged1g tail.
 pub open spec fn hugepage_1g_tail_forward_wf(pg_arr: PageLockedArray) -> bool {
     forall|p_i: PageIndex, p_j: PageIndex|
         #![trigger spec_page_index_merge_1g_valid(p_i, p_j)]
@@ -145,10 +139,7 @@ pub open spec fn hugepage_1g_tail_forward_wf(pg_arr: PageLockedArray) -> bool {
                 ||| pg_arr.spec_index(p_i).view().view().state is Mapped1g
             }
             && spec_page_index_merge_1g_valid(p_i, p_j)
-            ==> {
-                &&& pg_arr.spec_index(p_j).view().view().state is Merged1g
-                &&& pg_arr.spec_index(p_j).view().view().owning_container == pg_arr.spec_index(p_i).view().view().owning_container
-            }
+            ==> pg_arr.spec_index(p_j).view().view().state is Merged1g
 }
 
 /// A Merged1g tail's region head is in a 1G head state.

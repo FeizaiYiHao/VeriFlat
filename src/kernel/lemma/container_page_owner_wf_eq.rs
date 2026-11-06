@@ -2,14 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-// Framing lemma for `container_owned_pages_wf` (the container_map <-> page_array
-// owning_container bridge). Distinct from the page-state-class families: this
-// invariant reads NO page-state variant, only every slot's `owning_container`
-// plus each container's `owned_pages`. So the hypothesis frames on those two:
-// per-container `owned_pages` unchanged (same container dom) and per-slot
-// `owning_container` unchanged. Reusable by any syscall that retypes/moves pages
-// without changing which container owns them (e.g. a Free4k->Owned4k stage, which
-// preserves owning_container). Keeps the predicate opaque at the call site.
+// Framing lemma for `container_owned_pages_wf`: it reads containers' `owned_pages`, slots' `owning_container`, and only the merged and huge-page classes of page states.
 pub proof fn container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray)
     requires
         container_owned_pages_wf(old_container_map, old_page_array),
@@ -20,6 +13,12 @@ pub proof fn container_page_owner_wf_preserved_for_owned_pages_and_owning_contai
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().owning_container]
             index_valid(NUM_PAGES, p_i) ==> new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container,
+        forall|p_i: PageIndex| #![trigger new_page_array.spec_index(p_i).view().view().state] index_valid(NUM_PAGES, p_i) ==> {
+            let old_state = old_page_array.spec_index(p_i).view().view().state;
+            let new_state = new_page_array.spec_index(p_i).view().view().state;
+            &&& (new_state is Merged2m) == (old_state is Merged2m) && (new_state is Merged1g) == (old_state is Merged1g)
+            &&& page_state_2m_related(new_state) == page_state_2m_related(old_state) && page_state_1g_related(new_state) == page_state_1g_related(old_state)
+        },
     ensures
         container_owned_pages_wf(new_container_map, new_page_array),
 { reveal(container_owned_pages_wf); }

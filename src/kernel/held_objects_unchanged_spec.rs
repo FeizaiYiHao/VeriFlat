@@ -43,7 +43,7 @@ pub open spec fn held_owner_rodata_unchanged(pre: KernelK, post: KernelK, lctx: 
         &&& post.ctn_mp.dom().contains(owner)
         &&& post.ctn_mp.spec_index(owner).view_rodata() == pre.ctn_mp.spec_index(owner).view_rodata()
     }
-    &&& forall|i: PageIndex| #![trigger lctx.page_lock_map().dom().contains(i)] lctx.page_lock_map().dom().contains(i) ==> {
+    &&& forall|i: PageIndex| #![trigger lctx.page_lock_map().dom().contains(i)] lctx.page_lock_map().dom().contains(i) && !pre.pg_arr.spec_index(i).view().view().is_merged() ==> {
         let owner = pre.pg_arr.spec_index(i).view().view().owning_container;
         &&& post.ctn_mp.dom().contains(owner)
         &&& post.ctn_mp.spec_index(owner).view_rodata() == pre.ctn_mp.spec_index(owner).view_rodata()

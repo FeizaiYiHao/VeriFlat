@@ -219,7 +219,7 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
         vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view()); vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view());
         vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view());
-        reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
+        reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
     };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };

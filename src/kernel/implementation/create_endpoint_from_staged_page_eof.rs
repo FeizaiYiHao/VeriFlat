@@ -116,7 +116,7 @@ proof fn create_endpoint_from_staged_page_eof_page_object_owner_wf(
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(create_endpoint_from_staged_page_eof_transition_framing);
-    reveal(page_object_owner_wf); reveal(container_owned_pages_wf);
+    reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf);
 }
 
 proof fn create_endpoint_from_staged_page_eof_object_pages_wf(

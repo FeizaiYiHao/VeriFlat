@@ -296,7 +296,7 @@ proof fn kill_container_retire_eof_owned_head_2m_at(pre: KernelK, ctn_ptr: RwLoc
         index_valid(NUM_PAGES, i),
         pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr,
         page_state_2m_related(pre.pg_arr.spec_index(i).view().view().state),
-        !(pre.pg_arr.spec_index(i).view().view().state is Merged2m),
+        !pre.pg_arr.spec_index(i).view().view().is_merged(),
     ensures
         i == page_ptr2page_index(ctn_ptr) || i == page_ptr2page_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator),
 {
@@ -308,24 +308,22 @@ proof fn kill_container_retire_eof_owned_head_2m_at(pre: KernelK, ctn_ptr: RwLoc
     assert(state->Allocated2m_state is AsContainer || state->Allocated2m_state is AsPcidAllocator);
 }
 
-/// A page the retired container `ctn_ptr` owns is one of its five 4K object pages, one of its two 2M object
-/// pages, or a tail of one of those.
+/// A non-merged page the retired container `ctn_ptr` owns is one of its five 4K or two 2M object pages.
 proof fn kill_container_retire_eof_owned_page_at(pre: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, i: PageIndex)
     requires
         pre.inv(),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
         index_valid(NUM_PAGES, i),
         pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr,
+        !pre.pg_arr.spec_index(i).view().view().is_merged(),
     ensures
         ({
             let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
             ||| i == page_ptr2page_index(ro.scheduler) || i == page_ptr2page_index(ro.cpu_set) || i == page_ptr2page_index(ro.allocator_ptr_4k)
             ||| i == page_ptr2page_index(ro.allocator_ptr_2m) || i == page_ptr2page_index(ro.allocator_ptr_1g)
             ||| i == page_ptr2page_index(ctn_ptr) || i == page_ptr2page_index(ro.pcid_allocator)
-            ||| page_2m_tail_indices(page_ptr2page_index(ctn_ptr)).contains(i) || page_2m_tail_indices(page_ptr2page_index(ro.pcid_allocator)).contains(i)
         }),
 {
-    let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let state = pre.pg_arr.spec_index(i).view().view().state;
     page_index_roundtrip();
     page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, i);
@@ -335,19 +333,7 @@ proof fn kill_container_retire_eof_owned_page_at(pre: KernelK, ctn_ptr: RwLockCo
         let t = if state is Owned4k { state->Owned4k_thread_ptr } else if state is Owned2m { state->Owned2m_thread_ptr } else { state->Owned1g_thread_ptr };
         container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, t);
     }
-    if state is Merged2m {
-        let h = spec_page_index_truncate_2m(i);
-        assert(h <= i < h + 512 && h % 512 == 0) by (nonlinear_arith) requires h == (i / 512usize * 512usize) as usize, i < NUM_PAGES {};
-        assert(page_state_2m_related(pre.pg_arr.spec_index(h).view().view().state) && !(pre.pg_arr.spec_index(h).view().view().state is Merged2m)) by { reveal(hugepage_2m_wf); };
-        hugepage_2m_wf_tail_forward_at(pre.pg_arr, h, i);
-        kill_container_retire_eof_owned_head_2m_at(pre, ctn_ptr, parent_ptr, owner_ptr, h);
-    } else if state is Merged1g {
-        let h = spec_page_index_truncate_1g(i);
-        assert(h <= i < h + 0x40000) by (nonlinear_arith) requires h == (i / 512usize / 512usize * 512usize * 512usize) as usize, i < NUM_PAGES {};
-        assert(pre.pg_arr.spec_index(h).view().view().state is Free1g || pre.pg_arr.spec_index(h).view().view().state is Mapped1g) by { reveal(hugepage_1g_wf); };
-        assert(pre.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(h).view().view().owning_container) by { reveal(hugepage_1g_wf); };
-        kill_container_retire_eof_no_free_page_at(pre, ctn_ptr, h); kill_container_retire_eof_no_mapped_page_at(pre, ctn_ptr, h);
-    } else if state is Allocated2m {
+    if state is Allocated2m {
         kill_container_retire_eof_owned_head_2m_at(pre, ctn_ptr, parent_ptr, owner_ptr, i);
     } else if state is Allocated4k {
         assert(state->Allocated4k_state is AsEndpoint ==> pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_endpoints.view().contains(page_index2page_ptr(i)));
@@ -355,28 +341,25 @@ proof fn kill_container_retire_eof_owned_page_at(pre: KernelK, ctn_ptr: RwLockCo
     }
 }
 
-/// Every page the retired container `ctn_ptr` owns is one of its object pages or their tails.
+/// Every non-merged page the retired container `ctn_ptr` owns is one of its object pages.
 pub(crate) broadcast proof fn kill_container_retire_eof_owned_page(pre: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, i: PageIndex)
     requires
         pre.inv(),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
     ensures
         #![trigger kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr), pre.pg_arr.spec_index(i).view().view().owning_container]
-        index_valid(NUM_PAGES, i) && pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr ==> ({
+        index_valid(NUM_PAGES, i) && pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr && !pre.pg_arr.spec_index(i).view().view().is_merged() ==> ({
             let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
             ||| i == page_ptr2page_index(ro.scheduler) || i == page_ptr2page_index(ro.cpu_set) || i == page_ptr2page_index(ro.allocator_ptr_4k)
             ||| i == page_ptr2page_index(ro.allocator_ptr_2m) || i == page_ptr2page_index(ro.allocator_ptr_1g)
             ||| i == page_ptr2page_index(ctn_ptr) || i == page_ptr2page_index(ro.pcid_allocator)
-            ||| page_2m_tail_indices(page_ptr2page_index(ctn_ptr)).contains(i) || page_2m_tail_indices(page_ptr2page_index(ro.pcid_allocator)).contains(i)
         }),
 {
-    if index_valid(NUM_PAGES, i) && pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr {
+    if index_valid(NUM_PAGES, i) && pre.pg_arr.spec_index(i).view().view().owning_container == ctn_ptr && !pre.pg_arr.spec_index(i).view().view().is_merged() {
         kill_container_retire_eof_owned_page_at(pre, ctn_ptr, parent_ptr, owner_ptr, i);
     }
 }
-/// Before the retire, the retired container owns its object pages: its five 4K object pages hold its scheduler, cpu
-/// set, and three allocators, its two 2M heads hold the container itself and its PCID allocator, and every tail of
-/// those heads is merged. None of them is an I/O page.
+/// The retired container owns its object pages: five 4K pages for its scheduler, cpu set, and allocators and two 2M heads for itself and its PCID allocator, none an I/O page.
 pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
@@ -412,13 +395,6 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
             }
             &&& pre.pg_arr.spec_index(heads[0]).view().view().state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer })
             &&& pre.pg_arr.spec_index(heads[1]).view().view().state == (PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator })
-            &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i)] kill_container_retire_tails(heads).contains(i) ==> {
-                let page = pre.pg_arr.spec_index(i).view().view();
-                &&& index_valid(NUM_PAGES, i)
-                &&& page.owning_container == ctn_ptr
-                &&& !page.is_io_page
-                &&& page.state is Merged2m
-            }
         }),
 {
     let ro = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
@@ -454,53 +430,5 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
     page_array_wf_at(pre.pg_arr, pages_4k[0]); page_array_wf_at(pre.pg_arr, pages_4k[1]); page_array_wf_at(pre.pg_arr, pages_4k[2]); page_array_wf_at(pre.pg_arr, pages_4k[3]);
     page_array_wf_at(pre.pg_arr, pages_4k[4]); page_array_wf_at(pre.pg_arr, heads[0]); page_array_wf_at(pre.pg_arr, heads[1]);
     hugepage_2m_wf_head_at(pre.pg_arr, heads[0]); hugepage_2m_wf_head_at(pre.pg_arr, heads[1]);
-    kill_container_retire_eof_tail_pages(pre, ctn_ptr, heads);
-}
-/// Every tail `i` of the 2M head `h` is a merged page with the head's owner and no I/O page.
-broadcast proof fn kill_container_retire_eof_tail_page(page_array: PageLockedArray, h: PageIndex, i: PageIndex)
-    requires
-        page_array_wf(page_array),
-        hugepage_2m_wf(page_array),
-        page_index_2m_valid(h),
-        page_array.spec_index(h).view().view().state is Allocated2m,
-    ensures
-        #![trigger page_2m_tail_indices(h).contains(i), page_array.spec_index(i)]
-        page_2m_tail_indices(h).contains(i) ==> {
-            let page = page_array.spec_index(i).view().view();
-            &&& index_valid(NUM_PAGES, i)
-            &&& page.owning_container == page_array.spec_index(h).view().view().owning_container
-            &&& !page.is_io_page
-            &&& page.state is Merged2m
-        },
-{
-    if page_2m_tail_indices(h).contains(i) {
-        assert(index_valid(NUM_PAGES, i) && spec_page_index_merge_2m_valid(h, i));
-        hugepage_2m_wf_tail_forward_at(page_array, h, i); page_array_wf_at(page_array, i);
-    }
-}
-
-/// Every tail of the retired container's two 2M heads `heads`, which it owns, is a merged page it owns and no I/O page.
-proof fn kill_container_retire_eof_tail_pages(pre: KernelK, ctn_ptr: RwLockContainerPtr, heads: Seq<PageIndex>)
-    requires
-        page_array_wf(pre.pg_arr),
-        hugepage_2m_wf(pre.pg_arr),
-        heads.len() == 2,
-        forall|k: int| #![trigger heads[k]] 0 <= k < 2 ==> {
-            let page = pre.pg_arr.spec_index(heads[k]).view().view();
-            &&& page_index_2m_valid(heads[k])
-            &&& page.owning_container == ctn_ptr
-            &&& page.state is Allocated2m
-        },
-    ensures
-        forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i)] kill_container_retire_tails(heads).contains(i) ==> {
-            let page = pre.pg_arr.spec_index(i).view().view();
-            &&& index_valid(NUM_PAGES, i)
-            &&& page.owning_container == ctn_ptr
-            &&& !page.is_io_page
-            &&& page.state is Merged2m
-        },
-{
-    assert(pre.pg_arr.spec_index(heads[0]).view().view().state is Allocated2m && pre.pg_arr.spec_index(heads[1]).view().view().state is Allocated2m);
-    broadcast use kill_container_retire_eof_tail_page;
 }
 } // verus!

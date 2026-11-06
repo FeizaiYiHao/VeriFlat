@@ -130,7 +130,6 @@ pub(super) fn publish_new_container_staged_root(
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()).union(page_ptrs_to_indices(funding_pages)),
-        old(lctx).page_lock_map().dom().disjoint(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)))),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -351,9 +350,6 @@ pub(super) fn publish_new_container_staged_root(
     let tracked pagetable_page_lock_perm = page_4k_lock_perms.tracked_remove(pagetable_page);
     let tracked l4_page_lock_perm = page_4k_lock_perms.tracked_remove(l4_page);
     let tracked thread_page_lock_perm = page_4k_lock_perms.tracked_remove(thread_page);
-    let container_head = page_ptr2page_index(container_page);
-    let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    let (Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms)) = wlock_new_container_2m_page_tails(krnl, Tracked(&mut *lctx), container_head, pcid_allocator_head);
     proof { assert(staged_4k_page_chain(krnl.pg_arr, funding_pages)) by { page_ptr_valid_imply_page_index_valid(); }; }
     let Tracked(transfer_cpu_lock_perm) = krnl.wlock_off_cpu(transfer_cpu_id, parent_cpu_set, Tracked(&mut *lctx));
     proof { assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
@@ -368,7 +364,6 @@ pub(super) fn publish_new_container_staged_root(
         Tracked(&container_page_lock_perm), Tracked(&pcid_allocator_page_lock_perm), Tracked(&allocator_4k_page_lock_perm),
         Tracked(&allocator_2m_page_lock_perm), Tracked(&allocator_1g_page_lock_perm), Tracked(&scheduler_page_lock_perm), Tracked(&cpu_set_page_lock_perm),
         Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm), Tracked(&l4_page_lock_perm), Tracked(&funding_page_lock_perms),
-        Tracked(&container_tail_lock_perms), Tracked(&pcid_allocator_tail_lock_perms),
     );
     let ghost published_k = *krnl;
     proof {
@@ -391,7 +386,7 @@ pub(super) fn publish_new_container_staged_root(
     let (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm), Ghost(progressed_k)) =
         release_new_container_publish_staging(
             krnl, Tracked(&mut *lctx), current_thrd_ptr, pages_4k, container_page, pcid_allocator_page, funding_page_count, funding_page_head, Ghost(funding_pages),
-            Ghost(sharing), Tracked(funding_page_lock_perms), Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
+            Ghost(sharing), Tracked(funding_page_lock_perms),
             Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm), Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm),
             Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm), Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm),
             Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(thread_page_lock_perm), Tracked(child_container_lock_perm),

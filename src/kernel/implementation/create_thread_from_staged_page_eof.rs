@@ -270,7 +270,7 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
     ensures
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
-    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); page_ptr_roundtrip(); page_index_roundtrip();
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); page_ptr_roundtrip(); page_index_roundtrip();
 }
 
 proof fn create_thread_from_staged_page_eof_memory_management_inv(

@@ -2,9 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The head 2M page of the 2M global pool `src_allocator` of `src`, held in list node `node`, moves to the head of the 2M
-/// global pool `dst_allocator` of `dst`: the head page's allocator, the owner of the head and its 511 tails, the two
-/// pools, their free page counts and quotas, and the two containers' owned pages change; nothing else does.
+/// The head 2M page of `src`'s pool `src_allocator`, in list node `node`, moves to `dst`'s pool `dst_allocator`: only that page, the two pools, their counts and quotas, and the two containers' owned pages change.
 #[verifier::opaque]
 pub(super) open spec fn kill_container_move_free_page_2m_eof_transition_framing(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
@@ -18,18 +16,7 @@ pub(super) open spec fn kill_container_move_free_page_2m_eof_transition_framing(
     let old_dst = pre.allc_2m_mp.spec_index(dst_allocator);
     let new_dst = post.allc_2m_mp.spec_index(dst_allocator);
     &&& post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, allc_2m_mp: post.allc_2m_mp, ..pre })
-    &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)]
-        index_valid(NUM_PAGES, i) && i != index && !page_2m_tail_indices(index).contains(i) ==> post.pg_arr.spec_index(i) == pre.pg_arr.spec_index(i)
-    &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)]
-        page_2m_tail_indices(index).contains(i) ==> {
-            &&& post.pg_arr.spec_index(i).view().view() == (Page { owning_container: dst, ..pre.pg_arr.spec_index(i).view().view() })
-            &&& post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings()
-            &&& post.pg_arr.spec_index(i).view().is_init() == pre.pg_arr.spec_index(i).view().is_init()
-            &&& post.pg_arr.spec_index(i).view().view_rodata() == pre.pg_arr.spec_index(i).view().view_rodata()
-            &&& post.pg_arr.spec_index(i).view().view_ghost() == pre.pg_arr.spec_index(i).view().view_ghost()
-            &&& post.pg_arr.spec_index(i).view().locking_thread() == pre.pg_arr.spec_index(i).view().locking_thread()
-            &&& post.pg_arr.spec_index(i).view().being_killed() == pre.pg_arr.spec_index(i).view().being_killed()
-        }
+    &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)] index_valid(NUM_PAGES, i) && i != index ==> post.pg_arr.spec_index(i) == pre.pg_arr.spec_index(i)
     &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) && i != index ==> post.pg_arr.spec_index(i).view().view().state == pre.pg_arr.spec_index(i).view().view().state
     &&& new_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(dst_allocator), state: FreePageAllocatorState::GlobalList }, owning_container: dst, ..old_page.view() })
@@ -155,8 +142,7 @@ broadcast proof fn kill_container_move_free_page_2m_eof_region_member(head: Page
         #[trigger] page_2m_all_ptrs(head).contains(pg_ptr),
 { page_2m_all_ptrs_contains_index(head, page_ptr2page_index(pg_ptr)); page_ptr_roundtrip(); }
 
-/// No CPU cache changes, and the moved head stays on a global list while its tails stay merged, so every cached 2M page keeps
-/// its state, owner, and free-list node.
+/// No CPU cache changes and only the moved head, which stays on a global list, changes, so every cached 2M page keeps its state, owner, and free-list node.
 proof fn kill_container_move_free_page_2m_eof_cpu_cache_2m(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     pg_ptr: PagePtr, node: usize,
@@ -165,8 +151,6 @@ proof fn kill_container_move_free_page_2m_eof_cpu_cache_2m(
         allocator_free_page_ptrs_wf(pre.allc_2m_mp),
         allocator_free_2m_pages_wf(pre.allc_2m_mp, pre.pg_arr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
@@ -194,8 +178,6 @@ proof fn kill_container_move_free_page_2m_eof_free_pages(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
         !pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().contains(pg_ptr),
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
@@ -231,8 +213,6 @@ proof fn kill_container_move_free_page_2m_eof_container_page_owner(
         pre.ctn_mp.dom().contains(dst),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Free2m,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures container_owned_pages_wf(post.ctn_mp, post.pg_arr),
 {
@@ -240,7 +220,9 @@ proof fn kill_container_move_free_page_2m_eof_container_page_owner(
     broadcast use page_2m_ptr_prefix_member_bounds, kill_container_move_free_page_2m_eof_region_member;
     page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid();
     assert(container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); };
-    assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
+    assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); };
+    assert(container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); };
+    assert(container_owned_pages_1g_region_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_1g_wf); };
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
 }
 
@@ -262,8 +244,6 @@ proof fn kill_container_move_free_page_2m_eof_hugepage_1g(
     requires
         pre.inv(),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Free2m,
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures hugepage_1g_wf(post.pg_arr),
 { reveal(kill_container_move_free_page_2m_eof_transition_framing); hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); }
@@ -276,8 +256,6 @@ proof fn kill_container_move_free_page_2m_eof_page_object_owner(
         pre.inv(),
         pre.ctn_mp.dom().contains(dst),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Free2m,
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
     ensures page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 { reveal(kill_container_move_free_page_2m_eof_transition_framing); reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); }
@@ -309,8 +287,6 @@ pub(super) proof fn kill_container_move_free_page_2m_eof(
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
         !pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().contains(pg_ptr),
         node == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr(),
-        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i)]
-            page_2m_tail_indices(page_ptr2page_index(pg_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
         0 < pre.allc_2m_mp.spec_index(src_allocator).quota.view().value,
         pre.allc_2m_mp.spec_index(dst_allocator).quota.view().value < usize::MAX,

@@ -11,11 +11,7 @@ use super::syscall_kill_container_pages_spec::kill_container_pages_killer_state;
 use super::syscall_kill_container_retire_eof_entry::kill_container_retire_eof_object_pages;
 
 verus! {
-/// Retire the empty marked container `ctn_ptr`, a child of the write-held `parent_ptr`, into the killer's container
-/// `owner_ptr`: write-hold its offline request cells, PCID allocator, object pages, scheduler shards, allocator caches,
-/// pools, and quotas with the pools and quotas of `owner_ptr`'s allocators, and its object pages' tails, then remove it
-/// with its objects, give its pages to `owner_ptr`, release its locks and its marked cpu set `cpu_set_ptr`, and walk the
-/// parent again.
+/// Retire the empty marked child `ctn_ptr` of `parent_ptr` into `owner_ptr`: lock what it holds and `owner_ptr`'s pools and quotas, remove it, give its pages to `owner_ptr`, release its locks and cpu set `cpu_set_ptr`, and walk the parent again.
 pub(crate) fn kill_container_retire(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr,
@@ -118,7 +114,6 @@ pub(crate) fn kill_container_retire(
     let tracked mut quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm> = Map::tracked_empty();
     let (Tracked(pool_1g), Tracked(quota_1g)) = kill_container_retire_lock_pools_quotas(krnl, Tracked(&mut *lctx), thrd_ptr, ctn_ptr, owner_ptr, Tracked(&mut pools_4k),
         Tracked(&mut pools_2m), Tracked(&mut quotas_4k), Tracked(&mut quotas_2m));
-    let (Tracked(tails_container), Tracked(tails_pcid)) = kill_container_retire_lock_tails(krnl, Tracked(&mut *lctx), ctn_ptr);
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&entry, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(entry.ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
@@ -128,6 +123,6 @@ pub(crate) fn kill_container_retire(
     kill_container_retire_commit_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, parent_ptr, owner_ptr, cpu_set_ptr,
         Tracked(thread_perm), Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm), Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms),
         Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(pools_4k), Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g),
-        Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid), Ghost(start), Ghost(pre), Ghost(ctx));
+        Tracked(page_perms), Ghost(start), Ghost(pre), Ghost(ctx));
 }
 } // verus!

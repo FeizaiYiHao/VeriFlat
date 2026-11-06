@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Releasing the staged backing-page and tail locks: only page lock states change.
+/// Releasing the staged backing-page locks: only page lock states change.
 #[verifier::opaque]
 pub(super) open spec fn finish_staged_container_publish_eof_transition_framing(pre: KernelK, post: KernelK) -> bool {
     &&& post == (KernelK { pg_arr: post.pg_arr, ..pre })

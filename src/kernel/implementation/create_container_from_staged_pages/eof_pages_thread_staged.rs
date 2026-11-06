@@ -131,6 +131,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
     allocator_quota_4k: usize, process_quota_4k: usize, pg_idx: PageIndex,
 )
     requires
+        pre.memory_management_inv(),
         thread_staged_2m_pages_wf(pre.thrd_mp, pre.pg_arr),
         publish_staged_container_root_eof_transition_framing(
             pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
@@ -175,7 +176,26 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
     ).contains(page_index2page_ptr(pg_idx))) by {
         reveal(Seq::contains); reveal(new_container_moved_pages); reveal(new_container_bootstrap_4k_pages);
         page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-        broadcast use page_2m_ptr_prefix_member_bounds;
+        if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(page_index2page_ptr(pg_idx)) {
+            page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, page_index2page_ptr(pg_idx));
+            if pg_idx != page_ptr2page_index(container_page) {
+                publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                    pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                    allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                    allocator_quota_4k, process_quota_4k, page_ptr2page_index(container_page), pg_idx,
+                );
+            }
+        }
+        if page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(page_index2page_ptr(pg_idx)) {
+            page_2m_ptr_prefix_member_bounds(page_ptr2page_index(pcid_allocator_page), 512, page_index2page_ptr(pg_idx));
+            if pg_idx != page_ptr2page_index(pcid_allocator_page) {
+                publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                    pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                    allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                    allocator_quota_4k, process_quota_4k, page_ptr2page_index(pcid_allocator_page), pg_idx,
+                );
+            }
+        }
     };
     publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
@@ -236,12 +256,6 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
     assert(page_ptr_valid(pg_ptr)) by { reveal(thread_staged_2m_pages_wf); };
     page_ptr_valid_imply_page_index_valid();
     assert(!funding_pages.to_set().contains(pg_ptr)) by { reveal(thread_staged_4k_pages_wf); };
-    assert(!page_2m_tail_indices(page_ptr2page_index(container_page)).contains(page_ptr2page_index(pg_ptr))) by {
-        if page_2m_tail_indices(page_ptr2page_index(container_page)).contains(page_ptr2page_index(pg_ptr)) { }
-    };
-    assert(!page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr2page_index(pg_ptr))) by {
-        if page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr2page_index(pg_ptr)) { }
-    };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pg_ptr)) by { reveal(thread_staged_4k_pages_wf); };
     assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr)) by {
         if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr) {

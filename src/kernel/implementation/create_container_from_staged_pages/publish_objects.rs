@@ -5,10 +5,8 @@ use super::*;
 verus! {
 pub(super) fn publish_new_container_process_and_pagetable(
     krnl: &mut KernelK, child_ctn_ptr: RwLockContainerPtr, child_prc_ptr: RwLockProcessPtr, child_pagetable_ptr: RwLockPageTableRoot,
-    l4_page: PagePtr, root_pcid: Pcid, child_depth: usize, process_quota_4k: usize, container_head: PageIndex, pcid_allocator_head: PageIndex,
-    Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(process_page_lock_perm): Tracked<&LockPerm>,
-    Tracked(pagetable_page_lock_perm): Tracked<&LockPerm>, Tracked(l4_page_lock_perm): Tracked<&LockPerm>,
-    Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
+    l4_page: PagePtr, root_pcid: Pcid, child_depth: usize, process_quota_4k: usize, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(process_page_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_page_lock_perm): Tracked<&LockPerm>, Tracked(l4_page_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>, Ghost<Map<PageIndex, TypedHeldLock>>))
     requires
         old(krnl).pg_arr.inv(),
@@ -46,14 +44,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
         l4_page_lock_perm.state() is WriteLock,
         l4_page_lock_perm.thread_id() == old(lctx).thread_id(),
         l4_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page),).view().locking_thread()->Write_lock_id,
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, old(krnl).pg_arr, old(lctx), container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), pcid_allocator_head,),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(child_prc_ptr),),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(child_pagetable_ptr),),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(l4_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(child_prc_ptr),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(child_pagetable_ptr),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(l4_page),),
     ensures
         final(krnl).prc_mp.spec_index(child_prc_ptr).inv(),
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).inv(),
@@ -180,8 +170,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
         ret.1.view().state() is WriteLock,
         ret.1.view().thread_id() == final(lctx).thread_id(),
         ret.1.view().lock_id() == final(krnl).pt_mp.spec_index(child_pagetable_ptr).locking_thread()->Write_lock_id,
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, final(lctx), container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, final(lctx), pcid_allocator_head,),
 {
     let process_index = page_ptr2page_index(child_prc_ptr);
     let pagetable_index = page_ptr2page_index(child_pagetable_ptr);
@@ -288,10 +276,9 @@ pub(super) fn publish_new_container_allocator<const SIZE: usize>(
 
 pub(super) fn publish_new_container_allocators(
     krnl: &mut KernelK, child_ctn_ptr: RwLockContainerPtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
-    allocator_4k_value: PageAllocator<ALLOCATOR_SIZE_4K>, allocator_2m_value: PageAllocator<ALLOCATOR_SIZE_2M>, allocator_1g_value: PageAllocator<ALLOCATOR_SIZE_1G>, container_head: PageIndex,
-    pcid_allocator_head: PageIndex, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>,
+    allocator_4k_value: PageAllocator<ALLOCATOR_SIZE_4K>, allocator_2m_value: PageAllocator<ALLOCATOR_SIZE_2M>, allocator_1g_value: PageAllocator<ALLOCATOR_SIZE_1G>,
+    Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>,
     Tracked(allocator_4k_page_lock_perm): Tracked<&LockPerm>, Tracked(allocator_2m_page_lock_perm): Tracked<&LockPerm>, Tracked(allocator_1g_page_lock_perm): Tracked<&LockPerm>,
-    Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
 ) -> (ret: Ghost<Map<PageIndex, TypedHeldLock>>)
     requires
         old(krnl).pg_arr.inv(),
@@ -346,14 +333,6 @@ pub(super) fn publish_new_container_allocators(
         allocator_4k_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_4k_page)).view().locking_thread()->Write_lock_id,
         allocator_2m_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_2m_page)).view().locking_thread()->Write_lock_id,
         allocator_1g_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_1g_page)).view().locking_thread()->Write_lock_id,
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, old(krnl).pg_arr, lctx, container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, old(krnl).pg_arr, lctx, pcid_allocator_head,),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(allocator_4k_page),),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(allocator_2m_page),),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(allocator_1g_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(allocator_4k_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(allocator_2m_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(allocator_1g_page),),
     ensures
         final(krnl).pg_arr.typed_lock_map_aligned(ret.view(), lctx.thread_id()),
         ret.view().dom() == page_locks.dom(),
@@ -414,8 +393,6 @@ pub(super) fn publish_new_container_allocators(
         forall|ptr: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(ptr)] old(krnl).allc_4k_mp.dom().contains(ptr) ==> final(krnl).allc_4k_mp.spec_index(ptr) == old(krnl).allc_4k_mp.spec_index(ptr),
         forall|ptr: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_2m_mp.spec_index(ptr)] old(krnl).allc_2m_mp.dom().contains(ptr) ==> final(krnl).allc_2m_mp.spec_index(ptr) == old(krnl).allc_2m_mp.spec_index(ptr),
         forall|ptr: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(ptr)] old(krnl).allc_1g_mp.dom().contains(ptr) ==> final(krnl).allc_1g_mp.spec_index(ptr) == old(krnl).allc_1g_mp.spec_index(ptr),
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, lctx, container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, lctx, pcid_allocator_head,),
 {
     let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
     let allocator_2m_index = page_ptr2page_index(allocator_2m_page);
@@ -458,9 +435,7 @@ pub(super) fn publish_new_container_allocators(
 
 pub(super) fn publish_new_container_scheduler(
     krnl: &mut KernelK, child_ctn_ptr: RwLockContainerPtr, child_sched_ptr: RwLockSchedulerPtr, scheduler_page: PagePtr,
-    scheduler_value: Scheduler, container_head: PageIndex, pcid_allocator_head: PageIndex, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(scheduler_page_lock_perm): Tracked<&LockPerm>,
-    Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
+    scheduler_value: Scheduler, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(scheduler_page_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: Ghost<Map<PageIndex, TypedHeldLock>>)
     requires
         old(krnl).pg_arr.inv(),
@@ -479,10 +454,6 @@ pub(super) fn publish_new_container_scheduler(
         scheduler_page_lock_perm.state() is WriteLock,
         scheduler_page_lock_perm.thread_id() == lctx.thread_id(),
         scheduler_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(scheduler_page),).view().locking_thread()->Write_lock_id,
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, old(krnl).pg_arr, lctx, container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, old(krnl).pg_arr, lctx, pcid_allocator_head,),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(scheduler_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(scheduler_page),),
     ensures
         final(krnl).sched_mp.spec_index(child_sched_ptr).inv(),
         final(krnl).pg_arr.typed_lock_map_aligned(ret.view(), lctx.thread_id()),
@@ -510,8 +481,6 @@ pub(super) fn publish_new_container_scheduler(
         final(krnl).sched_mp.dom() =~= old(krnl).sched_mp.dom().insert(child_sched_ptr),
         final(krnl).sched_mp.spec_index(child_sched_ptr) == scheduler_value,
         forall|ptr: RwLockSchedulerPtr| #![trigger final(krnl).sched_mp.spec_index(ptr)] old(krnl).sched_mp.dom().contains(ptr) ==> final(krnl).sched_mp.spec_index(ptr) == old(krnl).sched_mp.spec_index(ptr),
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, lctx, container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, lctx, pcid_allocator_head,),
 {
     proof { assert(krnl.sched_mp.perms_wf()) by { scheduler_perms_wf_map(krnl.sched_mp); }; }
     let Tracked(scheduler_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, scheduler_page, Allocated4KPageState::AsScheduler, Ghost(page_locks), Tracked(lctx), Tracked(scheduler_page_lock_perm));
@@ -522,9 +491,8 @@ pub(super) fn publish_new_container_scheduler(
 
 pub(super) fn publish_new_container_cpu_set(
     krnl: &mut KernelK, child_ctn_ptr: RwLockContainerPtr, child_cpu_set_ptr: RwLockCpuSetPtr, cpu_set_page: PagePtr, cpu_set_value: CpuSet,
-    container_head: PageIndex, pcid_allocator_head: PageIndex, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(cpu_set_page_lock_perm): Tracked<&LockPerm>, Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
-    Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
+    Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&mut LocalContext>,
+    Tracked(cpu_set_page_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (Tracked<LockPerm>, Ghost<Map<PageIndex, TypedHeldLock>>))
     requires
         old(krnl).pg_arr.inv(),
@@ -542,10 +510,6 @@ pub(super) fn publish_new_container_cpu_set(
         cpu_set_page_lock_perm.state() is WriteLock,
         cpu_set_page_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_set_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page),).view().locking_thread()->Write_lock_id,
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, old(krnl).pg_arr, old(lctx), container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), pcid_allocator_head,),
-        !page_2m_tail_indices(container_head).contains(page_ptr2page_index(cpu_set_page),),
-        !page_2m_tail_indices(pcid_allocator_head).contains(page_ptr2page_index(cpu_set_page),),
     ensures
         final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -597,8 +561,6 @@ pub(super) fn publish_new_container_cpu_set(
         final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).view() == cpu_set_value,
         !final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).being_killed(),
         forall|ptr: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(ptr)] old(krnl).cpu_set_mp.dom().contains(ptr) ==> final(krnl).cpu_set_mp.spec_index(ptr) == old(krnl).cpu_set_mp.spec_index(ptr),
-        owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, final(lctx), container_head,),
-        owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, final(lctx), pcid_allocator_head,),
         ret.0.view().state() is WriteLock,
         ret.0.view().thread_id() == final(lctx).thread_id(),
         ret.0.view().lock_id() == final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).locking_thread()->Write_lock_id,

@@ -3,13 +3,12 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing};
 use super::*;
-use super::syscall_new_container_finish_release::{finish_staged_container_unlock_tails, release_backing_page_lock_group, staged_container_backing_page_indices};
+use super::syscall_new_container_finish_release::{release_backing_page_lock_group, staged_container_backing_page_indices};
 
 verus! {
 pub(super) fn finish_staged_container_publish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pages_4k: &ArrayVec<PagePtr, 9>, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, Tracked(container_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(pcid_allocator_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>, Tracked(container_page_lock_perm): Tracked<LockPerm>,
+    pcid_allocator_page: PagePtr, Tracked(container_page_lock_perm): Tracked<LockPerm>,
     Tracked(pcid_allocator_page_lock_perm): Tracked<LockPerm>, Tracked(allocator_4k_page_lock_perm): Tracked<LockPerm>,
     Tracked(allocator_2m_page_lock_perm): Tracked<LockPerm>, Tracked(allocator_1g_page_lock_perm): Tracked<LockPerm>,
     Tracked(scheduler_page_lock_perm): Tracked<LockPerm>, Tracked(cpu_set_page_lock_perm): Tracked<LockPerm>,
@@ -40,29 +39,13 @@ pub(super) fn finish_staged_container_publish(
         pages_4k.view().to_set().disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
         pages_4k.view().to_set().disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
         page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
-        page_2m_tail_indices(page_ptr2page_index(container_page)).disjoint(set![
-            page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page), page_ptr2page_index(pages_4k.view().spec_index(0)),
-            page_ptr2page_index(pages_4k.view().spec_index(1)), page_ptr2page_index(pages_4k.view().spec_index(2)),
-            page_ptr2page_index(pages_4k.view().spec_index(3)), page_ptr2page_index(pages_4k.view().spec_index(4)),
-            page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)),
-            page_ptr2page_index(pages_4k.view().spec_index(7)), page_ptr2page_index(pages_4k.view().spec_index(8)),
-        ]),
-        page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).disjoint(set![
-            page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page), page_ptr2page_index(pages_4k.view().spec_index(0)),
-            page_ptr2page_index(pages_4k.view().spec_index(1)), page_ptr2page_index(pages_4k.view().spec_index(2)),
-            page_ptr2page_index(pages_4k.view().spec_index(3)), page_ptr2page_index(pages_4k.view().spec_index(4)),
-            page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)),
-            page_ptr2page_index(pages_4k.view().spec_index(7)), page_ptr2page_index(pages_4k.view().spec_index(8)),
-        ]),
-        old(lctx).page_lock_map().dom().difference(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page))).union(set![
+        old(lctx).page_lock_map().dom().difference(set![
             page_ptr2page_index(pages_4k.view().spec_index(0)), page_ptr2page_index(pages_4k.view().spec_index(1)),
             page_ptr2page_index(pages_4k.view().spec_index(2)), page_ptr2page_index(pages_4k.view().spec_index(3)),
             page_ptr2page_index(pages_4k.view().spec_index(8)), page_ptr2page_index(pages_4k.view().spec_index(4)),
             page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)),
             page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page),
-        ])) =~= set![page_ptr2page_index(pages_4k.view().spec_index(7))],
-        owned_2m_tail_lock_perms_wf(container_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(container_page)),
-        owned_2m_tail_lock_perms_wf(pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(pcid_allocator_page)),
+        ]) =~= set![page_ptr2page_index(pages_4k.view().spec_index(7))],
         old(krnl).ctn_mp.dom().contains(container_page),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_page, TypedLockMode::Write),
         child_container_lock_perm.state() is WriteLock,
@@ -172,10 +155,6 @@ pub(super) fn finish_staged_container_publish(
         ret.3.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
 {
     let (first, second) = staged_container_backing_page_indices(pages_4k, container_page, pcid_allocator_page);
-    finish_staged_container_unlock_tails(
-        krnl, Tracked(&mut *lctx), pages_4k, container_page, pcid_allocator_page, Ghost(first), Ghost(second), Tracked(container_tail_lock_perms),
-        Tracked(pcid_allocator_tail_lock_perms),
-    );
     release_container_backing_page_locks(
         &mut krnl.pg_arr, Tracked(&mut *lctx), first, second, Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm),
         Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm), Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm),

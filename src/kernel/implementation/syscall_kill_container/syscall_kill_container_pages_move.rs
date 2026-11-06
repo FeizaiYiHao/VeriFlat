@@ -320,17 +320,8 @@ pub(crate) fn kill_container_pages_move_2m(
         let ghost before_lctx = *lctx;
         let ghost base_steps = steps.view();
         let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-        assert(lctx.page_lock_map().dom().disjoint(page_2m_tail_indices(pg_idx)));
-        let Tracked(tail_perms) = wlock_owned_2m_page_tails(krnl, pg_idx, Tracked(&mut *lctx));
-        assert(typed_lock_map_contains_mode(lctx.page_lock_map(), pg_idx, TypedLockMode::Write)) by {
-            let tails = page_2m_tail_indices(pg_idx);
-            assert(!tails.contains(pg_idx));
-            assert(lctx.page_lock_map().dom().difference(tails).contains(pg_idx));
-            assert(lctx.page_lock_map().remove_keys(tails).index(pg_idx) == lctx.page_lock_map().index(pg_idx));
-        };
         kill_container_move_free_page_2m(krnl, Tracked(&mut *lctx), ctn_ptr, owner_ptr, a2, o2, pg_ptr, Tracked(container_perm), Tracked(owner_perm), Tracked(pool_perm), Tracked(owner_pool_perm),
-            Tracked(quota_perm), Tracked(owner_quota_perm), Tracked(&page_perm), Tracked(&tail_perms));
-        wunlock_owned_2m_page_tails(krnl, pg_idx, Tracked(&mut *lctx), Tracked(tail_perms));
+            Tracked(quota_perm), Tracked(owner_quota_perm), Tracked(&page_perm));
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_perm));
         proof {
             assert(lctx.page_lock_map() =~= old(lctx).page_lock_map());

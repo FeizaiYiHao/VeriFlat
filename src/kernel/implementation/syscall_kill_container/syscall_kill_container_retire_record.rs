@@ -24,8 +24,7 @@ pub(crate) fn kill_container_retire_commit_and_record(
     Tracked(caches_1g): Tracked<Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pool_1g): Tracked<LockPerm>, Tracked(quotas_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quota_1g): Tracked<LockPerm>, Tracked(page_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(tails_container): Tracked<Map<PageIndex, LockPerm>>, Tracked(tails_pcid): Tracked<Map<PageIndex, LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
-    Ghost(ctx): Ghost<KillTraceCtx>,
+    Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
         old(krnl).inv(),
@@ -36,7 +35,7 @@ pub(crate) fn kill_container_retire_commit_and_record(
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         ctx is Container,
         kill_container_retire_held_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, cpu_set_perm, flag_perms, pcid_perm, shard_perms, caches_4k, caches_2m, caches_1g, pools_4k,
-            pools_2m, pool_1g, quotas_4k, quotas_2m, quota_1g, page_perms, tails_container, tails_pcid),
+            pools_2m, pool_1g, quotas_4k, quotas_2m, quota_1g, page_perms),
         ({
             let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
@@ -132,7 +131,7 @@ pub(crate) fn kill_container_retire_commit_and_record(
     let ghost base_steps = steps.view();
     kill_container_retire_commit(krnl, Tracked(&mut *lctx), ctn_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
         Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms), Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(pools_4k),
-        Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g), Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid));
+        Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g), Tracked(page_perms));
     let ghost retired_k = *krnl;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_container_progress(parent_ptr, ContainerKillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     proof {

@@ -1,8 +1,5 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_retire_eof_pages::kill_container_retire_set_tails_owner_eof;
 
 verus! {
 /// In a released view, returns the write-held `Allocated4k` pages `pages`, whose kernel objects were removed with their
@@ -230,14 +227,10 @@ pub(crate) fn kill_container_retire_pages_4k_to_pool(
     proof { assert(pages.view().subrange(0, pages.view().len() as int) =~= pages.view()); }
 }
 
-/// In a released view, returns the write-held `Allocated2m` head page `head`, whose kernel object was removed with its
-/// permission `page_perm`, through its free-list node to the global pool of the 2M allocator `allc_ptr` of
-/// `owner_ptr`, which takes it over with its merged tails, write-held through `tail_perms`. The quota is left to the
-/// caller.
+/// In a released view, returns the write-held `Allocated2m` head `head`, whose object was removed with `page_perm`, to the global pool of `owner_ptr`'s 2M allocator `allc_ptr`; the quota is left to the caller.
 pub(crate) fn kill_container_retire_head_2m_to_pool(
     krnl: &mut KernelK, head: PageIndex, Tracked(page_perm): Tracked<PagePerm2m>, allc_ptr: RwLockPageAllocatorPtr, owner_ptr: RwLockContainerPtr,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>, Tracked(tail_perms): Tracked<&Map<PageIndex, LockPerm>>,
-    Tracked(pool_lock_perm): Tracked<&LockPerm>,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>, Tracked(pool_lock_perm): Tracked<&LockPerm>,
 )
     requires
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -260,7 +253,6 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
         page_perm.is_init(),
         page_perm.addr() == page_index2page_ptr(head),
         !old(krnl).allc_2m_mp.spec_index(allc_ptr).global_pool.view().view().contains(page_index2page_ptr(head)),
-        owned_2m_tail_lock_perms_wf(*tail_perms, old(krnl).pg_arr, old(lctx), head),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -271,9 +263,8 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
         final(krnl).allc_2m_mp.spec_index(allc_ptr).wf(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(head), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(head), mode: TypedLockMode::Write }),
-        owned_2m_tail_lock_perms_wf(*tail_perms, final(krnl).pg_arr, final(lctx), head),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)]
-            index_valid(NUM_PAGES, i) && i != head && !page_2m_tail_indices(head).contains(i) ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
+            index_valid(NUM_PAGES, i) && i != head ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
         ({
             let pre_page = old(krnl).pg_arr.spec_index(head).view();
             let post_page = final(krnl).pg_arr.spec_index(head).view();
@@ -286,14 +277,6 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
             &&& post_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(allc_ptr), state: FreePageAllocatorState::GlobalList }, owning_container: owner_ptr,
                 free_list_node_storage: post_page.view().free_list_node_storage, perm_2m: post_page.view().perm_2m, ..pre_page.view() })
         }),
-        forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)] page_2m_tail_indices(head).contains(i) ==> {
-            &&& final(krnl).pg_arr.spec_index(i).view().view() == (Page { owning_container: owner_ptr, ..old(krnl).pg_arr.spec_index(i).view().view() })
-            &&& final(krnl).pg_arr.spec_index(i).view().is_init() == old(krnl).pg_arr.spec_index(i).view().is_init()
-            &&& final(krnl).pg_arr.spec_index(i).view().view_rodata() == old(krnl).pg_arr.spec_index(i).view().view_rodata()
-            &&& final(krnl).pg_arr.spec_index(i).view().view_ghost() == old(krnl).pg_arr.spec_index(i).view().view_ghost()
-            &&& final(krnl).pg_arr.spec_index(i).view().locking_thread() == old(krnl).pg_arr.spec_index(i).view().locking_thread()
-            &&& final(krnl).pg_arr.spec_index(i).view().being_killed() == old(krnl).pg_arr.spec_index(i).view().being_killed()
-        },
         final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
         final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, allc_ptr),
         ({
@@ -318,78 +301,5 @@ pub(crate) fn kill_container_retire_head_2m_to_pool(
     proof { lctx.update_lock_id(KernelObjId::Page(head), old_page_lock_id, krnl.pg_arr.lock_id_by_index(head)); }
     krnl.allc_2m_mp.push_global_pool_page_typed(allc_ptr, node_addr, node_perm, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
         Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(pool_lock_perm));
-    kill_container_retire_set_tails_owner(&mut krnl.pg_arr, head, owner_ptr, Tracked(&*lctx), Tracked(tail_perms));
-}
-
-/// Gives the 511 merged tails of the 2M page at `head`, write-held through `perms`, to `owner`; every other page stays.
-fn kill_container_retire_set_tails_owner(
-    pages: &mut PageLockedArray, head: PageIndex, owner: RwLockContainerPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(perms): Tracked<&Map<PageIndex, LockPerm>>,
-)
-    requires
-        page_array_wf(*old(pages)),
-        page_index_2m_valid(head),
-        old(pages).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
-        owned_2m_tail_lock_perms_wf(*perms, *old(pages), lctx, head),
-    ensures
-        page_array_wf(*final(pages)),
-        final(pages).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
-        owned_2m_tail_lock_perms_wf(*perms, *final(pages), lctx, head),
-        forall|i: PageIndex| #![trigger final(pages).spec_index(i)]
-            index_valid(NUM_PAGES, i) && !page_2m_tail_indices(head).contains(i) ==> final(pages).spec_index(i) == old(pages).spec_index(i),
-        forall|i: PageIndex| #![trigger final(pages).spec_index(i)]
-            page_2m_tail_indices(head).contains(i) ==> {
-                &&& final(pages).spec_index(i).view().view() == (Page { owning_container: owner, ..old(pages).spec_index(i).view().view() })
-                &&& final(pages).spec_index(i).view().is_init() == old(pages).spec_index(i).view().is_init()
-                &&& final(pages).spec_index(i).view().view_rodata() == old(pages).spec_index(i).view().view_rodata()
-                &&& final(pages).spec_index(i).view().view_ghost() == old(pages).spec_index(i).view().view_ghost()
-                &&& final(pages).spec_index(i).view().locking_thread() == old(pages).spec_index(i).view().locking_thread()
-                &&& final(pages).spec_index(i).view().being_killed() == old(pages).spec_index(i).view().being_killed()
-            },
-{
-    proof {
-        page_array_wf_map(*pages);
-        assert(Set::range((head + 1) as usize, (head + 1) as usize).is_empty()) by { assert_sets_equal!(Set::range((head + 1) as usize, (head + 1) as usize) == Set::<PageIndex>::empty(), index => {}); };
-    }
-    let mut count: usize = 0;
-    while count < 511
-        invariant
-            page_array_wf(*old(pages)),
-            page_index_2m_valid(head),
-            0 <= count <= 511,
-            pages.inv(),
-            pages.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
-            owned_2m_tail_lock_perms_wf(*perms, *old(pages), lctx, head),
-            forall|i: PageIndex| #![trigger pages.spec_index(i)]
-                index_valid(NUM_PAGES, i) && !Set::range((head + 1) as usize, (head + 1 + count) as usize).contains(i) ==> pages.spec_index(i) == old(pages).spec_index(i),
-            forall|i: PageIndex| #![trigger pages.spec_index(i)]
-                Set::range((head + 1) as usize, (head + 1 + count) as usize).contains(i) ==> {
-                    &&& pages.spec_index(i).view().view() == (Page { owning_container: owner, ..old(pages).spec_index(i).view().view() })
-                    &&& pages.spec_index(i).view().is_init() == old(pages).spec_index(i).view().is_init()
-                    &&& pages.spec_index(i).view().view_rodata() == old(pages).spec_index(i).view().view_rodata()
-                    &&& pages.spec_index(i).view().view_ghost() == old(pages).spec_index(i).view().view_ghost()
-                    &&& pages.spec_index(i).view().locking_thread() == old(pages).spec_index(i).view().locking_thread()
-                    &&& pages.spec_index(i).view().being_killed() == old(pages).spec_index(i).view().being_killed()
-                    &&& pages.spec_index(i).lock_id() == old(pages).spec_index(i).lock_id()
-                    &&& pages.spec_index(i).view().inv()
-                },
-        decreases 511 - count,
-    {
-        let index = head + 1usize + count;
-        proof {
-            assert(page_2m_tail_indices(head).contains(index) && !Set::range((head + 1) as usize, (head + 1 + count) as usize).contains(index)) by {
-                vstd::set_lib::range_set_properties((head + 1) as usize, (head + 512) as usize); vstd::set_lib::range_set_properties((head + 1) as usize, (head + 1 + count) as usize);
-            };
-        }
-        let page = pages.borrow_mut_typed(index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(perms.tracked_borrow(index)));
-        page.owning_container = owner;
-        proof {
-            assert(pages.spec_index(index).view().inv()) by { page_array_wf_at(*old(pages), index); reveal(Page::mappings_va_valid); };
-            assert(Set::range((head + 1) as usize, (head + 2 + count) as usize) == Set::range((head + 1) as usize, (head + 1 + count) as usize).insert(index)) by {
-                assert_sets_equal!(Set::range((head + 1) as usize, (head + 2 + count) as usize) == Set::range((head + 1) as usize, (head + 1 + count) as usize).insert(index), candidate => {});
-            };
-        }
-        count = count + 1usize;
-    }
-    proof { kill_container_retire_set_tails_owner_eof(*old(pages), *pages, head); }
 }
 } // verus!

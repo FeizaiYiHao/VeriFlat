@@ -10,11 +10,7 @@ use super::syscall_kill_container_retire_eof_tree::*;
 use super::syscall_kill_container_retire_eof_pages::*;
 
 verus! {
-/// Retiring the childless marked container `ctn_ptr` from `pre` to `post`: it leaves the container map, its parent
-/// `parent_ptr`'s children, and every ancestor's subtree; its scheduler, cpu set, offline request table, PCID
-/// allocator, and allocators leave their maps; its five 4K object pages join the 4K global pool and its container and
-/// PCID allocator 2M pages the 2M global pool of `owner_ptr`, which owns them, their tails, and every page the
-/// container owned. Quotas and every other object keep their values.
+/// Retiring `ctn_ptr` from `pre` to `post`: it leaves the container map, `parent_ptr`'s children, and every ancestor's subtree, its objects leave their maps, its five 4K and two 2M object pages join `owner_ptr`'s global pools and owned pages, and every other page and object is unchanged.
 #[verifier::opaque]
 pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
@@ -24,7 +20,6 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     let owner_ro = pre.ctn_mp.spec_index(owner_ptr).view_rodata().view();
     let pages_4k = kill_container_retire_pages_4k(ro);
     let heads = kill_container_retire_heads(ctn_ptr, ro);
-    let tails = kill_container_retire_tails(heads);
     &&& post == (KernelK { ctn_mp: post.ctn_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp, pcid_allc_mp: post.pcid_allc_mp, cpu_offline_mp: post.cpu_offline_mp,
         allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, pg_arr: post.pg_arr, ..pre })
     &&& post.ctn_mp.perms_wf()
@@ -118,7 +113,7 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(a)] post.allc_1g_mp.dom().contains(a) ==> post.allc_1g_mp.spec_index(a) == pre.allc_1g_mp.spec_index(a)
     &&& page_array_wf(post.pg_arr)
     &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)]
-        index_valid(NUM_PAGES, i) && !pages_4k.contains(i) && !heads.contains(i) && !tails.contains(i) ==> post.pg_arr.spec_index(i) == pre.pg_arr.spec_index(i)
+        index_valid(NUM_PAGES, i) && !pages_4k.contains(i) && !heads.contains(i) ==> post.pg_arr.spec_index(i) == pre.pg_arr.spec_index(i)
     &&& forall|k: int| #![trigger pages_4k[k]] 0 <= k < 5 ==> {
         let pre_page = pre.pg_arr.spec_index(pages_4k[k]).view();
         let post_page = post.pg_arr.spec_index(pages_4k[k]).view();
@@ -136,11 +131,6 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
         &&& post_page.view().free_list_node_storage.addr() == pre_page.view().free_list_node_storage.addr()
         &&& post_page.view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(owner_ro.allocator_ptr_2m), state: FreePageAllocatorState::GlobalList },
             owning_container: owner_ptr, free_list_node_storage: post_page.view().free_list_node_storage, perm_2m: post_page.view().perm_2m, ..pre_page.view() })
-    }
-    &&& forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)] tails.contains(i) ==> {
-        &&& post.pg_arr.spec_index(i).view().view() == (Page { owning_container: owner_ptr, ..pre.pg_arr.spec_index(i).view().view() })
-        &&& post.pg_arr.spec_index(i).view().is_init() == pre.pg_arr.spec_index(i).view().is_init()
-        &&& post.pg_arr.spec_index(i).view().locking_thread() == pre.pg_arr.spec_index(i).view().locking_thread()
     }
 }
 

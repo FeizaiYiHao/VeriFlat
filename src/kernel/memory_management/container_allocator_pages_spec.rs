@@ -105,38 +105,62 @@ pub proof fn container_allocator_wf_at(
         }),
 { reveal(container_allocator_wf); }
 
-/// Every page a container lists in its owned pages is a valid page owned by that container.
+/// Every page a container lists in its owned pages is valid, and a page that is not a merged huge-page tail is owned by that container.
 pub open spec fn container_owned_pages_forward_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
     forall|c: RwLockContainerPtr, pg_ptr: PagePtr|
         #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(pg_ptr)]
-        ctn_mp.dom().contains(c)
-            && ctn_mp.spec_index(c).view().owned_pages.view().contains(pg_ptr)
-            ==>
-            page_ptr_valid(pg_ptr)
-            && pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == c
+        ctn_mp.dom().contains(c) && ctn_mp.spec_index(c).view().owned_pages.view().contains(pg_ptr) ==> {
+            &&& page_ptr_valid(pg_ptr)
+            &&& !pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_merged() ==> pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == c
+        }
 }
 
-/// Every page's owning container exists and lists the page in its owned pages.
+/// Every page that is not a merged huge-page tail has an existing owning container that lists it in its owned pages.
 pub open spec fn container_owned_pages_backward_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
     forall|p_i: PageIndex|
         #![trigger pg_arr.spec_index(p_i).view().view().owning_container]
-        index_valid(NUM_PAGES, p_i)
+        index_valid(NUM_PAGES, p_i) && !pg_arr.spec_index(p_i).view().view().is_merged()
             ==>
             ctn_mp.dom().contains(pg_arr.spec_index(p_i).view().view().owning_container)
             && ctn_mp.spec_index(pg_arr.spec_index(p_i).view().view().owning_container).view().owned_pages.view().contains(page_index2page_ptr(p_i))
 }
 
-/// Containers' owned pages and pages' owning containers agree in both directions.
+/// A container lists a tail of a 2M region in its owned pages exactly when it lists the region's head.
+pub open spec fn container_owned_pages_2m_region_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
+    forall|c: RwLockContainerPtr, p_i: PageIndex, p_j: PageIndex|
+        #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)), spec_page_index_merge_2m_valid(p_i, p_j)]
+        #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)), spec_page_index_merge_2m_valid(p_i, p_j)]
+        ctn_mp.dom().contains(c) && index_valid(NUM_PAGES, p_i) && index_valid(NUM_PAGES, p_j)
+            && page_state_2m_related(pg_arr.spec_index(p_i).view().view().state) && !(pg_arr.spec_index(p_i).view().view().state is Merged2m)
+            && spec_page_index_merge_2m_valid(p_i, p_j)
+            ==> (ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)) <==> ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)))
+}
+
+/// A container lists a tail of a 1G region in its owned pages exactly when it lists the region's head.
+pub open spec fn container_owned_pages_1g_region_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
+    forall|c: RwLockContainerPtr, p_i: PageIndex, p_j: PageIndex|
+        #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)), spec_page_index_merge_1g_valid(p_i, p_j)]
+        #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)), spec_page_index_merge_1g_valid(p_i, p_j)]
+        ctn_mp.dom().contains(c) && index_valid(NUM_PAGES, p_i) && index_valid(NUM_PAGES, p_j)
+            && (pg_arr.spec_index(p_i).view().view().state is Free1g || pg_arr.spec_index(p_i).view().view().state is Mapped1g)
+            && spec_page_index_merge_1g_valid(p_i, p_j)
+            ==> (ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)) <==> ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)))
+}
+
+/// Containers' owned pages and pages' owning containers agree in both directions; a merged huge-page tail is listed with its region head and carries no owner of its own.
 #[verifier::opaque]
 pub open spec fn container_owned_pages_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
     &&& container_owned_pages_forward_wf(ctn_mp, pg_arr)
     &&& container_owned_pages_backward_wf(ctn_mp, pg_arr)
+    &&& container_owned_pages_2m_region_wf(ctn_mp, pg_arr)
+    &&& container_owned_pages_1g_region_wf(ctn_mp, pg_arr)
 }
 
 pub proof fn container_owned_pages_wf_backward_at(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray, pg_idx: PageIndex)
     requires
         container_owned_pages_wf(ctn_mp, pg_arr),
         index_valid(NUM_PAGES, pg_idx),
+        !pg_arr.spec_index(pg_idx).view().view().is_merged(),
     ensures
         ctn_mp.dom().contains(pg_arr.spec_index(pg_idx).view().view().owning_container),
         ctn_mp.spec_index(pg_arr.spec_index(pg_idx).view().view().owning_container).view().owned_pages.view().contains(page_index2page_ptr(pg_idx)),

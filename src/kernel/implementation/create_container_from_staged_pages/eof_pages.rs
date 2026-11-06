@@ -68,12 +68,6 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_mov
     assert(!funding_indices.contains(pg_idx)) by { reveal(publish_staged_container_root_eof_preconditions); page_ptr_seq_indices_excludes_page(funding_pages, page_index2page_ptr(pg_idx)); };
     assert(!page_2m_all_ptrs(container_head).contains(page_index2page_ptr(pg_idx))) by { reveal(new_container_moved_pages); };
     assert(!page_2m_all_ptrs(pcid_allocator_head).contains(page_index2page_ptr(pg_idx))) by { reveal(new_container_moved_pages); };
-    assert(!page_2m_tail_indices(container_head).contains(pg_idx)) by {
-        if page_2m_tail_indices(container_head).contains(pg_idx) { page_2m_all_ptrs_contains_index(container_head, pg_idx); }
-    };
-    assert(!page_2m_tail_indices(pcid_allocator_head).contains(pg_idx)) by {
-        if page_2m_tail_indices(pcid_allocator_head).contains(pg_idx) { page_2m_all_ptrs_contains_index(pcid_allocator_head, pg_idx); }
-    };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_index2page_ptr(pg_idx))) by {
         reveal(new_container_moved_pages);
     };
@@ -89,6 +83,71 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_mov
         &&& pg_idx != pagetable_index
         &&& pg_idx != l4_index
     }) by { page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); reveal(new_container_bootstrap_4k_pages); };
+}
+
+/// A tail of one of the two published 2M regions is a Merged2m page whose fields the publish leaves unchanged.
+pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, head_index: PageIndex, pg_idx: PageIndex,
+)
+    requires
+        pre.memory_management_inv(),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        head_index == page_ptr2page_index(container_page) || head_index == page_ptr2page_index(pcid_allocator_page),
+        index_valid(NUM_PAGES, pg_idx),
+        spec_page_index_merge_2m_valid(head_index, pg_idx),
+    ensures
+        pre.pg_arr.spec_index(pg_idx).view().view().state is Merged2m,
+        post.pg_arr.spec_index(pg_idx).view().view().state == pre.pg_arr.spec_index(pg_idx).view().view().state,
+        post.pg_arr.spec_index(pg_idx).view().view().owning_container == pre.pg_arr.spec_index(pg_idx).view().view().owning_container,
+        post.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage == pre.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage,
+        post.pg_arr.spec_index(pg_idx).view().view().is_io_page == pre.pg_arr.spec_index(pg_idx).view().view().is_io_page,
+{
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    let pg_ptr = page_index2page_ptr(pg_idx);
+    page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
+    page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+    assert(pre.pg_arr.spec_index(pg_idx).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); };
+    assert(!funding_pages.to_set().contains(pg_ptr)) by { if funding_pages.to_set().contains(pg_ptr) { reveal(thread_staged_4k_pages_wf); } };
+    assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(pg_ptr)) by {
+        if new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pg_ptr) {
+            reveal(thread_staged_4k_pages_wf);
+        }
+    };
+    page_ptr_seq_indices_excludes_page(funding_pages, pg_ptr);
+    assert({
+        &&& pg_idx != page_ptr2page_index(container_page)
+        &&& pg_idx != page_ptr2page_index(pcid_allocator_page)
+        &&& pg_idx != page_ptr2page_index(allocator_4k_page)
+        &&& pg_idx != page_ptr2page_index(allocator_2m_page)
+        &&& pg_idx != page_ptr2page_index(allocator_1g_page)
+        &&& pg_idx != page_ptr2page_index(scheduler_page)
+        &&& pg_idx != page_ptr2page_index(cpu_set_page)
+        &&& pg_idx != page_ptr2page_index(process_page)
+        &&& pg_idx != page_ptr2page_index(pagetable_page)
+        &&& pg_idx != page_ptr2page_index(l4_page)
+    }) by { page_ptr_roundtrip(); reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); };
 }
 
 #[verifier::spinoff_prover]
@@ -205,26 +264,26 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_unmodified_objec
     };
     assert(pg_ptr != container_page) by { if pg_ptr == container_page { } };
     assert(pg_ptr != pcid_allocator_page) by { if pg_ptr == pcid_allocator_page { } };
-    assert(!page_2m_tail_indices(page_ptr2page_index(container_page)).contains(pg_idx)) by {
-        if page_2m_tail_indices(page_ptr2page_index(container_page)).contains(pg_idx) {
-            assert(pre.pg_arr.spec_index(pg_idx).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); };
-        }
-    };
-    assert(!page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(pg_idx)) by {
-        if page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(pg_idx) {
-            assert(pre.pg_arr.spec_index(pg_idx).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); };
-        }
-    };
     assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr)) by {
         if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr) {
             page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, pg_ptr,);
             assert(pg_idx != page_ptr2page_index(container_page)) by { page_ptr2page_index_injective(); };
+            publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k, page_ptr2page_index(container_page), pg_idx,
+            );
         }
     };
     assert(!page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(pg_ptr)) by {
         if page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(pg_ptr) {
             page_2m_ptr_prefix_member_bounds(page_ptr2page_index(pcid_allocator_page), 512, pg_ptr,);
             assert(pg_idx != page_ptr2page_index(pcid_allocator_page)) by { page_ptr2page_index_injective(); };
+            publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k, page_ptr2page_index(pcid_allocator_page), pg_idx,
+            );
         }
     };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pg_ptr)) by { reveal(new_container_moved_pages); };
@@ -362,6 +421,7 @@ pub(super) proof fn publish_staged_container_root_eof_existing_post_container_pa
     funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, pg_idx: PageIndex,
 )
     requires
+        pre.memory_management_inv(),
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
         page_ptr_valid(allocator_4k_page),
@@ -391,13 +451,27 @@ pub(super) proof fn publish_staged_container_root_eof_existing_post_container_pa
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); page_index_valid_imply_page_ptr_valid();
     let pg_ptr = page_index2page_ptr(pg_idx);
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(pg_ptr)) by { reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); };
+    page_index_roundtrip();
     assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr)) by {
-        if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr) { page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, pg_ptr,); }
+        if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(pg_ptr) {
+            page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, pg_ptr,);
+            publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k, page_ptr2page_index(container_page), pg_idx,
+            );
+        }
     };
     assert(!page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(pg_ptr)) by {
         if page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(pg_ptr) {
             page_2m_ptr_prefix_member_bounds(page_ptr2page_index(pcid_allocator_page), 512, pg_ptr,);
-            if pg_idx == page_ptr2page_index(pcid_allocator_page) { } else { }
+            if pg_idx != page_ptr2page_index(pcid_allocator_page) {
+                publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                    pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                    allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                    allocator_quota_4k, process_quota_4k, page_ptr2page_index(pcid_allocator_page), pg_idx,
+                );
+            }
         }
     };
     publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, pg_ptr);
@@ -615,6 +689,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_head
     allocator_quota_4k: usize, process_quota_4k: usize, pg_idx: PageIndex,
 )
     requires
+        pre.memory_management_inv(),
         hugepage_2m_head_aligned_wf(pre.pg_arr),
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
@@ -663,9 +738,25 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_head
     if pg_idx == container_head || pg_idx == pcid_allocator_head { return; }
     page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     let pg_ptr = page_index2page_ptr(pg_idx);
-    assert(!page_2m_all_ptrs(container_head).contains(pg_ptr)) by { if page_2m_all_ptrs(container_head).contains(pg_ptr) { page_2m_ptr_prefix_member_bounds(container_head, 512, pg_ptr); } };
+    assert(!page_2m_all_ptrs(container_head).contains(pg_ptr)) by {
+        if page_2m_all_ptrs(container_head).contains(pg_ptr) {
+            page_2m_ptr_prefix_member_bounds(container_head, 512, pg_ptr);
+            publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k, container_head, pg_idx,
+            );
+        }
+    };
     assert(!page_2m_all_ptrs(pcid_allocator_head).contains(pg_ptr)) by {
-        if page_2m_all_ptrs(pcid_allocator_head).contains(pg_ptr) { page_2m_ptr_prefix_member_bounds(pcid_allocator_head, 512, pg_ptr); }
+        if page_2m_all_ptrs(pcid_allocator_head).contains(pg_ptr) {
+            page_2m_ptr_prefix_member_bounds(pcid_allocator_head, 512, pg_ptr);
+            publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k, pcid_allocator_head, pg_idx,
+            );
+        }
     };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(pg_ptr)) by {
         reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages);
@@ -727,10 +818,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
             ),
             spec_page_index_merge_2m_valid(head_index, tail_index)
         ]
-        {
-            &&& post.pg_arr.spec_index(tail_index).view().view().state is Merged2m
-            &&& post.pg_arr.spec_index(tail_index).view().view().owning_container == post.pg_arr.spec_index(head_index).view().view().owning_container
-        },
+        post.pg_arr.spec_index(tail_index).view().view().state is Merged2m,
 {
     hide(Seq::contains);
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
@@ -744,12 +832,12 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
         allocator_quota_4k, process_quota_4k, head_index,
     );
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-    if head_index == container_head {
-        assert(page_2m_tail_indices(container_head).contains(tail_index)) by { vstd::set_lib::range_set_properties((container_head + 1) as usize, (container_head + 512) as usize); };
-        return;
-    }
-    if head_index == pcid_allocator_head {
-        assert(page_2m_tail_indices(pcid_allocator_head).contains(tail_index)) by { vstd::set_lib::range_set_properties((pcid_allocator_head + 1) as usize, (pcid_allocator_head + 512) as usize); };
+    if head_index == container_head || head_index == pcid_allocator_head {
+        publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k, head_index, tail_index,
+        );
         return;
     }
     distinct_2m_heads_have_disjoint_all_ptrs(head_index, container_head); distinct_2m_heads_have_disjoint_all_ptrs(head_index, pcid_allocator_head);
@@ -833,8 +921,8 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     let head_index = spec_page_index_truncate_2m(tail_index);
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-    if page_2m_tail_indices(container_head).contains(tail_index) { return; }
-    if page_2m_tail_indices(pcid_allocator_head).contains(tail_index) { return; }
+    if page_2m_tail_indices(container_head).contains(tail_index) { vstd::set_lib::range_set_properties((container_head + 1) as usize, (container_head + 512) as usize); return; }
+    if page_2m_tail_indices(pcid_allocator_head).contains(tail_index) { vstd::set_lib::range_set_properties((pcid_allocator_head + 1) as usize, (pcid_allocator_head + 512) as usize); return; }
     page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     let tail_ptr = page_index2page_ptr(tail_index);
     assert(!page_2m_all_ptrs(container_head).contains(tail_ptr)) by {
