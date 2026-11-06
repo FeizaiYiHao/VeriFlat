@@ -63,5 +63,47 @@ impl KernelK {
         }
         ret
     }
+
+    /// Release the write hold on the global pool of the 1G allocator `alloc_ptr_1g`.
+    pub fn wunlock_allocator_global_pool_1g(&mut self, alloc_ptr_1g: RwLockPageAllocatorPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+        requires
+            old(self).inv(),
+            old(self).allc_1g_mp.dom().contains(alloc_ptr_1g),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == old(lctx).thread_id(),
+            lock_perm.view().lock_id() == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).allocator_global_pool_1g_lock_map(), alloc_ptr_1g, TypedLockMode::Write),
+            typed_lock_maps_aligned(old(self), old(lctx)),
+        ensures
+            final(self).inv(),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
+            kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
+            kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
+            typed_lock_maps_aligned(final(self), final(lctx)),
+            *final(self) == (KernelK { allc_1g_mp: final(self).allc_1g_mp, ..*old(self) }),
+            final(self).allc_1g_mp.unchanged_except(&old(self).allc_1g_mp, alloc_ptr_1g),
+            final(self).allc_1g_mp.perms_wf(),
+            final(self).allc_1g_mp.spec_index(alloc_ptr_1g).wf(),
+            final(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches,
+            final(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota,
+            final(self).allc_1g_mp.spec_index(alloc_ptr_1g).owning_container == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).owning_container,
+            final(self).allc_1g_mp.spec_index(alloc_ptr_1g).total_free_pages == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).total_free_pages,
+            wunlock_ensures(old(self).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool, final(self).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool),
+            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ1g, alloc_ptr_1g), old(self).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.lock_id()),
+    {
+        proof {
+            assert(old(self).allc_1g_mp.perms_wf() && old(self).allc_1g_mp.spec_index(alloc_ptr_1g).inv()) by { allocator_perms_wf_map(old(self).allc_1g_mp); allocator_perms_wf_at(old(self).allc_1g_mp, alloc_ptr_1g); };
+            assert(old(lctx).lock_entry_contains(old(self).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(PageSize::SZ1g, alloc_ptr_1g))) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        }
+        assert(self.allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        self.allc_1g_mp.wunlock_global_pool(alloc_ptr_1g, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ1g));
+        proof {
+            assert(allocator_invariant_fields_unchanged(old(self).allc_1g_mp, self.allc_1g_mp)) by { allocator_global_pool_lock_op_preserves_invariant_fields(old(self).allc_1g_mp, self.allc_1g_mp, alloc_ptr_1g); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+            assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            allocator_1g_lock_op_eof(*old(self), *self, alloc_ptr_1g);
+        }
+    }
 }
 } // verus!

@@ -15,12 +15,14 @@ use super::syscall_kill_process_retire_spec::{kill_retire_held_state, kill_retir
 use super::syscall_kill_process_retire_pages_spec::kill_retire_table_page_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_pages_eof::kill_retire_table_page_eof;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_state_lemma::mapped_1g_page_pagetable_wf_table_at;
 
 verus! {
 /// Retire every table page below the root of the empty zombie target's write-held page table and, once a scan finds that
 /// root alone, of its write-held IOMMU table, one step per page, to the caches of their owner, the killer's container;
 /// then refund their quota to the killer's container chain. Both tables then hold only their roots: a zombie's tables map
-/// nothing (`process_emptied_tables_wf`, `pagetable_no_1g_leaf_wf`, `iommu_table_no_huge_leaf_wf`), so no scan is Blocked.
+/// nothing (`process_emptied_tables_wf`, `mapped_1g_page_pagetable_wf`, `iommu_table_no_huge_leaf_wf`), so no scan is Blocked.
 pub(crate) fn kill_retire_structure_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
@@ -331,7 +333,7 @@ pub(crate) fn kill_retire_table_pages(
                 process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
                 pagetable_perms_wf_map(krnl.pt_mp);
                 pagetable_perms_wf_at(krnl.pt_mp, table);
-                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table);
+                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table); mapped_1g_page_pagetable_wf_table_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table);
             }
             krnl.pt_mp.borrow_typed(table, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(table_perm)).next_structure_page(Tracked(krnl.pt_lower.borrow().tracked_borrow(table)))
         };
@@ -344,7 +346,10 @@ pub(crate) fn kill_retire_table_pages(
                 } else {
                     assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target); };
                     assert(krnl.pt_mp.spec_index(table).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(table); };
-                    assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_1g().dom() =~= Set::<VAddr>::empty()) by { pagetable_no_1g_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table); };
+                    assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
+                        process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
+                        mapped_1g_page_pagetable_wf_table_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table);
+                    };
                 }
             }
             return;

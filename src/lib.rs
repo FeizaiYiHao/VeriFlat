@@ -43,12 +43,16 @@ pub use kernel::implementation::create_endpoint_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::page_2m_region::*;
+pub use kernel::implementation::page_1g_region::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 use kernel::implementation::map_4k::mmap_4k_build_structure::MissingPageTableLevel;
 pub use kernel::implementation::map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 pub use kernel::implementation::map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;
+pub use kernel::implementation::map_4k::mmap_1g_install_directory::*;
+#[cfg(verus_keep_ghost)]
+use kernel::implementation::allocate_free_1g_page::allocate_free_1g_page_lemmas::kernel_inv_implies_container_allocator_1g_quota_bounded;
 pub use kernel::implementation::map_4k::map_iommu_4k_spec::*;
 pub use kernel::implementation::map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
 pub use kernel::implementation::map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;

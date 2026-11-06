@@ -28,7 +28,6 @@ pub(super) proof fn wlock_iommu_table_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(post.it_mp.spec_index(iommu_table_ptr).view().leaves_present()) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
     assert(post.memory_management_inv()) by {
@@ -55,7 +54,6 @@ pub(super) proof fn wunlock_iommu_table_eof(pre: KernelK, post: KernelK, iommu_t
 {
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
     assert(post.memory_management_inv()) by {

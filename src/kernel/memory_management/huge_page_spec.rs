@@ -11,9 +11,10 @@ pub open spec fn page_state_2m_related(s: PageState) -> bool {
     ||| s is Merged2m
 }
 
-/// The 1G head states (Free1g, Mapped1g) and the 1G tail state Merged1g.
+/// The 1G head states (Free1g, Owned1g, Mapped1g) and the 1G tail state Merged1g.
 pub open spec fn page_state_1g_related(s: PageState) -> bool {
     ||| s is Free1g
+    ||| s is Owned1g
     ||| s is Mapped1g
     ||| s is Merged1g
 }
@@ -115,11 +116,13 @@ pub proof fn hugepage_2m_wf_head_at(pg_arr: PageLockedArray, pg_idx: PageIndex)
 pub open spec fn hugepage_1g_head_aligned_wf(pg_arr: PageLockedArray) -> bool {
     forall|p_i: PageIndex|
         #![trigger pg_arr.spec_index(p_i).view().view().state is Free1g]
+        #![trigger pg_arr.spec_index(p_i).view().view().state is Owned1g]
         #![trigger pg_arr.spec_index(p_i).view().view().state is Mapped1g]
         #![trigger page_index_1g_valid(p_i)]
         index_valid(NUM_PAGES, p_i)
             && {
                 ||| pg_arr.spec_index(p_i).view().view().state is Free1g
+                ||| pg_arr.spec_index(p_i).view().view().state is Owned1g
                 ||| pg_arr.spec_index(p_i).view().view().state is Mapped1g
             }
             ==>
@@ -131,11 +134,13 @@ pub open spec fn hugepage_1g_tail_forward_wf(pg_arr: PageLockedArray) -> bool {
     forall|p_i: PageIndex, p_j: PageIndex|
         #![trigger spec_page_index_merge_1g_valid(p_i, p_j)]
         #![trigger pg_arr.spec_index(p_i).view().view().state is Free1g, pg_arr.spec_index(p_j).view().view().state is Merged1g]
+        #![trigger pg_arr.spec_index(p_i).view().view().state is Owned1g, pg_arr.spec_index(p_j).view().view().state is Merged1g]
         #![trigger pg_arr.spec_index(p_i).view().view().state is Mapped1g, pg_arr.spec_index(p_j).view().view().state is Merged1g]
         index_valid(NUM_PAGES, p_i)
             && index_valid(NUM_PAGES, p_j)
             && {
                 ||| pg_arr.spec_index(p_i).view().view().state is Free1g
+                ||| pg_arr.spec_index(p_i).view().view().state is Owned1g
                 ||| pg_arr.spec_index(p_i).view().view().state is Mapped1g
             }
             && spec_page_index_merge_1g_valid(p_i, p_j)
@@ -149,6 +154,7 @@ pub open spec fn hugepage_1g_tail_backward_wf(pg_arr: PageLockedArray) -> bool {
         #![trigger spec_page_index_truncate_1g(p_i)]
         index_valid(NUM_PAGES, p_i) && (pg_arr.spec_index(p_i).view().view().state is Merged1g) ==> {
             ||| pg_arr.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Free1g
+            ||| pg_arr.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Owned1g
             ||| pg_arr.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Mapped1g
         }
 }
@@ -161,7 +167,7 @@ pub open spec fn hugepage_1g_wf(pg_arr: PageLockedArray) -> bool {
     &&& hugepage_1g_tail_backward_wf(pg_arr)
 }
 
-/// A free or mapped 1G head page `pg_idx` starts a 1G-aligned region.
+/// A 1G head page `pg_idx` starts a 1G-aligned region.
 pub proof fn hugepage_1g_wf_head_at(pg_arr: PageLockedArray, pg_idx: PageIndex)
     requires
         hugepage_1g_wf(pg_arr),
@@ -169,12 +175,13 @@ pub proof fn hugepage_1g_wf_head_at(pg_arr: PageLockedArray, pg_idx: PageIndex)
         index_valid(NUM_PAGES, pg_idx)
             && {
                 ||| pg_arr.spec_index(pg_idx).view().view().state is Free1g
+                ||| pg_arr.spec_index(pg_idx).view().view().state is Owned1g
                 ||| pg_arr.spec_index(pg_idx).view().view().state is Mapped1g
             }
             ==> page_index_1g_valid(pg_idx),
 { reveal(hugepage_1g_wf); }
 
-/// Page `tail_idx` inside the 1G region headed by the free or mapped page `head_idx` is merged into it.
+/// Page `tail_idx` inside the 1G region headed by the 1G head page `head_idx` is merged into it.
 pub proof fn hugepage_1g_wf_tail_forward_at(pg_arr: PageLockedArray, head_idx: PageIndex, tail_idx: PageIndex)
     requires
         hugepage_1g_wf(pg_arr),
@@ -183,6 +190,7 @@ pub proof fn hugepage_1g_wf_tail_forward_at(pg_arr: PageLockedArray, head_idx: P
             && index_valid(NUM_PAGES, tail_idx)
             && {
                 ||| pg_arr.spec_index(head_idx).view().view().state is Free1g
+                ||| pg_arr.spec_index(head_idx).view().view().state is Owned1g
                 ||| pg_arr.spec_index(head_idx).view().view().state is Mapped1g
             }
             && spec_page_index_merge_1g_valid(head_idx, tail_idx)

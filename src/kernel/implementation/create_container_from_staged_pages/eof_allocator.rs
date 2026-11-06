@@ -197,6 +197,7 @@ pub(super) proof fn publish_staged_container_root_eof_allocator_free_pages_wf(
         allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
         allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
+        allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
@@ -233,6 +234,7 @@ pub(super) proof fn publish_staged_container_root_eof_allocator_free_pages_wf(
         reveal(allocator_free_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr,)) by { reveal(allocator_free_1g_pages_wf); };
+    assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp,)) by { reveal(container_allocator_wf); };
 }
 }

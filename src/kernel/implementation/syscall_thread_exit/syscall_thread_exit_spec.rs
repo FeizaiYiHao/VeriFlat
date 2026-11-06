@@ -367,12 +367,13 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// A refund grows the 4K or 2M quota of the running thread's container or of one of its ancestors and changes nothing else;
+/// A refund grows the 4K, 2M, or 1G quota of the running thread's container or of one of its ancestors and changes nothing else;
 /// refunds happen after the flush, when the page table holds no window lock.
 #[verifier::opaque]
 pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container) || kernel_u_container_quota_2m_increased(old_u, new_u, thread.owning_container)
+        || kernel_u_container_quota_1g_increased(old_u, new_u, thread.owning_container)
 }
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,

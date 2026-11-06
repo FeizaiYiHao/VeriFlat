@@ -48,6 +48,8 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] #![trigger old_c.spec_held_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_resolve_mapping_l3(l4i, l3i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.window_exists(l4i, l3i) ==> new_c.spec_resolve_mapping_l3(l4i, l3i) == old_c.spec_resolve_mapping_l3(l4i, l3i)
     &&& new_pt.view().kernel_entries == old_pt.view().kernel_entries
@@ -147,7 +149,6 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
@@ -157,11 +158,10 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+        pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
         reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
     };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(post.prc_mp, pre.pt_mp, post.pt_mp); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         assert(post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings());
@@ -188,7 +188,6 @@ proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
         post.subsystems_inv(),
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
@@ -331,7 +330,7 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         pre.default_pagetable_wf_at(pagetable_ptr);
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq,
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq,
             PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq, WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq,
             WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
         reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(cpu_tlb_wf);

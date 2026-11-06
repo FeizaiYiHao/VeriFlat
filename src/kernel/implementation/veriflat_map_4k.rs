@@ -7,6 +7,7 @@ use veriflat_alloc_page::allocate_free_4k_page::allocate_free_4k_impl_base::allo
 use veriflat_kernel_core::*;
 use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_quota, kill_container_quota_fold};
 use veriflat_alloc_page::free_2m_page::drain_2m_cache_batch;
+use veriflat_alloc_page::allocate_free_1g_page::allocate_free_1g_page_lemmas::kernel_inv_implies_container_allocator_1g_quota_bounded;
 
 pub mod map_4k;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;

@@ -96,9 +96,14 @@ pub open spec fn tlb_2m_entry_present_in_pagetable(entry: TLBEntry, table: Whole
 /// `entry` is the translation of the present 1G leaf at `va` of `table`: one entry of
 /// `single_cpu_single_pcid_tlb_subset_of_present_pagetable`.
 pub open spec fn tlb_1g_entry_present_in_pagetable(entry: TLBEntry, table: WholePageTable<PT_TYPE>, va: VAddr) -> bool {
-    &&& table.mapping_1g().dom().contains(va)
-    &&& spec_tlb_entry_equal_to_map_entry(entry, table.mapping_1g().spec_index(va))
-    &&& table.mapping_1g().spec_index(va).present
+    let held = table.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+    let leaf = table.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+    &&& va_1g_valid(va)
+    &&& table.kernel_l4_end() <= spec_v2l4index(va)
+    &&& held is Some
+    &&& spec_tlb_entry_equal_to_page_entry(entry, held->0)
+    &&& leaf is Some
+    &&& leaf->0.perm.present
 }
 
 /// Every translation `tlb` caches is one `old_tlb` caches alike that a per-address flush of `count` pages from `va` does
@@ -267,7 +272,8 @@ pub proof fn kernel_k_cpu_tlb_filled_preserves_inv(pre: KernelK, post: KernelK, 
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
         assert(filled.tlb_4k() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_4k().union_prefer_right(added.tlb_4k())
-            && filled.tlb_2m() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m()));
+            && filled.tlb_2m() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_2m().union_prefer_right(added.tlb_2m())
+            && filled.tlb_1g() == pre.cpu_tlb.spec_index((cpu_id, pcid)).tlb_1g().union_prefer_right(added.tlb_1g()));
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);

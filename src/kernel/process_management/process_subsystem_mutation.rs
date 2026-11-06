@@ -229,6 +229,95 @@ pub fn thread_map_clear_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thr
     }
 }
 
+pub fn thread_map_add_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thrd_mp)),
+        old(thrd_mp).dom().contains(thrd_ptr),
+        old(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thrd_mp).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+        depth <= old(thrd_mp).spec_index(thrd_ptr).view().container_depth,
+        *old(counter) == old(thrd_mp).spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
+        *old(counter) < usize::MAX,
+    ensures
+        thread_perms_wf(*final(thrd_mp)),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() == old(thrd_mp).dom(),
+        final(thrd_mp).unchanged_except(old(thrd_mp), thrd_ptr),
+        final(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thrd_mp).lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr),
+        final(thrd_mp).spec_index(thrd_ptr).is_init(),
+        final(thrd_mp).spec_index(thrd_ptr).inv(),
+        final(thrd_mp).spec_index(thrd_ptr).wlocked_by(lctx),
+        final(thrd_mp).spec_index(thrd_ptr).locking_thread() == old(thrd_mp).spec_index(thrd_ptr).locking_thread(),
+        final(thrd_mp).spec_index(thrd_ptr).being_killed() == old(thrd_mp).spec_index(thrd_ptr).being_killed(),
+        final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
+        final(thrd_mp).spec_index(thrd_ptr).view_rodata() == old(thrd_mp).spec_index(thrd_ptr).view_rodata(),
+        final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
+        final(thrd_mp).spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
+            indirect_free_quota_pending_1g: final(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(thrd_mp).spec_index(thrd_ptr).view() }),
+        *final(counter) == *old(counter) + 1,
+        final(thrd_mp).spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth) == *final(counter),
+        final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == old(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() + if depth == old(thrd_mp).spec_index(thrd_ptr).view().container_depth { 1int } else { 0int },
+        final(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()
+            == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, *final(counter)) }
+            else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
+{
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.add_free_quota_pending_1g(depth, counter);
+    proof {
+        thread_map_add_free_quota_pending_1g_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
+        assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
+pub fn thread_map_clear_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thrd_mp)),
+        old(thrd_mp).dom().contains(thrd_ptr),
+        old(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thrd_mp).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+        depth <= old(thrd_mp).spec_index(thrd_ptr).view().container_depth,
+        *old(counter) == old(thrd_mp).spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth),
+    ensures
+        thread_perms_wf(*final(thrd_mp)),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() == old(thrd_mp).dom(),
+        final(thrd_mp).unchanged_except(old(thrd_mp), thrd_ptr),
+        final(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thrd_mp).lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr),
+        final(thrd_mp).spec_index(thrd_ptr).is_init(),
+        final(thrd_mp).spec_index(thrd_ptr).inv(),
+        final(thrd_mp).spec_index(thrd_ptr).wlocked_by(lctx),
+        final(thrd_mp).spec_index(thrd_ptr).locking_thread() == old(thrd_mp).spec_index(thrd_ptr).locking_thread(),
+        final(thrd_mp).spec_index(thrd_ptr).being_killed() == old(thrd_mp).spec_index(thrd_ptr).being_killed(),
+        final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
+        final(thrd_mp).spec_index(thrd_ptr).view_rodata() == old(thrd_mp).spec_index(thrd_ptr).view_rodata(),
+        final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
+        final(thrd_mp).spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
+            indirect_free_quota_pending_1g: final(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(thrd_mp).spec_index(thrd_ptr).view() }),
+        *final(counter) == 0,
+        final(thrd_mp).spec_index(thrd_ptr).view().free_quota_pending_1g_at_depth(depth) == 0,
+        final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == if depth == old(thrd_mp).spec_index(thrd_ptr).view().container_depth { 0usize } else { old(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() },
+        final(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()
+            == if depth < old(thrd_mp).spec_index(thrd_ptr).view().container_depth { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().update(depth as int, 0usize) }
+            else { old(thrd_mp).spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() },
+{
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.clear_free_quota_pending_1g(depth, counter);
+    proof {
+        thread_map_clear_free_quota_pending_1g_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
+        assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
 pub fn process_map_add_owned_thread(prc_mp: &mut ProcessLockedMap, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(process_lock_perm): Tracked<&LockPerm>)
     requires
         process_perms_wf(*old(prc_mp)),

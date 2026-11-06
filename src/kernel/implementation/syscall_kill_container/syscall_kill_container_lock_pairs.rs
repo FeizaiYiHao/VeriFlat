@@ -220,4 +220,177 @@ pub(crate) fn kill_container_wlock_quota_pairs(
         assert(lctx.allocator_quota_2m_lock_map().dom() =~= set![a2, o2] && quotas_2m.dom() =~= set![a2, o2]);
     }
 }
+
+
+/// Write-hold the 1G global pools of the marked container `ctn_ptr`'s allocator `a1` and of the killer's container `owner_ptr`'s allocator `o1`, in container order.
+pub(crate) fn kill_container_wlock_pool_pair_1g(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a1: RwLockPageAllocatorPtr,
+    o1: RwLockPageAllocatorPtr, Tracked(pools_1g): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty() && old(lctx).allocator_quota_2m_lock_map().dom().is_empty() && old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        ctn_ptr != owner_ptr,
+        old(krnl).allc_1g_mp.dom().contains(a1) && old(krnl).allc_1g_mp.dom().contains(o1),
+        old(krnl).allc_1g_mp.spec_index(a1).owning_container == ctn_ptr && old(krnl).allc_1g_mp.spec_index(o1).owning_container == owner_ptr,
+        old(pools_1g).dom().is_empty(),
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        *final(krnl) == (KernelK { allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        final(lctx).page_lock_map() == old(lctx).page_lock_map(),
+        final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+        final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
+        final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
+        final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
+        final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
+        final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
+        final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
+        final(lctx).allocator_cache_4k_lock_map() == old(lctx).allocator_cache_4k_lock_map(),
+        final(lctx).allocator_cache_2m_lock_map() == old(lctx).allocator_cache_2m_lock_map(),
+        final(lctx).allocator_cache_1g_lock_map() == old(lctx).allocator_cache_1g_lock_map(),
+        final(lctx).allocator_quota_4k_lock_map() == old(lctx).allocator_quota_4k_lock_map(),
+        final(lctx).allocator_quota_2m_lock_map() == old(lctx).allocator_quota_2m_lock_map(),
+        final(lctx).allocator_quota_1g_lock_map() == old(lctx).allocator_quota_1g_lock_map(),
+        final(lctx).allocator_global_pool_4k_lock_map() == old(lctx).allocator_global_pool_4k_lock_map(),
+        final(lctx).allocator_global_pool_2m_lock_map() == old(lctx).allocator_global_pool_2m_lock_map(),
+        final(krnl).allc_1g_mp.dom() == old(krnl).allc_1g_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)] final(krnl).allc_1g_mp.dom().contains(a) ==> {
+            &&& final(krnl).allc_1g_mp.spec_index(a).cpu_caches == old(krnl).allc_1g_mp.spec_index(a).cpu_caches
+            &&& final(krnl).allc_1g_mp.spec_index(a).quota == old(krnl).allc_1g_mp.spec_index(a).quota
+            &&& final(krnl).allc_1g_mp.spec_index(a).global_pool.view() == old(krnl).allc_1g_mp.spec_index(a).global_pool.view()
+            &&& final(krnl).allc_1g_mp.spec_index(a).total_free_pages == old(krnl).allc_1g_mp.spec_index(a).total_free_pages
+            &&& final(krnl).allc_1g_mp.spec_index(a).owning_container == old(krnl).allc_1g_mp.spec_index(a).owning_container
+        },
+        final(lctx).allocator_global_pool_1g_lock_map().dom() == set![a1, o1],
+        final(pools_1g).dom() == set![a1, o1],
+        typed_lock_map_contains_mode(final(lctx).allocator_global_pool_1g_lock_map(), a1, TypedLockMode::Write) && typed_lock_map_contains_mode(final(lctx).allocator_global_pool_1g_lock_map(), o1, TypedLockMode::Write),
+        final(pools_1g)[a1].state() is WriteLock && final(pools_1g)[a1].thread_id() == final(lctx).thread_id(),
+        final(pools_1g)[a1].lock_id() == final(krnl).allc_1g_mp.spec_index(a1).global_pool.locking_thread()->Write_lock_id,
+        final(pools_1g)[o1].state() is WriteLock && final(pools_1g)[o1].thread_id() == final(lctx).thread_id(),
+        final(pools_1g)[o1].lock_id() == final(krnl).allc_1g_mp.spec_index(o1).global_pool.locking_thread()->Write_lock_id,
+{
+    if ctn_ptr < owner_ptr {
+        let Tracked(perm) = krnl.wlock_allocator_global_pool_1g_ordered(a1, Tracked(&mut *lctx));
+        proof { pools_1g.tracked_insert(a1, perm); }
+        let Tracked(perm) = krnl.wlock_allocator_global_pool_1g_ordered(o1, Tracked(&mut *lctx));
+        proof { pools_1g.tracked_insert(o1, perm); }
+    } else {
+        let Tracked(perm) = krnl.wlock_allocator_global_pool_1g_ordered(o1, Tracked(&mut *lctx));
+        proof { pools_1g.tracked_insert(o1, perm); }
+        let Tracked(perm) = krnl.wlock_allocator_global_pool_1g_ordered(a1, Tracked(&mut *lctx));
+        proof { pools_1g.tracked_insert(a1, perm); }
+    }
+    proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(lctx.allocator_global_pool_1g_lock_map().dom() =~= set![a1, o1] && pools_1g.dom() =~= set![a1, o1]);
+    }
+}
+
+/// Write-hold the 1G quotas of the marked container `ctn_ptr`'s allocator `a1` and of the killer's container `owner_ptr`'s allocator `o1`, in container order.
+pub(crate) fn kill_container_wlock_quota_pair_1g(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a1: RwLockPageAllocatorPtr,
+    o1: RwLockPageAllocatorPtr, Tracked(quotas_1g): Tracked<&mut Map<RwLockPageAllocatorPtr, LockPerm>>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        ctn_ptr != owner_ptr,
+        old(krnl).allc_1g_mp.dom().contains(a1) && old(krnl).allc_1g_mp.dom().contains(o1),
+        old(krnl).allc_1g_mp.spec_index(a1).owning_container == ctn_ptr && old(krnl).allc_1g_mp.spec_index(o1).owning_container == owner_ptr,
+        old(quotas_1g).dom().is_empty(),
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        *final(krnl) == (KernelK { allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        final(lctx).page_lock_map() == old(lctx).page_lock_map(),
+        final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+        final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
+        final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
+        final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
+        final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
+        final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
+        final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
+        final(lctx).allocator_cache_4k_lock_map() == old(lctx).allocator_cache_4k_lock_map(),
+        final(lctx).allocator_cache_2m_lock_map() == old(lctx).allocator_cache_2m_lock_map(),
+        final(lctx).allocator_cache_1g_lock_map() == old(lctx).allocator_cache_1g_lock_map(),
+        final(lctx).allocator_quota_4k_lock_map() == old(lctx).allocator_quota_4k_lock_map(),
+        final(lctx).allocator_quota_2m_lock_map() == old(lctx).allocator_quota_2m_lock_map(),
+        final(lctx).allocator_global_pool_4k_lock_map() == old(lctx).allocator_global_pool_4k_lock_map(),
+        final(lctx).allocator_global_pool_2m_lock_map() == old(lctx).allocator_global_pool_2m_lock_map(),
+        final(lctx).allocator_global_pool_1g_lock_map() == old(lctx).allocator_global_pool_1g_lock_map(),
+        final(krnl).allc_1g_mp.dom() == old(krnl).allc_1g_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)] final(krnl).allc_1g_mp.dom().contains(a) ==> {
+            &&& final(krnl).allc_1g_mp.spec_index(a).cpu_caches == old(krnl).allc_1g_mp.spec_index(a).cpu_caches
+            &&& final(krnl).allc_1g_mp.spec_index(a).global_pool == old(krnl).allc_1g_mp.spec_index(a).global_pool
+            &&& final(krnl).allc_1g_mp.spec_index(a).quota.view() == old(krnl).allc_1g_mp.spec_index(a).quota.view()
+            &&& final(krnl).allc_1g_mp.spec_index(a).total_free_pages == old(krnl).allc_1g_mp.spec_index(a).total_free_pages
+            &&& final(krnl).allc_1g_mp.spec_index(a).owning_container == old(krnl).allc_1g_mp.spec_index(a).owning_container
+        },
+        final(lctx).allocator_quota_1g_lock_map().dom() == set![a1, o1],
+        final(quotas_1g).dom() == set![a1, o1],
+        typed_lock_map_contains_mode(final(lctx).allocator_quota_1g_lock_map(), a1, TypedLockMode::Write) && typed_lock_map_contains_mode(final(lctx).allocator_quota_1g_lock_map(), o1, TypedLockMode::Write),
+        final(quotas_1g)[a1].state() is WriteLock && final(quotas_1g)[a1].thread_id() == final(lctx).thread_id(),
+        final(quotas_1g)[a1].lock_id() == final(krnl).allc_1g_mp.spec_index(a1).quota.locking_thread()->Write_lock_id,
+        final(quotas_1g)[o1].state() is WriteLock && final(quotas_1g)[o1].thread_id() == final(lctx).thread_id(),
+        final(quotas_1g)[o1].lock_id() == final(krnl).allc_1g_mp.spec_index(o1).quota.locking_thread()->Write_lock_id,
+{
+    if ctn_ptr < owner_ptr {
+        let Tracked(perm) = krnl.wlock_allocator_quota_1g_ordered(a1, Tracked(&mut *lctx));
+        proof { quotas_1g.tracked_insert(a1, perm); }
+        let Tracked(perm) = krnl.wlock_allocator_quota_1g_ordered(o1, Tracked(&mut *lctx));
+        proof { quotas_1g.tracked_insert(o1, perm); }
+    } else {
+        let Tracked(perm) = krnl.wlock_allocator_quota_1g_ordered(o1, Tracked(&mut *lctx));
+        proof { quotas_1g.tracked_insert(o1, perm); }
+        let Tracked(perm) = krnl.wlock_allocator_quota_1g_ordered(a1, Tracked(&mut *lctx));
+        proof { quotas_1g.tracked_insert(a1, perm); }
+    }
+    proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(lctx.allocator_quota_1g_lock_map().dom() =~= set![a1, o1] && quotas_1g.dom() =~= set![a1, o1]);
+    }
+}
 } // verus!

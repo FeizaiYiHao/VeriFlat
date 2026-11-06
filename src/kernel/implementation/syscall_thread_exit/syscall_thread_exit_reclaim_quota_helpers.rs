@@ -180,6 +180,8 @@ pub(super) fn thread_exit_reclaim_release_tables(
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> emptied_pt.spec_resolve_mapping_l4(l4i) is None,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger emptied_pt.spec_held_2m_l2(l4i, l3i, l2i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> emptied_pt.spec_held_2m_l2(l4i, l3i, l2i) is None,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger emptied_pt.spec_held_1g_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> emptied_pt.spec_held_1g_l3(l4i, l3i) is None,
         (iommu_table_lock_perm is Some) == (iommu_table is Some),
         iommu_table is Some ==> {
             let it = old(krnl).it_mp.spec_index(iommu_table->Some_0);

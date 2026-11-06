@@ -212,7 +212,9 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         process_perms_wf_at(pre.prc_mp, target); process_emptied_tables_wf_at(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp, pre.pg_arr, target);
         assert(dirty is Some) by { reveal(cpu_tlb_wf); reveal(structure_cache_wf); };
         assert(dirty.unwrap().pagetable_ptr == pagetable
-            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()) by { reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+            ==> tlb.tlb_4k().dom() =~= Set::<VAddr>::empty() && tlb.tlb_2m().dom() =~= Set::<VAddr>::empty() && tlb.tlb_1g().dom() =~= Set::<VAddr>::empty()) by {
+            reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
+        };
         assert(dirty.unwrap().pagetable_ptr == pagetable ==> cache.pml4e.dom() =~= Set::<L4Index>::empty() && cache.pdpte.dom() =~= Set::<(L4Index, L3Index)>::empty() && cache.pde.dom() =~= Set::<(L4Index, L3Index, L2Index)>::empty()) by { reveal(structure_cache_wf); };
         assert(dirty.unwrap().process_ptr != target) by { reveal(cpu_dirty_map_proc_pcid_match); };
     }

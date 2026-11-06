@@ -699,7 +699,8 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_container_owned_
         post.ctn_mp.dom().contains(c_ptr),
         index_valid(NUM_PAGES, p_i),
         index_valid(NUM_PAGES, p_j),
-        post.pg_arr.spec_index(p_i).view().view().state is Free1g || post.pg_arr.spec_index(p_i).view().view().state is Mapped1g,
+        page_state_1g_related(post.pg_arr.spec_index(p_i).view().view().state),
+        !(post.pg_arr.spec_index(p_i).view().view().state is Merged1g),
         spec_page_index_merge_1g_valid(p_i, p_j),
     ensures
         #![trigger
@@ -852,7 +853,6 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         allocator_quota_4k, process_quota_4k,
     );
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);

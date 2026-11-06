@@ -204,19 +204,21 @@ pub proof fn mapped_2m_page_pagetable_wf_held_leaf_at(
             }),
 { reveal(mapped_2m_page_pagetable_wf); }
 
-/// Mapped1g pages and the 1G mappings of the CPU page tables agree in both directions.
+/// Mapped1g pages and the 1G L3 entries of the CPU page tables agree in both directions.
 #[verifier::opaque]
 pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray) -> bool {
-    // A Mapped1g page's mappings name 1G mappings of their tables that point back at it.
+    // A Mapped1g page's mappings name 1G L3 entries with the kernel_present bit set that point back at it.
     &&& forall|p_i: PageIndex, pt: RwLockPageTableRoot, va: VAddr|
         #![trigger pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))]
         index_valid(NUM_PAGES, p_i)
             && pg_arr.spec_index(p_i).view().view().state == PageState::Mapped1g
             && pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))
             ==> {
+                let leaf = whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
                 &&& pt_mp.dom().contains(pt)
-                &&& whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va)
-                &&& whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).addr == page_index2page_ptr(p_i)
+                &&& va_1g_valid(va)
+                &&& leaf is Some
+                &&& leaf->0.addr == page_index2page_ptr(p_i)
             }
     // Every present 1G mapping of a table points at a Mapped1g page that lists it and shares its container.
     &&& forall|pt: RwLockPageTableRoot, va: VAddr|
@@ -228,7 +230,62 @@ pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
             &&& page.mappings().contains((pt, va))
             &&& entry.owning_container.view() == page.owning_container
         }
+    // Every user 1G L3 entry with the kernel_present and PS bits set points at a Mapped1g page that lists it.
+    &&& forall|pt: RwLockPageTableRoot|
+        #![trigger pt_mp.dom().contains(pt)]
+        pt_mp.dom().contains(pt)
+            ==>
+            forall|l4i: L4Index, l3i: L3Index|
+                #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)]
+                whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i
+                    && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i) is Some
+                    ==> {
+                        let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.addr);
+                        &&& index_valid(NUM_PAGES, pg_idx)
+                        &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g
+                        &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, 0, 0))))
+                    }
 }
+
+/// A mapping `(pt_ptr, va)` in the mappings of the `Mapped1g` page `pg_idx` names a 1G L3 entry of `pt_ptr` with the kernel_present bit set that points back at the page.
+pub proof fn mapped_1g_page_pagetable_wf_page_at(
+    pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pg_idx: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr,
+)
+    requires
+        mapped_1g_page_pagetable_wf(pt_mp, pt_lower, pg_arr),
+        index_valid(NUM_PAGES, pg_idx),
+        pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g,
+    ensures
+        pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, va)) ==> {
+            let leaf = whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+            &&& pt_mp.dom().contains(pt_ptr)
+            &&& va_1g_valid(va)
+            &&& leaf is Some
+            &&& leaf->0.addr == page_index2page_ptr(pg_idx)
+        },
+{ reveal(mapped_1g_page_pagetable_wf); }
+
+/// A user 1G L3 entry of `pt_ptr` with the kernel_present and PS bits set (present bit set or clear) points at a valid `Mapped1g` page that lists `(pt_ptr, va)` in its mappings.
+pub proof fn mapped_1g_page_pagetable_wf_held_leaf_at(
+    pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index,
+)
+    requires
+        mapped_1g_page_pagetable_wf(pt_mp, pt_lower, pg_arr),
+    ensures
+        pt_mp.dom().contains(pt_ptr)
+            && whole_pagetable(pt_mp, pt_lower, pt_ptr).kernel_l4_end() <= l4i
+            && pei_valid(l4i)
+            && pei_valid(l3i)
+            && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i) is Some
+            ==> ({
+                let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)->0.addr);
+                &&& index_valid(NUM_PAGES, pg_idx)
+                &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped1g
+                &&& pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, spec_index2va((l4i, l3i, 0, 0))))
+            }),
+{ reveal(mapped_1g_page_pagetable_wf); }
 
 /// A mapped page's owner is its table's process's container or an ancestor of it.
 // Proof dependencies (confirmed for global-pool page removal): container_owned_pages_wf,

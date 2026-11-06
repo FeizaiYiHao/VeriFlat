@@ -58,6 +58,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_1g_l3(l4i, l3i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_1g_l3(l4i, l3i),
     {
         proof { self.wf_l4_cr3_at(); page_ptr_valid_imply_mem_valid(page_map_ptr); }
         page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
@@ -176,6 +178,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_1g_l3(l4i, l3i),
     {
         proof {
             self.wf_l4_at(target_l4i);

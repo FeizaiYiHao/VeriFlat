@@ -1181,7 +1181,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
 
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
-/// mode and its progress at `stage` in `scope`, each growing the 4K or 2M quota of the target's container `ctn_ptr`, the
+/// mode and its progress at `stage` in `scope`, each growing the 4K, 2M, or 1G quota of the target's container `ctn_ptr`, the
 /// container of the killer's cpu, extend it.
 pub(crate) proof fn kill_trace_from_refund(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, prc_ptr: RwLockProcessPtr,
@@ -1200,6 +1200,7 @@ pub(crate) proof fn kill_trace_from_refund(
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             &&& kernel_u_container_quota_4k_increased(old_u, steps.view()[j].new_u, ctn_ptr) || kernel_u_container_quota_2m_increased(old_u, steps.view()[j].new_u, ctn_ptr)
+                || kernel_u_container_quota_1g_increased(old_u, steps.view()[j].new_u, ctn_ptr)
             &&& old_u.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int]
             &&& old_u.thread_map.dom().contains(thrd_ptr)
             &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
@@ -1220,7 +1221,7 @@ pub(crate) proof fn kill_trace_from_refund(
 }
 
 /// One step pushed after the partial trace that starts at `start`, from the projection of `krnl` while the kill holds its
-/// cpu, process, thread, and target at `stage` in `scope`, that grows the 4K or 2M quota of the target's container or of one of
+/// cpu, process, thread, and target at `stage` in `scope`, that grows the 4K, 2M, or 1G quota of the target's container or of one of
 /// its ancestors, extends it.
 pub(crate) proof fn kill_trace_from_scoped_credit(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post_u: KernelU, krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctx: KillTraceCtx,
@@ -1231,7 +1232,8 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*krnl), new_u: post_u }),
         kernel_u_container_quota_4k_increased(kernel_k_to_kernel_u(*krnl), post_u, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container)
-            || kernel_u_container_quota_2m_increased(kernel_k_to_kernel_u(*krnl), post_u, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container),
+            || kernel_u_container_quota_2m_increased(kernel_k_to_kernel_u(*krnl), post_u, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container)
+            || kernel_u_container_quota_1g_increased(kernel_k_to_kernel_u(*krnl), post_u, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container),
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -1253,11 +1255,12 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
     kill_refund_step_from_u(kernel_k_to_kernel_u(*krnl), post_u, cpu_id); kill_trace_push(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), post_u, cpu_id, ctx);
 }
 
-/// Growing the 4K or 2M quota of the target's container or of one of its ancestors, and nothing else, is a refund step.
+/// Growing the 4K, 2M, or 1G quota of the target's container or of one of its ancestors, and nothing else, is a refund step.
 pub(crate) proof fn kill_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
         kernel_u_container_quota_4k_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container)
-            || kernel_u_container_quota_2m_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container),
+            || kernel_u_container_quota_2m_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container)
+            || kernel_u_container_quota_1g_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container),
     ensures kill_process_refund_step(pre, post, cpu_id),
 { reveal(kill_process_refund_step); }
 
@@ -1307,6 +1310,53 @@ pub(crate) proof fn kill_scoped_credit_2m_step_from_k(
     assert(b.container_map[owner].quota_2m > a.container_map[owner].quota_2m);
     assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
     assert(kernel_u_container_quota_2m_increased(a, b, origin)) by { reveal(kernel_u_container_quota_2m_increased); };
+}
+
+/// Freeing a 1G page of the write-held table `table` to its owner `owner`'s 1G allocator `allc_ptr`, whose quota grows by one while every window lock stays, grows the 1G quota of `owner`, which is `origin` or one of its ancestors.
+pub(crate) proof fn kill_scoped_credit_1g_step_from_k(
+    pre: &KernelK, post: &KernelK, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
+)
+    requires
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
+        container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_1g_mp: post.allc_1g_mp, ..*pre }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
+        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+            pre.pt_mp.dom().contains(p) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
+        post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
+        pre.ctn_mp.dom().contains(owner),
+        pre.ctn_mp.dom().contains(origin),
+        owner == origin || pre.ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
+        pre.allc_1g_mp.dom().contains(allc_ptr),
+        post.allc_1g_mp.dom() == pre.allc_1g_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(a)]
+            pre.allc_1g_mp.dom().contains(a) && a != allc_ptr ==> post.allc_1g_mp.spec_index(a).quota.view().view() == pre.allc_1g_mp.spec_index(a).quota.view().view(),
+        post.allc_1g_mp.spec_index(allc_ptr).quota.view().view() == pre.allc_1g_mp.spec_index(allc_ptr).quota.view().view() + 1,
+    ensures
+        kernel_u_container_quota_1g_increased(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), origin),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+{
+    let mid = KernelK { allc_1g_mp: pre.allc_1g_mp, ..*post };
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, mid.ep_mp);
+    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, &mid, None);
+    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner);
+    assert(kernel_container_quota_1g_changed(&mid, post, owner, 1)) by { reveal(kernel_container_quota_1g_changed); reveal(kernel_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };
+    kernel_container_quota_1g_changed_implies_u_step(&mid, post, owner, 1);
+    let a = kernel_k_to_kernel_u(*pre);
+    let b = kernel_k_to_kernel_u(*post);
+    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
+    let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
+    assert(b.container_map[owner] != a.container_map[owner]);
+    assert(changed =~= set![owner]);
+    assert(changed.len() == 1);
+    assert(b.container_map.dom() == a.container_map.dom());
+    assert(b.container_map[owner].quota_1g > a.container_map[owner].quota_1g);
+    assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
+    assert(kernel_u_container_quota_1g_increased(a, b, origin)) by { reveal(kernel_u_container_quota_1g_increased); };
 }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.

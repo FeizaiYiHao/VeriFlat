@@ -77,10 +77,13 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
             whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i),
     ensures
         page_mappings_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
 {
-    broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip};
+    broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip};
     page_ptr_valid_imply_page_index_valid();
     reveal(pagetable_lower_wf);
     assert(mapped_2m_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_2m_page_pagetable_wf); };

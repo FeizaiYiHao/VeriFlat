@@ -999,6 +999,7 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_4
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).cr3() == l4_page);
     };
 }
 
@@ -1076,8 +1077,9 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_1
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
-        page_ptr_roundtrip();
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf);
+        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).cr3() == l4_page);
     };
 }
 

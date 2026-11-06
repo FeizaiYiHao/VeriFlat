@@ -234,6 +234,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.spec_held_1g_l3(l4i, l3i) is Some ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
     {
         reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);

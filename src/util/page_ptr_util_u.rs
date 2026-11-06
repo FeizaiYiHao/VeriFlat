@@ -182,6 +182,37 @@ pub fn va_1g_valid(va: usize) -> (ret: bool)
 }
 
 pub open spec fn spec_va_1g_valid(va: usize) -> bool { (va & (!MEM_1G_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= KERNEL_MEM_END_L4INDEX as u64 }
+
+pub open spec fn spec_va_1g_range_valid(va: usize, len: usize) -> bool {
+    forall|i: usize| #![trigger spec_va_add_range_1g(va, i)] 0 <= i < len ==> spec_va_1g_valid(spec_va_add_range_1g(va, i))
+}
+
+#[verifier(when_used_as_spec(spec_va_1g_range_valid))]
+pub fn va_1g_range_valid(va: usize, len: usize) -> (ret: bool)
+    requires
+        va_1g_valid(va),
+        len <= usize::MAX / 0x40000000,
+        va < usize::MAX - len * 0x40000000,
+    ensures
+        spec_va_1g_range_valid(va, len) == ret,
+{
+    for idx in iter: 0..len
+        invariant
+            va_1g_valid(va),
+            len <= usize::MAX / 0x40000000,
+            va < usize::MAX - len * 0x40000000,
+            forall|i: usize| #![trigger spec_va_add_range_1g(va, i)] 0 <= i < idx ==> spec_va_1g_valid(spec_va_add_range_1g(va, i)),
+    {
+        assert(idx <= usize::MAX / 0x40000000) by (bit_vector)
+            requires
+                idx < len,
+                len <= usize::MAX / 0x40000000;
+        if va_1g_valid(va_add_range_1g(va, idx)) == false {
+            return false;
+        }
+    }
+    true
+}
 pub open spec fn spec_v2l1index(va: usize) -> L1Index { (va >> 12 & 0x1ff) as usize }
 pub open spec fn spec_v2l2index(va: usize) -> L2Index { (va >> 21 & 0x1ff) as usize }
 pub open spec fn spec_v2l3index(va: usize) -> L3Index { (va >> 30 & 0x1ff) as usize }
@@ -345,6 +376,18 @@ pub fn va_add_range_2m(va: usize, i: usize) -> (ret: usize)
         ret == spec_va_add_range_2m(va, i),
 {
     (va + (i * 0x200000)) as usize
+}
+
+pub open spec fn spec_va_add_range_1g(va: usize, i: usize) -> usize { (va + (i * 0x40000000)) as usize }
+
+pub fn va_add_range_1g(va: usize, i: usize) -> (ret: usize)
+    requires
+        i <= usize::MAX / 0x40000000,
+        va <= usize::MAX - i * 0x40000000,
+    ensures
+        ret == spec_va_add_range_1g(va, i),
+{
+    (va + (i * 0x40000000)) as usize
 }
 
 // Arithmetic injectivity is only valid while the byte span does not wrap.

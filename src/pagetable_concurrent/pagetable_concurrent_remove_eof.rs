@@ -595,6 +595,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+            post.spec_held_1g_l3(target_l4i, target_l3i) is None,
             forall|l2i: L2Index| #![trigger post.spec_held_2m_l2(target_l4i, target_l3i, l2i)] pei_valid(l2i) ==> post.spec_held_2m_l2(target_l4i, target_l3i, l2i) is None,
             post.lower.l2_perms.dom() == pre.lower.l2_perms.dom().remove(target_l2_p),
             forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_owner(p, i)] post.lower.l2_perms.dom().contains(p) ==> post.lower.l2_owner(p, i) == pre.lower.l2_owner(p, i),

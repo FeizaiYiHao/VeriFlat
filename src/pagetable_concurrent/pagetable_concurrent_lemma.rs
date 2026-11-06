@@ -112,6 +112,17 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.spec_held_l3(l4i, l3i) == self.spec_resolve_mapping_l3(l4i, l3i),
     {}
 
+    /// Under a resolving user root entry, the held 1G leaf is the resolving one.
+    pub broadcast proof fn spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(&self, l4i: L4Index, l3i: L3Index)
+        requires
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            self.spec_resolve_mapping_l4(l4i) is Some,
+        ensures
+            #![trigger self.spec_held_1g_l3(l4i, l3i)]
+            self.spec_held_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(l4i, l3i),
+    {}
+
     /// Distinct held L3 paths name distinct L2 pages.
     pub broadcast proof fn disjoint_l4_l3_implies_held_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
         requires
@@ -419,5 +430,31 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                     #![trigger pei_valid(l3i)]
                     pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {}
+
+    /// An L3 slot `(l4i, l3i)` under which no 2M or 4K VA is mapped has no 2M or 4K leaf below it, resolving or held, while no L2 entry is locked and every held root and L3 entry of the slot resolves.
+    pub proof fn mapping_free_l3_slot_implies_no_leaf_below(&self, l4i: L4Index, l3i: L3Index)
+        requires
+            self.wf(),
+            self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i),
+            self.spec_held_l4(l4i) is Some ==> self.spec_resolve_mapping_l4(l4i) is Some,
+            self.spec_held_l3(l4i, l3i) is Some ==> self.spec_resolve_mapping_l3(l4i, l3i) is Some,
+            self.lower.hidden_l1_tables_in_locked_windows(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger self.lower.l2_owner(p, i)] self.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> self.lower.l2_owner(p, i) is None,
+            forall|l2i: L2Index| #![trigger self.mapping_2m().dom().contains(spec_index2va((l4i, l3i, l2i, 0)))] pei_valid(l2i) ==> !self.mapping_2m().dom().contains(spec_index2va((l4i, l3i, l2i, 0))),
+            forall|l2i: L2Index, l1i: L1Index| #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l2i) && pei_valid(l1i) ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+        ensures
+            forall|i: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i, l3i, i)] #![trigger self.spec_held_2m_l2(l4i, l3i, i)]
+                pei_valid(i) ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, i) is None && self.spec_held_2m_l2(l4i, l3i, i) is None,
+            forall|i: L2Index, j: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j)] #![trigger self.spec_held_4k_l1(l4i, l3i, i, j)]
+                pei_valid(i) && pei_valid(j) ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, i, j) is None && self.spec_held_4k_l1(l4i, l3i, i, j) is None,
+    {
+        reveal(WholePageTable::wf_mapping_2m); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_l2);
+        assert(self.mapping_2m() == self.lower.mapping_2m && self.mapping_4k() == self.lower.mapping_4k);
+        if self.spec_resolve_mapping_l3(l4i, l3i) is Some {
+            self.higher.spec_resolve_mapping_l4_some_implies_spec_held_l4_eq(l4i); self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+            self.higher.wf_l4_at(l4i); self.l3_links_l2_wf_at(self.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+        }
+    }
 }
 } // verus!

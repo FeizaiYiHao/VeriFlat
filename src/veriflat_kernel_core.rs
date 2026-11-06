@@ -54,6 +54,7 @@ pub use kernel::implementation::create_endpoint_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::page_2m_region::*;
+pub use kernel::implementation::page_1g_region::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::transfer_staged_4k_page::*;
 #[cfg(verus_keep_ghost)]

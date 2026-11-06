@@ -15,6 +15,10 @@ use crate::kernel::implementation::map_4k::reclaim_held_leaves::reclaim_held_lea
 use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota;
+#[cfg(feature = "split-crates")]
+use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
+#[cfg(not(feature = "split-crates"))]
+use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
 verus! {
 /// Flush the process's PCID from every cpu once, dropping every cpu from the page table's stale record, then record the flush.
@@ -379,14 +383,18 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) is None,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i) is None,
 {
     let mut indirect_4k = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct_4k = 0usize;
     let mut indirect_2m = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct_2m = 0usize;
+    let mut indirect_1g = [0usize; MAX_CONTAINER_TREE_DEPTH];
+    let mut direct_1g = 0usize;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect_4k, &mut direct_4k, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
+    reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect_4k, &mut direct_4k, &mut indirect_2m, &mut direct_2m, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx),
+        Tracked(&mut *steps), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm));
     let ghost reclaimed_k = *krnl;
     proof { assert(entry_lctx.container_lock_map().dom().contains(ctn_ptr) && entry_lctx.process_lock_map().dom().contains(prc_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id) && lctx.pagetable_lock_map().dom().contains(pagetable)); }
     let ghost refund_4k_before = steps.view();
@@ -400,6 +408,14 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_2m_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
+    }
+    let ghost refund_1g_before = steps.view();
+    refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
+    proof {
+        assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
+        assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
+        assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
+        thread_exit_trace_from_refund(&*steps, refund_1g_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
         assert(krnl.pt_mp.spec_index(pagetable) == refunded_4k_k.pt_mp.spec_index(pagetable) && krnl.prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr)
             && krnl.ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable));
@@ -872,6 +888,8 @@ pub(super) fn thread_exit_reclaim_return_quota(
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> emptied_pt.spec_resolve_mapping_l4(l4i) is None,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger emptied_pt.spec_held_2m_l2(l4i, l3i, l2i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> emptied_pt.spec_held_2m_l2(l4i, l3i, l2i) is None,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger emptied_pt.spec_held_1g_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> emptied_pt.spec_held_1g_l3(l4i, l3i) is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

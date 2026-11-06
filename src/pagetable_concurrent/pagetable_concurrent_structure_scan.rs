@@ -46,6 +46,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& self.spec_held_l4(l4i) is Some && self.spec_held_l4(l4i)->0.addr == l3_p
                 &&& forall|i: L3Index| #![trigger self.spec_held_l3(l4i, i)] pei_valid(i) ==> self.spec_held_l3(l4i, i) is None
                 &&& forall|i: L3Index| #![trigger self.spec_resolve_mapping_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_resolve_mapping_1g_l3(l4i, i) is None
+                &&& forall|i: L3Index| #![trigger self.spec_held_1g_l3(l4i, i)] pei_valid(i) ==> self.spec_held_1g_l3(l4i, i) is None
                 &&& self.page_closure().contains(l3_p) && l3_p != self.cr3()
             },
             StructureScan::Empty => {
@@ -92,6 +93,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         requires
             (WholePageTable { higher: *self, lower: *lower }).wf(),
             forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None,
+            forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_held_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_held_1g_l3(l4i, l3i) is None,
             lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
         ensures
@@ -104,6 +106,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             invariant
                 (WholePageTable { higher: *self, lower: *lower }).wf(),
                 forall|j: L4Index| #![trigger self.spec_resolve_mapping_l4(j)] self.kernel_l4_end <= j && pei_valid(j) ==> self.spec_resolve_mapping_l4(j) is None,
+                forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_held_1g_l3(l4i, l3i)] self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> self.spec_held_1g_l3(l4i, l3i) is None,
                 lower.hidden_l1_tables_in_locked_windows(),
                 forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
                 pei_valid(self.kernel_l4_end),
@@ -169,6 +172,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) is Some
                     ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) is Some
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_1g_l3(l4i, l3i),
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,
     {
@@ -194,6 +200,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             self.spec_held_l4(l4i) =~= Some(*l4_entry),
             self.spec_resolve_mapping_l4(l4i) is None,
+            forall|j: L3Index| #![trigger self.spec_held_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_held_1g_l3(l4i, j) is None,
             lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
         ensures
@@ -209,6 +216,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 self.spec_held_l4(l4i) =~= Some(*l4_entry),
                 self.spec_resolve_mapping_l4(l4i) is None,
+                forall|j: L3Index| #![trigger self.spec_held_1g_l3(l4i, j)] pei_valid(j) ==> self.spec_held_1g_l3(l4i, j) is None,
                 lower.hidden_l1_tables_in_locked_windows(),
                 forall|p: PageMapPtr, i: L2Index| #![trigger lower.l2_owner(p, i)] lower.l2_perms.dom().contains(p) && pei_valid(i) ==> lower.l2_owner(p, i) is None,
                 l3i <= 512,

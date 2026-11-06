@@ -142,7 +142,7 @@ pub open spec fn container_owned_pages_1g_region_wf(ctn_mp: ContainerLockedMap, 
         #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)), spec_page_index_merge_1g_valid(p_i, p_j)]
         #![trigger ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)), spec_page_index_merge_1g_valid(p_i, p_j)]
         ctn_mp.dom().contains(c) && index_valid(NUM_PAGES, p_i) && index_valid(NUM_PAGES, p_j)
-            && (pg_arr.spec_index(p_i).view().view().state is Free1g || pg_arr.spec_index(p_i).view().view().state is Mapped1g)
+            && page_state_1g_related(pg_arr.spec_index(p_i).view().view().state) && !(pg_arr.spec_index(p_i).view().view().state is Merged1g)
             && spec_page_index_merge_1g_valid(p_i, p_j)
             ==> (ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_j)) <==> ctn_mp.spec_index(c).view().owned_pages.view().contains(page_index2page_ptr(p_i)))
 }

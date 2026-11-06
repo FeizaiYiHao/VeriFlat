@@ -106,7 +106,6 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         map_shared_page_into_iommu_4k_eof_page_iommu_table(pre, post, pg_idx, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
         assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-        assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
         assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
             reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);

@@ -195,7 +195,6 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations(
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp),
@@ -207,7 +206,6 @@ proof fn create_process_with_iommu_from_staged_pages_eof_page_table_relations(
     create_process_with_iommu_from_staged_pages_eof_process_pagetable(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_with_iommu_from_staged_pages_eof_page_table_relations_iommu(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         assert(post.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().mappings() == pre.pg_arr.spec_index(page_ptr2page_index(process_pg_ptr)).view().view().mappings());
@@ -795,6 +793,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_memory_management_inv(
     create_process_with_iommu_from_staged_pages_eof_process_kernel_pages_owner_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_from_staged_pages_eof_page_object_owner_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_from_staged_pages_eof_container_kill_retire_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
 }
 
 /// The new process's object page, both root pages, and both L4 pages belong to its container; every other page keeps its

@@ -17,8 +17,8 @@ pub proof fn kernel_cpu_tlb_within_may_cache_projection(krnl: &KernelK, cpu_id: 
     if pcid != KERNEL_DEFAULT_PCID && cpu.current_pcid == pcid && cpu.current_pagetable is Some {
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, cpu.current_process->Some_0); kernel_process_user_projection_at(krnl, cpu.current_process->Some_0);
-        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), cpu.current_pagetable->Some_0); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m);
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
+        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), cpu.current_pagetable->Some_0); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq, WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq;
     }
     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_user_projection(*krnl)) by { reveal(kernel_k_to_kernel_u); };
 }

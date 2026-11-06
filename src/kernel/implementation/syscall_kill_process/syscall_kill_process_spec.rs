@@ -505,12 +505,13 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// A refund grows the 4K or 2M quota of the target's container or of one of its ancestors. Unlike thread_exit's refund it
+/// A refund grows the 4K, 2M, or 1G quota of the target's container or of one of its ancestors. Unlike thread_exit's refund it
 /// carries no `flushed` stage and unlocks no window: the kill refunds only after every table it reclaims is unlocked.
 #[verifier::opaque]
 pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         || kernel_u_container_quota_2m_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
+        || kernel_u_container_quota_1g_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
 }
 
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,

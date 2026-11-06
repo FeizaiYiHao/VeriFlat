@@ -566,7 +566,6 @@ proof fn kill_retire_eof_table_matches(
     ensures
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view()),
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp),
@@ -574,7 +573,6 @@ proof fn kill_retire_eof_table_matches(
     reveal(kill_retire_eof_transition_framing);
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(pagetable_no_1g_leaf_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_no_1g_leaf_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
@@ -615,6 +613,7 @@ proof fn kill_retire_eof_allocator(
         allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
         allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
+        allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp),
 {
     reveal(kill_retire_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_ptr_roundtrip(); page_index_roundtrip();
@@ -627,6 +626,7 @@ proof fn kill_retire_eof_allocator(
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); };
     assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
 }
 
 proof fn kill_retire_eof_quota(

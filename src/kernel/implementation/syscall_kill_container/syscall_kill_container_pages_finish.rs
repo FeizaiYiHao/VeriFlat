@@ -20,16 +20,17 @@ use super::syscall_kill_container_pages_trace::*;
 use super::syscall_kill_container_pages_eof::kill_container_pages_eof_retire_ready;
 
 verus! {
-/// With the 4K and 2M caches and global pools of the marked container `ctn_ptr` drained, mark it ready to retire,
+/// With the 4K and 2M caches and the 4K, 2M, and 1G global pools of the marked container `ctn_ptr` drained, mark it ready to retire,
 /// record the step that starts retiring it, and release the allocator locks `kill_container_pages_allocator_locks` names.
 pub(crate) fn kill_container_pages_retire_and_unlock(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
-    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
+    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, a1: RwLockPageAllocatorPtr, o1: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>,
     Tracked(caches_4k): Tracked<Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_4k): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
-    Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
+    Tracked(quotas_2m): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_1g): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>,
+    Tracked(quotas_1g): Tracked<Map<RwLockPageAllocatorPtr, LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
         old(krnl).inv(),
@@ -41,13 +42,15 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         ctx is Container,
         kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, caches_4k, caches_2m, pools_4k, pools_2m, quotas_4k, quotas_2m),
+        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, caches_4k, caches_2m, pools_4k, pools_2m, quotas_4k, quotas_2m,
+            pools_1g, quotas_1g),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
         old(krnl).ctn_mp.spec_index(ctn_ptr).view().children.view().len() == 0,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         old(krnl).allc_4k_mp.spec_index(a4).global_pool.view().view().len() == 0,
         old(krnl).allc_2m_mp.spec_index(a2).global_pool.view().view().len() == 0,
+        old(krnl).allc_1g_mp.spec_index(a1).global_pool.view().view().len() == 0,
         forall|i: CpuId| #![trigger old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
             ==> old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view().view().len() == 0,
         forall|i: CpuId| #![trigger old(krnl).allc_2m_mp.spec_index(a2).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
@@ -123,8 +126,8 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
     let ghost retired = *krnl;
-    kill_container_pages_unlock(krnl, Tracked(&mut *lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k), Tracked(pools_2m),
-        Tracked(quotas_4k), Tracked(quotas_2m));
+    kill_container_pages_unlock(krnl, Tracked(&mut *lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k),
+        Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(pools_1g), Tracked(quotas_1g));
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };

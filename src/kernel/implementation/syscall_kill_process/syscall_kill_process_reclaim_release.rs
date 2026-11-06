@@ -22,6 +22,10 @@ use crate::kernel::implementation::map_4k::reclaim_held_leaves::reclaim_held_lea
 use veriflat_alloc_page::free_2m_page::refund_unmap_2m_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota;
+#[cfg(feature = "split-crates")]
+use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
+#[cfg(not(feature = "split-crates"))]
+use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
 verus! {
 /// Hide every user root entry of the target's write-locked page table, which lists every cpu stale, each root in its own
@@ -436,6 +440,8 @@ pub(crate) fn kill_reclaim_held_leaves(
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) is None,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i)]
+            KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i) is None,
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
         final(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -469,8 +475,10 @@ pub(crate) fn kill_reclaim_held_leaves(
         let mut direct = 0usize;
         let mut indirect_2m = [0usize; MAX_CONTAINER_TREE_DEPTH];
         let mut direct_2m = 0usize;
-        reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect, &mut direct, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps),
-            Tracked(pagetable_perm), Tracked(thread_perm));
+        let mut indirect_1g = [0usize; MAX_CONTAINER_TREE_DEPTH];
+        let mut direct_1g = 0usize;
+        reclaim_held_leaves(krnl, pagetable, thrd_ptr, cpu_id, &mut indirect, &mut direct, &mut indirect_2m, &mut direct_2m, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx),
+            Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(thread_perm));
         let ghost reclaimed_k = *krnl;
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ghost refund_k = *krnl;
@@ -499,6 +507,20 @@ pub(crate) fn kill_reclaim_held_leaves(
         proof {
             vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view(), entry_thread.indirect_free_quota_pending_2m.view());
             kill_trace_from_refund(&*steps, refund_2m_before, start, pre, kernel_k_to_kernel_u(refund_2m_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
+                entry_thread.owning_container, scope);
+        }
+        let ghost refund_1g_k = *krnl;
+        let ghost refund_1g_lctx = *lctx;
+        let ghost refund_1g_before = steps.view();
+        proof {
+            kill_step_pre_from_k(&refund_1g_k, &refund_1g_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
+            kill_refund_pre_from_k(&refund_1g_k, target, entry_thread.owning_container);
+            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        }
+        refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        proof {
+            vstd::assert_seqs_equal!(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view(), entry_thread.indirect_free_quota_pending_1g.view());
+            kill_trace_from_refund(&*steps, refund_1g_before, start, pre, kernel_k_to_kernel_u(refund_1g_k), cpu_id, ctx, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true },
                 entry_thread.owning_container, scope);
             assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable));
         }

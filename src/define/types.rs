@@ -421,6 +421,91 @@ impl VaRange2M {
     }
 }
 
+/// A sequence of `len` consecutive 1G-aligned VAs starting at `start`.
+#[derive(Clone, Copy)]
+pub struct VaRange1G {
+    pub start: VAddr,
+    pub len: usize,
+    pub view: Ghost<Seq<VAddr>>,
+}
+
+/// A valid, non-empty 1G range's covering 4K range of `len * 0x40000` pages is a valid 4K range.
+pub proof fn va_1g_range_valid_implies_covering_4k_range_valid(va: VAddr, len: usize)
+    requires
+        spec_va_1g_valid(va),
+        spec_va_1g_range_valid(va, len),
+        len <= usize::MAX / 0x40000000,
+        va < usize::MAX - len * 0x40000000,
+    ensures
+        spec_va_4k_valid(va),
+        len * 0x40000 <= usize::MAX / 4096,
+        va < usize::MAX - (len * 0x40000) * 4096,
+        spec_va_4k_range_valid(va, (len * 0x40000) as usize),
+{
+    assert(spec_va_4k_valid(va)) by (bit_vector) requires (va & (!MEM_1G_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= 1u64;
+    assert(len * 0x40000 <= usize::MAX / 4096 && (len * 0x40000) * 4096 == len * 0x40000000) by (nonlinear_arith) requires len <= usize::MAX / 0x40000000;
+    assert forall|i: usize| #![trigger spec_va_add_range(va, i)] 0 <= i < len * 0x40000 implies spec_va_4k_valid(spec_va_add_range(va, i)) by {
+        let q = i / 0x40000;
+        let r = i % 0x40000;
+        assert(i == 0x40000 * q + r && r < 0x40000 && q < len) by (nonlinear_arith) requires q == i / 0x40000, r == i % 0x40000, i < len * 0x40000;
+        assert(i * 4096 == q * 0x40000000 + r * 4096) by (nonlinear_arith) requires i == 0x40000 * q + r;
+        assert(q * 0x40000000 <= len * 0x40000000) by (nonlinear_arith) requires q < len;
+        let x = spec_va_add_range_1g(va, q);
+        assert(spec_va_1g_valid(x));
+        let y = spec_va_add_range(va, i);
+        assert(y == x + r * 4096);
+        assert((x & (!MEM_1G_MASK) as usize == 0) && (x as u64 >> 39u64 & 0x1ffu64) >= 1u64 && r < 0x40000 && y == x + r * 4096
+            ==> (y & (!MEM_4K_MASK) as usize == 0) && (y as u64 >> 39u64 & 0x1ffu64) >= 1u64) by (bit_vector);
+    };
+}
+
+impl VaRange1G {
+    pub closed spec fn view(&self) -> Seq<VAddr> { self.view.view() }
+
+    pub open spec fn wf(&self) -> bool {
+        &&& self.len <= usize::MAX / 0x40000000
+        &&& self.start < usize::MAX - self.len * 0x40000000
+        &&& spec_va_1g_valid(self.start)
+        &&& self.view().len() == self.len
+        &&& self.view().no_duplicates()
+        &&& forall|i: int| #![trigger self.view().spec_index(i)] 0 <= i < self.len ==> spec_va_1g_valid(self.view().spec_index(i))
+        &&& self.view_match_spec()
+    }
+
+    pub closed spec fn view_match_spec(&self) -> bool {
+        &&& forall|i: usize| #![trigger spec_va_add_range_1g(self.start, i)] 0 <= i < self.len ==> spec_va_add_range_1g(self.start, i) == self.view().spec_index(i as int)
+    }
+
+    pub fn new(va: VAddr, len: usize) -> (ret: Self)
+        requires
+            spec_va_1g_valid(va),
+            va_1g_range_valid(va, len),
+            len <= usize::MAX / 0x40000000,
+            va < usize::MAX - len * 0x40000000,
+        ensures
+            ret.wf(),
+            ret == (Self { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_1g(va, i as usize))) }),
+    {
+        let seq = Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_1g(va, i as usize)));
+        Self { start: va, len: len, view: seq }
+    }
+
+    pub fn index(&self, i: usize) -> (ret: VAddr)
+        requires
+            self.wf(),
+            0 <= i < self.len,
+        ensures
+            ret == self.view().spec_index(i as int),
+    {
+        va_add_range_1g(self.start, i)
+    }
+
+    /// The 4K pages that cover the 1G pages of the range, in address order.
+    pub open spec fn covering_4k_range(&self) -> VaRange4K {
+        VaRange4K { start: self.start, len: (self.len * 0x40000) as usize, view: Ghost(Seq::new((self.len * 0x40000) as nat, |i: int| spec_va_add_range(self.start, i as usize))) }
+    }
+}
+
 /// The `len` consecutive 4K pages starting at `start`.
 pub open spec fn spec_va_range_4k(start: VAddr, len: usize) -> VaRange4K {
     VaRange4K { start, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(start, i as usize))) }
@@ -429,6 +514,11 @@ pub open spec fn spec_va_range_4k(start: VAddr, len: usize) -> VaRange4K {
 /// The `len` consecutive 2M pages starting at `start`.
 pub open spec fn spec_va_range_2m(start: VAddr, len: usize) -> VaRange2M {
     VaRange2M { start, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_2m(start, i as usize))) }
+}
+
+/// The `len` consecutive 1G pages starting at `start`.
+pub open spec fn spec_va_range_1g(start: VAddr, len: usize) -> VaRange1G {
+    VaRange1G { start, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range_1g(start, i as usize))) }
 }
 
 // -------------------- End of Structs -------------------

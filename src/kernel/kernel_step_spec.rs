@@ -202,6 +202,19 @@ pub open spec fn kernel_container_quota_2m_changed(pre: &KernelK, post: &KernelK
             == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int + if c == ctn_ptr { delta } else { 0 }
 }
 
+#[verifier::opaque]
+pub open spec fn kernel_container_quota_1g_changed(pre: &KernelK, post: &KernelK, ctn_ptr: RwLockContainerPtr, delta: int) -> bool {
+    &&& *post == (KernelK { cpu_op: post.cpu_op, thrd_mp: post.thrd_mp, allc_1g_mp: post.allc_1g_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)] pre.thrd_mp.dom().contains(t) ==>
+        post.thrd_mp.spec_index(t).locking_thread() == pre.thrd_mp.spec_index(t).locking_thread()
+    &&& kernel_thread_nonlock_fields_unchanged(pre.thrd_mp, post.thrd_mp)
+    &&& pre.ctn_mp.dom().contains(ctn_ptr)
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
+            == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int + if c == ctn_ptr { delta } else { 0 }
+}
+
 /// One staging-thread quota funds a new scheduled thread of `prc_ptr` and `ctn_ptr`,
 /// and the staging thread's progress becomes `staging_progress`. When the staging thread belongs to another process,
 /// the window locks of that process's and `prc_ptr`'s page tables may change.
@@ -658,6 +671,151 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
         }
 }
 
+/// The live process running on `cpu_id` takes `delta` 1G quota from its live container; the container's 1G allocator quota and the process's `quota_1g` change and every other user field is preserved.
+#[verifier::opaque]
+pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let container = pre.ctn_mp.spec_index(ctn_ptr);
+    let process = pre.prc_mp.spec_index(prc_ptr);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& cpu.state is Running
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.owning_container == ctn_ptr
+    &&& container.locking_thread() is None
+    &&& !container.being_killed()
+    &&& !container.view().zombie
+    &&& pre.allc_1g_mp.spec_index(container.view_rodata().view().allocator_ptr_1g).quota.view().view() >= delta
+    &&& process.locking_thread() is None
+    &&& !process.being_killed()
+    &&& process.view().quota_1g + delta <= usize::MAX
+    &&& delta > 0
+    &&& kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)
+    &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)]
+        pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e).locking_thread() == pre.ep_mp.spec_index(e).locking_thread()
+    &&& post.irt.view().owners() == pre.irt.view().owners()
+    &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
+    &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
+    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
+    &&& post.dflt_pt == pre.dflt_pt
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
+    &&& post.cpu_set_mp == pre.cpu_set_mp
+    &&& pre.prc_mp.dom().contains(prc_ptr)
+    &&& pre.ctn_mp.dom().contains(ctn_ptr)
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let a = pre.ctn_mp.spec_index(c);
+            let b = post.ctn_mp.spec_index(c);
+            let a_ro = a.view_rodata().view();
+            let b_ro = b.view_rodata().view();
+            &&& b.locking_thread() == a.locking_thread()
+            &&& b.view().children.view() == a.view().children.view()
+            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
+            &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
+            &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
+            &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
+            &&& b.view().owned_pages.view() == a.view().owned_pages.view()
+            &&& b_ro.parent == a_ro.parent
+            &&& b_ro.depth == a_ro.depth
+            &&& b_ro.cpu_set == a_ro.cpu_set
+            &&& b_ro.scheduler == a_ro.scheduler
+            &&& b.being_killed() == a.being_killed()
+        }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
+        pre.ctn_mp.dom().contains(c) ==> scheduler_shards_of(post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler))
+            == scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler))
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view()
+            == pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)]
+        pre.ctn_mp.dom().contains(c) ==> PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+            == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
+            == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int - if c == ctn_ptr { delta } else { 0 }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
+            == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
+    &&& post.pt_mp.dom() == pre.pt_mp.dom()
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+        pre.pt_mp.dom().contains(p) ==> {
+            let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+            let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
+            &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+            &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+        }
+    &&& post.it_mp.dom() == pre.it_mp.dom()
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+        pre.it_mp.dom().contains(p) ==> {
+            let before = pre.it_mp.spec_index(p).view();
+            let after = post.it_mp.spec_index(p).view();
+            &&& post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
+            &&& after.did == before.did
+            &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+            &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+        }
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+        index_valid(NUM_CPUS, i) ==> {
+            &&& post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
+            &&& post.cpu_arr.spec_index(i).value.view().view().owning_container == pre.cpu_arr.spec_index(i).value.view().view().owning_container
+            &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
+            &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
+            &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
+        }
+    &&& post.prc_mp.dom() == pre.prc_mp.dom()
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+        pre.prc_mp.dom().contains(p) ==> {
+            &&& post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread()
+            &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
+            &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
+            &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
+            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
+            &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
+            &&& post.prc_mp.spec_index(p).view().quota_1g as int == pre.prc_mp.spec_index(p).view().quota_1g as int + if p == prc_ptr { delta } else { 0 }
+            &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
+            &&& post.prc_mp.spec_index(p).view().children.view() == pre.prc_mp.spec_index(p).view().children.view()
+            &&& post.prc_mp.spec_index(p).view_rodata().view().parent == pre.prc_mp.spec_index(p).view_rodata().view().parent
+            &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
+            &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
+            &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
+            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
+            &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
+            &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
+        }
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
+        pre.thrd_mp.dom().contains(t) ==> {
+            &&& post.thrd_mp.spec_index(t).locking_thread() == pre.thrd_mp.spec_index(t).locking_thread()
+            &&& post.thrd_mp.spec_index(t).view().state == pre.thrd_mp.spec_index(t).view().state
+            &&& post.thrd_mp.spec_index(t).view().caller == pre.thrd_mp.spec_index(t).view().caller
+            &&& post.thrd_mp.spec_index(t).view().callee == pre.thrd_mp.spec_index(t).view().callee
+            &&& post.thrd_mp.spec_index(t).view().owning_container == pre.thrd_mp.spec_index(t).view().owning_container
+            &&& post.thrd_mp.spec_index(t).view().owning_proc == pre.thrd_mp.spec_index(t).view().owning_proc
+            &&& post.thrd_mp.spec_index(t).view().last_cpu == pre.thrd_mp.spec_index(t).view().last_cpu
+            &&& post.thrd_mp.spec_index(t).view().quota_4k == pre.thrd_mp.spec_index(t).view().quota_4k
+            &&& post.thrd_mp.spec_index(t).view().quota_1g == pre.thrd_mp.spec_index(t).view().quota_1g
+            &&& post.thrd_mp.spec_index(t).view().quota_2m == pre.thrd_mp.spec_index(t).view().quota_2m
+            &&& post.thrd_mp.spec_index(t).view().endpoint_descriptors.view() == pre.thrd_mp.spec_index(t).view().endpoint_descriptors.view()
+            &&& post.thrd_mp.spec_index(t).view().blocking_endpoint_ptr == pre.thrd_mp.spec_index(t).view().blocking_endpoint_ptr
+            &&& post.thrd_mp.spec_index(t).view().ipc_payload == pre.thrd_mp.spec_index(t).view().ipc_payload
+            &&& post.thrd_mp.spec_index(t).view().error_code == pre.thrd_mp.spec_index(t).view().error_code
+            &&& post.thrd_mp.spec_index(t).view().trap_frame == pre.thrd_mp.spec_index(t).view().trap_frame
+            &&& post.thrd_mp.spec_index(t).view().syscall_progress == pre.thrd_mp.spec_index(t).view().syscall_progress
+            &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
+        }
+}
+
 /// The live process running on `cpu_id` moves `delta` 4K quota to its live running thread; only the cpu,
 /// process, and thread maps change, and each changed entry keeps its lock state and every other user field.
 #[verifier::opaque]
@@ -810,6 +968,81 @@ pub open spec fn kernel_process2thread_quota_2m_changed(pre: &KernelK, post: &Ke
         }
 }
 
+/// The live process running on `cpu_id` moves `delta` 1G quota to its live running thread; only the cpu, process, and thread maps change, and each changed entry keeps its lock state and every other user field.
+#[verifier::opaque]
+pub open spec fn kernel_process2thread_quota_1g_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let process = pre.prc_mp.spec_index(prc_ptr);
+    let thread = pre.thrd_mp.spec_index(thrd_ptr);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& cpu.state is Running
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
+    &&& process.locking_thread() is None
+    &&& !process.being_killed()
+    &&& process.view().quota_1g >= delta
+    &&& thread.locking_thread() is None
+    &&& !thread.being_killed()
+    &&& thread.view().quota_1g + delta <= usize::MAX
+    &&& delta > 0
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& pre.prc_mp.dom().contains(prc_ptr)
+    &&& pre.thrd_mp.dom().contains(thrd_ptr)
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+        index_valid(NUM_CPUS, i) ==> {
+            &&& post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
+            &&& post.cpu_arr.spec_index(i).value.view().view().owning_container == pre.cpu_arr.spec_index(i).value.view().view().owning_container
+            &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
+            &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
+            &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
+        }
+    &&& post.prc_mp.dom() == pre.prc_mp.dom()
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+        pre.prc_mp.dom().contains(p) ==> {
+            &&& post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread()
+            &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
+            &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
+            &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
+            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
+            &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
+            &&& post.prc_mp.spec_index(p).view().quota_1g as int == pre.prc_mp.spec_index(p).view().quota_1g as int - if p == prc_ptr { delta } else { 0 }
+            &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
+            &&& post.prc_mp.spec_index(p).view().children.view() == pre.prc_mp.spec_index(p).view().children.view()
+            &&& post.prc_mp.spec_index(p).view_rodata().view().parent == pre.prc_mp.spec_index(p).view_rodata().view().parent
+            &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
+            &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
+            &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
+            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
+            &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
+            &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
+        }
+    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
+        pre.thrd_mp.dom().contains(t) ==> {
+            &&& post.thrd_mp.spec_index(t).locking_thread() == pre.thrd_mp.spec_index(t).locking_thread()
+            &&& post.thrd_mp.spec_index(t).view().state == pre.thrd_mp.spec_index(t).view().state
+            &&& post.thrd_mp.spec_index(t).view().caller == pre.thrd_mp.spec_index(t).view().caller
+            &&& post.thrd_mp.spec_index(t).view().callee == pre.thrd_mp.spec_index(t).view().callee
+            &&& post.thrd_mp.spec_index(t).view().owning_container == pre.thrd_mp.spec_index(t).view().owning_container
+            &&& post.thrd_mp.spec_index(t).view().owning_proc == pre.thrd_mp.spec_index(t).view().owning_proc
+            &&& post.thrd_mp.spec_index(t).view().last_cpu == pre.thrd_mp.spec_index(t).view().last_cpu
+            &&& post.thrd_mp.spec_index(t).view().quota_4k == pre.thrd_mp.spec_index(t).view().quota_4k
+            &&& post.thrd_mp.spec_index(t).view().quota_1g as int == pre.thrd_mp.spec_index(t).view().quota_1g as int + if t == thrd_ptr { delta } else { 0 }
+            &&& post.thrd_mp.spec_index(t).view().quota_2m == pre.thrd_mp.spec_index(t).view().quota_2m
+            &&& post.thrd_mp.spec_index(t).view().endpoint_descriptors.view() == pre.thrd_mp.spec_index(t).view().endpoint_descriptors.view()
+            &&& post.thrd_mp.spec_index(t).view().blocking_endpoint_ptr == pre.thrd_mp.spec_index(t).view().blocking_endpoint_ptr
+            &&& post.thrd_mp.spec_index(t).view().ipc_payload == pre.thrd_mp.spec_index(t).view().ipc_payload
+            &&& post.thrd_mp.spec_index(t).view().error_code == pre.thrd_mp.spec_index(t).view().error_code
+            &&& post.thrd_mp.spec_index(t).view().trap_frame == pre.thrd_mp.spec_index(t).view().trap_frame
+            &&& post.thrd_mp.spec_index(t).view().syscall_progress == pre.thrd_mp.spec_index(t).view().syscall_progress
+            &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
+        }
+}
+
 #[verifier::opaque]
 pub open spec fn kernel_process_added(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr) -> bool {
     &&& !pre.prc_mp.dom().contains(prc_ptr)
@@ -842,6 +1075,20 @@ pub open spec fn kernel_process_2m_mapping_changed(pre: &KernelK, post: &KernelK
     &&& post.pt_mp.dom().contains(pagetable_ptr)
     &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
         != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
+}
+
+#[verifier::opaque]
+pub open spec fn kernel_process_1g_mapping_changed(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
+    &&& pre.prc_mp.dom().contains(prc_ptr)
+    &&& post.prc_mp.dom().contains(prc_ptr)
+    &&& !pre.prc_mp.spec_index(prc_ptr).view().zombie
+    &&& !post.prc_mp.spec_index(prc_ptr).view().zombie
+    &&& pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
+    &&& post.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
+    &&& pre.pt_mp.dom().contains(pagetable_ptr)
+    &&& post.pt_mp.dom().contains(pagetable_ptr)
+    &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(v).present).dom().contains(va)
+        != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(v).present).dom().contains(va)
 }
 
 /// `share_4k_objects` read from the kernel objects it projects from.

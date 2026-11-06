@@ -7,9 +7,11 @@ use veriflat_kernel_core::*;
 
 pub mod allocate_free_4k_page;
 pub mod allocate_free_2m_page;
+pub mod allocate_free_1g_page;
 pub(crate) mod allocator_cache_spec;
 pub mod free_4k_page;
 pub mod free_2m_page;
+pub mod free_1g_page;
 pub mod reclaim_dangling_thread;
 
 verus! {

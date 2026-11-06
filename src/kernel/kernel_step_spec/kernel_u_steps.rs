@@ -100,6 +100,55 @@ pub open spec fn kernel_u_only_process2thread_quota_2m_changed(old_u: KernelU, n
     })
 }
 
+/// The live process running on `cpu_id` takes `delta` 1G quota from its live container without overflow.
+#[verifier::opaque]
+pub open spec fn kernel_u_only_process_quota_1g_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container = old_u.container_map.spec_index(ctn_ptr);
+    let process = old_u.process_map.spec_index(prc_ptr);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.state is Running
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.owning_container == ctn_ptr
+    &&& old_u.container_map.dom().contains(ctn_ptr)
+    &&& !container.killed
+    &&& !container.zombie
+    &&& container.quota_1g >= delta
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& !process.killed
+    &&& process.quota_1g + delta <= usize::MAX
+    &&& delta > 0
+    &&& new_u == (KernelU {
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { quota_1g: (container.quota_1g as int - delta) as usize, ..container }),
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_1g: (process.quota_1g as int + delta) as usize, ..process }),
+        ..old_u
+    })
+}
+
+/// The live process running on `cpu_id` moves `delta` 1G quota to its live running thread without overflow.
+#[verifier::opaque]
+pub open spec fn kernel_u_only_process2thread_quota_1g_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let process = old_u.process_map.spec_index(prc_ptr);
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.state is Running
+    &&& cpu.current_process == Some(prc_ptr)
+    &&& cpu.current_thread == Some(thrd_ptr)
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& !process.killed
+    &&& process.quota_1g >= delta
+    &&& old_u.thread_map.dom().contains(thrd_ptr)
+    &&& !thread.killed
+    &&& thread.quota_1g + delta <= usize::MAX
+    &&& delta > 0
+    &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { quota_1g: (process.quota_1g as int - delta) as usize, ..process }),
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_1g: (thread.quota_1g as int + delta) as usize, ..thread }),
+        ..old_u
+    })
+}
+
 /// The live head `next_thread` of shard `cpu_id` replaces the live thread running on `cpu_id`, which is requeued at
 /// the tail of that shard.
 #[verifier::opaque]
@@ -566,6 +615,21 @@ pub open spec fn kernel_u_container_quota_2m_increased(pre: KernelU, post: Kerne
         &&& c == container || pre.container_map[container].uppertree_seq.contains(c)
         &&& post.container_map[c].quota_2m > pre.container_map[c].quota_2m
         &&& post.container_map[c] == (ContainerU { quota_2m: post.container_map[c].quota_2m, ..pre.container_map[c] })
+    }
+    &&& post == (KernelU { container_map: post.container_map, ..pre })
+}
+
+#[verifier::opaque]
+pub open spec fn kernel_u_container_quota_1g_increased(pre: KernelU, post: KernelU, container: RwLockContainerPtr) -> bool {
+    let changed = pre.container_map.dom().filter(|c: RwLockContainerPtr| pre.container_map[c] != post.container_map[c]);
+    &&& pre.container_map.dom().contains(container)
+    &&& post.container_map != pre.container_map
+    &&& post.container_map.dom() == pre.container_map.dom()
+    &&& changed.len() == 1
+    &&& forall|c: RwLockContainerPtr| #![trigger changed.contains(c)] #![trigger post.container_map[c]] changed.contains(c) ==> {
+        &&& c == container || pre.container_map[container].uppertree_seq.contains(c)
+        &&& post.container_map[c].quota_1g > pre.container_map[c].quota_1g
+        &&& post.container_map[c] == (ContainerU { quota_1g: post.container_map[c].quota_1g, ..pre.container_map[c] })
     }
     &&& post == (KernelU { container_map: post.container_map, ..pre })
 }

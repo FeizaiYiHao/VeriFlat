@@ -43,8 +43,7 @@ verus! {
         &&& forall|va: VAddr| #![trigger tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
     }
 
-    /// Every 4K or 2M translation a CPU TLB caches is a user leaf the table still holds, present or awaiting
-    /// invalidation, with the same frame and permissions; every 1G translation names a leaf of `mapping_1g`.
+    /// Every 4K, 2M or 1G translation a CPU TLB caches is a user leaf the table still holds, present or awaiting invalidation, with the same frame and permissions.
     pub open spec fn single_tlb_subset_of_whole_pagetable(cpu_tlb: SingleTLB, pagetable: WholePageTable<PT_TYPE>) -> bool {
         &&& forall|va: VAddr|
             #![trigger cpu_tlb.tlb_4k().dom().contains(va)]
@@ -67,10 +66,15 @@ verus! {
                 &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_2m().spec_index(va), held->0)
             }
         &&& forall|va: VAddr|
-            #![trigger pagetable.mapping_1g().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_1g().spec_index(va)]
             #![trigger cpu_tlb.tlb_1g().dom().contains(va)]
-            cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.mapping_1g().spec_index(va))
+            #![trigger cpu_tlb.tlb_1g().spec_index(va)]
+            cpu_tlb.tlb_1g().dom().contains(va) ==> {
+                let held = pagetable.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+                &&& va_1g_valid(va)
+                &&& pagetable.kernel_l4_end() <= spec_v2l4index(va)
+                &&& held is Some
+                &&& spec_tlb_entry_equal_to_page_entry(cpu_tlb.tlb_1g().spec_index(va), held->0)
+            }
     }
 
     /// Every translation a CPU TLB caches is a held leaf of the table that also resolves and is present: the shape after a
@@ -87,12 +91,16 @@ verus! {
                 &&& leaf is Some
                 &&& leaf->0.perm.present
             }
-        &&& forall|va: VAddr| #![trigger cpu_tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger cpu_tlb.tlb_1g().spec_index(va)] #![trigger pagetable.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va))] cpu_tlb.tlb_1g().dom().contains(va) ==> {
+                let leaf = pagetable.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+                &&& leaf is Some
+                &&& leaf->0.perm.present
+            }
     }
 
     /// TLB `cpu_id` keeps a 4K or 2M translation the table no longer shows only while `cpu_id` is listed stale for it: by
-    /// the record of its 2M window while the L3 path still resolves, by the table record otherwise. It keeps no hidden
-    /// 1G translation.
+    /// the record of its 2M window while the L3 path still resolves, by the table record otherwise; a 1G translation the
+    /// table no longer shows only while `cpu_id` is listed in the table record.
     pub open spec fn single_tlb_present_or_stale(cpu_tlb: SingleTLB, pagetable: WholePageTable<PT_TYPE>, cpu_id: CpuId) -> bool {
         &&& forall|va: VAddr|
             #![trigger cpu_tlb.tlb_4k().spec_index(va)]
@@ -118,7 +126,13 @@ verus! {
                     pagetable.higher.table_stale_cpus.view().contains(cpu_id)
                 }
             }
-        &&& forall|va: VAddr| #![trigger cpu_tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
+        &&& forall|va: VAddr|
+            #![trigger cpu_tlb.tlb_1g().spec_index(va)]
+            #![trigger pagetable.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va))]
+            cpu_tlb.tlb_1g().dom().contains(va) ==> {
+                let leaf = pagetable.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va));
+                !(leaf is Some && leaf->0.perm.present) ==> pagetable.higher.table_stale_cpus.view().contains(cpu_id)
+            }
     }
 
     /// Unlock obligation over all non-exempt CPU/PCID associations of this table.

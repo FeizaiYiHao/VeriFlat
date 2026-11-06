@@ -158,6 +158,7 @@ pub(super) fn mmap_2m_page(
         krnl.kernel_step_boundary_process_2m_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable_ptr, va, prc_ptr, pagetable_ptr, thrd_ptr, thrd_ptr);
         assert(mmap_2m_leaf_step_pre(steps.view().last().old_u, cpu_id) && mmap_2m_leaf_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
             kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rlocked_implies_u_step(&section_start, &unlocked_k, &unlocked_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, va);
+            kernel_owned_2m_page_implies_u_outside_1g_mapping_frames(section_start, whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va).addr);
             mmap_2m_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(unlocked_k), cpu_id, prc_ptr, thrd_ptr, va,
                 whole_pagetable(unlocked_k.pt_mp, unlocked_k.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va));
         };

@@ -122,8 +122,7 @@ impl KernelK{
         // processes and their page tables and IOMMU tables name each other
         &&& process_pagetable_wf(self.prc_mp, self.pt_mp)
         &&& process_iommu_table_wf(self.prc_mp, self.it_mp)
-        // leaf sizes, emptied tables, and hidden user L4 entries
-        &&& pagetable_no_1g_leaf_wf(self.pt_mp, self.pt_lower.view())
+        // IOMMU leaf sizes, emptied tables, and hidden user L4 entries
         &&& iommu_table_no_huge_leaf_wf(self.it_mp)
         &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.pt_lower.view(), self.it_mp, self.pg_arr)
         &&& pagetable_hidden_roots_only_when_write_locked_or_emptied(self.pt_mp, self.prc_mp)
@@ -140,6 +139,7 @@ impl KernelK{
         &&& allocator_free_4k_pages_wf(self.allc_4k_mp, self.pg_arr)
         &&& allocator_free_2m_pages_wf(self.allc_2m_mp, self.pg_arr)
         &&& allocator_free_1g_pages_wf(self.allc_1g_mp, self.pg_arr)
+        &&& allocator_1g_cpu_caches_empty_wf(self.allc_1g_mp)
     }
 
     /// Containers, processes, threads, endpoints, cpus, and schedulers point to each other consistently, and kill marks agree

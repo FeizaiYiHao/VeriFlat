@@ -60,13 +60,14 @@ pub open spec fn kill_container_pages_killer_state(
 }
 
 /// The killer write-holds, with the permissions given, the 4K and 2M allocator caches on every cpu of the marked
-/// container `ctn_ptr`'s 4K and 2M allocators `a4` and `a2`, and the 4K and 2M global pools and quotas of those
-/// allocators and of its own container `owner_ptr`'s allocators `o4` and `o2`; it holds no other allocator lock.
+/// container `ctn_ptr`'s 4K and 2M allocators `a4` and `a2`, and the 4K, 2M, and 1G global pools and quotas of its
+/// allocators `a4`, `a2`, `a1` and of its own container `owner_ptr`'s allocators `o4`, `o2`, `o1`; it holds no other allocator lock.
 pub open spec fn kill_container_pages_allocator_locks(
     k: KernelK, lctx: LocalContext, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
-    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr,
+    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, a1: RwLockPageAllocatorPtr, o1: RwLockPageAllocatorPtr,
     caches_4k: Map<CpuId, LockPerm>, caches_2m: Map<CpuId, LockPerm>, pools_4k: Map<RwLockPageAllocatorPtr, LockPerm>, pools_2m: Map<RwLockPageAllocatorPtr, LockPerm>,
-    quotas_4k: Map<RwLockPageAllocatorPtr, LockPerm>, quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>,
+    quotas_4k: Map<RwLockPageAllocatorPtr, LockPerm>, quotas_2m: Map<RwLockPageAllocatorPtr, LockPerm>, pools_1g: Map<RwLockPageAllocatorPtr, LockPerm>,
+    quotas_1g: Map<RwLockPageAllocatorPtr, LockPerm>,
 ) -> bool {
     &&& k.ctn_mp.dom().contains(ctn_ptr)
     &&& k.ctn_mp.dom().contains(owner_ptr)
@@ -74,12 +75,17 @@ pub open spec fn kill_container_pages_allocator_locks(
     &&& k.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_4k == o4
     &&& k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_2m == a2
     &&& k.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_2m == o2
+    &&& k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_1g == a1
+    &&& k.ctn_mp.spec_index(owner_ptr).view_rodata().view().allocator_ptr_1g == o1
     &&& k.allc_4k_mp.dom().contains(a4)
     &&& k.allc_4k_mp.dom().contains(o4)
     &&& k.allc_2m_mp.dom().contains(a2)
     &&& k.allc_2m_mp.dom().contains(o2)
+    &&& k.allc_1g_mp.dom().contains(a1)
+    &&& k.allc_1g_mp.dom().contains(o1)
     &&& a4 != o4
     &&& a2 != o2
+    &&& a1 != o1
     &&& forall|x: (RwLockPageAllocatorPtr, CpuId)| #![trigger lctx.allocator_cache_4k_lock_map().dom().contains(x)]
         lctx.allocator_cache_4k_lock_map().dom().contains(x) ==> x.0 == a4 && index_valid(NUM_CPUS, x.1)
     &&& forall|c: CpuId| #![trigger caches_4k.dom().contains(c)] #![trigger caches_4k[c]] #![trigger lctx.allocator_cache_4k_lock_map().dom().contains((a4, c))]
@@ -120,6 +126,16 @@ pub open spec fn kill_container_pages_allocator_locks(
     &&& typed_lock_map_contains_mode(lctx.allocator_quota_2m_lock_map(), a2, TypedLockMode::Write) && typed_lock_map_contains_mode(lctx.allocator_quota_2m_lock_map(), o2, TypedLockMode::Write)
     &&& quotas_2m[a2].state() is WriteLock && quotas_2m[a2].thread_id() == lctx.thread_id() && quotas_2m[a2].lock_id() == k.allc_2m_mp.spec_index(a2).quota.locking_thread()->Write_lock_id
     &&& quotas_2m[o2].state() is WriteLock && quotas_2m[o2].thread_id() == lctx.thread_id() && quotas_2m[o2].lock_id() == k.allc_2m_mp.spec_index(o2).quota.locking_thread()->Write_lock_id
-    &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
+    &&& lctx.allocator_cache_1g_lock_map().dom().is_empty()
+    &&& lctx.allocator_global_pool_1g_lock_map().dom() == set![a1, o1]
+    &&& pools_1g.dom() == set![a1, o1]
+    &&& typed_lock_map_contains_mode(lctx.allocator_global_pool_1g_lock_map(), a1, TypedLockMode::Write) && typed_lock_map_contains_mode(lctx.allocator_global_pool_1g_lock_map(), o1, TypedLockMode::Write)
+    &&& pools_1g[a1].state() is WriteLock && pools_1g[a1].thread_id() == lctx.thread_id() && pools_1g[a1].lock_id() == k.allc_1g_mp.spec_index(a1).global_pool.locking_thread()->Write_lock_id
+    &&& pools_1g[o1].state() is WriteLock && pools_1g[o1].thread_id() == lctx.thread_id() && pools_1g[o1].lock_id() == k.allc_1g_mp.spec_index(o1).global_pool.locking_thread()->Write_lock_id
+    &&& lctx.allocator_quota_1g_lock_map().dom() == set![a1, o1]
+    &&& quotas_1g.dom() == set![a1, o1]
+    &&& typed_lock_map_contains_mode(lctx.allocator_quota_1g_lock_map(), a1, TypedLockMode::Write) && typed_lock_map_contains_mode(lctx.allocator_quota_1g_lock_map(), o1, TypedLockMode::Write)
+    &&& quotas_1g[a1].state() is WriteLock && quotas_1g[a1].thread_id() == lctx.thread_id() && quotas_1g[a1].lock_id() == k.allc_1g_mp.spec_index(a1).quota.locking_thread()->Write_lock_id
+    &&& quotas_1g[o1].state() is WriteLock && quotas_1g[o1].thread_id() == lctx.thread_id() && quotas_1g[o1].lock_id() == k.allc_1g_mp.spec_index(o1).quota.locking_thread()->Write_lock_id
 }
 } // verus!

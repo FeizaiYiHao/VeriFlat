@@ -17,11 +17,12 @@ verus! {
 fn kill_container_pages_drain_4k_cache(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
-    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
+    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, a1: RwLockPageAllocatorPtr, o1: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>,
     Tracked(caches_4k): Tracked<&Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<&Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
-    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, c: CpuId,
+    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
+    Tracked(quotas_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, c: CpuId,
 )
     requires
         old(krnl).inv(),
@@ -30,7 +31,8 @@ fn kill_container_pages_drain_4k_cache(
         old(steps).snapshot_k() == *old(krnl),
         kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         index_valid(NUM_CPUS, c),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
@@ -42,7 +44,8 @@ fn kill_container_pages_drain_4k_cache(
         final(steps).snapshot_k() == *final(krnl),
         kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
         final(steps).view() == old(steps).view(),
         final(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(c).view().view().view().len() == 0,
@@ -106,7 +109,8 @@ fn kill_container_pages_drain_4k_cache(
             steps.snapshot_k() == *krnl,
             kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
                 *owner_perm),
-            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
             steps.view() == old(steps).view(),
             krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(c).view().view().view().len() == n - moved,
@@ -150,11 +154,12 @@ fn kill_container_pages_drain_4k_cache(
 fn kill_container_pages_drain_2m_cache(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
-    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
+    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, a1: RwLockPageAllocatorPtr, o1: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>,
     Tracked(caches_4k): Tracked<&Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<&Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
-    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, c: CpuId,
+    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
+    Tracked(quotas_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, c: CpuId,
 )
     requires
         old(krnl).inv(),
@@ -163,7 +168,8 @@ fn kill_container_pages_drain_2m_cache(
         old(steps).snapshot_k() == *old(krnl),
         kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         index_valid(NUM_CPUS, c),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
@@ -175,7 +181,8 @@ fn kill_container_pages_drain_2m_cache(
         final(steps).snapshot_k() == *final(krnl),
         kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
         final(steps).view() == old(steps).view(),
         final(krnl).allc_2m_mp.spec_index(a2).cpu_caches.spec_index(c).view().view().view().len() == 0,
@@ -239,7 +246,8 @@ fn kill_container_pages_drain_2m_cache(
             steps.snapshot_k() == *krnl,
             kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
                 *owner_perm),
-            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
             steps.view() == old(steps).view(),
             krnl.allc_2m_mp.spec_index(a2).cpu_caches.spec_index(c).view().view().view().len() == n - moved,
@@ -283,11 +291,12 @@ fn kill_container_pages_drain_2m_cache(
 pub(crate) fn kill_container_pages_drain(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, a4: RwLockPageAllocatorPtr, o4: RwLockPageAllocatorPtr,
-    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
+    a2: RwLockPageAllocatorPtr, o2: RwLockPageAllocatorPtr, a1: RwLockPageAllocatorPtr, o1: RwLockPageAllocatorPtr, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>,
     Tracked(caches_4k): Tracked<&Map<CpuId, LockPerm>>, Tracked(caches_2m): Tracked<&Map<CpuId, LockPerm>>, Tracked(pools_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
     Tracked(pools_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(quotas_4k): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
-    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
+    Tracked(quotas_2m): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>, Tracked(pools_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
+    Tracked(quotas_1g): Tracked<&Map<RwLockPageAllocatorPtr, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -296,7 +305,8 @@ pub(crate) fn kill_container_pages_drain(
         old(steps).snapshot_k() == *old(krnl),
         kill_container_pages_killer_state(*old(krnl), *old(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
@@ -307,7 +317,8 @@ pub(crate) fn kill_container_pages_drain(
         final(steps).snapshot_k() == *final(krnl),
         kill_container_pages_killer_state(*final(krnl), *final(lctx), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
             *owner_perm),
-        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+        kill_container_pages_allocator_locks(*final(krnl), *final(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
         final(steps).view() == old(steps).view(),
         forall|i: CpuId| #![trigger final(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
@@ -369,16 +380,17 @@ pub(crate) fn kill_container_pages_drain(
             steps.snapshot_k() == *krnl,
             kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
                 *owner_perm),
-            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
             steps.view() == old(steps).view(),
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] i < c
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view().view().len() == 0,
         decreases NUM_CPUS - c,
     {
-        kill_container_pages_drain_4k_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
+        kill_container_pages_drain_4k_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(cpu_perm),
             Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k),
-            Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), c);
+            Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(pools_1g), Tracked(quotas_1g), c);
         c = c + 1;
     }
     let mut c: usize = 0;
@@ -414,7 +426,8 @@ pub(crate) fn kill_container_pages_drain(
             steps.snapshot_k() == *krnl,
             kill_container_pages_killer_state(*krnl, *lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, *cpu_perm, *process_perm, *thread_perm, *container_perm,
                 *owner_perm),
-            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m),
+            kill_container_pages_allocator_locks(*krnl, *lctx, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, *caches_4k, *caches_2m, *pools_4k, *pools_2m, *quotas_4k, *quotas_2m,
+            *pools_1g, *quotas_1g),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
             steps.view() == old(steps).view(),
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
@@ -423,9 +436,9 @@ pub(crate) fn kill_container_pages_drain(
                 ==> krnl.allc_2m_mp.spec_index(a2).cpu_caches.spec_index(i).view().view().view().len() == 0,
         decreases NUM_CPUS - c,
     {
-        kill_container_pages_drain_2m_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
+        kill_container_pages_drain_2m_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, Tracked(cpu_perm),
             Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k),
-            Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), c);
+            Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(pools_1g), Tracked(quotas_1g), c);
         c = c + 1;
     }
 }

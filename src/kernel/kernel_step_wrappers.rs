@@ -70,10 +70,16 @@ pub mod cpu_set_read_lock;
 pub mod cpu_tlb_va_flushed;
 /// K->U lemma and step boundary of a section that returns 2M quota to one container.
 pub mod container_quota_2m;
+/// K->U lemmas and step boundaries of sections that return 1G quota to one container or move 1G quota to a process or thread.
+pub mod container_quota_1g;
 /// K->U lemma of a step that hides one user root entry of a page table.
 pub mod table_hidden;
 /// K->U lemmas and step boundary of a section that adds or clears one 2M leaf of a process's page table.
 pub mod process_2m_mapping;
+/// K->U lemmas and step boundary of sections that add, hide, or clear one 1G leaf or hide L3 entries of a write-held page table.
+pub mod process_1g_mapping;
+/// K->U lemma of a step that hides one resolving L3 entry of a page table.
+pub mod pagetable_l3_hidden;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -107,8 +113,11 @@ pub use env_steps::*;
 pub use cpu_set_read_lock::*;
 pub use cpu_tlb_va_flushed::*;
 pub use container_quota_2m::*;
+pub use container_quota_1g::*;
 pub use table_hidden::*;
 pub use process_2m_mapping::*;
+pub use process_1g_mapping::*;
+pub use pagetable_l3_hidden::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

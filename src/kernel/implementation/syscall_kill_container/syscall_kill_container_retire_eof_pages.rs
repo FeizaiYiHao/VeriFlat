@@ -332,6 +332,25 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_4k_pages(
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); };
 }
 
+/// Retiring the container keeps the 2M global pools and the free 2M pages they list in agreement.
+proof fn kill_container_retire_eof_allocator_global_pool_2m_pages(
+    pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
+)
+    requires
+        pre.inv(),
+        kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
+        kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
+    ensures allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
+{
+    reveal(kill_container_retire_eof_transition_framing);
+    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
+    page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
+    kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
+    broadcast use kill_container_retire_eof_owned_page;
+    assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
+}
+
 /// Retiring the container keeps every free 2M page on the free list of its allocator in that allocator's pools:
 /// `owner_ptr`'s 2M global pool gains the retired container's 2M heads, which now name it.
 pub(crate) proof fn kill_container_retire_eof_allocator_free_2m_pages(
@@ -349,7 +368,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_2m_pages(
     kill_container_retire_eof_pool_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ctn_ptr);
     broadcast use kill_container_retire_eof_owned_page;
-    assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); };
+    kill_container_retire_eof_allocator_global_pool_2m_pages(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); };
 }
@@ -362,7 +381,9 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_1g_pages(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
+    ensures
+        allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
+        allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp),
 {
     reveal(kill_container_retire_eof_transition_framing);
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
@@ -374,6 +395,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_free_1g_pages(
         reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf);
         reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf);
     };
+    assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
 }
 
 /// Retiring the container keeps every container's allocator quota equal to its free pages minus what its processes

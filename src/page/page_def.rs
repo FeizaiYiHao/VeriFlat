@@ -127,7 +127,7 @@ impl Page {
     }
     pub open spec fn is_owned(&self) -> bool {
         match self.state {
-            PageState::Owned4k { .. } | PageState::Owned2m { .. } => true,
+            PageState::Owned4k { .. } | PageState::Owned2m { .. } | PageState::Owned1g { .. } => true,
             _ => false,
         }
     }

@@ -346,7 +346,7 @@ pub(super) proof fn mmap_4k_downgrade_step_from_u(krnl: &KernelK, post: KernelU,
 { kernel_process_projection_at(krnl, prc_ptr); reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); }
 
 /// Publishing the next recorded page under the mmap locks is the leaf step from `krnl`'s projection to `post`. The published
-/// page is `Owned4k` in `krnl`, so no IOMMU table of `krnl` maps it and no 2M frame of `krnl` contains it.
+/// page is `Owned4k` in `krnl`, so no IOMMU table of `krnl` maps it and no 2M or 1G frame of `krnl` contains it.
 pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, va: VAddr)
     requires
         krnl.inv(),
@@ -395,7 +395,7 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].iommu_table->Some_0.mapping_4k[v]]
         pre.process_map.dom().contains(p) && pre.process_map[p].iommu_table is Some && pre.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
         ==> pre.process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr) by { reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_wf); reveal(page_iommu_table_wf); };
-    kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(*krnl, addr);
+    kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(*krnl, addr); kernel_owned_4k_page_implies_u_outside_1g_mapping_frames(*krnl, addr);
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 
