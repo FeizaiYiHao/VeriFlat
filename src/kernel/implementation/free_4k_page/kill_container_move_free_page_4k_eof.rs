@@ -343,6 +343,93 @@ proof fn kill_container_move_free_page_4k_eof_pages_wf(
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
 }
 
+proof fn kill_container_move_free_page_4k_eof_owned_pages_forward(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        src != dst,
+        page_ptr_valid(pg_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr)),
+        pre.ctn_mp.dom().contains(src),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr),
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); reveal(container_owned_pages_wf); page_ptr_roundtrip(); }
+
+proof fn kill_container_move_free_page_4k_eof_owned_pages_backward(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        src != dst,
+        page_ptr_valid(pg_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr)),
+        pre.ctn_mp.dom().contains(src),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr),
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); reveal(container_owned_pages_wf); page_ptr_roundtrip(); }
+
+/// The moved Free4k page lies in no 2M region, so no 2M region gains or loses a listed member.
+proof fn kill_container_move_free_page_4k_eof_owned_pages_2m_region(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        src != dst,
+        page_ptr_valid(pg_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr)),
+        pre.ctn_mp.dom().contains(src),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures container_owned_pages_2m_region_wf(post.ctn_mp, post.pg_arr),
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); page_ptr_roundtrip(); }
+
+/// The moved Free4k page lies in no 1G region, so no 1G region gains or loses a listed member.
+proof fn kill_container_move_free_page_4k_eof_owned_pages_1g_region(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        src != dst,
+        page_ptr_valid(pg_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr)),
+        pre.ctn_mp.dom().contains(src),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures container_owned_pages_1g_region_wf(post.ctn_mp, post.pg_arr),
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); reveal(container_owned_pages_wf); reveal(hugepage_1g_wf); page_ptr_roundtrip(); }
+
+proof fn kill_container_move_free_page_4k_eof_page_object_owner(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    pg_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        src != dst,
+        page_ptr_valid(pg_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr)),
+        pre.ctn_mp.dom().contains(src),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == src,
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node),
+    ensures page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
+{ reveal(kill_container_move_free_page_4k_eof_transition_framing); reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); }
+
 proof fn kill_container_move_free_page_4k_eof_page_owners(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     pg_ptr: PagePtr, node: usize,
@@ -361,9 +448,12 @@ proof fn kill_container_move_free_page_4k_eof_page_owners(
         container_owned_pages_wf(post.ctn_mp, post.pg_arr),
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
-    reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_2m_wf); reveal(hugepage_1g_wf); page_ptr_roundtrip(); };
-    assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
+    kill_container_move_free_page_4k_eof_owned_pages_forward(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
+    kill_container_move_free_page_4k_eof_owned_pages_backward(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
+    kill_container_move_free_page_4k_eof_owned_pages_2m_region(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
+    kill_container_move_free_page_4k_eof_owned_pages_1g_region(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
+    kill_container_move_free_page_4k_eof_page_object_owner(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
+    reveal(container_owned_pages_wf);
 }
 
 proof fn kill_container_move_free_page_4k_eof_page_tables(

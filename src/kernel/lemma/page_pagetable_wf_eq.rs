@@ -83,13 +83,152 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     ensures
         page_mappings_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
 {
-    broadcast use {spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip};
-    page_ptr_valid_imply_page_index_valid();
-    reveal(pagetable_lower_wf);
-    assert(mapped_2m_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_2m_page_pagetable_wf); };
-    assert(mapped_4k_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_4k_page_pagetable_wf); };
-    assert(mapped_1g_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array)) by { reveal(mapped_1g_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); };
+    mapped_4k_page_pagetable_wf_preserved_for_4k_mapping_insert(pre_pagetable_map, pre_pt_lower, post_pagetable_map, post_pt_lower, pre_page_array, post_page_array, pagetable_ptr, pg_ptr, va);
+    mapped_2m_page_pagetable_wf_preserved_for_4k_mapping_insert(pre_pagetable_map, pre_pt_lower, post_pagetable_map, post_pt_lower, pre_page_array, post_page_array, pagetable_ptr, pg_ptr, va);
+    mapped_1g_page_pagetable_wf_preserved_for_4k_mapping_insert(pre_pagetable_map, pre_pt_lower, post_pagetable_map, post_pt_lower, pre_page_array, post_page_array, pagetable_ptr, pg_ptr, va);
 }
+
+pub proof fn mapped_4k_page_pagetable_wf_preserved_for_4k_mapping_insert(
+    pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
+    pre_page_array: PageLockedArray, post_page_array: PageLockedArray, pagetable_ptr: RwLockPageTableRoot, pg_ptr: PagePtr, va: VAddr,
+)
+    requires
+        pagetable_lower_wf(pre_pagetable_map, pre_pt_lower),
+        pagetable_lower_wf(post_pagetable_map, post_pt_lower),
+        page_array_wf(pre_page_array),
+        page_array_wf(post_page_array),
+        mapped_4k_page_pagetable_wf(pre_pagetable_map, pre_pt_lower, pre_page_array),
+        pre_pagetable_map.dom().contains(pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        va_4k_valid(va),
+        post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
+        post_pt_lower == pre_pt_lower.insert(pagetable_ptr, post_pt_lower.spec_index(pagetable_ptr)),
+        post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(pg_ptr)),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        (pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Owned4k
+            || pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == if pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k {
+                pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().insert((pagetable_ptr, va))
+            } else {
+                Set::empty().insert((pagetable_ptr, va))
+            },
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va) == false,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().insert(va, whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va)),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).addr == pg_ptr,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+    ensures
+        mapped_4k_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
+{ broadcast use spec_va_4k_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); }
+
+pub proof fn mapped_2m_page_pagetable_wf_preserved_for_4k_mapping_insert(
+    pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
+    pre_page_array: PageLockedArray, post_page_array: PageLockedArray, pagetable_ptr: RwLockPageTableRoot, pg_ptr: PagePtr, va: VAddr,
+)
+    requires
+        pagetable_lower_wf(pre_pagetable_map, pre_pt_lower),
+        pagetable_lower_wf(post_pagetable_map, post_pt_lower),
+        page_array_wf(pre_page_array),
+        page_array_wf(post_page_array),
+        mapped_2m_page_pagetable_wf(pre_pagetable_map, pre_pt_lower, pre_page_array),
+        pre_pagetable_map.dom().contains(pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        va_4k_valid(va),
+        post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
+        post_pt_lower == pre_pt_lower.insert(pagetable_ptr, post_pt_lower.spec_index(pagetable_ptr)),
+        post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(pg_ptr)),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        (pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Owned4k
+            || pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == if pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k {
+                pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().insert((pagetable_ptr, va))
+            } else {
+                Set::empty().insert((pagetable_ptr, va))
+            },
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va) == false,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().insert(va, whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va)),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).addr == pg_ptr,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_2m(),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_1g(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i),
+    ensures
+        mapped_2m_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
+{ broadcast use spec_va_2m_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_2m_page_pagetable_wf); }
+
+pub proof fn mapped_1g_page_pagetable_wf_preserved_for_4k_mapping_insert(
+    pre_pagetable_map: PageTableLockedMap, pre_pt_lower: PageTableLowerMap, post_pagetable_map: PageTableLockedMap, post_pt_lower: PageTableLowerMap,
+    pre_page_array: PageLockedArray, post_page_array: PageLockedArray, pagetable_ptr: RwLockPageTableRoot, pg_ptr: PagePtr, va: VAddr,
+)
+    requires
+        pagetable_lower_wf(pre_pagetable_map, pre_pt_lower),
+        pagetable_lower_wf(post_pagetable_map, post_pt_lower),
+        page_array_wf(pre_page_array),
+        page_array_wf(post_page_array),
+        mapped_1g_page_pagetable_wf(pre_pagetable_map, pre_pt_lower, pre_page_array),
+        pre_pagetable_map.dom().contains(pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        va_4k_valid(va),
+        post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
+        post_pt_lower == pre_pt_lower.insert(pagetable_ptr, post_pt_lower.spec_index(pagetable_ptr)),
+        post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(pg_ptr)),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        (pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Owned4k
+            || pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k),
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
+        post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == if pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k {
+                pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().insert((pagetable_ptr, va))
+            } else {
+                Set::empty().insert((pagetable_ptr, va))
+            },
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va) == false,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().insert(va, whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va)),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).addr == pg_ptr,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_2m(),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_1g(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)]
+            whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                ==> whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i),
+    ensures
+        mapped_1g_page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
+{ broadcast use spec_va_1g_valid_index_roundtrip; page_ptr_valid_imply_page_index_valid(); reveal(pagetable_lower_wf); reveal(mapped_1g_page_pagetable_wf); }
 
 /// A single non-mapped page may change payload/state without affecting the
 /// bidirectional page-table mapping invariant. All mapped pages remain exact

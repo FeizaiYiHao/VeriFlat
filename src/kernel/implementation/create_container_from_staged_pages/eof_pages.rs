@@ -824,13 +824,6 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    assert(hugepage_2m_head_aligned_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
-    assert(hugepage_2m_tail_forward_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
-    publish_staged_container_root_eof_hugepage_2m_head_valid(
-        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-        allocator_quota_4k, process_quota_4k, head_index,
-    );
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
     if head_index == container_head || head_index == pcid_allocator_head {
         publish_staged_container_root_eof_page_fields_eq_in_moved_2m_tails(
@@ -853,6 +846,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, head_index,
     );
+    hugepage_2m_wf_tail_forward_at(pre.pg_arr, head_index, tail_index);
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(tail_ptr)) by {
         if new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(tail_ptr) {
             reveal(thread_staged_4k_pages_wf);

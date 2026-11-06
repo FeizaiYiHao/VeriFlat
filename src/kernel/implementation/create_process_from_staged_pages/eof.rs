@@ -351,23 +351,19 @@ proof fn create_process_from_staged_pages_eof_mapped_4k_page_pagetable(
         pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().owning_container == ctn_ptr,
         create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, false, 0, 0, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+        forall|pt: RwLockPageTableRoot|
+            #![trigger post.pt_mp.dom().contains(pt)]
+            post.pt_mp.dom().contains(pt) ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i),
     ensures
         mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    // Ground the pre-side held-leaf facts of the existing tables: the deep pre-side `spec_held_4k_l1` pattern is reachable only through S's `whole_pagetable` equality (order flip, as in the iommu twin).
-    assert forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-        #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-        pre.pt_mp.dom().contains(pt) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some implies {
-            let pg_idx = page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.addr);
-            &&& index_valid(NUM_PAGES, pg_idx)
-            &&& pre.pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
-            &&& pre.pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, l2i, l1i))))
-        } by { mapped_4k_page_pagetable_wf_held_leaf_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, pt, l4i, l3i, l2i, l1i); };
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid(); };
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use whole_pagetable_is_empty_implies_no_held_4k; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+    };
 }
 
 /// The new page table and its root page close `mapped_2m_page_pagetable_wf`.
@@ -396,22 +392,19 @@ proof fn create_process_from_staged_pages_eof_mapped_2m_page_pagetable(
         pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(l4_pg_ptr)).view().view().owning_container == ctn_ptr,
         create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, false, 0, 0, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
+        forall|pt: RwLockPageTableRoot|
+            #![trigger post.pt_mp.dom().contains(pt)]
+            post.pt_mp.dom().contains(pt) ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+                #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i)]
+                pt != pagetable_pg_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i),
     ensures
         mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     hide(Seq::contains);
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    assert forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index|
-        #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i)]
-        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i)]
-        pre.pt_mp.dom().contains(pt) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i) is Some implies {
-            let pg_idx = page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr);
-            &&& index_valid(NUM_PAGES, pg_idx)
-            &&& pre.pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped2m
-            &&& pre.pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt, spec_index2va((l4i, l3i, l2i, 0))))
-        } by { mapped_2m_page_pagetable_wf_held_leaf_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, pt, l4i, l3i, l2i); };
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid(); };
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use whole_pagetable_is_empty_implies_no_held_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf); page_ptr_valid_imply_page_index_valid();
+    };
 }
 
 /// The new page table and its root page close `mapped_1g_page_pagetable_wf`.

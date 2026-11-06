@@ -60,6 +60,96 @@ pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_frami
     &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
+/// The mapped 4K page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+    requires
+        pre.inv(),
+        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_1g_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        post.pg_arr.inv(),
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
+        post.subsystems_inv(),
+    ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, pg_idx);
+    pre.default_pagetable_wf_at(pagetable);
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use spec_va_4k_valid_index_roundtrip; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
+    };
+}
+
+/// The mapped 2M page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+    requires
+        pre.inv(),
+        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_1g_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        post.pg_arr.inv(),
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
+        post.subsystems_inv(),
+    ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, pg_idx);
+    pre.default_pagetable_wf_at(pagetable);
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
+    };
+}
+
+/// The mapped 1G page relation closes after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
+proof fn remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
+    requires
+        pre.inv(),
+        remove_held_1g_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_1g_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr,
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped1g,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        post.pg_arr.inv(),
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
+        post.subsystems_inv(),
+    ensures mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(remove_held_1g_mapping_without_free_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, pg_idx);
+    pre.default_pagetable_wf_at(pagetable);
+    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use spec_va_1g_valid_index_roundtrip, spec_index2va_2m_valid; reveal(mapped_1g_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
+    };
+}
+
 /// The page-table relations close after dropping the held 1G leaf `va` and its mapping record on `pg_ptr`.
 proof fn remove_held_1g_mapping_without_free_eof_page_tables(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
     requires
@@ -91,15 +181,9 @@ proof fn remove_held_1g_mapping_without_free_eof_page_tables(pre: KernelK, post:
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use spec_va_4k_valid_index_roundtrip; reveal(mapped_4k_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
-    };
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
-    };
-    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use spec_va_1g_valid_index_roundtrip, spec_index2va_2m_valid; reveal(mapped_1g_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_lower_wf);
-    };
+    remove_held_1g_mapping_without_free_eof_mapped_4k_pages(pre, post, pagetable, va, pg_ptr);
+    remove_held_1g_mapping_without_free_eof_mapped_2m_pages(pre, post, pagetable, va, pg_ptr);
+    remove_held_1g_mapping_without_free_eof_mapped_1g_pages(pre, post, pagetable, va, pg_ptr);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };

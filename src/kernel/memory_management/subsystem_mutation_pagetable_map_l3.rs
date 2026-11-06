@@ -4,52 +4,6 @@ use super::subsystem_mutation_eof_l3::*;
 use vstd::simple_pptr::PointsTo;
 
 verus! {
-/// Read entry `l2i` of the L2 page that the held L3 entry `(l4i, l3i)` of the write-held page table `pagetable_ptr` links, together with that L2 page; no thread holds the entry's window lock.
-pub fn pagetable_map_held_l2_entry(
-    pagetable_map: &PageTableLockedMap, Tracked(pt_lower): Tracked<&PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
-) -> (ret: (PageMapPtr, PageEntry))
-    requires
-        pagetable_perms_wf(*pagetable_map),
-        pagetable_lower_wf(*pagetable_map, *pt_lower),
-        pagetable_map.dom().contains(pagetable_ptr),
-        pagetable_map.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-        pagetable_lock_perm.state() is WriteLock,
-        pagetable_lock_perm.thread_id() == lctx.thread_id(),
-        pagetable_lock_perm.lock_id() == pagetable_map.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i),
-        pei_valid(l3i),
-        pei_valid(l2i),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).spec_held_l3(l4i, l3i) is Some,
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l2_owner(whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).spec_held_l3(l4i, l3i)->0.addr, l2i) is None,
-    ensures
-        ret.0 == whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).spec_held_l3(l4i, l3i)->0.addr,
-        ret.1 == whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l2_entry(ret.0, l2i),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l2_perms.dom().contains(ret.0),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l2_page(ret.0).entry_lock(l2i).l1() is Some == (ret.1.perm.present && !ret.1.perm.ps),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l2_page(ret.0).entry_lock(l2i).l1() is Some ==> whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).lower.l1_perm(ret.0, l2i).addr() == ret.1.addr,
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == (if ret.1.perm.kernel_present && ret.1.perm.ps { Some(ret.1) } else { None }),
-        whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).spec_held_l2(l4i, l3i, l2i) == (if ret.1.perm.present && !ret.1.perm.ps { Some(ret.1) } else { None }),
-{
-    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
-    assert(pt_lower.dom().contains(pagetable_ptr) && whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
-    let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_lock_perm));
-    let tracked lower = pt_lower.tracked_borrow(pagetable_ptr);
-    proof {
-        let c = WholePageTable { higher: *pagetable, lower: *lower };
-        assert(c == whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr));
-        pagetable.wf_l4_at(l4i);
-        c.l3_links_l2_wf_at(pagetable.spec_held_l4(l4i)->0.addr, l3i);
-        c.wf_l2_at(pagetable.spec_held_l3(l4i, l3i)->0.addr, l2i);
-    }
-    let l4_entry = pagetable.get_held_entry_l4(l4i).unwrap();
-    let l3_entry = pagetable.get_held_entry_l3(l4i, l3i, &l4_entry).unwrap();
-    let l2_entry = pagetable.get_l2_entry_word(Tracked(lower), l4i, l3i, l2i, &l3_entry);
-    (l3_entry.addr, l2_entry)
-}
-
 /// Take the L1 page `l1_p` that entry `l2i` of the held L2 page `l2_p` at the unresolvable L3 entry `(l4i, l3i)` owns out of the write-held page table `pagetable_ptr` and return it: the entry is published cleared and the page leaves the table. The
 /// page holds no 4K leaf, no thread holds the entry's window lock and no CPU lists the window as stale, so every held leaf and every page record stays; the lock's ghost slot keeps a copy of the new window half.
 pub fn pagetable_map_unlink_hidden_l3_l1_page(

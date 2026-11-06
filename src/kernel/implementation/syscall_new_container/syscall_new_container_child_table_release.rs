@@ -158,10 +158,7 @@ pub(super) fn release_new_container_child_table_locks(
 {
     hide(typed_lock_maps_aligned);
     krnl.unlock_pagetable_range_existing_windows(child_pagetable_ptr, source_range, Tracked(&child_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(child_window_perms));
-    proof {
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr));
-        assert forall|w: WindowVa| #![trigger source_window_perms.dom().contains(w)] source_window_perms.dom().contains(w) implies entry_lctx.pagetable_window_lock_map().dom().contains((source_pagetable_ptr, w)) by {};
-    }
+    proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)); }
     krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
     krnl.wunlock_process(child_prc_ptr, Tracked(&mut *lctx), Tracked(child_process_lock_perm));
     krnl.runlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));

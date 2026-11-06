@@ -880,4 +880,41 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& self.wf_window_locks()
     }
 }
+
+/// An empty table (`is_empty`) has no held 4K leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_4k(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
+    requires
+        wpt.is_empty(),
+        wpt.kernel_l4_end() <= l4i,
+        pei_valid(l4i),
+    ensures
+        #[trigger] wpt.spec_held_4k_l1(l4i, l3i, l2i, l1i) is None,
+{
+    assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty());
+    assert(wpt.spec_held_l3(l4i, l3i) is None);
+    assert(wpt.spec_held_l2(l4i, l3i, l2i) is None);
+}
+
+/// An empty table (`is_empty`) has no held 2M leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_2m(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        wpt.is_empty(),
+        wpt.kernel_l4_end() <= l4i,
+        pei_valid(l4i),
+    ensures
+        #[trigger] wpt.spec_held_2m_l2(l4i, l3i, l2i) is None,
+{
+    assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty());
+    assert(wpt.spec_held_l3(l4i, l3i) is None);
+}
+
+/// An empty table (`is_empty`) has no held 1G leaf at or above `kernel_l4_end`.
+pub broadcast proof fn whole_pagetable_is_empty_implies_no_held_1g(wpt: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index)
+    requires
+        wpt.is_empty(),
+        wpt.kernel_l4_end() <= l4i,
+        pei_valid(l4i),
+    ensures
+        #[trigger] wpt.spec_held_1g_l3(l4i, l3i) is None,
+{ assert(wpt.higher.l4_table.view().spec_index(wpt.cr3()).value().spec_index(l4i).is_empty()); }
 } // verus!

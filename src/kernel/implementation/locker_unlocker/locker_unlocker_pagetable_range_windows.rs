@@ -693,6 +693,9 @@ impl KernelK {
             forall|p: RwLockPageTableRoot, w: WindowVa|
                 #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
                 final(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> final(lctx).pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
+            forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (p, w), TypedLockMode::Write)]
+                typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (p, w), TypedLockMode::Write) && !(p == root && perms.dom().contains(w))
+                    ==> typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (p, w), TypedLockMode::Write),
             (forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p == root && perms.dom().contains(w))
                 ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
     {
