@@ -2,10 +2,10 @@
 //! `finish_init_from_boot` describe, then calls it.
 //!
 //! Everything here is trusted. It classifies every physical page, picks the pages of the boot
-//! singletons and the free 2M blocks, writes every page lock into its cell in the page-cell static
+//! singletons, the free 2M blocks and the free 1G block, writes every page lock into its cell in the page-cell static
 //! and every PCID-needflush lock into its cell in the needflush-cell static, threads every free page's
-//! intrusive node into the global 4K pool and every free 2M head's node into the global 2M pool at
-//! that final address, and hands the rest to the verified initializer.
+//! intrusive node into the global 4K pool, every free 2M head's node into the global 2M pool and the
+//! free 1G head's node into the global 1G pool at that final address, and hands the rest to the verified initializer.
 
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
@@ -20,21 +20,32 @@ const _: () = assert!(MAX_PAGES == NUM_PAGES);
 
 const PAGE_SIZE: usize = 4096;
 const PAGES_PER_2M: usize = 512;
+const PAGES_PER_1G: usize = 512 * 512;
 /// Free 2M blocks handed to the 2M allocator; they are the root container's 2M quota, and each
 /// new container costs two. `VERIFLAT_BOOT_2M_BLOCKS` of the kernel build sets it (decimal, default 4);
-/// the benchmark images take 128 (256 MiB of the managed GiB) for the parallel mmap_2m timing.
+/// the benchmark images take 128 (256 MiB below the 1G block) for the parallel mmap_2m timing.
 const BOOT_FREE_2M_BLOCKS: usize = match option_env!("VERIFLAT_BOOT_2M_BLOCKS") {
     Some(blocks) => parse_decimal(blocks),
     None => 4,
 };
 
+/// Free 1G blocks handed to the 1G allocator, the root container's 1G quota: 0 or 1, the block
+/// [1 GiB, 2 GiB), the upper half of the managed memory. `VERIFLAT_BOOT_1G_BLOCKS` of the kernel build
+/// sets it (default 1). Without 1G page support (CPUID 8000_0001h EDX[26]) or with any of its pages
+/// unavailable, boot hands out no 1G block and those pages become ordinary free 4K pages.
+const BOOT_FREE_1G_BLOCKS: usize = match option_env!("VERIFLAT_BOOT_1G_BLOCKS") {
+    Some(blocks) => parse_decimal(blocks),
+    None => 1,
+};
+const _: () = assert!(BOOT_FREE_1G_BLOCKS <= 1 && 2 * PAGES_PER_1G == NUM_PAGES);
+
 /// The value of the decimal number `text`, at compile time.
 const fn parse_decimal(text: &str) -> usize {
     let digits = text.as_bytes();
-    assert!(!digits.is_empty(), "VERIFLAT_BOOT_2M_BLOCKS is empty");
+    assert!(!digits.is_empty(), "boot block count is empty");
     let (mut value, mut i) = (0, 0);
     while i < digits.len() {
-        assert!(digits[i].is_ascii_digit(), "VERIFLAT_BOOT_2M_BLOCKS is not a decimal number");
+        assert!(digits[i].is_ascii_digit(), "boot block count is not a decimal number");
         value = value * 10 + (digits[i] - b'0') as usize;
         i += 1;
     }
@@ -65,6 +76,10 @@ enum Kind {
     Free2m,
     /// Any other page of a free 2M block.
     Merged2m,
+    /// The head of the free 1G block in the global 1G pool.
+    Free1g,
+    /// Any other page of the free 1G block.
+    Merged1g,
 }
 
 static mut KINDS: [Kind; NUM_PAGES] = [Kind::Unavailable; NUM_PAGES];
@@ -174,6 +189,32 @@ fn take_2m(cursor: &mut usize) -> usize {
     panic!("no free 2M block left at boot");
 }
 
+/// Whether the processor maps 1G pages (CPUID 8000_0001h EDX[26], pdpe1gb).
+fn cpu_has_1g_pages() -> bool {
+    let max_extended = unsafe { core::arch::x86_64::__cpuid(0x8000_0000).eax };
+    max_extended >= 0x8000_0001 && unsafe { core::arch::x86_64::__cpuid(0x8000_0001).edx } & (1 << 26) != 0
+}
+
+/// Takes [1 GiB, 2 GiB) as the free 1G block when the build asks for one, the processor maps 1G pages
+/// and every page of it is free; returns the number of blocks taken.
+fn take_1g() -> usize {
+    if BOOT_FREE_1G_BLOCKS == 0 {
+        return 0;
+    }
+    if !cpu_has_1g_pages() {
+        log::warn!("no 1G page support (pdpe1gb): [1 GiB, 2 GiB) stays 4K pages");
+        return 0;
+    }
+    let block = &mut kinds()[PAGES_PER_1G..2 * PAGES_PER_1G];
+    if !block.iter().all(|k| *k == Kind::Free) {
+        log::warn!("[1 GiB, 2 GiB) is not all free memory: no free 1G block");
+        return 0;
+    }
+    block[0] = Kind::Free1g;
+    block[1..].fill(Kind::Merged1g);
+    1
+}
+
 fn singleton_state(layout: &BootKernelLayout, addr: usize) -> Option<PageState> {
     use Allocated4KPageState as A4;
     let a4 = |state| Some(PageState::Allocated4k { state });
@@ -264,7 +305,10 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         assert!(entry(kernel_pml4, l4i) & PTE_PRESENT == 0, "kernel PML4 has a user entry {}", l4i);
     }
 
-    // 2. Boot singletons.
+    // 2. The free 1G block first, so that the boot singletons and the free 2M blocks stay below it.
+    let free_1g_blocks = take_1g();
+
+    // Boot singletons.
     let mut cursor_2m = PAGES_PER_2M;
     let root_container = take_2m(&mut cursor_2m);
     let pcid_allocator = take_2m(&mut cursor_2m);
@@ -297,6 +341,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let page_value_offset = size_of::<SpinWord>().next_multiple_of(align_of::<Page>());
     let mut free_4k_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_2m_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
+    let mut free_1g_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_count = 0usize;
     for i in 0..NUM_PAGES {
         let addr = i * PAGE_SIZE;
@@ -305,6 +350,8 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             Kind::Free => (PageState::Free4k { allocator_ptr: Ghost::assume_new(), state: FreePageAllocatorState::GlobalList }, 0),
             Kind::Free2m => (PageState::Free2m { allocator_ptr: Ghost::assume_new(), state: FreePageAllocatorState::GlobalList }, 0),
             Kind::Merged2m => (PageState::Merged2m, 0),
+            Kind::Free1g => (PageState::Free1g { allocator_ptr: Ghost::assume_new(), state: FreePageAllocatorState::GlobalList }, 0),
+            Kind::Merged1g => (PageState::Merged1g, 0),
             Kind::Dom0Table => (
                 PageState::Allocated4k {
                     state: Allocated4KPageState::PageTable { pagetable_root: layout.cpu_pagetable, table_type: PT_TYPE },
@@ -317,21 +364,26 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         };
         let lock_ptr = (page_base + i * size_of::<PageLock>()) as *mut PageLock;
         ptr::write(lock_ptr, LockCell::new_unlocked(new_page(addr, state, ref_count, root_container), (), Ghost::assume_new()));
-        if kinds[i] == Kind::Free || kinds[i] == Kind::Free2m {
+        if matches!(kinds[i], Kind::Free | Kind::Free2m | Kind::Free1g) {
             let page = &mut *((lock_ptr as usize + page_value_offset) as *mut Page);
             assert!(page.addr == addr, "LockCell value offset mismatch");
             let (node_addr, mut node_perm) = page.free_list_node_storage.take();
             node_update_value(node_addr, &mut node_perm, addr);
-            if kinds[i] == Kind::Free {
-                free_4k_pool.push_tail(node_addr, node_perm);
-                free_count += 1;
-            } else {
-                free_2m_pool.push_tail(node_addr, node_perm);
+            match kinds[i] {
+                Kind::Free => {
+                    free_4k_pool.push_tail(node_addr, node_perm);
+                    free_count += 1;
+                }
+                Kind::Free2m => free_2m_pool.push_tail(node_addr, node_perm),
+                _ => free_1g_pool.push_tail(node_addr, node_perm),
             }
         }
     }
     let page_array = PageLockedArray::from_token_cells(TokenCells { perms: Tracked::assume_new() });
-    log::info!("pages: {} free, {} free 2M blocks, {} dom0 tables, {} dom0 leaves", free_count, BOOT_FREE_2M_BLOCKS, tables, leaves);
+    log::info!(
+        "pages: {} free, {} free 2M blocks, {} free 1G blocks, {} dom0 tables, {} dom0 leaves",
+        free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves
+    );
 
     // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.
     let needflush_base = pcid_needflush_cells_base();
@@ -361,7 +413,6 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         initial_regs.rsi = payload.size as u64;
     }
 
-    let free_1g_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
         free_4k_pool, free_2m_pool, free_1g_pool,

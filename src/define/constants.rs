@@ -7,8 +7,8 @@ pub const MAX_NUM_ENDPOINT_DESCRIPTORS: usize = 128;
 //1 for now
 pub const KERNEL_MEM_END_L4INDEX: usize = 1;
 
-//1GiB
-pub const NUM_PAGES: usize = 256 * 1024;
+//2GiB
+pub const NUM_PAGES: usize = 512 * 1024;
 pub const PAGE_SZ_4K: usize = 1usize << 12;
 pub const PAGE_SZ_2M: usize = 1usize << 21;
 pub const PAGE_SZ_1G: usize = 1usize << 30;

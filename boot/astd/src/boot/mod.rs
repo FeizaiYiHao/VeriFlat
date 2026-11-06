@@ -8,7 +8,7 @@ use crate::string::ArrayString;
 
 /// The number of 4K pages the kernel manages. Must equal `veriflat_monolith::NUM_PAGES`;
 /// the kernel asserts this at build time.
-pub const MAX_PAGES: usize = 256 * 1024;
+pub const MAX_PAGES: usize = 512 * 1024;
 
 /// The most processors the loader reports. Must equal `veriflat_monolith::NUM_CPUS`.
 pub const MAX_CPUS: usize = 32;

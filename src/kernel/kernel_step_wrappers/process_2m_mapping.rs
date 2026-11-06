@@ -185,7 +185,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_iommu_4k_mapping_outside_its_f
             let idx = page_ptr2page_index(a);
             if addr <= a < addr + 0x200000 {
                 assert(head <= idx < head + 512 && idx < NUM_PAGES) by (nonlinear_arith)
-                    requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x200000, head % 512 == 0, head < NUM_PAGES, NUM_PAGES == 262144;
+                    requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x200000, head % 512 == 0, head < NUM_PAGES, NUM_PAGES % 512 == 0;
                 hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx);
             }
         }
@@ -226,7 +226,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
             assert(k.pg_arr.spec_index(head).view().view().state == PageState::Mapped2m) by { reveal(mapped_2m_page_pagetable_wf); };
             if m <= addr < m + 0x200000 {
                 assert(head <= idx < head + 512 && index_valid(NUM_PAGES, head) && index_valid(NUM_PAGES, idx)) by (nonlinear_arith)
-                    requires m % 0x200000 == 0, m / 4096 < NUM_PAGES, head == m / 4096, idx == addr / 4096, m <= addr < m + 0x200000, NUM_PAGES == 262144;
+                    requires m % 0x200000 == 0, m / 4096 < NUM_PAGES, head == m / 4096, idx == addr / 4096, m <= addr < m + 0x200000, NUM_PAGES % 512 == 0;
                 if idx != head { hugepage_2m_wf_tail_forward_at(k.pg_arr, head, idx); }
             }
         }

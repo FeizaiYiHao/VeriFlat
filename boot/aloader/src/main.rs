@@ -44,11 +44,12 @@ use memory::{
 use core::ptr;
 
 // The reservations below are sized from the "Loader memory use" and "Kernel boot stack
-// high-water" lines the boot prints (2026-10: kernel image 101 MiB, boot stack 62 MiB, dom0 17 MiB,
-// loader stack 4 MiB) with headroom; `memory::ALLOCATOR_SIZE` must cover the first three.
+// high-water" lines the boot prints (2026-11, 2 GiB page array: kernel image 114 MiB, boot stack 16 MiB,
+// dom0 17 MiB, loader stack 8 MiB) with headroom; `memory::ALLOCATOR_SIZE` must cover the kernel and dom0
+// reservations, and both stay below 1 GiB so that [1 GiB, 2 GiB) can be the free 1G block.
 
 /// Kernel image (`KernelK` lives in its .bss) + kernel stack.
-const KERNEL_RESERVATION: usize = 224 * 1024 * 1024;
+const KERNEL_RESERVATION: usize = 256 * 1024 * 1024;
 /// The kernel builds `KernelK` (~60 MiB) by value on this stack before moving it into place.
 const KERNEL_STACK_SIZE: usize = 96 * 1024 * 1024;
 /// dom0 image, its stack, and the payload; also the span of dom0's initial user mapping.

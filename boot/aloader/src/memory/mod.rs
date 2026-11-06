@@ -18,9 +18,9 @@ pub use map::MemoryMap;
 pub use paging::{AddressSpace, HUGE_PAGE_SIZE, PAGE_SIZE};
 pub use userspace::UserspaceMapper;
 
-pub const MAX_PHYSICAL_MEMORY: usize = astd::boot::MAX_PAGES * 4096; // 1 GiB: the kernel page array
+pub const MAX_PHYSICAL_MEMORY: usize = astd::boot::MAX_PAGES * 4096; // 2 GiB: the kernel page array
 pub const BOOTSTRAP_SIZE: usize = 16 * 1024 * 1024; // 16 MiB of loader-built page tables
-pub const ALLOCATOR_SIZE: usize = 288 * 1024 * 1024; // kernel (224 MiB) + dom0 (64 MiB) reservations
+pub const ALLOCATOR_SIZE: usize = 320 * 1024 * 1024; // kernel (256 MiB) + dom0 (64 MiB) reservations
 
 /// The physical memory map.
 static PHYSICAL_MEMORY_MAP: Mutex<MemoryMap<BootMemoryType>> = Mutex::new(MemoryMap::empty());

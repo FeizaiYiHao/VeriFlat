@@ -6,6 +6,8 @@
 # Usage: boot/run.sh [extra qemu args...]
 # NO_TIMER=1 builds the kernel and dom0 with feature `no-timer`: no LAPIC timer, dom0 runs its timings only.
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
+# VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
+# 1G quota (0 without CPUID pdpe1gb); `-m 2304` covers the 2 GiB page array.
 # VERIFLAT_PARALLEL picks the parallel timings of a NO_TIMER dom0 (see bench/README.md).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -25,7 +27,7 @@ else
     ACCEL=(-cpu max,+pcid -machine q35)
 fi
 
-qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 1024 \
+qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 2304 \
     -kernel "$OUT/aloader" -initrd "$JUMBO" \
     -nographic -serial mon:stdio \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
