@@ -146,7 +146,8 @@ class TimingToolsTest(unittest.TestCase):
                                 text=True, capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ['focus', '--workspace', '--exclude',
-            'VeriFlat', '-j', '8', '--', '--num-threads', '32', '--time'])
+            'VeriFlat', '--target-dir', str(self.root / 'target/verus-focus/_workspace'),
+            '-j', '8', '--', '--num-threads', '32', '--time'])
 
         result = subprocess.run([str(self.root / 'verify-workspace.sh'), '--package',
                                  'veriflat_kernel_core', '--',
@@ -154,6 +155,7 @@ class TimingToolsTest(unittest.TestCase):
                                 text=True, capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ['focus', '-p', 'veriflat_kernel_core',
+            '--target-dir', str(self.root / 'target/verus-focus/veriflat_kernel_core'),
             '-j', '1', '--', '--num-threads', '32', '--time', '--output-json'])
 
         result = subprocess.run([str(self.root / 'verify-workspace.sh'), '--',
@@ -211,9 +213,9 @@ class TimingToolsTest(unittest.TestCase):
         }
         script = self.root / 'verify-workspace.sh'
 
-        def run(package, status=0):
+        def run(package, *verus_args, status=0):
             return subprocess.run(
-                [str(script), '--package', package],
+                [str(script), '--package', package, '--', *verus_args],
                 text=True,
                 capture_output=True,
                 env={**env, 'TEST_VERIFY_EXIT': str(status)},
@@ -224,49 +226,46 @@ class TimingToolsTest(unittest.TestCase):
                 return []
             return [json.loads(line) for line in cargo_log.read_text().splitlines()]
 
-        state_dir = self.root / 'target/verus-partial/.veriflat-focus-state'
+        def states(state_dir):
+            return {path.name: path.read_text() for path in state_dir.iterdir() if path.is_file()}
+
+        map_target = self.root / 'target/verus-focus/veriflat_map_4k/verus-partial'
+        core_target = self.root / 'target/verus-focus/veriflat_kernel_core/verus-partial'
+        map_states = map_target / '.veriflat-focus-state'
+        core_states = core_target / '.veriflat-focus-state'
         result = run('veriflat_map_4k')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(clean_calls()), 1)
-        self.assertIn('-p', clean_calls()[0])
-        self.assertEqual(
-            (state_dir / 'veriflat_kernel_core').read_text(), 'dependency\n')
-        self.assertTrue(
-            (state_dir / 'veriflat_map_4k').read_text().startswith('root:'))
+        self.assertEqual(clean_calls(), [['clean', '-p', 'veriflat_kernel_core', '-p',
+            'veriflat_map_4k', '--target-dir', str(map_target)]])
+        self.assertTrue((map_target / 'CACHEDIR.TAG').is_file())
+        self.assertEqual((map_states / 'veriflat_kernel_core').read_text(), 'dependency\n')
+        self.assertTrue((map_states / 'veriflat_map_4k').read_text().startswith('root:'))
 
         result = run('veriflat_map_4k')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(clean_calls()), 1, 'hot run unexpectedly cleaned artifacts')
 
+        map_states_before = states(map_states)
         result = run('veriflat_kernel_core')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(clean_calls()), 2)
-        self.assertEqual(clean_calls()[-1][0:3],
-                         ['clean', '-p', 'veriflat_kernel_core'])
-        states_before_failure = {
-            path.name: path.read_text()
-            for path in state_dir.iterdir()
-            if path.is_file()
-        }
+        self.assertEqual(clean_calls()[-1], ['clean', '-p', 'veriflat_kernel_core',
+            '--target-dir', str(core_target)])
+        self.assertTrue((core_states / 'veriflat_kernel_core').read_text().startswith('root:'))
+        self.assertEqual(states(map_states), map_states_before,
+            'another package run touched this package directory')
 
-        result = run('veriflat_map_4k', status=7)
+        result = run('veriflat_map_4k', '--verify-function', 'f', status=7)
         self.assertEqual(result.returncode, 7, result.stderr)
-        self.assertEqual(
-            {
-                path.name: path.read_text()
-                for path in state_dir.iterdir()
-                if path.is_file()
-            },
-            states_before_failure,
-            'failed verification updated cache state',
-        )
+        self.assertEqual(clean_calls()[-1], ['clean', '-p', 'veriflat_map_4k',
+            '--target-dir', str(map_target)])
+        self.assertEqual(states(map_states), map_states_before,
+            'failed verification updated cache state')
         failed_clean_count = len(clean_calls())
 
-        result = run('veriflat_map_4k')
+        result = run('veriflat_map_4k', '--verify-function', 'f')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(clean_calls()), failed_clean_count + 1)
-        self.assertEqual(
-            (state_dir / 'veriflat_kernel_core').read_text(), 'dependency\n')
+        self.assertEqual((map_states / 'veriflat_kernel_core').read_text(), 'dependency\n')
         self.assertEqual(len(backend_log.read_text().splitlines()), 5)
 
     def test_verification_times_reports_wall_and_preserves_status(self):

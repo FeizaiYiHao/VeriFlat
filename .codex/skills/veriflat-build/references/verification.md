@@ -9,11 +9,20 @@
   cross-crate closure and same-scope performance measurements.
 - Changing only Verus CLI selection or profiling arguments may reuse a Cargo
   artifact produced with earlier arguments. If a real cold rerun is required,
-  invalidate only the affected package under `target/verus-partial`; never
-  treat a cached no-op as fresh verification.
+  invalidate only the affected package under that run's
+  `target/verus-focus/<package>/verus-partial`; never treat a cached no-op as
+  fresh verification.
+- Each `--package` run uses its own target directory and lock,
+  `target/verus-focus/<package>/verus-partial` (whole workspace:
+  `target/verus-focus/_workspace/verus-partial`). Focused runs of different
+  packages may run concurrently; runs of the same package serialize. The first
+  run of a package cold-builds its dependencies (vstd included) into its own
+  directory; each package directory takes about 0.8 GB of disk.
 - Focused/workspace: `./verify-workspace.sh --package <package>` and
   `./verify-workspace.sh`. Monolith:
   `./verify.sh --num-threads 32 --time`. Report each run number.
+- Reproduce a monolith-only failure on one module with
+  `./verify.sh --no-erasure-check --verify-only-module <monolith module path> --expand-errors`.
 - Pipeline measurement:
   `./verify-pipeline.sh`, which runs
   `verus/source/target-verus/release/cargo-verus verify --pipelined-erasure --workspace --exclude VeriFlat -- --num-threads 32 --time`.

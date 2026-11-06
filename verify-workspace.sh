@@ -7,9 +7,7 @@ CARGO_VERUS_BIN="$CURRENT_DIR/verus/source/target-verus/release/cargo-verus"
 COUNTER_DIR="$CURRENT_DIR/.verus-log"
 COUNTER_FILE="$COUNTER_DIR/verify-count"
 COUNTER_LOCK="$COUNTER_DIR/verify-count.lock"
-FOCUS_TARGET_DIR="$CURRENT_DIR/target/verus-partial"
-FOCUS_STATE_DIR="$FOCUS_TARGET_DIR/.veriflat-focus-state"
-FOCUS_STATE_LOCK="$FOCUS_TARGET_DIR/.veriflat-focus-state.lock"
+FOCUS_DIR_ROOT="$CURRENT_DIR/target/verus-focus"
 
 package=""
 cargo_jobs=""
@@ -26,6 +24,10 @@ Usage:
 Defaults:
   workspace: Cargo jobs=8, Verus threads=32
   focused:   Cargo jobs=1, Verus threads=32
+
+Each run scope has its own Cargo target directory and lock under
+target/verus-focus/<PACKAGE> (whole workspace: target/verus-focus/_workspace).
+Runs of different packages run concurrently; runs of the same scope serialize.
 EOF
 }
 
@@ -74,6 +76,12 @@ else
     cargo_args=(--workspace --exclude VeriFlat)
     run_kind="workspace"
 fi
+
+# Cargo-Verus focus appends verus-partial to the --target-dir it receives.
+FOCUS_BASE_DIR="$FOCUS_DIR_ROOT/${package:-_workspace}"
+FOCUS_TARGET_DIR="$FOCUS_BASE_DIR/verus-partial"
+FOCUS_STATE_DIR="$FOCUS_TARGET_DIR/.veriflat-focus-state"
+FOCUS_STATE_LOCK="$FOCUS_TARGET_DIR/.veriflat-focus-state.lock"
 
 for value_name in cargo_jobs verus_threads; do
     value="${!value_name}"
@@ -243,7 +251,8 @@ printf 'verification run #%s (%s, Cargo jobs=%s, Verus threads=%s)\n' \
     "$run_count" "$run_kind" "$cargo_jobs" "$verus_threads" >&2
 
 command=(
-    "$CARGO_VERUS_BIN" focus "${cargo_args[@]}" -j "$cargo_jobs" --
+    "$CARGO_VERUS_BIN" focus "${cargo_args[@]}" --target-dir "$FOCUS_BASE_DIR"
+    -j "$cargo_jobs" --
     --num-threads "$verus_threads" --time
 )
 if ((${#verus_args[@]} > 0)); then
