@@ -184,6 +184,21 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         }
     }
 
+    /// 1G leaf `(l4i, l3i)` under a held root entry while its kernel_present bit is set, present or hidden.
+    pub open spec fn spec_held_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
+        recommends
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+    {
+        if self.spec_held_l4(l4i) is Some
+            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.ps
+            && self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i).perm.kernel_present {
+            Some(self.l3_entry(self.spec_held_l4(l4i)->0.addr, l3i))
+        } else {
+            None
+        }
+    }
+
     #[verifier::opaque]
     pub open spec fn wf_l4(&self) -> bool {
         &&& self.l4_table.view().dom() =~= Set::<PageMapPtr>::empty().insert(self.cr3)
@@ -456,6 +471,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn spec_held_l4(&self, l4i: L4Index) -> Option<PageEntry> { self.higher.spec_held_l4(l4i) }
     #[verifier::inline]
     pub open spec fn spec_held_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_held_l3(l4i, l3i) }
+    #[verifier::inline]
+    pub open spec fn spec_held_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_held_1g_l3(l4i, l3i) }
 
     /// L2 entry `(l4i, l3i, l2i)` under a held L3 entry while it owns an L1 page, linked or hidden.
     pub open spec fn spec_held_l2(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> Option<PageEntry>

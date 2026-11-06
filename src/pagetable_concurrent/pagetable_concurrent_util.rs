@@ -211,6 +211,27 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if (l3_entry.perm.present || l3_entry.perm.kernel_present) && !l3_entry.perm.ps { Some(l3_entry) } else { None }
     }
 
+    /// Word of entry `target_l3i` of the L3 page that the held root entry `l4_entry` links: a held L3 link when present or kernel-present
+    /// and not huge, a held 1G leaf when kernel-present and huge.
+    pub fn get_l3_entry_word(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: PageEntry)
+        requires
+            self.inv(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            self.spec_held_l4(target_l4i) =~= Some(*l4_entry),
+        ensures
+            self.spec_held_l3(target_l4i, target_l3i) =~= (if (ret.perm.present || ret.perm.kernel_present) && !ret.perm.ps { Some(ret) } else { None }),
+            self.spec_held_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(l4_entry.addr);
+        }
+        let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
+        let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
+        l3_tbl.get(target_l3i)
+    }
+
     /// Word of L2 entry `(target_l4i, target_l3i, target_l2i)` under the held L3 entry `l3_entry`. It is a held 2M leaf when kernel-present
     /// and huge. The entry is unlocked and no hidden L1 page sits outside a locked window, so it holds an L1 page exactly when present
     /// and not huge.

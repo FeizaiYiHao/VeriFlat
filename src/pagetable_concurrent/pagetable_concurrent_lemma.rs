@@ -200,6 +200,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             self.table_pages_wf(),
             self.lower.l2_perms.dom().contains(p),
         ensures
+            page_ptr_valid(p),
             !self.higher.l4_table.view().dom().contains(p),
     { reveal(WholePageTable::table_pages_wf); }
 
