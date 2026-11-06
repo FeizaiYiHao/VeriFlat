@@ -145,6 +145,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             target_l1_ptr = pagetable.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry).unwrap().addr;
         }
 
+        zero_4k_page(pg_ptr);
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         let page_owner;
         {

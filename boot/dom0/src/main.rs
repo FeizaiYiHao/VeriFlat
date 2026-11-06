@@ -1723,7 +1723,8 @@ const TEST_2M_VA: usize = 0xc3_0000_0000;
 /// Functional test of mmap_2m and unmap_2m, skipped while the kernel answers mmap_2m with InvalidSyscall.
 /// Without 2M quota mmap_2m fails; over a live 4K page it fails with ErrorVaInUse and unmap_2m of a 4K
 /// mapping fails; once that page is unmapped, its window keeps an empty L1 table, which mmap_2m replaces
-/// with a 2M leaf; the 2M page holds what is written and unmaps. The 2M quota goes back to the container.
+/// with a 2M leaf; a fresh 4K page and the fresh 2M page read as zeros; the 2M page holds what is written and
+/// unmaps. The 2M quota goes back to the container.
 fn test_mmap_2m() {
     let ret = unsafe { sys_mmap_2m(TEST_2M_VA, 1) };
     if error_name(ret) == "InvalidSyscall" {
@@ -1746,7 +1747,18 @@ fn test_mmap_2m() {
     expect_error("mmap_2m over a live 4K page", unsafe { sys_mmap_2m(TEST_2M_VA, 1) }, "ErrorVaInUse");
     expect_error("unmap_2m of a 4K mapping", unsafe { sys_unmap_2m(TEST_2M_VA, 1) }, "Error");
     check("unmap_4k in the 2M window", unsafe { sys_unmap_4k(small, 1) });
+    check("mmap_4k of a fresh page in the 2M window", unsafe { sys_mmap_4k(small, 1) });
+    if unsafe { (small as *const u64).read_volatile() } != 0 {
+        log::error!("mmap_4k: the fresh page at {:#x} is not zeroed", small);
+        unsafe { sys_debug_exit(1) };
+    }
+    unsafe { (small as *mut u64).write_volatile(PAGE_MAGIC) };
+    check("unmap_4k of the fresh page", unsafe { sys_unmap_4k(small, 1) });
     check("mmap_2m over the emptied L1 table", unsafe { sys_mmap_2m(TEST_2M_VA, 1) });
+    if unsafe { (small as *const u64).read_volatile() } != 0 {
+        log::error!("mmap_2m: the fresh 2M page is not zeroed at {:#x}", small);
+        unsafe { sys_debug_exit(1) };
+    }
     touch_2m(TEST_2M_VA, 1);
     if unsafe { (small as *const u64).read_volatile() } != PAGE_MAGIC ^ 5 {
         log::error!("mmap_2m: the 2M page does not hold what was written at {:#x}", small);
