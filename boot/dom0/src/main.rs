@@ -571,7 +571,7 @@ const MMAP_XPROC_ENDPOINT: usize = 5;
 /// The same for the child of the parallel mmap_2m timing.
 const MAP2M_XPROC_ENDPOINT: usize = 6;
 /// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
-/// `mmap`, `mmap2m`, and `unmapn` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// `mmap`, `mmap2m`, `unmapn`, and `mmap1g` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
@@ -837,6 +837,9 @@ fn time_parallel_call() {
     }
     if runs_parallel("unmapn") {
         time_unmapn();
+    }
+    if runs_parallel("mmap1g") {
+        time_mmap_1g();
     }
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
@@ -1770,6 +1773,135 @@ fn test_mmap_2m() {
     log::info!("mmap_2m self-test passed");
 }
 
+/// The 1 GiB slot of the mmap_1g self-test and the timing `time_mmap_1g`, each in a GiB no other test maps.
+const TEST_1G_VA: usize = 0xc5_0000_0000;
+const TIME_1G_VA: usize = 0xc6_0000_0000;
+const SIZE_1G: usize = 0x4000_0000;
+/// Offsets the mmap_1g self-test reads and writes: the first word, a word in the first 4 KiB, the middle,
+/// and the last word of the 1 GiB page.
+const TEST_1G_OFFSETS: [usize; 5] = [0, 5 * 4096, SIZE_2M + 8, SIZE_1G / 2, SIZE_1G - 8];
+
+/// Moves one 1G quota from the container through the process to the thread; false when the container
+/// has none, which is the case when the boot found no free 1G block (no CPUID pdpe1gb).
+fn try_fund_1g(who: &str) -> bool {
+    let ret = unsafe { sys_alloc_quota_1g(1) };
+    if error_name(ret) == "ErrorContainerQuotaInsufficient" {
+        return false;
+    }
+    quiet(who, ret);
+    quiet(who, unsafe { sys_alloc_thread_quota_1g(1) });
+    true
+}
+
+/// Fails unless every word of `TEST_1G_OFFSETS` in the 1 GiB page at `TEST_1G_VA` reads as `magic` xor
+/// its offset, or as 0 when `magic` is 0 (a fresh page).
+fn expect_1g_words(what: &str, magic: u64) {
+    for off in TEST_1G_OFFSETS {
+        let expected = if magic == 0 { 0 } else { magic ^ off as u64 };
+        let v = unsafe { ((TEST_1G_VA + off) as *const u64).read_volatile() };
+        if v != expected {
+            log::error!("mmap_1g: {} at offset {:#x} reads {:#x}, expected {:#x}", what, off, v, expected);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+}
+
+/// Functional test of mmap_1g, unmap_1g, and the 1G quota calls, skipped while the kernel answers mmap_1g
+/// with InvalidSyscall or when the boot found no free 1G block. Without 1G quota mmap_1g fails; at an
+/// unaligned va it fails; over a live 4K page or a live 2M page in the slot it fails with ErrorVaInUse, and
+/// unmap_1g of those fails; once they are unmapped, mmap_1g replaces the slot's emptied tables with a 1G leaf
+/// that reads as zeros, holds what is written, refuses a 4K page inside it, and unmaps; mapped again it
+/// reads as zeros again. The quotas go back to the container.
+fn test_mmap_1g() {
+    let ret = unsafe { sys_mmap_1g(TEST_1G_VA, 1) };
+    if error_name(ret) == "InvalidSyscall" {
+        log::info!("mmap_1g self-test skipped: the kernel does not handle mmap_1g yet");
+        return;
+    }
+    expect_error("mmap_1g without 1G quota", ret, "ErrorNoQuota");
+    fund("mmap_1g self-test funding", 32);
+    if !try_fund_1g("alloc_quota_1g (self-test)") {
+        log::info!("mmap_1g self-test skipped: the boot found no free 1G block (no pdpe1gb or VERIFLAT_BOOT_1G_BLOCKS=0)");
+        return;
+    }
+    let ret = unsafe { sys_mmap_1g(TEST_1G_VA + SIZE_2M, 1) };
+    log::info!("mmap_1g at an unaligned va -> {} ({})", ret, error_name(ret));
+    if !matches!(error_name(ret), "Error" | "InvalidArgument") {
+        log::error!("mmap_1g at an unaligned va: expected Error or InvalidArgument");
+        unsafe { sys_debug_exit(1) };
+    }
+    let small = TEST_1G_VA + 5 * 4096;
+    check("mmap_4k in the 1G slot", unsafe { sys_mmap_4k(small, 1) });
+    unsafe { (small as *mut u64).write_volatile(PAGE_MAGIC) };
+    expect_error("mmap_1g over a live 4K page", unsafe { sys_mmap_1g(TEST_1G_VA, 1) }, "ErrorVaInUse");
+    expect_error("unmap_1g of a 4K mapping", unsafe { sys_unmap_1g(TEST_1G_VA, 1) }, "Error");
+    check("unmap_4k in the 1G slot", unsafe { sys_unmap_4k(small, 1) });
+    let huge = TEST_1G_VA + 3 * SIZE_2M;
+    check("alloc_quota_2m (1G self-test)", unsafe { sys_alloc_quota_2m(1) });
+    check("alloc_thread_quota_2m (1G self-test)", unsafe { sys_alloc_thread_quota_2m(1) });
+    check("mmap_2m in the 1G slot", unsafe { sys_mmap_2m(huge, 1) });
+    unsafe { (huge as *mut u64).write_volatile(PAGE_MAGIC) };
+    expect_error("mmap_1g over a live 2M page", unsafe { sys_mmap_1g(TEST_1G_VA, 1) }, "ErrorVaInUse");
+    expect_error("unmap_1g of a 2M mapping", unsafe { sys_unmap_1g(TEST_1G_VA, 1) }, "Error");
+    check("unmap_2m in the 1G slot", unsafe { sys_unmap_2m(huge, 1) });
+    check("mmap_1g over the emptied tables", unsafe { sys_mmap_1g(TEST_1G_VA, 1) });
+    expect_1g_words("the fresh 1G page", 0);
+    for off in TEST_1G_OFFSETS {
+        unsafe { ((TEST_1G_VA + off) as *mut u64).write_volatile(PAGE_MAGIC ^ off as u64) };
+    }
+    expect_1g_words("the written 1G page", PAGE_MAGIC);
+    expect_error("mmap_1g over a live 1G page without quota", unsafe { sys_mmap_1g(TEST_1G_VA, 1) }, "ErrorNoQuota");
+    expect_error("mmap_4k inside a live 1G page", unsafe { sys_mmap_4k(small, 1) }, "ErrorVaInUse");
+    check("unmap_1g", unsafe { sys_unmap_1g(TEST_1G_VA, 1) });
+    expect_error("unmap_1g of an unmapped slot", unsafe { sys_unmap_1g(TEST_1G_VA, 1) }, "Error");
+    if !try_fund_1g("alloc_quota_1g (self-test remap)") {
+        log::error!("mmap_1g: unmap_1g did not refund the 1G quota to the container");
+        unsafe { sys_debug_exit(1) };
+    }
+    check("mmap_1g again", unsafe { sys_mmap_1g(TEST_1G_VA, 1) });
+    expect_1g_words("the 1G page mapped again", 0);
+    check("unmap_1g again", unsafe { sys_unmap_1g(TEST_1G_VA, 1) });
+    log::info!("mmap_1g self-test passed");
+}
+
+/// Rounds of the mmap_1g timing (`time_mmap_1g`) and the untimed rounds before them.
+const MMAP1G_ROUNDS: usize = 9;
+const MMAP1G_WARMUP: usize = 1;
+
+/// Times, on the calling thread, `mmap_1g` of one page alone and `mmap_1g` followed by `unmap_1g`, which
+/// both include the zeroing of the 1 GiB page inside the leaf step; logs the median TSC cycles of the map,
+/// the unmap, and their sum over `MMAP1G_ROUNDS` rounds. Each round funds the 1G quota the previous unmap
+/// refunded, untimed.
+fn time_mmap_1g() {
+    fund("mmap1g funding", 16);
+    let (mut map, mut unmap, mut both) = ([0u64; MMAP1G_ROUNDS], [0u64; MMAP1G_ROUNDS], [0u64; MMAP1G_ROUNDS]);
+    for round in 0..MMAP1G_WARMUP + MMAP1G_ROUNDS {
+        if !try_fund_1g("mmap1g alloc_quota_1g") {
+            log::info!("mmap1g timing skipped: the boot found no free 1G block");
+            return;
+        }
+        let start = unsafe { core::arch::x86_64::_rdtsc() };
+        let ret = unsafe { sys_mmap_1g(TIME_1G_VA, 1) };
+        let mapped = unsafe { core::arch::x86_64::_rdtsc() };
+        quiet("mmap1g mmap_1g", ret);
+        unsafe { (TIME_1G_VA as *mut u64).write_volatile(PAGE_MAGIC) };
+        let unmap_start = unsafe { core::arch::x86_64::_rdtsc() };
+        let ret = unsafe { sys_unmap_1g(TIME_1G_VA, 1) };
+        let end = unsafe { core::arch::x86_64::_rdtsc() };
+        quiet("mmap1g unmap_1g", ret);
+        if round >= MMAP1G_WARMUP {
+            let i = round - MMAP1G_WARMUP;
+            (map[i], unmap[i], both[i]) = (mapped - start, end - unmap_start, mapped - start + end - unmap_start);
+        }
+    }
+    map.sort_unstable();
+    unmap.sort_unstable();
+    both.sort_unstable();
+    let mid = MMAP1G_ROUNDS / 2;
+    log::info!("mmap1g: mmap_1g {} TSC cycles, unmap_1g {} TSC cycles, mmap_1g+unmap_1g {} TSC cycles (median of {}, min {}, max {})",
+        map[mid], unmap[mid], both[mid], MMAP1G_ROUNDS, both[0], both[MMAP1G_ROUNDS - 1]);
+}
+
 // ---- 9. kill_process ----
 
 /// Set once dom0 retires its helper threads: each then serves one call and exits.
@@ -2193,6 +2325,7 @@ pub extern "C" fn _start() -> ! {
     log::info!("mapped pages read back correctly");
     check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, TEST_PAGES) });
     test_mmap_2m();
+    test_mmap_1g();
 
     // 2. SMP, before any other thread exists: CPU 1 comes online and pulls the worker, unmapping
     // a page the worker touched there flushes CPU 1's TLB, and CPU 1 goes Off and comes back.

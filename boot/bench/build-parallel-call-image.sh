@@ -6,10 +6,10 @@
 # WORKTREE builds another checkout instead of this one, such as a `git worktree add` of a baseline
 # commit for an A/B comparison, or an exported snapshot (no git metadata needed).
 # PARALLEL picks the parallel timings dom0 runs (`VERIFLAT_PARALLEL` of the dom0 build): a comma-separated
-# list of `call` (the default), `mmap`, and `mmap2m`.
+# list of `call` (the default), `mmap`, `mmap2m`, `unmapn`, and `mmap1g`.
 # BOOT_2M_BLOCKS sets the free 2M blocks of the kernel build (`VERIFLAT_BOOT_2M_BLOCKS`, the root
 # container's 2M quota): 128 by default here (256 MiB), 4 in a build without it.
-# Usage: [WORKTREE=<checkout>] [PARALLEL=call|mmap|mmap2m|...] [BOOT_2M_BLOCKS=n] build-parallel-call-image.sh [out_dir]
+# Usage: [WORKTREE=<checkout>] [PARALLEL=call|mmap|mmap2m|unmapn|mmap1g|...] [BOOT_2M_BLOCKS=n] build-parallel-call-image.sh [out_dir]
 set -euo pipefail
 BENCH=$(realpath "$(dirname "$0")")
 WT=$(realpath "${WORKTREE:-$BENCH/../..}")

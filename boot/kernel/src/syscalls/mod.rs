@@ -42,6 +42,7 @@ use veriflat_monolith::kernel::implementation::rebalance_pull::rebalance_pull::{
 use veriflat_monolith::kernel::implementation::syscall_alloc_quota::syscall_alloc_quota::{
     syscall_alloc_quota_2m, syscall_alloc_quota_4k, syscall_alloc_thread_quota_2m, syscall_alloc_thread_quota_4k,
 };
+use veriflat_monolith::kernel::implementation::syscall_alloc_quota::syscall_alloc_quota_1g::{syscall_alloc_quota_1g, syscall_alloc_thread_quota_1g};
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_offline_check::{cpu_offline_check, OfflineCheckResult};
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online_resume::{cpu_online_resume, OnlineResumeResult};
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_offline_request::syscall_cpu_offline_request;
@@ -67,6 +68,8 @@ use veriflat_monolith::kernel::implementation::syscall_schedule::syscall_schedul
 use veriflat_monolith::kernel::implementation::syscall_thread_exit::syscall_thread_exit::syscall_thread_exit;
 use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4k;
 use veriflat_monolith::kernel::implementation::syscall_unmap_2m::syscall_unmap_2m;
+use veriflat_monolith::kernel::implementation::syscall_mmap_1g::syscall_mmap_1g;
+use veriflat_monolith::kernel::implementation::syscall_unmap_1g::syscall_unmap_1g;
 use veriflat_monolith::{IPCPayLoad, Registers, RetValueType, MAX_NUM_ENDPOINT_DESCRIPTORS, NUM_CPUS, PCI_BUS_COUNT, PCI_DEVICE_COUNT, PCI_FUNCTION_COUNT};
 use vstd::prelude::Tracked;
 use x86::msr;
@@ -543,6 +546,8 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_ALLOC_THREAD_QUOTA_4K => syscall_alloc_thread_quota_4k(k, t!(), t!(), cpu_id, a1),
         vsys::NR_ALLOC_QUOTA_2M => syscall_alloc_quota_2m(k, t!(), t!(), cpu_id, a1),
         vsys::NR_ALLOC_THREAD_QUOTA_2M => syscall_alloc_thread_quota_2m(k, t!(), t!(), cpu_id, a1),
+        vsys::NR_ALLOC_QUOTA_1G => syscall_alloc_quota_1g(k, t!(), t!(), cpu_id, a1),
+        vsys::NR_ALLOC_THREAD_QUOTA_1G => syscall_alloc_thread_quota_1g(k, t!(), t!(), cpu_id, a1),
         // A CPU ID with no processor behind it stays Off for good.
         vsys::NR_CPU_OFFLINE_REQUEST => {
             require!(a1 < cpu::present_cpus());
@@ -581,6 +586,8 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_MMAP_2M => syscall_mmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_UNMAP_2M => syscall_unmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,
+        vsys::NR_MMAP_1G => syscall_mmap_1g(k, t!(), t!(), cpu_id, a1, a2).0,
+        vsys::NR_UNMAP_1G => syscall_unmap_1g(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_IOMMU_MAP_4K => syscall_iommu_map_4k(k, t!(), t!(), cpu_id, a1, a2, a3),
         vsys::NR_IOMMU_UNMAP_4K => syscall_iommu_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {

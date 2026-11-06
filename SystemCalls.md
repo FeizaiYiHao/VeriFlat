@@ -154,7 +154,7 @@ with owner `Some(0)`.
 0 errors: 265 noninterference + 1 u_facts), and monolith run #34946 (3189
 verified, 0 errors). Earlier run numbers in this document predate Batch 2.
 
-## 3. alloc_quota_4k, alloc_quota_2m — one step each
+## 3. alloc_quota_4k, alloc_quota_2m, alloc_quota_1g — one step each
 
 Status: conforms, including R9 (Batch 2 validation, §2).
 
@@ -163,6 +163,9 @@ Status: conforms, including R9 (Batch 2 validation, §2).
   process `cpu.current_process`. Non-U: the container's 4K allocator quota.
 - alloc_quota_2m is the same step over `quota_2m`
   (`kernel_u_only_process_quota_2m_changed`) with the same locks and stutters.
+- alloc_quota_1g (syscall 51, `syscall_alloc_quota_1g.rs`) is the same step over
+  `quota_1g` with the same locks and stutters. The root container's `quota_1g` is
+  the number of free 1G blocks found at boot (0 without CPUID pdpe1gb).
 
 **Step**
 
@@ -177,7 +180,7 @@ Status: conforms, including R9 (Batch 2 validation, §2).
 Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerLockOrderConflict (R9),
 ContainerZombie, ProcessKilled, ContainerQuotaInsufficient, ProcessQuotaOverflow.
 
-## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m — one step each
+## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m, alloc_thread_quota_1g — one step each
 
 Status: conforms (alloc_thread_quota_4k workspace run #28692, noninterference
 run #28688; alloc_thread_quota_2m workspace run #28754, monolith run #28755,
@@ -189,6 +192,8 @@ noninterference run #28756).
 - alloc_thread_quota_2m is the same step over `quota_2m`
   (`kernel_u_only_process2thread_quota_2m_changed`) with the same locks and
   stutters.
+- alloc_thread_quota_1g (syscall 52) is the same step over `quota_1g` with the
+  same locks and stutters.
 
 **Step**
 
@@ -632,6 +637,33 @@ Trace: `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4`.
 Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled,
 ContainerLockOrderConflict (R9), ContainerZombie, ProcessKilled, ThreadKilled, and an unmapped or
 kernel-range VA.
+
+## 7c. mmap_1g, unmap_1g — 1 GiB pages
+
+User-visible contract (syscalls 49 and 50, `sys_mmap_1g(va, range)` and
+`sys_unmap_1g(va, range)`; crates `veriflat_syscall_mmap_1g` and
+`veriflat_syscall_unmap_1g`, specs `syscall_mmap_1g_spec.rs` and
+`syscall_unmap_1g_spec.rs`). `R` is the `range` consecutive 1G-aligned VAs from
+`va` (`VaRange1G`). The step sequence is in the spec files.
+
+- mmap_1g result, checked in this order: `range == 0`, overflow, an unaligned
+  or invalid `va` → Error; cpu not Running or killed → CpuIdle; thread killed →
+  ErrorThreadKilled; `thread.quota_1g < range` or `thread.quota_4k < range`
+  (one L3 page per page at most) → ErrorNoQuota; a kernel-range VA → Error; a
+  slot of `R` covered by any 4K, 2M, or 1G leaf → ErrorVaInUse; else Success.
+- The whole range is checked under `PT(P)`'s write lock before any mutation, so
+  a failure leaves no trace. On success every slot gets a fresh 1G page from
+  the 1G allocator, funded by one `quota_1g` each. A slot still holding empty
+  L2/L1 tables from earlier 4K/2M unmaps first has its L3 entry hidden; the
+  whole PCID is then flushed from every cpu that may cache it, and the emptied
+  L2/L1 tables are freed before any leaf is mapped. Each 1G data page is zeroed before its leaf is published
+  (inside the leaf step, with interrupts off on the calling cpu and the table
+  write-locked).
+- unmap_1g result: the argument, CpuIdle, and ErrorThreadKilled checks as for
+  mmap_1g; then Success when every VA of `R` is a 1G leaf of `PT(P)` in user
+  range, else Error (no partial unmap). On success the leaves are removed, the
+  whole PCID is flushed from every cpu that may cache it, and each page's 1G
+  quota is refunded to the container.
 
 ## 7a. iommu_map_4k — enter, directory/leaf steps, exit
 
@@ -1280,8 +1312,8 @@ specifications.
 
 | Entry point | Section |
 |---|---|
-| `syscall_alloc_quota_4k`, `syscall_alloc_quota_2m` | §3 |
-| `syscall_alloc_thread_quota_4k`, `syscall_alloc_thread_quota_2m` | §3a |
+| `syscall_alloc_quota_4k`, `syscall_alloc_quota_2m`, `syscall_alloc_quota_1g` | §3 |
+| `syscall_alloc_thread_quota_4k`, `syscall_alloc_thread_quota_2m`, `syscall_alloc_thread_quota_1g` | §3a |
 | `syscall_schedule` | §4 |
 | `syscall_cpu_offline_request`, `syscall_cpu_online`, `syscall_cpu_offline_request_child`, `syscall_cpu_online_child` | §4a |
 | `cpu_offline_check` (trap-layer entry, before every `syscall_schedule`) | §4b |
@@ -1291,6 +1323,7 @@ specifications.
 | `syscall_new_endpoint` | §5a |
 | `syscall_mmap_4k` | §6 |
 | `syscall_unmap_4k` | §7 |
+| `syscall_mmap_1g`, `syscall_unmap_1g` | §7c |
 | `syscall_iommu_map_4k` | §7a |
 | `syscall_iommu_unmap_4k` | §7b |
 | `syscall_new_process`, `syscall_new_process_with_endpoint`, `syscall_new_process_with_iommu_and_endpoint` | §9 |
@@ -2005,7 +2038,7 @@ children and no threads)
 - Refund: after the scans, one refund step
   (`kernel_u_container_quota_4k_increased`) returns any pending quota to the
   killer's container chain.
-- Blocked: unreachable; a zombie's tables map nothing (`process_emptied_tables_wf`, `pagetable_no_1g_leaf_wf`, `iommu_table_no_huge_leaf_wf`).
+- Blocked: unreachable; a zombie's tables map nothing (`process_emptied_tables_wf`, `iommu_table_no_huge_leaf_wf`).
 - Retire (`kill_process_retire_step`): pre `Retire`, `L` has no children and
   no threads, `L.zombie`, `L` owns no function, `L.parent is Some`, and `C`
   present; effect: `L` leaves the process map, its parent's `children`, the
@@ -2288,7 +2321,7 @@ marks; `container_kill_retire_wf` for the Pages→Retire facts;
 lemma `container_without_children_and_processes_owns_no_threads`) for "no
 thread left"; `page_object_owner_wf` for the retired pages;
 `pagetable_window_stale_cpus_only_when_locked`, `process_emptied_tables_wf`,
-and `pagetable_no_1g_leaf_wf` and `iommu_table_no_huge_leaf_wf` for the table reclaim and retire as in §18.
+and `iommu_table_no_huge_leaf_wf` for the table reclaim and retire as in §18.
 
 Trusted primitives (external_body; authorized TCB): those of §18, with
 `RwLock::try_wlock_and_mark_kill` also marking containers and cpu sets, and

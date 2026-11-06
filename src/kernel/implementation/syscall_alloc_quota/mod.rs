@@ -3,3 +3,8 @@ pub mod syscall_alloc_quota_helpers;
 pub mod syscall_alloc_quota_spec;
 mod syscall_alloc_quota_eof;
 pub(crate) mod syscall_alloc_quota_trace;
+pub mod syscall_alloc_quota_1g;
+pub mod syscall_alloc_quota_1g_helpers;
+pub mod syscall_alloc_quota_1g_spec;
+mod syscall_alloc_quota_1g_eof;
+pub(crate) mod syscall_alloc_quota_1g_trace;

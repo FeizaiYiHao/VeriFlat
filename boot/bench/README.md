@@ -12,7 +12,9 @@ Drivers for the TSC timings dom0 prints under KVM. Results and images go to `boo
   `VERIFLAT_PARALLEL` of the dom0 build picks the parallel timings, a comma-separated list of `call`
   (default), `mmap` (the parallel mmap timing), `mmap2m` (the parallel mmap_2m timing), and `unmapn`
   (dom0 alone: `unmapn <4k|2m> n=..` lines, median cycles of an n-page unmap and of the re-touch of a
-  128-page working set right after it).
+  128-page working set right after it), and `mmap1g` (dom0 alone: one `mmap1g:` line, the median cycles of
+  `mmap_1g` of one 1 GiB page, which zeroes it, of the `unmap_1g` after it, and of their sum, with the
+  min and max of the sum; skipped when the boot found no free 1G block).
 - `VERIFLAT_BOOT_2M_BLOCKS=n` of the kernel build (decimal, default 4) sets the free 2M blocks the kernel
   hands to the 2M allocator at boot, which are the root container's 2M quota. `build-parallel-call-image.sh`
   sets it to 128 (256 MiB of the managed GiB) unless `BOOT_2M_BLOCKS` says otherwise; `boot/run.sh` passes
@@ -33,7 +35,7 @@ QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
   being edited. `OVERLAY="<path>..."` copies working-copy files over it (such as an uncommitted
   `boot/dom0/src/main.rs`); `SNAPSHOT_OF` records both and lands in `built-from.txt`.
 - `run-parallel-call.sh <runs> <smp>...`: boots the stored image `runs` times at each SMP count with
-  `taskset -c 0-31`, KVM, `-cpu host`, `q35,kernel_irqchip=split`, `-m 6144 -mem-prealloc`, and
+  `taskset -c 0-31`, KVM, `-cpu host`, `q35,kernel_irqchip=split`, `-m 6144 -mem-prealloc` (`MEM=<MiB>` overrides 6144), and
   isa-debug-exit, each under a 300 s `timeout`. Per run it appends the status to `status.txt` and the
   timer lines to `extracted.txt` in `OUT` (default `out/results`) and deletes the raw log of a passing
   run. `IMAGE` picks the image; `B_IMAGE` (and `B_OUT`, default `out/results-b`) turns on A/B mode;
@@ -139,6 +141,21 @@ then `python3 -I boot/bench/summarize-parallel-mmap.py boot/bench/out/results-mm
 The timer build of dom0 also runs a functional test of `mmap_2m` and `unmap_2m` after its first mmap test
 (`mmap_2m self-test passed`), or logs `mmap_2m self-test skipped` while the kernel answers syscall 47 with
 InvalidSyscall.
+
+## mmap_1g timing
+
+Built with `PARALLEL=mmap1g` (or with it in a list); run it at SMP 1:
+`PARALLEL=mmap1g boot/bench/build-parallel-call-image.sh boot/bench/out/image-mmap1g`, then
+`MEM=2304 IMAGE=boot/bench/out/image-mmap1g OUT=boot/bench/out/results-mmap1g boot/bench/run-parallel-call.sh 3 1`
+(the default `-m 6144` puts q35's ACPI tables just below 2 GiB, so the boot finds no free 1G block),
+then `grep mmap1g: boot/bench/out/results-mmap1g/extracted.txt`. The kernel build's free 1G block
+(`VERIFLAT_BOOT_1G_BLOCKS`, default 1, [1 GiB, 2 GiB)) needs CPUID pdpe1gb, which `-cpu host` passes
+through when the host has it. The map time is dominated by zeroing the 1 GiB page inside the leaf step,
+with interrupts off on that CPU and the page table write-locked; divide by the TSC rate for wall time.
+
+The timer build also runs a functional test of `mmap_1g`, `unmap_1g`, and the 1G quota calls after the
+mmap_2m test (`mmap_1g self-test passed`), or logs `mmap_1g self-test skipped` while the kernel answers
+syscall 49 with InvalidSyscall or when the root container has no 1G quota.
 
 ## Interleaved A/B protocol
 

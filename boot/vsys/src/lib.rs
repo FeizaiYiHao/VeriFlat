@@ -83,6 +83,10 @@ pub const NR_IOMMU_MAP_4K: usize = 45;
 pub const NR_IOMMU_UNMAP_4K: usize = 46;
 pub const NR_MMAP_2M: usize = 47;
 pub const NR_UNMAP_2M: usize = 48;
+pub const NR_MMAP_1G: usize = 49;
+pub const NR_UNMAP_1G: usize = 50;
+pub const NR_ALLOC_QUOTA_1G: usize = 51;
+pub const NR_ALLOC_THREAD_QUOTA_1G: usize = 52;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -216,6 +220,16 @@ pub unsafe fn sys_alloc_thread_quota_2m(alloc_amount: usize) -> isize {
     syscall1(NR_ALLOC_THREAD_QUOTA_2M, alloc_amount).rax
 }
 
+/// Moves `alloc_amount` 1G quota from the calling container to the calling process.
+pub unsafe fn sys_alloc_quota_1g(alloc_amount: usize) -> isize {
+    syscall1(NR_ALLOC_QUOTA_1G, alloc_amount).rax
+}
+
+/// Moves `alloc_amount` 1G quota from the calling process to the calling thread.
+pub unsafe fn sys_alloc_thread_quota_1g(alloc_amount: usize) -> isize {
+    syscall1(NR_ALLOC_THREAD_QUOTA_1G, alloc_amount).rax
+}
+
 pub unsafe fn sys_schedule() -> isize {
     syscall0(NR_SCHEDULE).rax
 }
@@ -283,6 +297,17 @@ pub unsafe fn sys_mmap_2m(va: usize, range: usize) -> isize {
 /// Unmaps the `range` 2 MiB pages mapped at `va` and refunds their 2M quota to the container.
 pub unsafe fn sys_unmap_2m(va: usize, range: usize) -> isize {
     syscall2(NR_UNMAP_2M, va, range).rax
+}
+
+/// Maps `range` fresh, zeroed 1 GiB pages at the 1 GiB-aligned `va`, funded by the calling thread's 1G quota
+/// (one per page) and 4K quota (for page tables).
+pub unsafe fn sys_mmap_1g(va: usize, range: usize) -> isize {
+    syscall2(NR_MMAP_1G, va, range).rax
+}
+
+/// Unmaps the `range` 1 GiB pages mapped at `va` and refunds their 1G quota to the container.
+pub unsafe fn sys_unmap_1g(va: usize, range: usize) -> isize {
+    syscall2(NR_UNMAP_1G, va, range).rax
 }
 
 /// Maps the caller's `range` 4 KiB pages at `va` into its IOMMU table at `iova`.
