@@ -12,11 +12,9 @@ pub open spec fn domains_disjoint(u: KernelU, a: RwLockContainerPtr, b: RwLockCo
         !(u.container_map[a].subtree_set.contains(c) && u.container_map[b].subtree_set.contains(c))
 }
 
-/// Processes of the domain map memory only through 4K and 2M page-table entries and 4K IOMMU-table entries. No syscall
-/// creates 1G mappings or 2M IOMMU mappings, so `memory_iso` over those entries covers all memory the domain maps.
-pub open spec fn domain_no_1g(u: KernelU, root: RwLockContainerPtr) -> bool {
+/// Processes of the domain have no 2M or 1G IOMMU-table entries; no syscall creates them, so `memory_iso` over 4K IOMMU-table entries covers all memory the domain reaches by DMA.
+pub open spec fn domain_no_iommu_huge(u: KernelU, root: RwLockContainerPtr) -> bool {
     forall|p: RwLockProcessPtr| #![trigger u.process_map[p]] u.process_map.dom().contains(p) && in_domain(u, root, u.process_map[p].owning_container) ==> {
-        &&& u.process_map[p].pagetable is Some ==> u.process_map[p].pagetable->Some_0.mapping_1g.dom().is_empty()
         &&& u.process_map[p].iommu_table is Some ==> u.process_map[p].iommu_table->Some_0.mapping_2m.dom().is_empty()
         &&& u.process_map[p].iommu_table is Some ==> u.process_map[p].iommu_table->Some_0.mapping_1g.dom().is_empty()
     }
@@ -26,13 +24,16 @@ pub open spec fn domain_no_1g(u: KernelU, root: RwLockContainerPtr) -> bool {
 #[verifier::opaque]
 pub open spec fn in_2m_frame(base: usize, addr: usize) -> bool { base <= addr < base + 0x200000 }
 
-/// The physical frames the processes of the domain rooted at `root` map, keyed by process and virtual address: the
-/// addresses of their 4K and 2M page-table entries and of their 4K IOMMU-table entries. It reads only `process_map` and
-/// the subtree of `root`.
+/// The 1G frame starting at `base` contains the address `addr`.
+#[verifier::opaque]
+pub open spec fn in_1g_frame(base: usize, addr: usize) -> bool { base <= addr < base + 0x4000_0000 }
+
+/// The physical frames the processes of the domain rooted at `root` map, keyed by process and virtual address: the addresses of their 4K, 2M, and 1G page-table entries and 4K IOMMU-table entries; it reads only `process_map` and the subtree of `root`.
 #[verifier::ext_equal]
 pub ghost struct MemoryView {
     pub pt_4k: IMap<(RwLockProcessPtr, VAddr), usize>,
     pub pt_2m: IMap<(RwLockProcessPtr, VAddr), usize>,
+    pub pt_1g: IMap<(RwLockProcessPtr, VAddr), usize>,
     pub iommu_4k: IMap<(RwLockProcessPtr, VAddr), usize>,
 }
 
@@ -44,13 +45,14 @@ pub open spec fn memory_view(u: KernelU, root: RwLockContainerPtr) -> MemoryView
             && procs[k.0].pagetable is Some && procs[k.0].pagetable->Some_0.mapping_4k.dom().contains(k.1), |k: (RwLockProcessPtr, VAddr)| procs[k.0].pagetable->Some_0.mapping_4k[k.1].addr),
         pt_2m: IMap::new(|k: (RwLockProcessPtr, VAddr)| procs.dom().contains(k.0) && (procs[k.0].owning_container == root || subtree.contains(procs[k.0].owning_container))
             && procs[k.0].pagetable is Some && procs[k.0].pagetable->Some_0.mapping_2m.dom().contains(k.1), |k: (RwLockProcessPtr, VAddr)| procs[k.0].pagetable->Some_0.mapping_2m[k.1].addr),
+        pt_1g: IMap::new(|k: (RwLockProcessPtr, VAddr)| procs.dom().contains(k.0) && (procs[k.0].owning_container == root || subtree.contains(procs[k.0].owning_container))
+            && procs[k.0].pagetable is Some && procs[k.0].pagetable->Some_0.mapping_1g.dom().contains(k.1), |k: (RwLockProcessPtr, VAddr)| procs[k.0].pagetable->Some_0.mapping_1g[k.1].addr),
         iommu_4k: IMap::new(|k: (RwLockProcessPtr, VAddr)| procs.dom().contains(k.0) && (procs[k.0].owning_container == root || subtree.contains(procs[k.0].owning_container))
             && procs[k.0].iommu_table is Some && procs[k.0].iommu_table->Some_0.mapping_4k.dom().contains(k.1), |k: (RwLockProcessPtr, VAddr)| procs[k.0].iommu_table->Some_0.mapping_4k[k.1].addr),
     }
 }
 
-/// No physical page is mapped, through a 4K or 2M page-table entry or a 4K IOMMU-table entry, both by a process of `a`
-/// and by a process of `b`. A 2M entry maps the 2M frame starting at its address (`in_2m_frame`).
+/// No physical page is mapped, through a 4K, 2M, or 1G page-table entry or a 4K IOMMU-table entry, both by a process of `a` and by a process of `b`; a 2M or 1G entry maps the frame starting at its address (`in_2m_frame`, `in_1g_frame`).
 pub open spec fn memory_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContainerPtr) -> bool {
     let va = memory_view(u, a);
     let vb = memory_view(u, b);
@@ -72,6 +74,20 @@ pub open spec fn memory_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContaine
         va.pt_2m.dom().contains(x) && vb.iommu_4k.dom().contains(y) ==> !in_2m_frame(va.pt_2m[x], vb.iommu_4k[y])
     &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.iommu_4k[x], vb.pt_2m[y]]
         va.iommu_4k.dom().contains(x) && vb.pt_2m.dom().contains(y) ==> !in_2m_frame(vb.pt_2m[y], va.iommu_4k[x])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_1g[x], vb.pt_1g[y]]
+        va.pt_1g.dom().contains(x) && vb.pt_1g.dom().contains(y) ==> va.pt_1g[x] != vb.pt_1g[y]
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_1g[x], vb.pt_4k[y]]
+        va.pt_1g.dom().contains(x) && vb.pt_4k.dom().contains(y) ==> !in_1g_frame(va.pt_1g[x], vb.pt_4k[y])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_4k[x], vb.pt_1g[y]]
+        va.pt_4k.dom().contains(x) && vb.pt_1g.dom().contains(y) ==> !in_1g_frame(vb.pt_1g[y], va.pt_4k[x])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_1g[x], vb.iommu_4k[y]]
+        va.pt_1g.dom().contains(x) && vb.iommu_4k.dom().contains(y) ==> !in_1g_frame(va.pt_1g[x], vb.iommu_4k[y])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.iommu_4k[x], vb.pt_1g[y]]
+        va.iommu_4k.dom().contains(x) && vb.pt_1g.dom().contains(y) ==> !in_1g_frame(vb.pt_1g[y], va.iommu_4k[x])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_1g[x], vb.pt_2m[y]]
+        va.pt_1g.dom().contains(x) && vb.pt_2m.dom().contains(y) ==> !in_1g_frame(va.pt_1g[x], vb.pt_2m[y])
+    &&& forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger va.pt_2m[x], vb.pt_1g[y]]
+        va.pt_2m.dom().contains(x) && vb.pt_1g.dom().contains(y) ==> !in_1g_frame(vb.pt_1g[y], va.pt_2m[x])
 }
 
 /// A step that leaves the memory views of `a` and `b` unchanged preserves `memory_iso`.
@@ -80,8 +96,7 @@ pub proof fn memory_view_unchanged_implies_memory_iso_preserved(old_u: KernelU, 
     ensures memory_iso(new_u, a, b),
 {}
 
-/// A step that keeps every process and its owner, the subtree of `root`, and the page-table and IOMMU-table 4K and 2M
-/// mappings of every process of `root` leaves the memory view of `root` unchanged.
+/// A step that keeps every process and its owner, the subtree of `root`, and the page-table 4K, 2M, and 1G and IOMMU-table 4K mappings of every process of `root` leaves the memory view of `root` unchanged.
 pub proof fn process_mappings_unchanged_implies_memory_view_unchanged(old_u: KernelU, new_u: KernelU, root: RwLockContainerPtr)
     requires
         new_u.process_map.dom() =~= old_u.process_map.dom(),
@@ -92,6 +107,7 @@ pub proof fn process_mappings_unchanged_implies_memory_view_unchanged(old_u: Ker
                 &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
                 &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
                 &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+                &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
                 &&& (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
                 &&& new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
             }
@@ -111,6 +127,8 @@ pub proof fn memory_view_entries_kept_or_outside_other_view_implies_memory_iso(o
             memory_view(new_u, b).iommu_4k.dom().contains(y) ==> memory_view(old_u, b).iommu_4k.dom().contains(y) && memory_view(old_u, b).iommu_4k[y] == memory_view(new_u, b).iommu_4k[y],
         forall|y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, b).pt_2m.dom().contains(y)]
             memory_view(new_u, b).pt_2m.dom().contains(y) ==> memory_view(old_u, b).pt_2m.dom().contains(y) && memory_view(old_u, b).pt_2m[y] == memory_view(new_u, b).pt_2m[y],
+        forall|y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, b).pt_1g.dom().contains(y)]
+            memory_view(new_u, b).pt_1g.dom().contains(y) ==> memory_view(old_u, b).pt_1g.dom().contains(y) && memory_view(old_u, b).pt_1g[y] == memory_view(new_u, b).pt_1g[y],
         forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_4k[x], memory_view(old_u, b).pt_4k[y]]
             memory_view(new_u, a).pt_4k.dom().contains(x) && !(memory_view(old_u, a).pt_4k.dom().contains(x) && memory_view(old_u, a).pt_4k[x] == memory_view(new_u, a).pt_4k[x]) && memory_view(old_u, b).pt_4k.dom().contains(y)
                 ==> memory_view(new_u, a).pt_4k[x] != memory_view(old_u, b).pt_4k[y],
@@ -138,6 +156,27 @@ pub proof fn memory_view_entries_kept_or_outside_other_view_implies_memory_iso(o
         forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_2m[x], memory_view(old_u, b).iommu_4k[y]]
             memory_view(new_u, a).pt_2m.dom().contains(x) && !(memory_view(old_u, a).pt_2m.dom().contains(x) && memory_view(old_u, a).pt_2m[x] == memory_view(new_u, a).pt_2m[x]) && memory_view(old_u, b).iommu_4k.dom().contains(y)
                 ==> !in_2m_frame(memory_view(new_u, a).pt_2m[x], memory_view(old_u, b).iommu_4k[y]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_4k[x], memory_view(old_u, b).pt_1g[y]]
+            memory_view(new_u, a).pt_4k.dom().contains(x) && !(memory_view(old_u, a).pt_4k.dom().contains(x) && memory_view(old_u, a).pt_4k[x] == memory_view(new_u, a).pt_4k[x]) && memory_view(old_u, b).pt_1g.dom().contains(y)
+                ==> !in_1g_frame(memory_view(old_u, b).pt_1g[y], memory_view(new_u, a).pt_4k[x]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).iommu_4k[x], memory_view(old_u, b).pt_1g[y]]
+            memory_view(new_u, a).iommu_4k.dom().contains(x) && !(memory_view(old_u, a).iommu_4k.dom().contains(x) && memory_view(old_u, a).iommu_4k[x] == memory_view(new_u, a).iommu_4k[x]) && memory_view(old_u, b).pt_1g.dom().contains(y)
+                ==> !in_1g_frame(memory_view(old_u, b).pt_1g[y], memory_view(new_u, a).iommu_4k[x]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_2m[x], memory_view(old_u, b).pt_1g[y]]
+            memory_view(new_u, a).pt_2m.dom().contains(x) && !(memory_view(old_u, a).pt_2m.dom().contains(x) && memory_view(old_u, a).pt_2m[x] == memory_view(new_u, a).pt_2m[x]) && memory_view(old_u, b).pt_1g.dom().contains(y)
+                ==> !in_1g_frame(memory_view(old_u, b).pt_1g[y], memory_view(new_u, a).pt_2m[x]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).pt_1g[y]]
+            memory_view(new_u, a).pt_1g.dom().contains(x) && !(memory_view(old_u, a).pt_1g.dom().contains(x) && memory_view(old_u, a).pt_1g[x] == memory_view(new_u, a).pt_1g[x]) && memory_view(old_u, b).pt_1g.dom().contains(y)
+                ==> memory_view(new_u, a).pt_1g[x] != memory_view(old_u, b).pt_1g[y],
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).pt_4k[y]]
+            memory_view(new_u, a).pt_1g.dom().contains(x) && !(memory_view(old_u, a).pt_1g.dom().contains(x) && memory_view(old_u, a).pt_1g[x] == memory_view(new_u, a).pt_1g[x]) && memory_view(old_u, b).pt_4k.dom().contains(y)
+                ==> !in_1g_frame(memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).pt_4k[y]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).iommu_4k[y]]
+            memory_view(new_u, a).pt_1g.dom().contains(x) && !(memory_view(old_u, a).pt_1g.dom().contains(x) && memory_view(old_u, a).pt_1g[x] == memory_view(new_u, a).pt_1g[x]) && memory_view(old_u, b).iommu_4k.dom().contains(y)
+                ==> !in_1g_frame(memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).iommu_4k[y]),
+        forall|x: (RwLockProcessPtr, VAddr), y: (RwLockProcessPtr, VAddr)| #![trigger memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).pt_2m[y]]
+            memory_view(new_u, a).pt_1g.dom().contains(x) && !(memory_view(old_u, a).pt_1g.dom().contains(x) && memory_view(old_u, a).pt_1g[x] == memory_view(new_u, a).pt_1g[x]) && memory_view(old_u, b).pt_2m.dom().contains(y)
+                ==> !in_1g_frame(memory_view(new_u, a).pt_1g[x], memory_view(old_u, b).pt_2m[y]),
     ensures memory_iso(new_u, a, b),
 {}
 
@@ -172,8 +211,8 @@ pub open spec fn inflight_iso(u: KernelU, x: RwLockContainerPtr, y: RwLockContai
 /// Isolation between the container subtrees rooted at `a` and `b`.
 pub open spec fn isolated(u: KernelU, a: RwLockContainerPtr, b: RwLockContainerPtr) -> bool {
     &&& domains_disjoint(u, a, b)
-    &&& domain_no_1g(u, a)
-    &&& domain_no_1g(u, b)
+    &&& domain_no_iommu_huge(u, a)
+    &&& domain_no_iommu_huge(u, b)
     &&& memory_iso(u, a, b)
     &&& endpoint_iso(u, a, b)
     &&& inflight_iso(u, a, b)

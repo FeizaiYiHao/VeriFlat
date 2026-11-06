@@ -165,6 +165,9 @@ pub proof fn mmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_2m[v]]
         old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_2m.dom().contains(v)
             ==> !in_2m_frame(old_u.process_map[p].pagetable->Some_0.mapping_2m[v].addr, entry.addr)) by { reveal(in_2m_frame); };
+    assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_1g[v]]
+        old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_1g.dom().contains(v)
+            ==> !in_1g_frame(old_u.process_map[p].pagetable->Some_0.mapping_1g[v].addr, entry.addr)) by { reveal(in_1g_frame); };
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 

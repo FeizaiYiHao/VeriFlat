@@ -28,6 +28,8 @@ veriflat_syscall_mmap_4k = { path = "../crates/veriflat_syscall_mmap_4k" }
 veriflat_syscall_unmap_4k = { path = "../crates/veriflat_syscall_unmap_4k" }
 veriflat_syscall_mmap_2m = { path = "../crates/veriflat_syscall_mmap_2m" }
 veriflat_syscall_unmap_2m = { path = "../crates/veriflat_syscall_unmap_2m" }
+veriflat_syscall_mmap_1g = { path = "../crates/veriflat_syscall_mmap_1g" }
+veriflat_syscall_unmap_1g = { path = "../crates/veriflat_syscall_unmap_1g" }
 veriflat_syscall_iommu_map_4k = { path = "../crates/veriflat_syscall_iommu_map_4k" }
 veriflat_syscall_iommu_unmap_4k = { path = "../crates/veriflat_syscall_iommu_unmap_4k" }
 veriflat_syscall_ipc = { path = "../crates/veriflat_syscall_ipc" }

@@ -39,6 +39,8 @@ pub mod ni_mmap_4k;
 pub mod ni_unmap_4k;
 pub mod ni_mmap_2m;
 pub mod ni_unmap_2m;
+pub mod ni_mmap_1g;
+pub mod ni_unmap_1g;
 pub mod ni_iommu_map_4k;
 pub mod ni_iommu_unmap_4k;
 pub mod ni_ipc;

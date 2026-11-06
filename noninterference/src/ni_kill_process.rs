@@ -842,7 +842,7 @@ pub proof fn kill_process_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cp
     memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
-/// Refunding 4K or 2M quota of a process kill on a cpu of `a` raises the quota of the container of the target, which lies in `a`,
+/// Refunding 4K, 2M, or 1G quota of a process kill on a cpu of `a` raises the quota of the container of the target, which lies in `a`,
 /// or of an ancestor of it, neither of which lies in `b`.
 pub proof fn kill_process_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -853,7 +853,7 @@ pub proof fn kill_process_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
         kill_process_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_tree_wf);
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_quota_1g_increased); reveal(kernel_u_container_tree_wf);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let container = old_u.process_map[kill_target(old_u, cpu_id)].owning_container;
     assert(in_domain(old_u, a, container)) by {
@@ -875,7 +875,7 @@ pub proof fn kill_process_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_quota_1g_increased);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

@@ -433,7 +433,7 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b); memory_view_entries_kept_or_outside_other_view_implies_memory_iso(old_u, new_u, a, b);
 }
 
-/// Refunding 4K or 2M quota on a cpu of `a` raises the quota of the exiting thread's container, which lies in `a`, or of an
+/// Refunding 4K, 2M, or 1G quota on a cpu of `a` raises the quota of the exiting thread's container, which lies in `a`, or of an
 /// ancestor of `a`, neither of which lies in `b`.
 pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -444,7 +444,7 @@ pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_quota_1g_increased);
     reveal(kernel_u_cpu_ownership_wf);
     reveal(kernel_u_container_tree_wf);
 }
@@ -459,7 +459,7 @@ pub proof fn thread_exit_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         thread_exit_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased);
+    reveal(thread_exit_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_quota_2m_increased); reveal(kernel_u_container_quota_1g_increased);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -495,7 +495,7 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         &&& new_u.process_map[q].iommu_table == old_u.process_map[q].iommu_table
     }) by { reveal(thread_exit_quota_step); };
     assert(new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set && new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set) by { reveal(thread_exit_quota_step); };
-    assert(domain_no_1g(new_u, a) && domain_no_1g(new_u, b));
+    assert(domain_no_iommu_huge(new_u, a) && domain_no_iommu_huge(new_u, b));
     reveal(thread_exit_quota_step);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);

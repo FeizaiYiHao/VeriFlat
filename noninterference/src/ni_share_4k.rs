@@ -43,7 +43,7 @@ pub proof fn share_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
 
 /// The step of `share_4k_leaf_step_lr` preserves isolation. `progress` is the running thread's share and
 /// `source` the process whose entry it copies. A source process outside `a` is the pages peer's, and the
-/// page it shares is one no process of `b` maps in its page table or IOMMU table or covers with a 2M page-table entry.
+/// page it shares is one no process of `b` maps in its page table or IOMMU table or covers with a 2M or 1G page-table entry.
 pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, progress: SyscallProgress, source: RwLockProcessPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -64,6 +64,9 @@ pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
             &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_2m[v]]
                 old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(v)
                     ==> !(old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr + 0x200000)
+            &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_1g[v]]
+                old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_1g.dom().contains(v)
+                    ==> !(old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr + 0x4000_0000)
         },
     ensures isolated(new_u, a, b),
 {
@@ -83,6 +86,7 @@ pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     assert(forall|y: (RwLockProcessPtr, VAddr)| #![trigger w.pt_4k[y]] w.pt_4k.dom().contains(y) ==> w.pt_4k[y] != entry.addr);
     assert(forall|y: (RwLockProcessPtr, VAddr)| #![trigger w.iommu_4k[y]] w.iommu_4k.dom().contains(y) ==> w.iommu_4k[y] != entry.addr);
     assert(forall|y: (RwLockProcessPtr, VAddr)| #![trigger w.pt_2m[y]] w.pt_2m.dom().contains(y) ==> !in_2m_frame(w.pt_2m[y], entry.addr)) by { reveal(in_2m_frame); };
+    assert(forall|y: (RwLockProcessPtr, VAddr)| #![trigger w.pt_1g[y]] w.pt_1g.dom().contains(y) ==> !in_1g_frame(w.pt_1g[y], entry.addr)) by { reveal(in_1g_frame); };
     assert({
         &&& new_u.container_map == old_u.container_map && new_u.endpoint_map == old_u.endpoint_map
         &&& new_u.process_map.dom() =~= old_u.process_map.dom() && new_u.thread_map.dom() =~= old_u.thread_map.dom()

@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
-use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_mmap_2m::*, ni_unmap_2m::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
+use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_mmap_2m::*, ni_unmap_2m::*, ni_mmap_1g::*, ni_unmap_1g::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
     ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*, ni_trap::*, ni_env::*};
 use veriflat_map_4k::*;
-use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
+use veriflat_syscall_alloc_quota::syscall_alloc_quota::{syscall_alloc_quota_spec::*, syscall_alloc_quota_1g_spec::*};
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{syscall_cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
 use veriflat_syscall_iommu_map_4k::syscall_iommu_map_4k::syscall_iommu_map_4k_spec::*;
 use veriflat_syscall_iommu_unmap_4k::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k_spec::*;
@@ -12,6 +12,9 @@ use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_sp
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 use veriflat_syscall_mmap_2m::syscall_mmap_2m::syscall_mmap_2m_spec::*;
 use veriflat_syscall_unmap_2m::syscall_unmap_2m::syscall_unmap_2m_spec::*;
+use veriflat_map_4k::map_4k::mmap_1g_install_directory::*;
+use veriflat_syscall_mmap_1g::syscall_mmap_1g::syscall_mmap_1g_spec::*;
+use veriflat_syscall_unmap_1g::syscall_unmap_1g::syscall_unmap_1g_spec::*;
 use veriflat_syscall_new_container::syscall_new_container::syscall_new_container_spec::*;
 use veriflat_syscall_new_process::syscall_new_process::syscall_new_process_spec::*;
 use veriflat_syscall_new_thread::{syscall_new_endpoint::syscall_new_endpoint_spec::*, syscall_new_thread::syscall_new_thread_spec::*};
@@ -28,10 +31,13 @@ pub ghost enum StepLabel {
     Mmap2mHold { range_2m: VaRange2M }, Mmap2mEnter { range_2m: VaRange2M, phase_2m: Mmap2mPhase }, Mmap2mDirectory, Mmap2mDowngrade, Mmap2mFlush, Mmap2mFlushed, Mmap2mL1Reclaim,
     Mmap2mLeaf, Mmap2mExit, Mmap2mRelease,
     Unmap2mEnter { range_2m: VaRange2M }, Unmap2mLeaf, Unmap2mTlbFlush, Unmap2mTlbVaFlush, Unmap2mFlushed, Unmap2mRefund, Unmap2mExit,
+    Mmap1gEnter { range_1g: VaRange1G }, Mmap1gHide, Mmap1gFlush, Mmap1gFlushed, Mmap1gReclaim, Mmap1gDirectory, Mmap1gLeaf, Mmap1gExit,
+    Unmap1gEnter { range_1g: VaRange1G }, Unmap1gLeaf, Unmap1gTlbFlush, Unmap1gFlushed, Unmap1gRefund, Unmap1gExit,
     IommuMap4kEnter { va_range: VaRange4K, iova_range: VaRange4K }, IommuMap4kDirectory, IommuMap4kLeaf, IommuMap4kExit,
     IommuUnmap4kEnter { iova_range: VaRange4K }, IommuUnmap4kLeaf, IommuUnmap4kFlush, IommuUnmap4kRefund, IommuUnmap4kExit,
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
     AllocQuota2m { alloc_amount: usize }, AllocThreadQuota2m { alloc_amount: usize },
+    AllocQuota1g { alloc_amount: usize }, AllocThreadQuota1g { alloc_amount: usize },
     Schedule { entry_regs: Registers, flushed_pcid: Option<Pcid> }, RebalancePull,
     CpuOfflineRequest { target: CpuId }, CpuOfflineCheckHold, CpuOfflineCheck { regs: Registers, flushed_default_pcid: bool }, CpuOfflineCheckRelease, CpuOnline { target: CpuId },
     CpuOfflineRequestChild { target: CpuId }, CpuOnlineChild { target: CpuId },
@@ -109,6 +115,20 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Unmap2mFlushed => unmap_2m_flush_step_pre(old_u, cpu_id) && unmap_2m_flushed_step(old_u, new_u, cpu_id),
         StepLabel::Unmap2mRefund => unmap_2m_exit_step_pre(old_u, cpu_id) && kernel_u_container_quota_2m_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
         StepLabel::Unmap2mExit => unmap_2m_exit_step_pre(old_u, cpu_id) && unmap_2m_exit_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gEnter { range_1g: range } => mmap_1g_enter_step_pre(old_u, cpu_id, range) && mmap_1g_enter_step(old_u, new_u, cpu_id, range),
+        StepLabel::Mmap1gHide => mmap_1g_hide_step_pre(old_u, cpu_id) && mmap_1g_hide_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gFlush => mmap_1g_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gFlushed => mmap_1g_flush_step_pre(old_u, cpu_id) && mmap_1g_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gReclaim => mmap_1g_reclaim_step_pre(old_u, cpu_id) && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        StepLabel::Mmap1gDirectory => mmap_1g_directory_step_pre(old_u, cpu_id) && mmap_1g_directory_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gLeaf => mmap_1g_leaf_step_pre(old_u, cpu_id) && mmap_1g_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap1gExit => mmap_1g_exit_step_pre(old_u, cpu_id) && mmap_1g_exit_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap1gEnter { range_1g: range } => unmap_1g_enter_step_pre(old_u, cpu_id, range) && unmap_1g_enter_step(old_u, new_u, cpu_id, range),
+        StepLabel::Unmap1gLeaf => unmap_1g_leaf_step_pre(old_u, cpu_id) && unmap_1g_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap1gTlbFlush => unmap_1g_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap1gFlushed => unmap_1g_flush_step_pre(old_u, cpu_id) && unmap_1g_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap1gRefund => unmap_1g_exit_step_pre(old_u, cpu_id) && kernel_u_container_quota_1g_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        StepLabel::Unmap1gExit => unmap_1g_exit_step_pre(old_u, cpu_id) && unmap_1g_exit_step(old_u, new_u, cpu_id),
         StepLabel::IommuMap4kEnter { va_range, iova_range } =>
             iommu_map_4k_enter_step_pre(old_u, cpu_id, va_range, iova_range) && iommu_map_4k_enter_step(old_u, new_u, cpu_id, va_range, iova_range),
         StepLabel::IommuMap4kDirectory => iommu_map_4k_directory_step_pre(old_u, cpu_id) && iommu_map_4k_directory_step(old_u, new_u, cpu_id),
@@ -125,6 +145,8 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::AllocThreadQuota4k { alloc_amount } => alloc_thread_quota_4k_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_4k_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocQuota2m { alloc_amount } => alloc_quota_2m_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_2m_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocThreadQuota2m { alloc_amount } => alloc_thread_quota_2m_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_2m_step(old_u, new_u, cpu_id, alloc_amount),
+        StepLabel::AllocQuota1g { alloc_amount } => alloc_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
+        StepLabel::AllocThreadQuota1g { alloc_amount } => alloc_thread_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::Schedule { entry_regs, flushed_pcid } => schedule_step_pre(old_u, cpu_id) && schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
         StepLabel::RebalancePull => rebalance_pull_step_pre(old_u, cpu_id) && rebalance_pull_step(old_u, new_u, cpu_id),
         StepLabel::CpuOfflineRequest { target } => cpu_offline_request_step_pre(old_u, cpu_id, target) && cpu_offline_request_step(old_u, new_u, cpu_id, target),
@@ -248,7 +270,7 @@ pub proof fn isolated_symmetric(u: KernelU, a: RwLockContainerPtr, b: RwLockCont
 /// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`; a hardware TLB or context-cache fill
 /// changes no domain view, so it may be attributed to either domain. When a step receives an
 /// endpoint or shares a page from a peer outside its domain, that peer is honest: the other domain neither
-/// holds nor waits on the endpoint, and the other domain maps no copy of the page in a page table or IOMMU table and covers it with no 2M page-table entry. Then `us[n]` is isolated,
+/// holds nor waits on the endpoint, and the other domain maps no copy of the page in a page table or IOMMU table and covers it with no 2M or 1G page-table entry. Then `us[n]` is isolated,
 /// and steps of `a` from `us[m]` to `us[n]` leave the view of `b` unchanged.
 pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<CpuId>, steppers: Seq<RwLockContainerPtr>, a: RwLockContainerPtr, b: RwLockContainerPtr, m: int, n: int)
     requires
@@ -287,6 +309,9 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                 &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_2m[v]]
                     u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(v)
                         ==> !(u.process_map[q].pagetable->Some_0.mapping_2m[v].addr <= shared < u.process_map[q].pagetable->Some_0.mapping_2m[v].addr + 0x200000)
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_1g[v]]
+                    u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_1g.dom().contains(v)
+                        ==> !(u.process_map[q].pagetable->Some_0.mapping_1g[v].addr <= shared < u.process_map[q].pagetable->Some_0.mapping_1g[v].addr + 0x4000_0000)
             }
         },
     ensures
@@ -343,6 +368,20 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::Unmap2mFlushed => { unmap_2m_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap2mRefund => { unmap_2m_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap2mExit => { unmap_2m_exit_step_lr(old_u, new_u, cpu_id, x, y); unmap_2m_exit_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gEnter { range_1g: range } => { mmap_1g_enter_step_lr(old_u, new_u, cpu_id, range, x, y); mmap_1g_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
+            StepLabel::Mmap1gHide => { mmap_1g_hide_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_hide_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gFlush => { mmap_1g_flush_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gFlushed => { mmap_1g_flushed_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gReclaim => { mmap_1g_reclaim_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_reclaim_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gDirectory => { mmap_1g_directory_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_directory_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gLeaf => { mmap_1g_leaf_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap1gExit => { mmap_1g_exit_step_lr(old_u, new_u, cpu_id, x, y); mmap_1g_exit_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap1gEnter { range_1g: range } => { unmap_1g_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_1g_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
+            StepLabel::Unmap1gLeaf => { unmap_1g_leaf_step_lr(old_u, new_u, cpu_id, x, y); unmap_1g_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap1gTlbFlush => { unmap_1g_tlb_flush_step_lr(old_u, new_u, cpu_id, x, y); unmap_1g_tlb_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap1gFlushed => { unmap_1g_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_1g_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap1gRefund => { unmap_1g_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_1g_refund_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap1gExit => { unmap_1g_exit_step_lr(old_u, new_u, cpu_id, x, y); unmap_1g_exit_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IommuMap4kEnter { va_range, iova_range } => {
                 iommu_map_4k_enter_step_lr(old_u, new_u, cpu_id, va_range, iova_range, x, y); iommu_map_4k_enter_step_iso(old_u, new_u, cpu_id, va_range, iova_range, x, y);
             },
@@ -360,6 +399,8 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::AllocThreadQuota4k { alloc_amount } => { alloc_thread_quota_4k_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_4k_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocQuota2m { alloc_amount } => { alloc_quota_2m_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_2m_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocThreadQuota2m { alloc_amount } => { alloc_thread_quota_2m_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_2m_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
+            StepLabel::AllocQuota1g { alloc_amount } => { alloc_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
+            StepLabel::AllocThreadQuota1g { alloc_amount } => { alloc_thread_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::Schedule { entry_regs, flushed_pcid } => { schedule_step_lr(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y); schedule_step_iso(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y); },
             StepLabel::RebalancePull => { rebalance_pull_step_lr(old_u, new_u, cpu_id, x, y); rebalance_pull_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::CpuOfflineRequest { target } => { cpu_offline_request_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_step_iso(old_u, new_u, cpu_id, target, x, y); },
