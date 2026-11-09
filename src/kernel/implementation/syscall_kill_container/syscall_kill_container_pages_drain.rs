@@ -141,7 +141,6 @@ fn kill_container_pages_drain_4k_cache(
         assert(page_ptr_valid(pg_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_4k_mp, a4, c, pg_ptr); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
-            reveal(LinkedList::wf_value_list);
             allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, a4, c, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
@@ -154,7 +153,6 @@ fn kill_container_pages_drain_4k_cache(
             assert(kernel_endpoint_nonlock_fields_unchanged(before.ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&before, &*krnl);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()
                 && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
@@ -293,7 +291,6 @@ fn kill_container_pages_drain_2m_cache(
         assert(page_ptr_valid(pg_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_2m_mp, a2, c, pg_ptr); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
-            reveal(LinkedList::wf_value_list);
             allocator_free_2m_pages_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, a2, c, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
@@ -306,7 +303,6 @@ fn kill_container_pages_drain_2m_cache(
             assert(kernel_endpoint_nonlock_fields_unchanged(before.ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&before, &*krnl);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()
                 && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()

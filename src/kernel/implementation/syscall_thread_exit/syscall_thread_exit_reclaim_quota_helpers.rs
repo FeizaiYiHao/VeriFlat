@@ -114,7 +114,6 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), ctn_ptr, prc_ptr, thrd_ptr, size, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_quota_step_pre_from_k(&size_k, &size_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, size);
@@ -269,7 +268,6 @@ pub(super) fn thread_exit_reclaim_release_tables(
     proof {
         let unlocked_k = *krnl;
         let unlocked_lctx = *lctx;
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_unlock_table_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, iommu_table);

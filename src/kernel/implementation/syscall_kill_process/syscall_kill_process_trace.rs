@@ -718,7 +718,7 @@ pub(crate) proof fn kill_reassign_step_from_k(
         let t = iommu_table->Some_0;
         let anchor = pci_bdf_of_did(d);
         assert(vtd_domain_id_valid(d) && pre.iommu_tlb.view().dom().contains(d) && pci_bdf_valid(anchor.0, anchor.1, anchor.2) && pre.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == target && pre.irt.view().spec_index_iommu_root(anchor.0, anchor.1, anchor.2) is Some) by {
-            reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv);
+            process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target); iommu_root_table_process_wf_table_at(pre.irt.view(), pre.prc_mp, pre.it_mp, t); reveal(IommuTLB::inv);
         };
     }
     let old_u = kernel_k_to_kernel_u(*pre);
@@ -1261,101 +1261,6 @@ pub(crate) proof fn kill_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id:
             || kernel_u_container_quota_1g_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container),
     ensures kill_process_refund_step(pre, post, cpu_id),
 { reveal(kill_process_refund_step); }
-
-/// Freeing a 2M page of the write-held table `table` to its owner `owner`'s 2M allocator `allc_ptr`, whose quota grows by
-/// one while every window lock stays, grows the 2M quota of `owner`, which is `origin` or one of its ancestors.
-pub(crate) proof fn kill_scoped_credit_2m_step_from_k(
-    pre: &KernelK, post: &KernelK, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
-)
-    requires
-        process_pagetable_wf(post.prc_mp, post.pt_mp),
-        process_iommu_table_wf(post.prc_mp, post.it_mp),
-        container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
-        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_2m_mp: post.allc_2m_mp, ..*pre }),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
-        post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.dom().contains(origin),
-        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr,
-        pre.allc_2m_mp.dom().contains(allc_ptr),
-        post.allc_2m_mp.dom() == pre.allc_2m_mp.dom(),
-        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a)]
-            pre.allc_2m_mp.dom().contains(a) && a != allc_ptr ==> post.allc_2m_mp.spec_index(a).quota.view().view() == pre.allc_2m_mp.spec_index(a).quota.view().view(),
-        post.allc_2m_mp.spec_index(allc_ptr).quota.view().view() == pre.allc_2m_mp.spec_index(allc_ptr).quota.view().view() + 1,
-    ensures
-        kernel_u_container_quota_2m_increased(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), origin),
-        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-{
-    let mid = KernelK { allc_2m_mp: pre.allc_2m_mp, ..*post };
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, mid.ep_mp);
-    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-    kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, &mid, None);
-    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner);
-    assert(kernel_container_quota_2m_changed(&mid, post, owner, 1)) by { reveal(kernel_container_quota_2m_changed); reveal(kernel_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };
-    kernel_container_quota_2m_changed_implies_u_step(&mid, post, owner, 1);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
-    let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
-    assert(b.container_map[owner] != a.container_map[owner]);
-    assert(changed =~= set![owner]);
-    assert(changed.len() == 1);
-    assert(b.container_map.dom() == a.container_map.dom());
-    assert(b.container_map[owner].quota_2m > a.container_map[owner].quota_2m);
-    assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
-    assert(kernel_u_container_quota_2m_increased(a, b, origin)) by { reveal(kernel_u_container_quota_2m_increased); };
-}
-
-/// Freeing a 1G page of the write-held table `table` to its owner `owner`'s 1G allocator `allc_ptr`, whose quota grows by one while every window lock stays, grows the 1G quota of `owner`, which is `origin` or one of its ancestors.
-pub(crate) proof fn kill_scoped_credit_1g_step_from_k(
-    pre: &KernelK, post: &KernelK, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
-)
-    requires
-        process_pagetable_wf(post.prc_mp, post.pt_mp),
-        process_iommu_table_wf(post.prc_mp, post.it_mp),
-        container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
-        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_1g_mp: post.allc_1g_mp, ..*pre }),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
-        post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.dom().contains(origin),
-        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
-        pre.allc_1g_mp.dom().contains(allc_ptr),
-        post.allc_1g_mp.dom() == pre.allc_1g_mp.dom(),
-        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(a)]
-            pre.allc_1g_mp.dom().contains(a) && a != allc_ptr ==> post.allc_1g_mp.spec_index(a).quota.view().view() == pre.allc_1g_mp.spec_index(a).quota.view().view(),
-        post.allc_1g_mp.spec_index(allc_ptr).quota.view().view() == pre.allc_1g_mp.spec_index(allc_ptr).quota.view().view() + 1,
-    ensures
-        kernel_u_container_quota_1g_increased(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), origin),
-        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-{
-    let mid = KernelK { allc_1g_mp: pre.allc_1g_mp, ..*post };
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, mid.ep_mp);
-    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-    kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, &mid, None);
-    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner);
-    assert(kernel_container_quota_1g_changed(&mid, post, owner, 1)) by { reveal(kernel_container_quota_1g_changed); reveal(kernel_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };
-    kernel_container_quota_1g_changed_implies_u_step(&mid, post, owner, 1);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
-    let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
-    assert(b.container_map[owner] != a.container_map[owner]);
-    assert(changed =~= set![owner]);
-    assert(changed.len() == 1);
-    assert(b.container_map.dom() == a.container_map.dom());
-    assert(b.container_map[owner].quota_1g > a.container_map[owner].quota_1g);
-    assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
-    assert(kernel_u_container_quota_1g_increased(a, b, origin)) by { reveal(kernel_u_container_quota_1g_increased); };
-}
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.
 pub(crate) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)

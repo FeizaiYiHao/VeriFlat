@@ -173,7 +173,6 @@ pub(crate) fn kill_container_pages_move_4k(
         assert(page_ptr_valid(pg_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, a4, pg_ptr); };
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR) by {
-            reveal(LinkedList::wf_value_list);
             allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, a4, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
@@ -192,7 +191,6 @@ pub(crate) fn kill_container_pages_move_4k(
             kernel_container_free_4k_page_moved_implies_u_step(&before, &moved_k, ctn_ptr, owner_ptr, set![pg_ptr]);
             kill_container_pages_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
             kill_container_move_page_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, ctn_ptr, owner_ptr, set![pg_ptr], PageSize::SZ4k);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()
                 && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
@@ -352,7 +350,6 @@ pub(crate) fn kill_container_pages_move_2m(
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR && page_index_2m_valid(pg_idx)
             && krnl.pg_arr.spec_index(pg_idx).view().view().state is Free2m) by {
-            reveal(LinkedList::wf_value_list);
             allocator_free_2m_pages_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, a2, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx); hugepage_2m_wf_head_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
@@ -368,7 +365,6 @@ pub(crate) fn kill_container_pages_move_2m(
             kernel_container_free_2m_page_moved_implies_u_step(&before, &moved_k, ctn_ptr, owner_ptr, page_2m_all_ptrs(pg_idx));
             kill_container_pages_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
             kill_container_move_page_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, ctn_ptr, owner_ptr, page_2m_all_ptrs(pg_idx), PageSize::SZ2m);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()
                 && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
@@ -529,7 +525,6 @@ pub(crate) fn kill_container_pages_move_1g(
         let pg_idx = page_ptr2page_index(pg_ptr);
         assert(index_valid(NUM_PAGES, pg_idx) && krnl.pg_arr.lock_id_by_index(pg_idx).major == FREE_PAGE_LOCK_MAJOR && page_index_1g_valid(pg_idx)
             && krnl.pg_arr.spec_index(pg_idx).view().view().state is Free1g) by {
-            reveal(LinkedList::wf_value_list);
             allocator_free_1g_pages_wf_global_at(krnl.allc_1g_mp, krnl.pg_arr, a1, pg_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, pg_idx); hugepage_1g_wf_head_at(krnl.pg_arr, pg_idx);
         };
         let ghost before = *krnl;
@@ -545,7 +540,6 @@ pub(crate) fn kill_container_pages_move_1g(
             kernel_container_free_1g_page_moved_implies_u_step(&before, &moved_k, ctn_ptr, owner_ptr, page_1g_all_ptrs(pg_idx));
             kill_container_pages_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
             kill_container_move_page_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, ctn_ptr, owner_ptr, page_1g_all_ptrs(pg_idx), PageSize::SZ1g);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()
                 && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()

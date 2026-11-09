@@ -385,7 +385,6 @@ fn thread_exit_reclaim_lock_table(
         let did = match iommu_table { Some(it) => lock_k.it_mp.spec_index(it).view().did, None => None };
         assert(lctx.iommu_root_table_lock_map() =~= table_lctx.iommu_root_table_lock_map());
         assert(lctx.pagetable_lock_map().dom().contains(pagetable));
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_lock_table_step_pre_from_k(&lock_k, &lock_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable);

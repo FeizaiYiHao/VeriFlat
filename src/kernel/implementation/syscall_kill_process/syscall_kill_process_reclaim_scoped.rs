@@ -247,7 +247,6 @@ pub(crate) fn kill_reclaim_held_4k_page_scoped(
     }
     let ghost entry_lctx = *lctx;
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let (ref_count, is_io_page, owner) = {
         let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
         (page.ref_count, page.is_io_page, page.owning_container)
@@ -489,7 +488,6 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let (ref_count, is_io_page, owner) = {
         let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
         (page.ref_count, page.is_io_page, page.owning_container)

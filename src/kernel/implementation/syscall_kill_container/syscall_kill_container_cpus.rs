@@ -322,7 +322,6 @@ fn kill_container_cpus_enter(
         kernel_cpu_set_locked_and_marked_implies_u_step(&before, &marked_k, ctn_ptr, cpu_id);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thrd_ptr);
         kill_container_cpus_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, ctn_ptr);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_container_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
     }
@@ -434,7 +433,6 @@ fn kill_container_pages_enter(
         kernel_container_without_cpus_implies_u(&before, ctn_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&before, &entered_k, thrd_ptr);
         kill_container_pages_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, thrd_ptr, ctn_ptr);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_container_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
     }
@@ -571,7 +569,6 @@ fn kill_container_move_cpu(
         kill_container_move_cpu_pre_from_k(&base, cpu_i, ctn_ptr);
         kernel_cpu_moved_to_container_implies_u_step(&base, &moved_k, cpu_i, ctn_ptr, owner_ptr);
         kill_container_move_cpu_step_from_u(kernel_k_to_kernel_u(base), kernel_k_to_kernel_u(moved_k), cpu_id, ctn_ptr, owner_ptr, cpu_i);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
         kill_container_trace_push(&*steps, base_steps, start, pre, kernel_k_to_kernel_u(base), kernel_k_to_kernel_u(moved_k), cpu_id, ctx);
     }

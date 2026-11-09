@@ -249,7 +249,6 @@ pub(crate) fn kill_reclaim_flush(
         proof {
             let tlb_k = *krnl;
             kill_tlb_flush_step_from_k(&iter_k, &tlb_k, c, pcid, flushed);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             if tlb_k.cpu_tlb.view() == iter_k.cpu_tlb.view() { krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps); }
             else { krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps); }
             kill_step_pre_from_k(&iter_k, &iter_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
@@ -271,7 +270,6 @@ pub(crate) fn kill_reclaim_flush(
         kernel_thread_syscall_progress_changed_implies_u_step(&flushed_k, &*krnl, thrd_ptr);
         kill_flushed_step_from_u(flushed_pre, flushed_post, cpu_id, thrd_ptr, target, scope);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_trace_push(&*steps, flushed_before, start, pre, flushed_pre, flushed_post, cpu_id, ctx);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
@@ -343,6 +341,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
             final(krnl).cpu_tlb.structure_cache((c, pcid))),
 {
     hide(typed_lock_maps_aligned);
+    broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(c, pcid, Tracked(&mut *lctx));
     let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, c, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
     let flushed = hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid;
@@ -367,7 +366,6 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
     };
     krnl.wunlock_pcid_needflush(c, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
     proof {
-        assert(lctx.pcid_needflush_lock_map() =~= old(lctx).pcid_needflush_lock_map());
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
@@ -511,7 +509,6 @@ pub(crate) fn kill_reclaim_held_leaves(
         proof {
             kill_step_pre_from_k(&refund_2m_k, &refund_2m_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
             kill_refund_pre_from_k(&refund_2m_k, target, entry_thread.owning_container);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         }
         refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
@@ -525,7 +522,6 @@ pub(crate) fn kill_reclaim_held_leaves(
         proof {
             kill_step_pre_from_k(&refund_1g_k, &refund_1g_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: true }, scope);
             kill_refund_pre_from_k(&refund_1g_k, target, entry_thread.owning_container);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         }
         refund_unmap_1g_quota(krnl, thrd_ptr, &mut indirect_1g, &mut direct_1g, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {

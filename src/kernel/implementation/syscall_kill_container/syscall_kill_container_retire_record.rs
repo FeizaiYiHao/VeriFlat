@@ -150,7 +150,6 @@ pub(crate) fn kill_container_retire_commit_and_record(
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thrd_ptr);
         kill_container_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thrd_ptr, ctn_ptr, parent_ptr, owner_ptr,
             retired_k.allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view(), retired_k.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view());
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }

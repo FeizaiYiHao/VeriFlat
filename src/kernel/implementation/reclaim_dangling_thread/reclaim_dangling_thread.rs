@@ -71,6 +71,7 @@ pub fn reclaim_dangling_thread(
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
 {
+    broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
         thread_perms_wf_at(krnl.thrd_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid();
@@ -78,7 +79,6 @@ pub fn reclaim_dangling_thread(
     }
     let pg_idx = page_ptr2page_index(dangling_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
     proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
@@ -109,9 +109,6 @@ pub fn reclaim_dangling_thread(
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         reclaim_dangling_thread_eof_fields(start, entry, mid, *krnl, cpu_id, dangling_ptr, owner, allc_ptr, cache_node_addr);
         assert(lctx.page_lock_map() =~= old(lctx).page_lock_map());
-        assert(lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map());
-        assert(lctx.allocator_cache_4k_lock_map() =~= old(lctx).allocator_cache_4k_lock_map());
-        assert(lctx.allocator_global_pool_4k_lock_map() =~= old(lctx).allocator_global_pool_4k_lock_map());
         assert(killed_thread_reclaim_lock_context(*krnl, *lctx)) by { thread_cpu_wf_cpu_at(old(krnl).thrd_mp, old(krnl).cpu_arr, old(lctx).cpu_id()); };
     }
 }

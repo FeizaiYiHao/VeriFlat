@@ -44,6 +44,7 @@ pub(super) fn reclaim_killed_thread_link(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -108,15 +109,12 @@ pub(super) fn reclaim_killed_thread_link(
     proof {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
         assert(lctx.cpu_lock_map().dom().contains(cpu_id));
-        assert(kernel_steps_prefix_unchanged(iter_steps, iter_steps)) by { reveal(kernel_steps_prefix_unchanged); };
     }
     release_killed_thread_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, Tracked(&thread_lock_perm));
     let ghost caller_k = *krnl;
     let ghost desc_steps = steps.view();
-    proof { assert(kernel_steps_prefix_unchanged(desc_steps, desc_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
     let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, Tracked(&thread_lock_perm));
     let ghost caller_steps = steps.view();
-    proof { assert(kernel_steps_prefix_unchanged(caller_steps, caller_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
     reclaim_dangling_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, Tracked(thread_lock_perm));
     let ghost reclaim_snap = steps.snapshot_k();
     proof {

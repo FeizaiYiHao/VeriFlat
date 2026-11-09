@@ -37,6 +37,7 @@ pub(super) fn release_killed_thread_descriptors(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -63,7 +64,10 @@ pub(super) fn release_killed_thread_descriptors(
         killed_thread_reclaim_partial_trace(final(steps).view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container),
 {
     let mut index: EndpointIdx = 0;
-    proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); }
+    proof {
+        held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), steps.view())) by { reveal(kernel_steps_prefix_unchanged); };
+    }
     while index < MAX_NUM_ENDPOINT_DESCRIPTORS
         invariant
             0 <= index <= MAX_NUM_ENDPOINT_DESCRIPTORS,
@@ -75,6 +79,7 @@ pub(super) fn release_killed_thread_descriptors(
             steps.snapshot_k() == *krnl,
             old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), steps.view()),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
@@ -172,6 +177,7 @@ pub fn release_killed_thread_caller(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -209,6 +215,7 @@ pub fn release_killed_thread_caller(
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
         assert(lctx.cpu_lock_map().dom().contains(cpu_id));
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), steps.view())) by { reveal(kernel_steps_prefix_unchanged); };
         thread_perms_wf_map(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
@@ -303,6 +310,7 @@ pub fn reclaim_killed_thread_chain(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -326,6 +334,7 @@ pub fn reclaim_killed_thread_chain(
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
         assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map().remove(thrd_ptr).insert(thrd_ptr, lctx.thread_lock_map()[thrd_ptr]));
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), steps.view())) by { reveal(kernel_steps_prefix_unchanged); };
     }
     loop
         invariant_except_break
@@ -362,6 +371,7 @@ pub fn reclaim_killed_thread_chain(
             steps.snapshot_k() == *krnl,
             old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), steps.view()),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
@@ -411,7 +421,6 @@ pub fn reclaim_killed_thread_chain(
                 let processes = old(lctx).process_lock_map().dom();
                 let containers = old(lctx).container_lock_map().dom();
                 held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
-                assert(kernel_steps_prefix_unchanged(iter_steps, iter_steps)) by { reveal(kernel_steps_prefix_unchanged); };
                 killed_thread_reclaim_step_pre_from_k(&iter_k, old(krnl), cpu_id, processes, containers);
                 killed_thread_reclaim_link_trace(steps.view(), old(steps).view().len() as int, iter_steps, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(iter_k), cpu_id, processes, containers,
                     old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container);

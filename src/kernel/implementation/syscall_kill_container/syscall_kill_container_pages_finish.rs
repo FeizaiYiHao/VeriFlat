@@ -130,7 +130,6 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         kernel_thread_syscall_progress_changed_implies_u_step(&base, &*krnl, thrd_ptr);
         kill_container_retire_stage_step_from_u(pre_u, post_u, cpu_id, thrd_ptr, ctn_ptr);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
@@ -139,7 +138,6 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(pools_1g), Tracked(quotas_1g));
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_root_removed_implies_no_owned_processes(*krnl, ctn_ptr);
         assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty() && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view().is_empty()) by { container_without_children_and_processes_owns_no_threads(*krnl, ctn_ptr); };

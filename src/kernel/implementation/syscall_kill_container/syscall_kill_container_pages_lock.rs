@@ -60,9 +60,9 @@ pub(crate) fn kill_container_pages_lock(
     let a1 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_1g;
     let o1 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_1g;
     proof {
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_for_equal; };
     }
     let mut c: usize = 0;
     while c < NUM_CPUS

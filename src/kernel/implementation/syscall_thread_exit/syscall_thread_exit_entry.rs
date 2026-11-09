@@ -114,7 +114,6 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
                 krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
                 krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
                     thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
                 }

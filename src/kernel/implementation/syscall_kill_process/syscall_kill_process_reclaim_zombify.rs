@@ -227,7 +227,6 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, stage, scope);
         kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, stage, pagetable, iommu_table);
         kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, stage, size, scope);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_perms_wf_at(krnl.prc_mp, target);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
@@ -335,6 +334,7 @@ pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
             &&& final(krnl).allc_4k_mp.spec_index(allc_ptr).quota.view().view() as int == old(krnl).allc_4k_mp.spec_index(allc_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_4k as int
         }),
 {
+    broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
@@ -365,7 +365,6 @@ pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
         assert(krnl.allc_4k_mp.spec_index(allc_ptr).wf() && krnl.allc_4k_mp.spec_index(allc_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr); };
     }
     krnl.wunlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-    proof { assert(lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map()); }
 }
 
 /// Under the quota lock of the 2M allocator of the target's container, move the target's whole 2M quota to that allocator.
@@ -409,6 +408,7 @@ pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
             &&& final(krnl).allc_2m_mp.spec_index(allc_ptr).quota.view().view() as int == old(krnl).allc_2m_mp.spec_index(allc_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_2m as int
         }),
 {
+    broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
@@ -439,7 +439,6 @@ pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
         assert(krnl.allc_2m_mp.spec_index(allc_ptr).wf() && krnl.allc_2m_mp.spec_index(allc_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allc_ptr); };
     }
     krnl.wunlock_allocator_quota_2m(allc_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-    proof { assert(lctx.allocator_quota_2m_lock_map() =~= old(lctx).allocator_quota_2m_lock_map()); }
 }
 
 /// Under the quota lock of the 1G allocator of the target's container, move the target's whole 1G quota to that allocator.
@@ -483,6 +482,7 @@ pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
             &&& final(krnl).allc_1g_mp.spec_index(allc_ptr).quota.view().view() as int == old(krnl).allc_1g_mp.spec_index(allc_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_1g as int
         }),
 {
+    broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let ctn_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
@@ -513,7 +513,6 @@ pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
         assert(krnl.allc_1g_mp.spec_index(allc_ptr).wf() && krnl.allc_1g_mp.spec_index(allc_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); };
     }
     krnl.wunlock_allocator_quota_1g(allc_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-    proof { assert(lctx.allocator_quota_1g_lock_map() =~= old(lctx).allocator_quota_1g_lock_map()); }
 }
 
 /// Unlock the target's emptied page table and IOMMU table.
@@ -629,7 +628,6 @@ pub(crate) fn kill_reclaim_unlock_table(
         if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&unlock_k, target); }
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, target, pagetable, thrd_ptr, false);
         kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thrd_ptr, target, scope);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_perms_wf_at(krnl.prc_mp, target);
         kill_trace_push(&*steps, unlock_before, start, pre, before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, ctx);
@@ -745,7 +743,6 @@ pub(crate) fn kill_reclaim_zombify(
         kernel_thread_syscall_progress_changed_implies_u_step(&zombified_k, &*krnl, thrd_ptr);
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Zombie, scope); kill_zombify_pre_from_k(&entry_k, target);
         kill_zombify_step_from_u(pre_u, kernel_k_to_kernel_u(zombified_k), post_u, cpu_id, thrd_ptr, target, scope);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_perms_wf_at(krnl.prc_mp, target);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);

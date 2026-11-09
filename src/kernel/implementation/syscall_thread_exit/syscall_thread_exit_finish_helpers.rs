@@ -135,7 +135,6 @@ pub(super) fn thread_exit_finish_lock_page_and_cache(
     }
     let pg_idx = page_ptr2page_index(thrd_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let owner = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
     proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;

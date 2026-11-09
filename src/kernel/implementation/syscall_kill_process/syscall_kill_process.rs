@@ -79,7 +79,6 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
     if process_res.is_none() {
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None);
             kill_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, child_index);
             kill_result_pre_from_k(&*old(krnl), cpu_id, child_index, prc_ptr, thrd_ptr);
@@ -92,7 +91,6 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(thrd_ptr), None, None, None);
             kill_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, child_index);
             kill_result_pre_from_k(&*old(krnl), cpu_id, child_index, prc_ptr, thrd_ptr);
@@ -107,7 +105,6 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(thrd_ptr), None, None, None);
             kill_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, child_index);
             kill_result_pre_from_k(&*old(krnl), cpu_id, child_index, prc_ptr, thrd_ptr);
@@ -146,7 +143,6 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(thrd_ptr), None, None, None);
             kill_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, child_index);
             kill_result_pre_from_k(&*old(krnl), cpu_id, child_index, prc_ptr, thrd_ptr);
@@ -285,7 +281,6 @@ pub(crate) fn kill_walk_and_finish(
     let ghost cleared_k = *krnl;
     krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-    assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);

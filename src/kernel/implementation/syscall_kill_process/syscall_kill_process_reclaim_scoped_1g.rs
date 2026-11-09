@@ -279,7 +279,7 @@ fn kill_reclaim_last_held_1g_mapping_scoped(
         assert(lctx.page_lock_map() =~= entry_lctx.page_lock_map() && lctx.allocator_global_pool_1g_lock_map() =~= entry_lctx.allocator_global_pool_1g_lock_map()
             && lctx.allocator_quota_1g_lock_map() =~= entry_lctx.allocator_quota_1g_lock_map());
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        kill_scoped_credit_1g_step_from_k(&snap, &*krnl, pagetable, owner, allc_ptr, origin);
+        kernel_page_freed_to_owner_quota_1g_implies_u_step(&snap, &*krnl, pagetable, owner, allc_ptr, origin);
         let post_u = kernel_k_to_kernel_u(*krnl);
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
         kill_trace_from_scoped_credit(&*steps, before, start, pre, post_u, &snap, &entry_lctx, cpu_id, ctx, prc_ptr, thrd_ptr, target, stage, scope);
@@ -395,7 +395,6 @@ pub(crate) fn kill_reclaim_held_1g_page_scoped(
     }
     let ghost entry_lctx = *lctx;
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx); }
     let (ref_count, owner) = {
         let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
         (page.ref_count, page.owning_container)

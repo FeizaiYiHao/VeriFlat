@@ -101,9 +101,9 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, ctn_ptr); container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr);
         cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, cpu_offline_flags_ptr(ctn_ptr));
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_for_equal; };
     }
     let flags_ptr = ctn_ptr + 4096;
     let pcid_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().pcid_allocator;
@@ -409,9 +409,9 @@ pub(crate) fn kill_container_retire_lock_shards(
 {
     proof {
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_for_equal; };
     }
     let sched = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
     let mut c: usize = 0;
@@ -620,9 +620,9 @@ pub(crate) fn kill_container_retire_lock_caches(
     proof {
         container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_for_equal; };
     }
     let a4 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
