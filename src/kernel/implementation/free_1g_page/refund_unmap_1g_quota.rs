@@ -102,7 +102,7 @@ fn refund_unmap_1g_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
             && krnl.ctn_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1)) by {
             let origin = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
             let uppers = krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view();
-            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr);
+            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr);
             container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, owner); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, uppers[depth - 1]);
             broadcast use vstd::seq::Seq::lemma_index_contains;
         };

@@ -152,8 +152,7 @@ pub(super) fn mmap_2m_fill_enter(
                 locked_k.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), entered_k.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr);
             mmap_2m_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(locked_k), cpu_id, *va_range, Mmap2mPhase::Fill);
         };
-        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
     }
     let ghost entered = steps.view();
     let Tracked(window_perms) = mmap_2m_fill_range_structure(krnl, va_range, cover, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx),
@@ -176,8 +175,7 @@ pub(super) fn mmap_2m_fill_enter(
         mmap_2m_downgrade_step_from_u(&filled_k, kernel_k_to_kernel_u(downgraded_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr,
             whole_pagetable(downgraded_k.pt_mp, downgraded_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
         mmap_2m_range_steps_from_downgrade(&*steps, filled_steps, entered.len() as int, cpu_id);
-        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
+        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         broadcast use spec_va_2m_valid_index_roundtrip;
     }
     mmap_2m_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr,

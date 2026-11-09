@@ -120,11 +120,6 @@ verus! {
                 && old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())) by {
                 map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_1g_lock_map(), alloc_ptr_1g, TypedHeldLock { lock_id: old(krnl).allc_1g_mp.spec_index(alloc_ptr_1g).global_pool.lock_id(), mode: TypedLockMode::Write });
             };
-            assert({
-                &&& krnl.ctn_mp.dom().contains(ctn_ptr)
-                &&& krnl.thrd_mp.spec_index(thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(thrd_ptr).view().state
-                &&& krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress == old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress
-            }) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
         }
         (pg_ptr, Tracked(page_lock_perm))
     }

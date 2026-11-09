@@ -148,7 +148,6 @@ pub(super) fn unmap_1g_unmap_and_finish(
             unmap_1g_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), cpu_id, prc_ptr, thrd_ptr, pagetable, va, len, *va_range);
             unmap_1g_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range);
         };
-        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
     }
     let ghost entered = steps.view();
     unmap_1g_range(krnl, va_range, pagetable, thrd_ptr, cpu_id, cr3, pcid, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm));

@@ -264,7 +264,6 @@ pub fn mmap_1g_reclaim_table_page(
     proof {
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(cache_pre.pt_mp, cache_pre.pt_lower.view(), pagetable));
         page_array_wf_at(krnl.pg_arr, pg_idx);
-        assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
     }
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx));
     let ghost helper_pre = *krnl;

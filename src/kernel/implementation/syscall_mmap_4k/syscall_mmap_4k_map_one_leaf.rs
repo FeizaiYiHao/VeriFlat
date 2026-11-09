@@ -196,7 +196,6 @@ pub(super) fn map_one_mmap_4k_page(
         };
         mmap_4k_range_steps_from_leaf(&*steps, leaf_steps, entry_steps.len() as int, cpu_id);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
     }
 }
