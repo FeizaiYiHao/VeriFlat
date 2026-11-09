@@ -941,16 +941,12 @@ pub fn share_mapping_4k_build_and_share(
             &&& final(krnl).ctn_mp.dom().contains(source)
             &&& final(krnl).ctn_mp.spec_index(source).is_init() == old(krnl).ctn_mp.spec_index(source).is_init()
             &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
             &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
             &&& final(krnl).ctn_mp.dom().contains(target_container)
             &&& final(krnl).ctn_mp.spec_index(target_container).is_init() == old(krnl).ctn_mp.spec_index(target_container).is_init()
             &&& final(krnl).ctn_mp.spec_index(target_container).view_rodata() == old(krnl).ctn_mp.spec_index(target_container).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(target_container).view().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(target_container).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(target_container).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(target_container).locking_thread() == old(krnl).ctn_mp.spec_index(target_container).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(target_container).being_killed() == old(krnl).ctn_mp.spec_index(target_container).being_killed()
             &&& final(krnl).ctn_mp.spec_index(target_container).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(target_container).view().owned_pages, ..old(krnl).ctn_mp.spec_index(target_container).view() })

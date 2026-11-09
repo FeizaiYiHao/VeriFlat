@@ -230,16 +230,12 @@ verus! {
                 &&& final(krnl).ctn_mp.dom().contains(source)
                 &&& final(krnl).ctn_mp.spec_index(source).is_init() == old(krnl).ctn_mp.spec_index(source).is_init()
                 &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
-                &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
                 &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).is_init() == old(krnl).ctn_mp.spec_index(ctn_ptr).is_init()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
-                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })

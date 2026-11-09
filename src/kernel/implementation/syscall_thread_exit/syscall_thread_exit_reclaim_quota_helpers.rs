@@ -6,7 +6,7 @@ use super::syscall_thread_exit_quota::thread_exit_return_quota;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_eof::{thread_exit_tables_emptied_eof, thread_exit_mark_exited_eof};
+use super::syscall_thread_exit_reclaim_eof::thread_exit_tables_emptied_eof;
 
 verus! {
 /// Return the `size` quota of the exiting last thread and of its process to their container as one recorded step,
@@ -80,14 +80,10 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view() == match size {
@@ -96,7 +92,6 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
             PageSize::SZ1g => Process { quota_1g: 0, ..old(krnl).prc_mp.spec_index(prc_ptr).view() },
         },
         final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata(),
-        final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq,
         final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(prc_ptr).being_killed() == old(krnl).prc_mp.spec_index(prc_ptr).being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
@@ -228,19 +223,14 @@ pub(super) fn thread_exit_reclaim_release_tables(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), ..old(krnl).prc_mp.spec_index(prc_ptr).view() }),
         final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata(),
-        final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq,
         final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(prc_ptr).being_killed() == old(krnl).prc_mp.spec_index(prc_ptr).being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
@@ -261,20 +251,15 @@ pub(super) fn thread_exit_reclaim_release_tables(
         let thread = krnl.thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
         thread.exited = Ghost(true);
     }
-    proof {
-        thread_exit_mark_exited_eof(zombie, *krnl, thrd_ptr);
-        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-    }
-    let ghost progressed = *krnl;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, prc_ptr); }
+    proof { assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; process_perms_wf_map(zombie.prc_mp); process_perms_wf_at(zombie.prc_mp, prc_ptr); }
     {
         let process = krnl.prc_mp.borrow_mut_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
         process.state = Ghost(ProcessState::TablesEmptied);
     }
     proof {
-        process_thread_wf_thread_at(progressed.prc_mp, progressed.thrd_mp, thrd_ptr);
-        assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, prc_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
-        thread_exit_tables_emptied_eof(progressed, *krnl, prc_ptr, thrd_ptr, pagetable);
+        process_thread_wf_thread_at(zombie.prc_mp, zombie.thrd_mp, thrd_ptr);
+        assert(thread_exit_tables_emptied_eof_transition_framing(zombie, *krnl, prc_ptr, thrd_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
+        thread_exit_tables_emptied_eof(zombie, *krnl, prc_ptr, thrd_ptr, pagetable);
     }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));

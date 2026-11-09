@@ -94,15 +94,12 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata().view().depth))
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view() == old(krnl).ctn_mp.spec_index(e.container_ptr).view()
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(e.container_ptr).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(e.container_ptr).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(e.container_ptr).being_killed()
             &&& e.container_lock_perm.view().state() is WriteLock
             &&& e.container_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.process_lock_perm.view().lock_id() })
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view() == old(krnl).prc_mp.spec_index(e.process_ptr).view()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata() == old(krnl).prc_mp.spec_index(e.process_ptr).view_rodata()
-            &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(e.process_ptr).view().uppertree_seq
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).control() == old(krnl).prc_mp.spec_index(e.process_ptr).control()
             &&& !old(krnl).prc_mp.spec_index(e.process_ptr).locked()
             &&& e.process_lock_perm.view().state() is WriteLock

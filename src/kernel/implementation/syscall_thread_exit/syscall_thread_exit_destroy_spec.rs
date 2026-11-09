@@ -112,7 +112,6 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
             &&& post.pg_arr.spec_index(i).view().view().owning_container == pre.pg_arr.spec_index(i).view().view().owning_container
             &&& post.pg_arr.spec_index(i).view().view().mappings() == pre.pg_arr.spec_index(i).view().view().mappings()
         }
-    &&& post_page.is_init() == pre_page.is_init()
     &&& post_page.view_rodata() == pre_page.view_rodata()
     &&& post_page.view_ghost() == pre_page.view_ghost()
     &&& post_page.locking_thread() == pre_page.locking_thread()

@@ -48,7 +48,7 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
         && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
         assert(krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().len() > depth
-            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
+            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { container_subtree_set_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, thread_owner); };
     }
 }
 
@@ -92,7 +92,7 @@ proof fn prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(
         && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
         assert(krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().len() > depth
-            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
+            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { container_subtree_set_wf_at(krnl.rt_ctn, krnl.ctn_mp, owner, thread_owner); };
     }
 }
 

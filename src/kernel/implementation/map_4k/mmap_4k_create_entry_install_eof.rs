@@ -29,7 +29,6 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
     &&& new_pt.locking_thread() == old_pt.locking_thread()
     &&& new_pt.being_killed() == old_pt.being_killed()
     &&& old_pt.locking_thread() is Write ==> new_pt.view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_ptr)
-    &&& !(old_pt.locking_thread() is Write) ==> new_pt.view().lower_backup.view() == old_pt.view().lower_backup.view()
     &&& !(old_pt.locking_thread() is Write) ==> new_pt.view() == old_pt.view()
     &&& new_c.page_closure() == old_c.page_closure().insert(pg_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()

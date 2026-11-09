@@ -254,7 +254,6 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
             &&& PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
                 == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
-            &&& post.ctn_mp.spec_index(c).view().uppertree_seq == pre.ctn_mp.spec_index(c).view().uppertree_seq
             &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == pre.ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == pre.ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints
@@ -1488,7 +1487,6 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
             let quota = pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int;
             &&& b.view() == if c == ctn_ptr { Container { zombie: a.view().zombie || (zombie && a.view().root_process == prc_ptr), ..a.view() } } else { a.view() }
             &&& b.view_rodata() == a.view_rodata()
-            &&& b.view().uppertree_seq == a.view().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
             &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints
@@ -1574,7 +1572,6 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
             let b = post.ctn_mp.spec_index(c);
             &&& b.view() == a.view()
             &&& b.view_rodata() == a.view_rodata()
-            &&& b.view().uppertree_seq == a.view().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
             &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints

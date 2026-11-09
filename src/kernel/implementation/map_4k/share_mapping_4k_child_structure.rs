@@ -176,13 +176,9 @@ fn build_new_child_page_structure(
             let source = transfer_source->Some_0;
             &&& final(krnl).ctn_mp.dom().contains(source)
             &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
             &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
-            &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })
@@ -198,7 +194,6 @@ fn build_new_child_page_structure(
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -446,13 +441,9 @@ pub fn build_new_child_structure(
             let source = transfer_source->Some_0;
             &&& final(krnl).ctn_mp.dom().contains(source)
             &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
             &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
-            &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
             &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })
@@ -468,7 +459,6 @@ pub fn build_new_child_structure(
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -603,13 +593,9 @@ pub fn build_new_child_structure(
                 &&& source == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container
                 &&& krnl.ctn_mp.dom().contains(source)
                 &&& krnl.ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-                &&& krnl.ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
-                &&& krnl.ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
                 &&& krnl.ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
                 &&& krnl.ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
                 &&& krnl.ctn_mp.spec_index(source).view() == (Container { owned_pages: krnl.ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
-                &&& krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
-                &&& krnl.ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
                 &&& krnl.ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
                 &&& krnl.ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
                 &&& krnl.ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: krnl.ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })
@@ -648,7 +634,6 @@ pub fn build_new_child_structure(
                 &&& post_process.view_rodata() == pre_process.view_rodata()
                 &&& post_process.locking_thread() == pre_process.locking_thread()
                 &&& post_process.control() == pre_process.control()
-                &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
             }),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             krnl.thrd_mp.dom().contains(thrd_ptr),

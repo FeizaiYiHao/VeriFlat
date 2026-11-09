@@ -99,14 +99,10 @@ pub(super) fn thread_exit_reclaim_flush(
         {
             let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
@@ -115,13 +111,10 @@ pub(super) fn thread_exit_reclaim_flush(
         ({
             let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -183,26 +176,19 @@ pub(super) fn thread_exit_reclaim_flush(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         ({
             let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -335,14 +321,10 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         {
             let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
@@ -351,13 +333,10 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         ({
             let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -421,26 +400,19 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         ({
             let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -583,14 +555,10 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         {
             let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
@@ -599,13 +567,10 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         ({
             let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -660,26 +625,19 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         ({
             let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -773,14 +731,10 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             ({
                 let post_container = krnl.ctn_mp.spec_index(ctn_ptr);
                 let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-                &&& post_container.view_lock() == pre_container.view_lock()
-                &&& post_container.is_init() == pre_container.is_init()
                 &&& post_container.view() == pre_container.view()
                 &&& post_container.view_rodata() == pre_container.view_rodata()
                 &&& post_container.locking_thread() == pre_container.locking_thread()
                 &&& post_container.control() == pre_container.control()
-                &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-                &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
             }),
             entry_k.ctn_mp.dom().contains(ctn_ptr),
             entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
@@ -789,13 +743,10 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             ({
                 let post_process = krnl.prc_mp.spec_index(prc_ptr);
                 let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-                &&& post_process.view_lock() == pre_process.view_lock()
-                &&& post_process.is_init() == pre_process.is_init()
                 &&& post_process.view() == pre_process.view()
                 &&& post_process.view_rodata() == pre_process.view_rodata()
                 &&& post_process.locking_thread() == pre_process.locking_thread()
                 &&& post_process.control() == pre_process.control()
-                &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
             }),
             entry_k.prc_mp.dom().contains(prc_ptr),
             entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -968,14 +919,10 @@ pub(super) fn thread_exit_reclaim_return_quota(
         {
             let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
@@ -984,13 +931,10 @@ pub(super) fn thread_exit_reclaim_return_quota(
         ({
             let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
             let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
-            &&& post_process.view_lock() == pre_process.view_lock()
-            &&& post_process.is_init() == pre_process.is_init()
             &&& post_process.view() == pre_process.view()
             &&& post_process.view_rodata() == pre_process.view_rodata()
             &&& post_process.locking_thread() == pre_process.locking_thread()
             &&& post_process.control() == pre_process.control()
-            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
         }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
@@ -1067,19 +1011,14 @@ pub(super) fn thread_exit_reclaim_return_quota(
         {
             let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
             let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
-            &&& post_container.view_lock() == pre_container.view_lock()
-            &&& post_container.is_init() == pre_container.is_init()
             &&& post_container.view() == pre_container.view()
             &&& post_container.view_rodata() == pre_container.view_rodata()
             &&& post_container.locking_thread() == pre_container.locking_thread()
             &&& post_container.control() == pre_container.control()
-            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
-            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
         },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), quota_4k: 0, quota_2m: 0, quota_1g: 0, ..entry_k.prc_mp.spec_index(prc_ptr).view() }),
         final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == entry_k.prc_mp.spec_index(prc_ptr).view_rodata(),
-        final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == entry_k.prc_mp.spec_index(prc_ptr).view().uppertree_seq,
         final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == entry_k.prc_mp.spec_index(prc_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(prc_ptr).being_killed() == entry_k.prc_mp.spec_index(prc_ptr).being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),

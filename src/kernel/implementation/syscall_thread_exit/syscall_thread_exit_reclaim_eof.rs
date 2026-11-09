@@ -6,13 +6,12 @@ use super::syscall_thread_exit_reclaim_spec::{thread_exit_tables_emptied_eof_tra
 verus! {
 proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
     requires
-        pre.inv(),
-        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
+        (KernelK { thrd_mp: post.thrd_mp, ..pre }).inv(),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr, thrd_ptr),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -29,53 +28,48 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
 }
 
-/// Marking the write-held, live exiting thread `thrd_ptr` as exited changes only its ghost state and keeps the kernel invariant.
-pub(super) proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, thrd_ptr: RwLockThreadPtr)
+/// Marking the write-held, live exiting thread `thrd_ptr` as exited keeps the kernel invariant on the entry state with only the thread map replaced by its final one.
+proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr, thrd_ptr),
         pre.thrd_mp.dom().contains(thrd_ptr),
         pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        post == (KernelK { thrd_mp: post.thrd_mp, ..pre }),
-        post.thrd_mp.perms_wf(),
-        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
-        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { exited: Ghost(true), ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
-        post.thrd_mp.spec_index(thrd_ptr).is_init() == pre.thrd_mp.spec_index(thrd_ptr).is_init(),
-        post.thrd_mp.spec_index(thrd_ptr).view_rodata() == pre.thrd_mp.spec_index(thrd_ptr).view_rodata(),
-        post.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost(),
-        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
-        post.thrd_mp.spec_index(thrd_ptr).control() == pre.thrd_mp.spec_index(thrd_ptr).control(),
-    ensures post.inv(),
+    ensures (KernelK { thrd_mp: post.thrd_mp, ..pre }).inv(),
 {
-    assert(thread_perms_wf(post.thrd_mp)) by {
+    reveal(thread_exit_tables_emptied_eof_transition_framing);
+    let mid = KernelK { thrd_mp: post.thrd_mp, ..pre };
+    assert(thread_perms_wf(mid.thrd_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
-    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { reveal(thread_invariant_fields_unchanged); };
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
-    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {
-        thread_invariant_fields_unchanged_implies_process_management_fields(pre.thrd_mp, post.thrd_mp);
-        process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thrd_mp, post.thrd_mp);
+    assert(thread_invariant_fields_unchanged(pre.thrd_mp, mid.thrd_mp)) by { reveal(thread_invariant_fields_unchanged); };
+    assert(mid.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(mid.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, mid); };
+    assert(process_thread_wf(mid.prc_mp, mid.thrd_mp)) by {
+        thread_invariant_fields_unchanged_implies_process_management_fields(pre.thrd_mp, mid.thrd_mp);
+        process_thread_wf_preserved_for_thread_process_management_fields(mid.prc_mp, pre.thrd_mp, mid.thrd_mp);
     };
-    assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
-    assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
+    assert(thread_dangling_chain_end_wf(mid.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, mid.thrd_mp); };
+    assert(process_emptied_threads_wf(mid.prc_mp, mid.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+    assert(mid.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, mid); };
 }
 
-/// Marking the write-held exiting process `prc_ptr`, whose tables map nothing and whose only thread `thrd_ptr`
-/// is parked as an exited zombie, as having emptied its tables keeps the kernel invariant.
+/// Marking the write-held exiting thread `thrd_ptr` as exited and its write-held process `prc_ptr`, whose tables map nothing and whose only thread is `thrd_ptr`, as having emptied its tables keeps the kernel invariant.
 pub(super) proof fn thread_exit_tables_emptied_eof(
     pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
 )
     requires
         pre.inv(),
-        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, prc_ptr, thrd_ptr),
         pre.prc_mp.dom().contains(prc_ptr),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
         pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -90,15 +84,17 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
     ensures post.inv(),
 {
+    thread_exit_mark_exited_eof(pre, post, prc_ptr, thrd_ptr);
     reveal(thread_exit_tables_emptied_eof_transition_framing);
+    let mid = KernelK { thrd_mp: post.thrd_mp, ..pre };
     process_perms_wf_at(pre.prc_mp, prc_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
-        assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-        assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
+        assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(mid, post); };
+        assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(mid.prc_mp, post.prc_mp, post.pt_mp); };
         assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
         // A page record names a held leaf of its table (4K, 2M) or a 1G mapping; none is left in the user range.
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
@@ -106,9 +102,9 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
             broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
         };
         assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
-        container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp);
-        container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp);
-        container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thrd_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp);
+        container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, mid.prc_mp, post.prc_mp);
+        container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, mid.prc_mp, post.prc_mp);
+        container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thrd_mp, post.allc_1g_mp, mid.prc_mp, post.prc_mp);
     };
     thread_exit_tables_emptied_eof_process(pre, post, prc_ptr, thrd_ptr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };

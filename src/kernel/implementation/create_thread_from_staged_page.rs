@@ -149,7 +149,6 @@ pub fn create_thread_from_staged_page_merged(
             old(krnl).ctn_mp.dom().contains(c) ==> {
                 &&& final(krnl).ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
                 &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == ctn_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(pg_ptr) }
