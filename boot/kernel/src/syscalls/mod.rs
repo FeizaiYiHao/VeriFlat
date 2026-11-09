@@ -740,12 +740,38 @@ pub fn user_copy_fixup(regs: &Registers) -> Option<u64> {
     (!from_user(regs) && (begin..end).contains(&regs.rip)).then_some(end)
 }
 
+/// Whether the loaded page table maps `va` present and user-accessible at every level, so the
+/// calling thread could read it itself. Page-table pages are identity-mapped in the kernel half.
+fn user_readable(va: usize) -> bool {
+    const PRESENT_USER: u64 = 0b101;
+    const HUGE: u64 = 1 << 7;
+    const ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
+    let cr3: u64;
+    unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags)) };
+    let mut table = cr3 & ADDR_MASK;
+    for level in (0..4).rev() {
+        let entry = unsafe { core::ptr::read_volatile((table as *const u64).add((va >> (12 + 9 * level)) & 511)) };
+        if entry & PRESENT_USER != PRESENT_USER {
+            return false;
+        }
+        if level == 0 || (level < 3 && entry & HUGE != 0) {
+            return true;
+        }
+        table = entry & ADDR_MASK;
+    }
+    false
+}
+
 fn debug_print(data: usize, len: usize) {
     let len = len.min(4096);
     if data.checked_add(len).is_none_or(|end| end > USER_END) {
         return;
     }
-    // The thread's page table is loaded, and every user mapping is readable from ring 0.
+    // Reads only bytes whose pages the thread's own page table maps present and user-accessible.
+    if len > 0 && !(data & !0xfff..data + len).step_by(4096).all(user_readable) {
+        log::info!("[user@{}] <buffer {:#x}+{:#x} not user-readable>", cpu::get_cpu_id(), data, len);
+        return;
+    }
     let mut buffer = [0u8; 4096];
     let copied = unsafe { copy_from_user(buffer.as_mut_ptr(), data as *const u8, len) };
     match core::str::from_utf8(&buffer[..copied]) {
