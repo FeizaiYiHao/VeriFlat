@@ -1,4 +1,12 @@
 #[cfg(not(feature = "split-crates"))]
+pub mod merge_2m;
+#[cfg(not(feature = "split-crates"))]
+pub mod split_2m;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_merge_2m;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_split_2m;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_alloc_quota;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_thread;

@@ -5,6 +5,7 @@
 #
 # Usage: boot/run.sh [extra qemu args...]
 # NO_TIMER=1 builds the kernel and dom0 with feature `no-timer`: no LAPIC timer, dom0 runs its timings only.
+# DMA_WRITE_TEST=1 runs only the opt-in EDU device-to-RAM revocation regression.
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
 # 1G quota (0 without CPUID pdpe1gb); `-m 2304` covers the 2 GiB page array.
@@ -13,7 +14,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PROFILE=${PROFILE:-release}
-cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0 ${NO_TIMER:+--features kernel/no-timer,dom0/no-timer}
+BUILD_FEATURES=()
+if [ -n "${NO_TIMER:-}" ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0/no-timer); fi
+if [ "${DMA_WRITE_TEST:-0}" = 1 ]; then BUILD_FEATURES+=(--features dom0/dma-write-test); fi
+cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0 "${BUILD_FEATURES[@]}"
 OUT=target/x86_64-unknown-none/$PROFILE
 
 JUMBO=$(mktemp --suffix=.veriflat-jumbo)
@@ -31,5 +35,5 @@ qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 2304 \
     -kernel "$OUT/aloader" -initrd "$JUMBO" \
     -nographic -serial mon:stdio \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-    -device intel-iommu,aw-bits=48,intremap=on -device edu -nic none \
+    -device intel-iommu,aw-bits=48,intremap=on -device edu,dma_mask=0xffffffffffff -nic none \
     -no-reboot "$@"

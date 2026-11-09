@@ -21,6 +21,19 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         ret
     }
 
+    pub fn new_with_init_value(value: T) -> (ret: Self)
+        requires
+            0 <= N <= usize::MAX,
+        ensures
+            ret.wf(),
+            ret.len() == 0,
+            ret.capacity() == N,
+            ret.view() == Seq::<T>::empty(),
+            ret.data.view() == Seq::new(N as nat, |i: int| value),
+    {
+        Self { data: Array::new_with_init_value(value), len: 0 }
+    }
+
     #[verifier(when_used_as_spec(spec_len))]
     pub fn len(&self) -> (ret: usize)
         requires
@@ -106,6 +119,18 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             final(self).view() =~= old(self).view().update(index as int, value),
     {
         self.data.set(index, value);
+    }
+
+    pub fn clear(&mut self)
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+            final(self).len() == 0,
+            final(self).view() == Seq::<T>::empty(),
+            final(self).data == old(self).data,
+    {
+        self.len = 0;
     }
 }
 }

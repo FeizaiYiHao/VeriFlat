@@ -9,6 +9,12 @@ publish = false
 # For a kernel built with `no-timer`: runs only the timings, which need no tick, and skips every phase
 # that needs preemption, an idle CPU's tick, or an offline request noticed at a tick.
 no-timer = []
+# Focused syscall 54 integration test; exits before the general benchmark suite.
+split-test = []
+# Focused permission-backed mmap zeroing regression.
+zero-test = []
+# Focused EDU device-to-RAM DMA revocation regression.
+dma-write-test = []
 
 [dependencies]
 vsys = { path = "../vsys" }

@@ -25,6 +25,7 @@ pub open spec fn container_pages_backward_wf(ctn_mp: ContainerLockedMap, pg_arr:
 }
 
 /// Containers and AsContainer pages agree in both directions.
+// Proof dependency (confirmed for 2M splitting): hugepage_2m_wf.
 #[verifier::opaque]
 pub open spec fn container_pages_wf(ctn_mp: ContainerLockedMap, pg_arr: PageLockedArray) -> bool {
     &&& container_pages_forward_wf(ctn_mp, pg_arr)

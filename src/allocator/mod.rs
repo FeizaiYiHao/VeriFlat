@@ -5,6 +5,9 @@ pub mod global_pool;
 pub mod page_allocator_seq_fold;
 pub mod page_allocator_map;
 pub mod page_allocator_lock_t;
+pub mod page_allocator_merge_2m;
+pub mod page_allocator_merge_2m_eof;
+pub mod page_allocator_merge_2m_spec;
 
 pub use page_allocator::*;
 pub use allocator_quota::*;

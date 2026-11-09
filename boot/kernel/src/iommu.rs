@@ -268,11 +268,12 @@ const EDU_DMA_DST: usize = 0x88;
 const EDU_DMA_COUNT: usize = 0x90;
 const EDU_DMA_CMD: usize = 0x98;
 const EDU_DMA_RUN: u64 = 1;
+const EDU_DMA_TO_RAM: u64 = 2;
 const EDU_BUFFER: u64 = 0x40000;
 const EDU_ID_MAGIC: u32 = 0xed;
 
 /// I/O virtual address the probe reads; the verified kernel never maps IOMMU tables.
-const PROBE_IOVA: u64 = 0x10_0000;
+const PROBE_IOVA: u64 = 0x80_0010_0000;
 /// TSC cycles to wait for the device (it runs DMA from a 100 ms timer).
 const PROBE_TIMEOUT: u64 = 20_000_000_000;
 
@@ -286,12 +287,23 @@ pub fn dma_test_device() -> Option<u16> {
 /// reason the read caused (2: context entry not present, 6: read through a non-present
 /// second-level entry), or 0 if it was translated.
 pub fn dma_probe() -> Option<u8> {
+    dma_transfer(false)
+}
+
+/// Test only: writes the eight bytes previously loaded into EDU's buffer back to `PROBE_IOVA`.
+/// Call the read probe on a mapped page first to seed the device buffer with known data.
+pub fn dma_write_probe() -> Option<u8> {
+    dma_transfer(true)
+}
+
+fn dma_transfer(to_ram: bool) -> Option<u8> {
     let device = boot::get_boot_info().dma_test_device?;
     if UNIT_COUNT.load(Ordering::Acquire) == 0 {
         return None;
     }
     let mmio = device.mmio;
     assert!(read32(mmio, EDU_ID) & 0xff == EDU_ID_MAGIC, "DMA test device is not edu");
+    assert!(read64(mmio, EDU_DMA_CMD) & EDU_DMA_RUN == 0, "DMA test device is already running");
     for base in units() {
         let (records, count) = fault_records(base);
         for i in 0..count {
@@ -300,10 +312,10 @@ pub fn dma_probe() -> Option<u8> {
         write32(base, FSTS_REG, FSTS_PFO);
     }
 
-    write64(mmio, EDU_DMA_SRC, PROBE_IOVA);
-    write64(mmio, EDU_DMA_DST, EDU_BUFFER);
+    write64(mmio, EDU_DMA_SRC, if to_ram { EDU_BUFFER } else { PROBE_IOVA });
+    write64(mmio, EDU_DMA_DST, if to_ram { PROBE_IOVA } else { EDU_BUFFER });
     write64(mmio, EDU_DMA_COUNT, 8);
-    write64(mmio, EDU_DMA_CMD, EDU_DMA_RUN);
+    write64(mmio, EDU_DMA_CMD, EDU_DMA_RUN | if to_ram { EDU_DMA_TO_RAM } else { 0 });
     let start = unsafe { core::arch::x86_64::_rdtsc() };
     while read64(mmio, EDU_DMA_CMD) & EDU_DMA_RUN != 0 {
         assert!(unsafe { core::arch::x86_64::_rdtsc() } - start < PROBE_TIMEOUT, "DMA test device did not finish");
@@ -313,13 +325,19 @@ pub fn dma_probe() -> Option<u8> {
     // Whichever unit covers the device recorded the fault, if any.
     for base in units() {
         let fsts = read32(base, FSTS_REG);
+        assert!(fsts & FSTS_PFO == 0, "VT-d fault record overflow during DMA probe");
         if fsts & FSTS_PPF == 0 {
             continue;
         }
         let (records, _) = fault_records(base);
         let record = records + 16 * ((fsts >> 8) & 0xff) as usize;
         let upper = read64(base, record + 8);
+        assert!(upper & FRCD_F != 0, "VT-d pending fault has no valid record");
         assert!(upper & 0xffff == device.bdf as u64, "VT-d fault from another requester {:#x}", upper & 0xffff);
+        assert!((upper & (1 << 62) == 0) == to_ram, "VT-d fault has the wrong DMA direction");
+        assert!(read64(base, record) & !0xfff == PROBE_IOVA, "VT-d fault has the wrong IOVA");
+        log::info!("DMA probe completed: to_ram={} requester={:#x} iova={:#x} fault={:#x}",
+            to_ram, device.bdf, PROBE_IOVA, (upper >> 32) as u8);
         write64(base, record + 8, FRCD_F);
         return Some((upper >> 32) as u8);
     }

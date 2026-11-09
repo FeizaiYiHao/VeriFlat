@@ -24,6 +24,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             old(self).view().no_duplicates() ==> final(self).view() == old(self).view().remove_value(old(self).map().spec_index(addr)),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
+            final(self).minor == old(self).minor,
     {
         assert({
             &&& self.addr_list.view().contains(addr)
@@ -89,6 +90,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             final(self).view() == old(self).view().remove_value(old(self).map().spec_index(addr)),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
+            final(self).minor == old(self).minor,
     {
         assert({
             &&& self.length != 0

@@ -55,6 +55,8 @@ use veriflat_monolith::kernel::implementation::syscall_kill_container::syscall_k
 use veriflat_monolith::kernel::implementation::syscall_iommu_map_4k::syscall_iommu_map_4k::syscall_iommu_map_4k;
 use veriflat_monolith::kernel::implementation::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k;
 use veriflat_monolith::kernel::implementation::syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k;
+use veriflat_monolith::kernel::implementation::syscall_merge_2m::syscall_merge_2m::syscall_merge_2m;
+use veriflat_monolith::kernel::implementation::syscall_split_2m::syscall_split_2m::syscall_split_2m;
 use veriflat_monolith::kernel::implementation::syscall_mmap_2m::syscall_mmap_2m::syscall_mmap_2m;
 use veriflat_monolith::kernel::implementation::syscall_new_container::{syscall_new_container, syscall_new_container_with_endpoint};
 use veriflat_monolith::kernel::implementation::syscall_new_endpoint::syscall_new_endpoint::syscall_new_endpoint;
@@ -526,7 +528,12 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             return;
         }
         vsys::NR_DEBUG_DMA_PROBE => {
-            regs.rax = crate::iommu::dma_probe().map_or(vsys::ERR_INVALID_SYSCALL, |reason| reason as isize) as u64;
+            let result = match a1 {
+                0 => crate::iommu::dma_probe(),
+                1 => crate::iommu::dma_write_probe(),
+                _ => None,
+            };
+            regs.rax = result.map_or(vsys::ERR_INVALID_SYSCALL, |reason| reason as isize) as u64;
             return;
         }
         vsys::NR_DEBUG_NULL => {
@@ -583,6 +590,8 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_KILL_PROCESS => syscall_kill_process(k, t!(), t!(), cpu_id, a1),
         vsys::NR_KILL_CONTAINER => syscall_kill_container(k, t!(), t!(), cpu_id, a1),
         vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2).0,
+        vsys::NR_MERGE_2M => syscall_merge_2m(k, t!(), t!(), cpu_id, a1).0,
+        vsys::NR_SPLIT_2M => syscall_split_2m(k, t!(), t!(), cpu_id, a1),
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_MMAP_2M => syscall_mmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_UNMAP_2M => syscall_unmap_2m(k, t!(), t!(), cpu_id, a1, a2).0,

@@ -164,6 +164,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_merge_2m"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_mmap_1g"
 version = "0.1.0"
 dependencies = [
@@ -234,6 +243,15 @@ dependencies = [
 name = "veriflat_syscall_schedule"
 version = "0.1.0"
 dependencies = [
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_split_2m"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
  "veriflat_kernel_core",
  "vstd",
 ]

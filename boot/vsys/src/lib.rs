@@ -34,7 +34,7 @@ pub const NR_DEBUG_PRINT: usize = 0;
 pub const NR_DEBUG_EXIT: usize = 1;
 /// The B/D/F of the kernel's DMA test device (`bus << 8 | device << 3 | function`).
 pub const NR_DEBUG_DMA_DEVICE: usize = 28;
-/// Has the DMA test device read through the IOMMU; returns the VT-d fault reason, 0 if none.
+/// DMA probe: argument 0 reads RAM to EDU, 1 writes EDU to RAM; returns the fault reason or 0.
 pub const NR_DEBUG_DMA_PROBE: usize = 29;
 /// Returns 0 at once; with a nonzero argument the return goes through `iretq` instead of `sysretq`.
 pub const NR_DEBUG_NULL: usize = 36;
@@ -87,6 +87,8 @@ pub const NR_MMAP_1G: usize = 49;
 pub const NR_UNMAP_1G: usize = 50;
 pub const NR_ALLOC_QUOTA_1G: usize = 51;
 pub const NR_ALLOC_THREAD_QUOTA_1G: usize = 52;
+pub const NR_MERGE_2M: usize = 53;
+pub const NR_SPLIT_2M: usize = 54;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -228,6 +230,17 @@ pub unsafe fn sys_alloc_quota_1g(alloc_amount: usize) -> isize {
 /// Moves `alloc_amount` 1G quota from the calling process to the calling thread.
 pub unsafe fn sys_alloc_thread_quota_1g(alloc_amount: usize) -> isize {
     syscall1(NR_ALLOC_THREAD_QUOTA_1G, alloc_amount).rax
+}
+
+/// Merges up to `n` complete aligned 2M blocks in the calling container's free 4K pool and CPU caches.
+/// Returns the actual block count, exchanging 512 thread 4K quota for one 2M quota per block.
+pub unsafe fn sys_merge_2m(n: usize) -> isize {
+    syscall1(NR_MERGE_2M, n).rax
+}
+
+/// Splits `n` free 2M blocks, exchanging one thread 2M quota for 512 thread 4K quota per block.
+pub unsafe fn sys_split_2m(n: usize) -> isize {
+    syscall1(NR_SPLIT_2M, n).rax
 }
 
 pub unsafe fn sys_schedule() -> isize {
@@ -423,7 +436,12 @@ pub unsafe fn sys_debug_dma_device() -> isize {
 }
 
 pub unsafe fn sys_debug_dma_probe() -> isize {
-    syscall0(NR_DEBUG_DMA_PROBE).rax
+    syscall1(NR_DEBUG_DMA_PROBE, 0).rax
+}
+
+/// Writes the eight bytes last read into EDU's device buffer to the fixed probe IOVA.
+pub unsafe fn sys_debug_dma_write_probe() -> isize {
+    syscall1(NR_DEBUG_DMA_PROBE, 1).rax
 }
 
 pub unsafe fn sys_debug_null(force_iret: bool) -> isize {

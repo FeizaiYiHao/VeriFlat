@@ -19,6 +19,8 @@ vstd = { path = "../verus/source/vstd" }
 veriflat_kernel_core = { path = "../crates/veriflat_kernel_core" }
 veriflat_u_facts = { path = "u_facts" }
 veriflat_map_4k = { path = "../crates/veriflat_map_4k" }
+veriflat_syscall_merge_2m = { path = "../crates/veriflat_syscall_merge_2m" }
+veriflat_syscall_split_2m = { path = "../crates/veriflat_syscall_split_2m" }
 veriflat_syscall_alloc_quota = { path = "../crates/veriflat_syscall_alloc_quota" }
 veriflat_syscall_schedule = { path = "../crates/veriflat_syscall_schedule" }
 veriflat_syscall_new_thread = { path = "../crates/veriflat_syscall_new_thread" }

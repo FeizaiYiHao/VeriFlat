@@ -292,4 +292,14 @@ pub proof fn seq_unique_bounded_usize_len(s: Seq<usize>, bound: usize)
     assert(s.to_set().subset_of(range) && range.len() == bound) by { <usize as vstd::set_lib::FiniteRange>::range_properties(0usize, bound); s.to_set_ensures(); };
     assert(s.len() == s.to_set().len() && s.to_set().len() <= range.len()) by { s.unique_seq_to_set(); vstd::set_lib::lemma_len_subset(s.to_set(), range); };
 }
+
+/// Adding the divisor to a dividend raises the quotient by one.
+pub broadcast proof fn add_divisor_implies_quotient_plus_one(x: int, d: int)
+    requires
+        d > 0,
+    ensures
+        #[trigger] ((x + d) / d) == x / d + 1,
+{
+    vstd::arithmetic::div_mod::lemma_div_plus_one(x, d);
+}
 } // verus!

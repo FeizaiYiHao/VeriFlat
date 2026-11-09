@@ -84,15 +84,27 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         self.length
     }
 
-    /// Expose the opaque `wf_value_list` fact that the stored `length` equals the view length.
+    /// Expose stored sequence lengths, endpoint facts, and the node-map domain.
     pub proof fn wf_implies_view_len_eq_len(&self)
         requires
             self.wf(),
         ensures
             self.view().len() == self.spec_len(),
             self.view().len() == self.length,
+            self.view().no_duplicates(),
+            self.addr_list.view().no_duplicates(),
+            self.addr_list.view().len() == self.length,
+            self.map().dom() == self.dom(),
+            self.length == 0 ==> self.dom() == Set::<usize>::empty(),
+            self.length == 0 ==> self.map() == Map::<usize, T>::empty(),
+            self.head is None <==> self.length == 0,
+            self.head is Some ==> self.addr_list.view().spec_index(0) == self.head.unwrap(),
+            self.tail is Some ==> self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap(),
+            self.tail is Some ==> self.perms.view().spec_index(self.tail.unwrap()).value().next is None,
+            self.length != 0 ==> self.tail is Some,
     {
-        reveal(LinkedList::wf_value_list);
+        reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_map); reveal(LinkedList::wf_perms);
+        assert(self.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); };
     }
 
     /// Address ↔ value uniqueness: in a wf list the address holding a given value is unique. Concretely, any two
@@ -279,6 +291,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             forall|value: T| #![trigger final(self).view().contains(value)] old(self).view().contains(value) ==> final(self).view().contains(value),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
+            final(self).minor == old(self).minor,
             old(self).dom().contains(addr) == false,
             old(self).map().dom().contains(addr) == false,
     {
@@ -298,7 +311,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             proof { seq_push_implies_contains::<usize>(); }
             assert(self.wf()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
         } else {
-            proof { node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut()); }
+            proof {
+                node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut());
+                assert(!self.addr_list.view().contains(addr)) by {
+                    if self.addr_list.view().contains(addr) { self.wf_perms_at(addr); }
+                };
+            }
             self.length = self.length + 1;
             self.addr_list = Ghost(self.addr_list.view().push(addr));
             self.value_list = Ghost(self.value_list.view().push(perm.view().value().view()));
@@ -332,6 +350,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             final(self).wf(),
             final(self).length == old(self).length + 1,
             final(self).view() == old(self).view().insert(0, perm.view().value().view()),
+            forall|value: T| #![trigger final(self).view().contains(value)] #![trigger old(self).view().contains(value)]
+                final(self).view().contains(value) == (old(self).view().contains(value) || value == final(self).map().spec_index(addr)),
             final(self).dom() == old(self).dom().insert(addr),
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
             final(self).container_depth == old(self).container_depth,
@@ -373,6 +393,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 
             proof { Self::push_head_eof_wf(*old(self), *self, addr, old_head_addr); }
         }
+        proof { seq_insert_head_implies_contains::<T>(); seq_push_implies_contains::<T>(); }
     }
 
     /// Non-mutating read of the head node's address and stored value. Lets a
@@ -464,6 +485,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             old(self).map().dom().contains(ret.0),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
+            final(self).minor == old(self).minor,
     {
         proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); reveal(LinkedList::wf_map); }
         if self.length != 1 {
@@ -505,3 +527,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 mod remove_impl;
 mod unlink_interior_node_eof;
 mod push_pop_eof;
+mod cursor;
+mod sort;
+mod sort_eof;
+mod points;
+mod sort_spec;

@@ -33,6 +33,15 @@ pub use pagetable_concurrent::*;
 pub use iommu::*;
 pub use iommu_table::*;
 pub use kernel::*;
+pub use kernel::implementation::merge_2m::{merge_2m_commit::merge_2m_commit,
+    merge_2m_locking::{freeze_merge_2m_sources, thaw_merge_2m_sources, merge_2m_lock_block, merge_2m_unlock_block},
+    merge_2m_cursor_queue::Merge2mCursor, merge_2m_scanner::Merge2mScanner, merge_2m_sort::merge_2m_sort_sources};
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::merge_2m::merge_2m_scanner_spec::{merge_2m_source_pages, merge_2m_complete_heads, merge_2m_cursor_suffix};
+pub use kernel::implementation::split_2m::{split_2m_commit::split_2m_commit,
+    split_2m_locking::{freeze_split_2m_sources, thaw_split_2m_sources}, split_2m_sources::split_2m_select_source};
+#[cfg(verus_keep_ghost)]
+use kernel::implementation::split_2m::split_2m_entry_points::{thread_quota_2m_implies_allocator_free_count_positive, thread_quota_4k_implies_split_quota_capacity};
 pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::free_2m_page::drain_2m_cache_batch;
 pub use kernel::implementation::reclaim_dangling_thread::*;

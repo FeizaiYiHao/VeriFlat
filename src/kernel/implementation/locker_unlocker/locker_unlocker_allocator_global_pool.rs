@@ -31,6 +31,8 @@ impl KernelK {
             *final(self) == (KernelK { allc_4k_mp: final(self).allc_4k_mp, ..*old(self) }),
             final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
             final(self).allc_4k_mp.perms_wf(),
+            forall|source: usize| #![trigger final(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source)] source <= NUM_CPUS ==>
+                final(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source) == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source),
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches,
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota,
@@ -80,6 +82,8 @@ impl KernelK {
             *final(self) == (KernelK { allc_4k_mp: final(self).allc_4k_mp, ..*old(self) }),
             final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
             final(self).allc_4k_mp.perms_wf(),
+            forall|source: usize| #![trigger final(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source)] source <= NUM_CPUS ==>
+                final(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source) == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).merge_2m_source_list(source),
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches,
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota,

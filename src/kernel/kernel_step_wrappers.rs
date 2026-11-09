@@ -15,6 +15,8 @@ pub mod projection_publish;
 pub mod boundary;
 /// Step-boundary wrappers of `KernelK` that record one section in `KernelSteps`.
 pub mod boundary_steps;
+/// Step-boundary and end-step wrappers for exchanging one free 2M block with 512 free 4K pages of a thread's quota.
+pub mod boundary_page_block_exchange;
 /// K->U lemmas for endpoint creation, thread exit, caller wakeup, and descriptor release steps.
 pub mod boundary_endpoint_thread_exit;
 /// `KernelSteps` recorders of the IPC block, call, accept, reply, and rendezvous steps.

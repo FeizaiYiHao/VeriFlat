@@ -1337,6 +1337,8 @@ specifications.
 | `syscall_thread_exit` | §17 |
 | `syscall_kill_process` | §18 |
 | `syscall_kill_container` | §19 |
+| `syscall_merge_2m` (syscall 53) | §20 |
+| `syscall_split_2m` (syscall 54) | §21 |
 
 ## 15. Approved representation changes
 
@@ -2356,3 +2358,51 @@ Differences:
    never takes.
 4. The killer's wait for the acknowledgement of a cpu forced to idle is not
    modeled as a lock (the §18 TODO).
+
+
+## 20. merge_2m — convert free physical blocks
+
+`merge_2m(n)` operates on the current thread's owning container. It rejects
+overflow in `512 * n` with `Error` and insufficient thread 4K quota with
+`ErrorNoQuota`. For a valid running caller, zero returns `SuccessUsize { value: 0 }`. It never borrows
+allocator quota or falls back to a different container.
+
+The CPU and current thread remain write-locked. All container 4K caches, the
+4K pool, and the destination 2M pool are frozen throughout the scan. Eligible
+blocks are complete, aligned 512-page blocks in that frozen free-page union;
+the scan visits them in ascending physical-address order and converts
+`m = min(n, C)` blocks, where `C` is the number of eligible blocks. A partial
+request returns `SuccessUsize { value: m }`, including when `m` is zero.
+
+Each block exchanges 512 current-thread 4K quota for one current-thread 2M
+quota and changes total free counts by -512 and +1 respectively. Allocator
+quotas, other threads' quotas, and pending quota are preserved by each of this
+operation's own conversions; this does not restrict environment interference
+between recorded steps. The physical
+completeness guarantee belongs to K. U records the actual quota exchange and
+result; it does not infer fragmentation or a deterministic result from its
+entry state. Noninterference concerns labeled steps with their concrete
+converted counts, rather than deterministic output consistency from U alone.
+
+## 21. split_2m — split free physical blocks
+
+`split_2m(n)` converts exactly `n` free 2M blocks owned by the current thread's
+container into 512 free 4K pages each. It rejects `n > usize::MAX / 512` with
+`Error`, follows the ordinary CPU and current-thread killed checks, and returns
+`ErrorNoQuota` when the current thread has fewer than `n` units of 2M quota.
+A valid zero request succeeds with count zero without freezing allocators.
+A successful request returns `SuccessUsize { value: n }`; free 2M quota ensures
+that no fragmentation-dependent partial result is needed.
+
+The CPU and thread remain write-locked. All container 2M caches are acquired
+in increasing CPU order, followed by the destination 4K pool and the ordered
+2M pool. These source locks remain held across the syscall. Each selected
+block's 512 page locks are acquired in increasing address order and released
+after its conversion. Every block exchanges one current-thread 2M quota for
+512 current-thread 4K quota and puts the resulting pages into the 4K global
+pool. Allocator quotas and other threads' quotas are preserved.
+
+U records one quota-exchange step per block. The boundary between blocks
+releases and reacquires the kernel view while preserving the held sources.
+The final block's step includes source thaw and thread and CPU unlock. Zero
+and error results record no business steps.

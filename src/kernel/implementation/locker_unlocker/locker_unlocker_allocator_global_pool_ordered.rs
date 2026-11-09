@@ -83,6 +83,8 @@ impl KernelK {
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
+            forall|source: usize| #![trigger final(self).allc_2m_mp.spec_index(alloc_ptr_2m).merge_2m_source_list(source)] source <= NUM_CPUS ==>
+                final(self).allc_2m_mp.spec_index(alloc_ptr_2m).merge_2m_source_list(source) == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).merge_2m_source_list(source),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),

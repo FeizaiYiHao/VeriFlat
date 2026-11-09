@@ -2263,10 +2263,187 @@ fn test_kill_process(image: usize, pages: usize) {
     log::info!("kill loop: {} rounds, free 4K quota {} -> {} with no leak", KILL_ROUNDS, first, first + KILL_ROUNDS - 1);
 }
 
+/// Opt-in device-to-RAM regression. No debug hook changes page-table permissions or skips flushes.
+fn test_dma_write_revocation() {
+    const VA: usize = 0xc9_0000_0000;
+    const IOVA: usize = 0x80_0010_0000;
+    const PAYLOAD: u64 = 0xd4a0_52ef_ba71_903c;
+    const SENTINEL: u64 = 0x6981_45ce_072b_fad3;
+    const FAULT_WRITE_PERMISSION: isize = 5;
+    fn fill(va: usize, value: u64) {
+        for i in 0..512 { unsafe { ((va + 8 * i) as *mut u64).write_volatile(value) }; }
+    }
+    fn contents(va: usize, first: u64, rest: u64) {
+        for i in 0..512 {
+            let actual = unsafe { ((va + 8 * i) as *const u64).read_volatile() };
+            let expected = if i == 0 { first } else { rest };
+            if actual != expected {
+                log::error!("DMA page word {}: {:#x}, expected {:#x}", i, actual, expected);
+                unsafe { sys_debug_exit(1) };
+            }
+        }
+    }
+    fn write_probe(when: &str, expected: isize) {
+        let reason = unsafe { sys_debug_dma_write_probe() };
+        log::info!("DMA device->RAM {} completed, fault reason {} (expected {})", when, reason, expected);
+        if reason != expected { unsafe { sys_debug_exit(1) }; }
+    }
+    let bdf = check("DMA write device", unsafe { sys_debug_dma_device() });
+    DMA_BDF.store(bdf, Ordering::SeqCst);
+    let (bus, dev, fun) = dma_bdf();
+    write_probe("before attach", FAULT_CONTEXT_NOT_PRESENT);
+    check("DMA write attach", unsafe { sys_pci_attach_dma(bus, dev, fun) });
+    write_probe("before map", FAULT_WRITE_PERMISSION);
+    fund("DMA write mapping quota", 128);
+    check("DMA write CPU map", unsafe { sys_mmap_4k(VA, 1) });
+    fill(VA, SENTINEL);
+    unsafe { (VA as *mut u64).write_volatile(PAYLOAD) };
+    check("DMA write IOMMU map", unsafe { sys_iommu_map_4k(VA, IOVA, 1) });
+    expect_dma_fault("seed EDU buffer from mapped RAM", 0);
+    fill(VA, SENTINEL);
+    write_probe("mapped RW", 0);
+    contents(VA, PAYLOAD, SENTINEL);
+    check("DMA write unmap and synchronous IOTLB flush", unsafe { sys_iommu_unmap_4k(IOVA, 1) });
+    fill(VA, SENTINEL);
+    write_probe("after unmap/flush, original page retained", FAULT_WRITE_PERMISSION);
+    contents(VA, SENTINEL, SENTINEL);
+    check("DMA write release original CPU page", unsafe { sys_unmap_4k(VA, 1) });
+    check("DMA write allocate replacement CPU page", unsafe { sys_mmap_4k(VA, 1) });
+    fill(VA, SENTINEL);
+    write_probe("after CPU reclaim/reallocation", FAULT_WRITE_PERMISSION);
+    contents(VA, SENTINEL, SENTINEL);
+    log::info!("DMA replacement contents preserved; physical-page reuse is not observable through this ABI");
+    check("DMA write IOMMU remap", unsafe { sys_iommu_map_4k(VA, IOVA, 1) });
+    write_probe("after remap", 0);
+    contents(VA, PAYLOAD, SENTINEL);
+
+    // Sending the function invalidates its old context even while its old IOVA remains mapped.
+    let (image, pages) = image_range();
+    fund("DMA write child quota", 6 + 3 * pages);
+    let sp = (&raw const CHILD_STACK) as usize + 64 * 1024 - 8;
+    check("DMA write child", unsafe {
+        sys_new_process_with_iommu_and_endpoint(image, pages, ENDPOINT, child_process as *const () as usize, sp)
+    });
+    check("DMA write transfer/detach", unsafe { sys_send_pci(ENDPOINT, bus, dev, fun) });
+    fill(VA, SENTINEL);
+    write_probe("after detach by transfer", FAULT_CONTEXT_NOT_PRESENT);
+    contents(VA, SENTINEL, SENTINEL);
+    CHILD_MAY_ATTACH.store(true, Ordering::SeqCst);
+    wait_for("DMA write child attach", || CHILD_ATTACHED.load(Ordering::SeqCst));
+    write_probe("after rebind to empty child domain", FAULT_WRITE_PERMISSION);
+    contents(VA, SENTINEL, SENTINEL);
+    log::info!("DMA write regression passed; RO hardware case unavailable: public mmap ABI creates RW mappings only");
+}
+
+/// Exercises the free-page conversion ABI with two boot-provided 2M blocks.
+fn test_split_2m() {
+    const HUGE_VA: usize = 0xc7_0000_0000;
+    const SMALL_VA: usize = 0xc8_0000_0000;
+    fn count(name: &str, ret: isize, expected: usize) {
+        let actual = check(name, ret);
+        if actual != expected {
+            log::error!("{}: expected {}, got {}", name, expected, actual);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+    count("split_2m zero", unsafe { sys_split_2m(0) }, 0);
+    expect_error("split_2m overflow", unsafe { sys_split_2m(usize::MAX) }, "Error");
+    expect_error("split_2m no quota", unsafe { sys_split_2m(1) }, "ErrorNoQuota");
+    check("split pool funding", unsafe { sys_alloc_quota_2m(2) });
+    check("split thread funding", unsafe { sys_alloc_thread_quota_2m(2) });
+    expect_error("split_2m insufficient requested quota", unsafe { sys_split_2m(3) }, "ErrorNoQuota");
+    count("split_2m boot pool", unsafe { sys_split_2m(1) }, 1);
+    count("merge_2m round trip", unsafe { sys_merge_2m(1) }, 1);
+    fund("split test page-table quota", 64);
+    count("split prepare cache-only map", unsafe { sys_mmap_2m(HUGE_VA, 2) }, 0);
+    count("split prepare cache-only unmap", unsafe { sys_unmap_2m(HUGE_VA, 2) }, 0);
+    check("split cache funding", unsafe { sys_alloc_quota_2m(2) });
+    check("split cache thread funding", unsafe { sys_alloc_thread_quota_2m(2) });
+    count("split_2m cache-only below batch", unsafe { sys_split_2m(2) }, 2);
+    expect_error("split_2m exhausted thread quota", unsafe { sys_split_2m(1) }, "ErrorNoQuota");
+    count("split_2m zero after exhaustion", unsafe { sys_split_2m(0) }, 0);
+    count("merge_2m prepare mixed sources", unsafe { sys_merge_2m(2) }, 2);
+    count("split prepare mixed map", unsafe { sys_mmap_2m(HUGE_VA, 1) }, 0);
+    count("split prepare mixed unmap", unsafe { sys_unmap_2m(HUGE_VA, 1) }, 0);
+    check("split mixed funding", unsafe { sys_alloc_quota_2m(1) });
+    check("split mixed thread funding", unsafe { sys_alloc_thread_quota_2m(1) });
+    count("split_2m mixed cache and pool", unsafe { sys_split_2m(2) }, 2);
+    fund("split resulting 4K allocation quota", 8192);
+    count("split resulting 4K allocation", unsafe { sys_mmap_4k(SMALL_VA, 2048) }, 0);
+    for i in 0..2048 {
+        let pointer = (SMALL_VA + i * 4096) as *mut u64;
+        unsafe { pointer.write_volatile(PAGE_MAGIC ^ i as u64) };
+    }
+    for i in 0..2048 {
+        let actual = unsafe { ((SMALL_VA + i * 4096) as *const u64).read_volatile() };
+        if actual != PAGE_MAGIC ^ i as u64 {
+            log::error!("split resulting 4K page {} did not retain its contents", i);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+    count("split resulting 4K unmap", unsafe { sys_unmap_4k(SMALL_VA, 2048) }, 0);
+    log::info!("split_2m syscall 54 integration tests passed");
+}
+
+/// Checks every byte via aligned words before dirtying and remapping each supported page size.
+fn test_page_zeroing() {
+    const VA: usize = 0xc9_0000_0000;
+    fund("zero test page-table and 4K quota", 128);
+    for size in [4096usize, 2 * 1024 * 1024, 1024 * 1024 * 1024] {
+        for cycle in 0..2 {
+            unsafe {
+                if size == 4096 {
+                    if cycle != 0 { fund("zero test remap 4K quota", 16); }
+                    check("zero test mmap 4K", sys_mmap_4k(VA, 1));
+                } else if size == 2 * 1024 * 1024 {
+                    check("zero test fund 2M", sys_alloc_quota_2m(1));
+                    check("zero test thread 2M", sys_alloc_thread_quota_2m(1));
+                    check("zero test mmap 2M", sys_mmap_2m(VA, 1));
+                } else {
+                    check("zero test fund 1G", sys_alloc_quota_1g(1));
+                    check("zero test thread 1G", sys_alloc_thread_quota_1g(1));
+                    check("zero test mmap 1G", sys_mmap_1g(VA, 1));
+                }
+                for offset in (0..size).step_by(8) {
+                    let pointer = (VA + offset) as *mut u64;
+                    if pointer.read_volatile() != 0 {
+                        log::error!("zero test: size {} cycle {} offset {} is nonzero", size, cycle, offset);
+                        sys_debug_exit(1);
+                    }
+                    pointer.write_volatile(PAGE_MAGIC ^ offset as u64);
+                }
+                for offset in (0..size).step_by(8) {
+                    if ((VA + offset) as *const u64).read_volatile() != PAGE_MAGIC ^ offset as u64 {
+                        log::error!("zero test: dirty write failed for size {} offset {}", size, offset);
+                        sys_debug_exit(1);
+                    }
+                }
+                if size == 4096 { check("zero test unmap 4K", sys_unmap_4k(VA, 1)); }
+                else if size == 2 * 1024 * 1024 { check("zero test unmap 2M", sys_unmap_2m(VA, 1)); }
+                else { check("zero test unmap 1G", sys_unmap_1g(VA, 1)); }
+            }
+            log::info!("zero test: size {} cycle {} all bytes zero before dirtying", size, cycle);
+        }
+    }
+    log::info!("permission-backed 4K/2M/1G zeroing integration tests passed");
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     vsys::logger::init_logging_with_level(log::Level::Info);
     log::info!("Hello from dom0!");
+    if cfg!(feature = "dma-write-test") {
+        test_dma_write_revocation();
+        unsafe { sys_debug_exit(0) };
+    }
+    if cfg!(feature = "zero-test") {
+        test_page_zeroing();
+        unsafe { sys_debug_exit(0) };
+    }
+    if cfg!(feature = "split-test") {
+        test_split_2m();
+        unsafe { sys_debug_exit(0) };
+    }
 
     // 0. paths that need no thread quota
     for _ in 0..2 {

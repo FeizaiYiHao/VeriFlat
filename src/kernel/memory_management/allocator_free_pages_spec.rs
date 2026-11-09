@@ -198,6 +198,7 @@ pub open spec fn allocator_cpu_cache_2m_pages_wf(allc_2m_mp: PageAllocatorUnLock
 
 /// Free 2M pages and the 2M allocators' global pools and CPU caches agree.
 // Proof dependencies (confirmed for nonfree-page preservation): page_array_wf, allocator_free_page_ptrs_wf.
+// Merging also needs pre-state allocator_free_4k_pages_wf for the new head's owner.
 #[verifier::opaque]
 pub open spec fn allocator_free_2m_pages_wf(allc_2m_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, pg_arr: PageLockedArray) -> bool {
     &&& allocator_global_pool_2m_pages_wf(allc_2m_mp, pg_arr)
