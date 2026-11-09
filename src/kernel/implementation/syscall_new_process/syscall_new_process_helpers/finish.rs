@@ -212,7 +212,6 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
     hide(Seq::contains);
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
-        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked child_lock_perm = child_lock_perm.get();
@@ -238,7 +237,9 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
     );
     let ghost mid_k = *krnl;
     proof {
-        assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_wf); };
+        assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by {
+            if iommu_table is Some { process_iommu_table_wf_process_at(old(krnl).prc_mp, old(krnl).it_mp, child_ptr); process_iommu_table_wf_table_at(krnl.prc_mp, krnl.it_mp, iommu_table->Some_0); }
+        };
         if let Some(ep_ptr) = endpoint {
             assert({
                 ||| krnl.ep_mp.spec_index(ep_ptr).view().owning_container == ctn_ptr

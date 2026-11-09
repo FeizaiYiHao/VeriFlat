@@ -78,7 +78,6 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
@@ -92,7 +91,7 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
             &&& krnl.cpu_arr.spec_index(target).view().view().view().owning_container == ctn_ptr
             &&& target != cpu_id
             &&& !lctx.cpu_lock_map().dom().contains(target)
-        }) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, target); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), target); reveal(LockedArray::typed_lock_map_aligned); };
+        }) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, ctn_ptr, target); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), target); };
     }
     let Tracked(target_lock_perm) = krnl.wlock_off_cpu(target, cpu_set_ptr, Tracked(lctx));
     proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, target); }
@@ -118,7 +117,6 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(target as int, CpuOpState::Idle));
         assert(kernel_cpu_online_changed(&steps.snapshot_k(), &*krnl, cpu_id, ctn_ptr, target)) by { reveal(kernel_cpu_online_changed); };
         steps.end_kernel_step_cpu_online_changed(&*krnl, &*lctx, cpu_id, ctn_ptr, target);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         assert({
             &&& cpu_online_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target, RetValueType::Success)
         }) by {

@@ -2,34 +2,40 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// DMA attach of `(bus, device, function)` to `table`: only the root table and `table` change, and the function's root entry takes the table's root and domain id.
+#[verifier::opaque]
+pub(super) open spec fn pci_attach_dma_eof_transition_framing(pre: KernelK, post: KernelK, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize) -> bool {
+    &&& post == (KernelK { irt: post.irt, it_mp: post.it_mp, ..pre })
+    &&& post.it_mp.unchanged_except(&pre.it_mp, table)
+    &&& {
+        let before = pre.it_mp.spec_index(table).view();
+        let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
+        &&& vtd_domain_id_valid(did)
+        &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
+        &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
+        &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
+        &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
+        &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
+        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+            #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+            &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
+            &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(before.cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
+            &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
+        }
+    }
+    &&& post.irt.view().owners() == pre.irt.view().owners()
+    &&& post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread()
+    &&& post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed()
+}
+
 proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize)
     requires
         pre.inv(),
-        post == (KernelK { irt: post.irt, it_mp: post.it_mp, ..pre }),
         post.irt.inv(),
         pci_bdf_valid(bus, device, function),
         pre.it_mp.dom().contains(table),
-        post.it_mp.unchanged_except(&pre.it_mp, table),
-        {
-            let before = pre.it_mp.spec_index(table).view();
-            let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
-            &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
-            &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
-            &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-            &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-            &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
-            &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-                #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
-                &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(before.cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-                &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
-            }
-        },
-        post.irt.view().owners() == pre.irt.view().owners(),
         iommu_table_perms_wf(post.it_mp),
-        post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread(),
-        post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed(),
+        pci_attach_dma_eof_transition_framing(pre, post, table, bus, device, function),
         pre.it_mp.spec_index(table).locking_thread() is Write,
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
@@ -42,6 +48,7 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr:
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
 {
+    reveal(pci_attach_dma_eof_transition_framing);
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
@@ -54,31 +61,11 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr:
 proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize)
     requires
         pre.inv(),
-        post == (KernelK { irt: post.irt, it_mp: post.it_mp, ..pre }),
         post.irt.inv(),
         pci_bdf_valid(bus, device, function),
         pre.it_mp.dom().contains(table),
-        post.it_mp.unchanged_except(&pre.it_mp, table),
-        {
-            let before = pre.it_mp.spec_index(table).view();
-            let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
-            &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
-            &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
-            &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-            &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-            &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
-            &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-                #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
-                &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(before.cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-                &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
-            }
-        },
-        post.irt.view().owners() == pre.irt.view().owners(),
         iommu_table_perms_wf(post.it_mp),
-        post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread(),
-        post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed(),
+        pci_attach_dma_eof_transition_framing(pre, post, table, bus, device, function),
         pre.it_mp.spec_index(table).locking_thread() is Write,
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
@@ -91,6 +78,7 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr),
 {
+    reveal(pci_attach_dma_eof_transition_framing);
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
@@ -100,31 +88,11 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
 proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize)
     requires
         pre.inv(),
-        post == (KernelK { irt: post.irt, it_mp: post.it_mp, ..pre }),
         post.irt.inv(),
         pci_bdf_valid(bus, device, function),
         pre.it_mp.dom().contains(table),
-        post.it_mp.unchanged_except(&pre.it_mp, table),
-        {
-            let before = pre.it_mp.spec_index(table).view();
-            let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
-            &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
-            &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
-            &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
-            &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
-            &&& post.it_mp.spec_index(table).view().mapping_1g() == before.mapping_1g()
-            &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-                #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
-                &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(before.cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-                &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
-            }
-        },
-        post.irt.view().owners() == pre.irt.view().owners(),
         iommu_table_perms_wf(post.it_mp),
-        post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread(),
-        post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed(),
+        pci_attach_dma_eof_transition_framing(pre, post, table, bus, device, function),
         pre.it_mp.spec_index(table).locking_thread() is Write,
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
@@ -136,6 +104,7 @@ proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
     ensures
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
+    reveal(pci_attach_dma_eof_transition_framing);
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_tlb_wf); reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); pre.irt.view().wf_context_entry_at(bus, device, function);
     };
@@ -184,6 +153,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
         post.it_mp.spec_index(table).view().leaves_present(),
 {
+    assert(pci_attach_dma_eof_transition_framing(pre, post, table, bus, device, function)) by { reveal(pci_attach_dma_eof_transition_framing); };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     pci_attach_dma_eof_process_tables(pre, post, prc_ptr, table, bus, device, function);
     pci_attach_dma_eof_pages(pre, post, prc_ptr, table, bus, device, function);

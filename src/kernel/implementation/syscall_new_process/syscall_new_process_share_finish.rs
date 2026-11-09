@@ -192,7 +192,6 @@ pub(super) fn share_and_finish_new_process(
     let tracked endpoint_lock_perm = endpoint_lock_perm.get();
     let ghost endpoint_index_opt: Option<EndpointIdx> = if endpoint is Some { Some(ep_idx) } else { None };
     proof {
-        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         assert(krnl.allc_4k_mp.dom().contains(allc_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); };
         assert({
             &&& share_4k_objects_k(*krnl, cpu_id).source_thread == current_thrd_ptr && share_4k_objects_k(*krnl, cpu_id).quota_thread == current_thrd_ptr

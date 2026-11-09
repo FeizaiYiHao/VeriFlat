@@ -21,7 +21,7 @@ verus! {
             krnl.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING,
         ensures
             !krnl.ep_mp.spec_index(ep_ptr).view().queue.view().contains(thrd_ptr),
-    { reveal(thread_endpoint_queue_wf); }
+    { thread_endpoint_queue_wf_endpoint_at(krnl.thrd_mp, krnl.ep_mp, ep_ptr, thrd_ptr); }
 
     pub(super) proof fn endpoint_queue_member_implies_thread_waiting_on_endpoint(krnl: &KernelK, ep_ptr: RwLockEndpointPtr, thrd_ptr: RwLockThreadPtr)
         requires
@@ -32,7 +32,7 @@ verus! {
             krnl.thrd_mp.dom().contains(thrd_ptr),
             krnl.thrd_mp.spec_index(thrd_ptr).view().state.is_endpoint_waiting(),
             krnl.thrd_mp.spec_index(thrd_ptr).view().blocking_endpoint_ptr == Some(ep_ptr),
-    { reveal(thread_endpoint_queue_wf); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
+    { thread_endpoint_queue_wf_endpoint_at(krnl.thrd_mp, krnl.ep_mp, ep_ptr, thrd_ptr); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); }
 
     pub(super) struct IpcEntryLocked {
         pub process_ptr: RwLockProcessPtr, pub current_thread_ptr: RwLockThreadPtr, pub endpoint_ptr: RwLockEndpointPtr, pub queue_len: usize, pub queue_is_send: bool,
@@ -275,7 +275,7 @@ verus! {
             assert({
                 &&& steps.snapshot_k().ep_mp.spec_index(ep_ptr).view().queue.view().len() == queue_len
                 &&& (steps.snapshot_k().ep_mp.spec_index(ep_ptr).view().queue_state is SEND) == queue_is_send
-            }) by { reveal(kernel_endpoint_nonlock_fields_unchanged); endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); krnl.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len(); };
+            }) by { endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); krnl.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len(); };
         }
 
         if (queue_len == 0 || queue_is_send == waiting_is_send) && !blocking {
@@ -283,7 +283,7 @@ verus! {
             krnl.wunlock_endpoint(ep_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
 
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             }
@@ -302,7 +302,7 @@ verus! {
             return Err(result);
         }
         proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             if expect_caller {
                 ipc_reply_entry_result_from_k(&old(steps).snapshot_k(), cpu_id, ep_idx, if queue_len != 0 && queue_is_send { Some(RetValueType::ErrorIpcSameDirection) }
@@ -551,7 +551,7 @@ verus! {
         let current_thread_res = krnl.wlock_current_running_thread_unless_killed(current_thrd_ptr, Tracked(&mut *lctx));
 
         if current_thread_res.is_none() {
-            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
             proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
             release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
             proof {
@@ -1191,7 +1191,7 @@ verus! {
             krnl.wunlock_endpoint(ep_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
 
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             }
@@ -1205,7 +1205,7 @@ verus! {
         }
         let Tracked(peer_thread_lock_perm) = peer_thread_res.unwrap();
         proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
         ipc_rendezvous_locked_peer(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload,

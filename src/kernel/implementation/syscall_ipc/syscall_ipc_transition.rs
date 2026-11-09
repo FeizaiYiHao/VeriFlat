@@ -126,7 +126,7 @@ verus! {
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
             }) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
             assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.length != usize::MAX) by { endpoint_queue_len_bounded(&*krnl, ep_ptr); };
-            assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.view().len() == krnl.ep_mp.spec_index(ep_ptr).view().queue.length) by { endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); reveal(LinkedList::wf_value_list); };
+            assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.view().len() == krnl.ep_mp.spec_index(ep_ptr).view().queue.length) by { endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); krnl.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len(); };
         }
 
         let (endpoint_node_addr, endpoint_node_perm) = ipc_block_thread_on_endpoint(&mut krnl.thrd_mp, Tracked(&*lctx), current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, pt_regs, Tracked(&current_thread_lock_perm));
@@ -295,9 +295,7 @@ verus! {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None)) by {
                 broadcast use kernel_process_nonlock_fields_unchanged_transitive;
-                reveal(kernel_ipc_rendezvous_fields); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-                reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
-            };
+                reveal(kernel_ipc_rendezvous_fields);                             };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)

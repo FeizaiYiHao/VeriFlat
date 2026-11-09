@@ -307,7 +307,6 @@ pub(super) fn schedule_lock_current_and_shard(
         if res.is_none() {
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
             }
@@ -320,7 +319,6 @@ pub(super) fn schedule_lock_current_and_shard(
             krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), process_lock_perm.unwrap());
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(thrd_ptr), None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
             }

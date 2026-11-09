@@ -455,7 +455,7 @@ fn ipc_map_pages_and_release_tables(
         assert(ipc_begin_transit_eof_transition_framing(recorded_k, *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr)) by { reveal(ipc_begin_transit_eof_transition_framing); };
         ipc_begin_transit_eof(recorded_k, *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr);
         let pre_k = old(steps).snapshot_k();
-        assert(kernel_thread_state_changed(&pre_k, &*krnl, peer_thrd_ptr)) by { reveal(kernel_thread_state_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
+        assert(kernel_thread_state_changed(&pre_k, &*krnl, peer_thrd_ptr)) by { reveal(kernel_thread_state_changed); };
         kernel_thread_dequeued_and_locks_changed_implies_u_step(&pre_k, old(krnl), &*krnl, &*lctx, cpu_id, current_thrd_ptr, peer_thrd_ptr, ep_ptr, true);
         ipc_pages_enter_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, peer_thrd_ptr, channel_index,
             waiting_state, *source_range, *target_range);

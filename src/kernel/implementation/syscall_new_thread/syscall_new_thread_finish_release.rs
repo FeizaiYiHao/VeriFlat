@@ -114,7 +114,6 @@ pub(super) fn release_new_thread_locks(
     krnl.set_thread_syscall_progress(current_thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
     krnl.wunlock_thread(current_thrd_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { assert(kernel_new_thread_fields(&finish_k, krnl, prc_ptr, current_thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, regs, None, None)) by { reveal(kernel_new_thread_fields); }; }
 }

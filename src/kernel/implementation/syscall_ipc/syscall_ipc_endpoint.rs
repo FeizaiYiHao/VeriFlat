@@ -343,7 +343,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
     krnl.wunlock_endpoint(channel_ep_ptr, Tracked(&mut *lctx), Tracked(channel_endpoint_lock_perm));
     proof {
         assert(kernel_thread_state_changed(&steps.snapshot_k(), &*krnl, peer_thrd_ptr)) by { reveal(kernel_thread_state_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
-        assert(steps.snapshot_k().thrd_mp.dom().contains(peer_thrd_ptr) && krnl.thrd_mp.dom().contains(peer_thrd_ptr)) by { reveal(kernel_thread_state_changed); reveal(kernel_thread_nonlock_fields_unchanged); };
+        assert(steps.snapshot_k().thrd_mp.dom().contains(peer_thrd_ptr) && krnl.thrd_mp.dom().contains(peer_thrd_ptr)) by { reveal(kernel_thread_state_changed); };
         let pre_k = steps.snapshot_k();
         assert({
             let cpu = pre_k.cpu_arr.spec_index(cpu_id).value;

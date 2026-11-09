@@ -161,7 +161,6 @@ pub(super) fn cpu_offline_request_child_locked(
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
@@ -185,7 +184,6 @@ pub(super) fn cpu_offline_request_child_locked(
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_cpu_offline_request_changed(&steps.snapshot_k(), &*krnl, cpu_id, child_ptr, target)) by { reveal(kernel_cpu_offline_request_changed); };
         steps.end_kernel_step_cpu_offline_request_changed(&*krnl, &*lctx, cpu_id, child_ptr, target);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         assert({
             &&& cpu_offline_request_child_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(*krnl), cpu_id, target, RetValueType::Success)
         }) by {

@@ -70,7 +70,7 @@ verus! {
             let process_res = krnl.wlock_process_unless_killed(prc_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
             if process_res.is_none() {
                 krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-                proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None); }
+                proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorProcessKilled); }
                 return RetValueType::ErrorProcessKilled;
@@ -89,7 +89,7 @@ verus! {
             if thread_res.is_none() {
                 krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
                 krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-                proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(current_thrd_ptr), None, None, None); }
+                proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(current_thrd_ptr), None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorThreadKilled); }
                 return RetValueType::ErrorThreadKilled;
@@ -101,7 +101,7 @@ verus! {
                 krnl.wunlock_thread(current_thrd_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
                 krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
                 krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-                proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(current_thrd_ptr), None, None, None); }
+                proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(current_thrd_ptr), None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorNoQuota); }
                 return RetValueType::ErrorNoQuota;

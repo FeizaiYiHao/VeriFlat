@@ -865,7 +865,6 @@ fn commit_new_container_publish_staged(
             container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, child_sched_ptr, child_cpu_set, child_prc_ptr,
             child_pagetable_ptr, l4_page,
         ).subset_of(parent_owned_pages)) by { reveal(new_container_moved_pages); };
-        assert(!steps.snapshot_k().prc_mp.dom().contains(child_prc_ptr) && parent_prc_ptr != child_prc_ptr) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
         assert({
             &&& !krnl.prc_mp.spec_index(parent_prc_ptr).view().zombie
             &&& krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable == source_pagetable_ptr

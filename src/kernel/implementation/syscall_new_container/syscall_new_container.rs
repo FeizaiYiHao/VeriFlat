@@ -169,7 +169,6 @@ fn new_container_release_entry_locks(
     krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -371,7 +370,6 @@ fn new_container_lock_owners(
         DynamicWLockResult::Killed(_) => {
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_ctn_ptr), None, None, None, None, None);
                 new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx,
                     RetValueType::ErrorContainerKilled);
@@ -383,7 +381,6 @@ fn new_container_lock_owners(
             proof { assert(krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(parent_prc_ptr).view().pagetable)) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_prc_ptr); }; }
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_ctn_ptr), None, None, None, None, None);
                 new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx,
                     RetValueType::ErrorContainerLockOrderConflict);
@@ -402,7 +399,6 @@ fn new_container_lock_owners(
         krnl.wunlock_container(parent_ctn_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_ctn_ptr), None, None, None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx,
                 error);

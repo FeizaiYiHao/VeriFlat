@@ -212,7 +212,7 @@ pub(super) fn publish_staged_process(
     );
     proof {
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr
-            == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_wf); };
+            == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
         };
