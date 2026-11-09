@@ -62,7 +62,6 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     proof {
         let flush_post = *krnl;
         let before = steps.view();
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         iommu_unmap_4k_flush_step_from_k(&flush_pre, &flush_mid, &flush_post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, r);
         iommu_unmap_4k_trace_range_steps(before, steps.view(), cpu_id, r);

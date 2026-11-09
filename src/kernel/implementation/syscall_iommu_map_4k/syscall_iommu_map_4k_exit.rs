@@ -135,7 +135,6 @@ pub(super) fn iommu_map_4k_exit(
     proof { assert(pt_before_runlock->Read_reader_map.remove(cpu_id).dom() =~= pt_before_runlock->Read_reader_map.dom().remove(cpu_id)); }
     krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr);

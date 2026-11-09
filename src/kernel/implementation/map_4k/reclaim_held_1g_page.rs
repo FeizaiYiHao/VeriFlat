@@ -101,9 +101,6 @@ pub fn reclaim_held_1g_page(
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     if page.ref_count > 1 {
         remove_held_1g_mapping_without_free(krnl, pagetable, va, pg_ptr, Tracked(&mut *lctx), pagetable_perm, Tracked(&page_perm));
-        proof {
-            assert(held_threads_unchanged_except(old(krnl).thrd_mp, krnl.thrd_mp, old(lctx), set![thrd_ptr])) by { old(krnl).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); };
-        }
     } else {
         let owner = page.owning_container;
         reclaim_last_held_1g_mapping(krnl, pagetable, va, pg_ptr, owner, thrd_ptr, indirect, direct, Tracked(&mut *lctx), Tracked(&page_perm), pagetable_perm, thread_perm);
@@ -111,13 +108,9 @@ pub fn reclaim_held_1g_page(
     krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_perm));
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
             map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
-        assert(held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx))) by { old(krnl).ctn_mp.typed_lock_map_aligned_held_in_dom(old(lctx).container_lock_map(), old(lctx).thread_id()); };
-        assert(held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx))) by { old(krnl).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id()); };
-        assert(held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx))) by { old(krnl).it_mp.typed_lock_map_aligned_held_in_dom(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()); };
-        assert(held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx))) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
@@ -171,6 +164,8 @@ fn reclaim_last_held_1g_mapping(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)), held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)), held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
@@ -208,6 +203,7 @@ fn reclaim_last_held_1g_mapping(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().remove((pagetable, va)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread(),
 {
+    proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     let ghost pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         page_ptr_valid_imply_page_index_valid();
@@ -234,7 +230,7 @@ fn reclaim_last_held_1g_mapping(
     if depth == thread_depth { *direct = counter; } else { indirect[depth] = counter; }
     krnl.wunlock_allocator_global_pool_1g(allc_ptr, Tracked(&mut *lctx), Tracked(pool_perm));
     proof {
-        assert(lctx.allocator_global_pool_1g_lock_map() =~= old(lctx).allocator_global_pool_1g_lock_map());
+        broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
@@ -275,6 +271,9 @@ pub fn remove_held_1g_mapping_without_free(krnl: &mut KernelK, pagetable: RwLock
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
+        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)), held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)), held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+        held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
         final(krnl).pt_lower == old(krnl).pt_lower,
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
@@ -311,6 +310,7 @@ pub fn remove_held_1g_mapping_without_free(krnl: &mut KernelK, pagetable: RwLock
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
+    proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     let pg_idx = page_ptr2page_index(pg_ptr);
     let l4i = v2l4index(va);
     let l3i = v2l3index(va);

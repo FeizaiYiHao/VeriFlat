@@ -109,6 +109,10 @@ verus! {
             held_cpu_sets_unchanged(entry_krnl.cpu_set_mp, final(krnl).cpu_set_mp, &entry_lctx),
             held_pagetables_unchanged(entry_krnl.pt_mp, final(krnl).pt_mp, &entry_lctx),
             held_pagetable_windows_unchanged(entry_krnl.pt_mp, entry_krnl.pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), &entry_lctx),
+            forall|p: RwLockPageTableRoot| #![trigger entry_lctx.pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(entry_lctx.pagetable_lock_map(), p, TypedLockMode::Write)
+                ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(entry_krnl.pt_mp, entry_krnl.pt_lower.view(), p),
+            !thread_is_dangling(entry_krnl.thrd_mp.spec_index(thrd_ptr)) ==> final(krnl).prc_mp.dom().contains(entry_krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc),
+            !thread_is_dangling(entry_krnl.thrd_mp.spec_index(thrd_ptr)) ==> final(krnl).prc_mp.spec_index(entry_krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata() == entry_krnl.prc_mp.spec_index(entry_krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view_rodata(),
             held_iommu_tables_unchanged(entry_krnl.it_mp, final(krnl).it_mp, &entry_lctx),
             held_pages_unchanged_except(entry_krnl.pg_arr, final(krnl).pg_arr, &entry_lctx, set![page_ptr2page_index(ret.0)]),
             held_cpus_unchanged(entry_krnl.cpu_arr, final(krnl).cpu_arr, &entry_lctx),

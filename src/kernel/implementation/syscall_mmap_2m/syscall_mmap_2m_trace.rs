@@ -670,12 +670,7 @@ pub(super) proof fn mmap_2m_flushed_range_steps_from_k(
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_2m_range_step(steps.view()[j], cpu_id),
 {
-    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
-    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
-    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
-    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
-    kernel_container_projection_at(snap, ctn_ptr);
+    kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(snap, pre, post, cpu_id, ctn_ptr, thrd_ptr);
     mmap_2m_flush_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, phase, false);
     assert(mmap_2m_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*post) }, cpu_id)) by {
         reveal(mmap_2m_range_step); reveal(mmap_2m_flush_step_pre); reveal(mmap_2m_flushed_step);

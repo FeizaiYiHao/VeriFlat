@@ -139,9 +139,9 @@ pub(super) fn iommu_map_4k_install_directory(
     proof {
         let installed_k = *krnl;
         assert(typed_lock_maps_unchanged(&entry_lctx, lctx)) by {
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
             map_insert_overwrite_lemma(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                 TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-            map_insert_remove_absent_lemma(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         section_start.thrd_mp.typed_lock_map_aligned_write_at(section_lctx.thread_lock_map(), section_lctx.thread_id(), thrd_ptr);
         installed_k.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);

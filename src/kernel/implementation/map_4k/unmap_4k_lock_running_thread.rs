@@ -162,7 +162,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         DynamicWLockResult::Killed(_) => {
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
             }
             return Err(RetValueType::ErrorContainerKilled);
@@ -170,7 +169,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         DynamicWLockResult::DepthConflict { .. } => {
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
             proof {
-                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
             }
             return Err(RetValueType::ErrorContainerLockOrderConflict);
@@ -181,7 +179,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
         }
         return Err(RetValueType::ErrorContainerZombie);
@@ -192,7 +189,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), None, None, None, None);
         }
         return Err(RetValueType::ErrorProcessKilled);
@@ -204,7 +200,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
         krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
         }
         return Err(RetValueType::ErrorThreadKilled);
@@ -331,7 +326,6 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
     if thread_res.is_none() {
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, None, None);
         }
         return Err(RetValueType::ErrorThreadKilled);

@@ -153,12 +153,10 @@ pub(super) fn mmap_2m_page(
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
             map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                 TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-        };
-        assert(kernel_process_2m_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable_ptr, va)) by {
-            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(kernel_process_2m_mapping_changed);
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         };
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
+        assert(kernel_process_2m_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable_ptr, va)) by { reveal(kernel_process_2m_mapping_changed); };
         krnl.kernel_step_boundary_process_2m_mapping_changed_windowed(&mut *lctx, &mut *steps, prc_ptr, pagetable_ptr, va, prc_ptr, pagetable_ptr, thrd_ptr, thrd_ptr);
         assert(mmap_2m_leaf_step_pre(steps.view().last().old_u, cpu_id) && mmap_2m_leaf_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
             kernel_thread_quota_2m_progress_and_2m_mapping_added_pagetable_rlocked_implies_u_step(&section_start, &unlocked_k, &unlocked_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, va);

@@ -390,11 +390,8 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
         mmap_4k_leaf_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         mmap_4k_leaf_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
 {
-    let pre = kernel_k_to_kernel_u(*krnl);
     let addr = post.process_map.spec_index(prc_ptr).pagetable->Some_0.mapping_4k.spec_index(va).addr;
-    assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].iommu_table->Some_0.mapping_4k[v]]
-        pre.process_map.dom().contains(p) && pre.process_map[p].iommu_table is Some && pre.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
-        ==> pre.process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr) by { reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_wf); reveal(page_iommu_table_wf); };
+    kernel_owned_4k_page_implies_u_outside_iommu_4k_mappings(*krnl, addr);
     kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(*krnl, addr); kernel_owned_4k_page_implies_u_outside_1g_mapping_frames(*krnl, addr);
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }

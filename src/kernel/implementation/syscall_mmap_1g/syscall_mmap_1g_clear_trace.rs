@@ -207,11 +207,7 @@ pub(super) proof fn mmap_1g_flushed_range_steps_from_k(
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap1g { range, mapped: 0, directory: false, hidden: true, flushed: true }),
     ensures forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_1g_range_step(steps.view()[j], cpu_id),
 {
-    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap); kernel_container_projection_at(snap, ctn_ptr);
-    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
-    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
-    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
+    kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(snap, pre, post, cpu_id, ctn_ptr, thrd_ptr);
     mmap_1g_clear_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, range, true, false);
     assert(mmap_1g_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(mmap_1g_flush_step_pre); };
     mmap_1g_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr, range);

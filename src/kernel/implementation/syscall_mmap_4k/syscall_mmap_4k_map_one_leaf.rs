@@ -180,11 +180,13 @@ pub(super) fn map_one_mmap_4k_page(
         let leaf_k = *krnl;
         let leaf_lctx = *lctx;
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
             map_insert_overwrite_lemma(installed_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-            map_insert_remove_absent_lemma(installed_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
         };
         assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, prc_ptr, pagetable_ptr, va)) by {
-            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); reveal(kernel_process_4k_mapping_changed); reveal(process_pagetable_wf);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            process_thread_wf_thread_at(section_start.prc_mp, section_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(section_start.prc_mp, section_start.pt_mp, prc_ptr);
+            reveal(kernel_process_4k_mapping_changed);
         };
         process_thread_wf_thread_at(section_start.prc_mp, section_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(section_start.prc_mp, section_start.pt_mp, prc_ptr);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);

@@ -134,9 +134,6 @@ pub(super) fn mmap_1g_map_one_leaf(
     let ghost staged_lctx = *lctx;
     let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     let ghost section_start = *krnl;
-    assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
-        pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-    };
     proof {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     }
@@ -149,7 +146,7 @@ pub(super) fn mmap_1g_map_one_leaf(
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
             map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                 TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: leaf_k.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
         };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         assert(krnl.pt_lower.view() =~= section_start.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));

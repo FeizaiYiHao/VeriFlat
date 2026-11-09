@@ -432,19 +432,6 @@ verus! {
             }
         }
         proof {
-            assert(write_held ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)) by {
-                if write_held {
-                    old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
-                    pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-                }
-            };
-            assert(krnl.prc_mp.dom().contains(prc_ptr) && krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr
-                && krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr) by {
-                if !typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write) {
-                    process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, quota_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr);
-                }
-                process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-            };
             assert(!(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie)) by {
                 if !typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write) {
                     process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, quota_thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);

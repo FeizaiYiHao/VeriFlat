@@ -550,12 +550,8 @@ pub proof fn unmap_4k_flushed_range_steps_from_k(
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
 {
-    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
-    let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u();
-    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
-    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
-    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr); kernel_container_projection_at(snap, ctn_ptr);
-    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
+    let cpu_set_lock = kernel_k_to_kernel_u(*snap).container_map[ctn_ptr].cpu_set_lock.without_reader(cpu_id);
+    kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(snap, pre, post, cpu_id, ctn_ptr, thrd_ptr);
     unmap_4k_flush_step_pre_from_k(pre, lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, range);
     assert(unmap_4k_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(unmap_4k_flush_step_pre); };
     unmap_4k_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr, range, range.len, post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), cpu_set_lock);

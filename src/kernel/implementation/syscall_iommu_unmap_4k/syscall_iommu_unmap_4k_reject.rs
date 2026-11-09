@@ -86,7 +86,6 @@ pub(super) fn iommu_unmap_4k_unlock_thread_rejected(
     krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
-        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
     }
 }
@@ -184,7 +183,6 @@ pub(super) fn iommu_unmap_4k_unlock_rejected(
     krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
-        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         steps.end_kernel_step_restored_locks_with_iommu_table(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None, Some(iommu_table));
     }
 }

@@ -37,7 +37,7 @@ pub(super) proof fn pop_stage_1g_page_eof_postconditions(pre: KernelK, post: Ker
     reveal(pop_stage_1g_page_eof_transition_framing);
     assert(post.thrd_mp.lock_id_by_key(thread) == pre.thrd_mp.lock_id_by_key(thread)) by { thread_perms_wf_at(pre.thrd_mp, thread); };
     pre.thrd_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.thread_lock_map(), pre_lctx.thread_id());
-    assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };
+    held_pages_unchanged_except_for_entries_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, page_ptr2page_index(page));
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
         kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); kernel_iommu_table_nonlock_fields_unchanged_for_equal(pre.it_mp, post.it_mp);

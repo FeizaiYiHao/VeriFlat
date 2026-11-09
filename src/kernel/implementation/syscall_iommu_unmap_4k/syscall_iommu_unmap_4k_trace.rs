@@ -264,7 +264,7 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     let iova = iova_range.view()[unmapped as int];
-    assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { reveal(process_iommu_table_wf); };
+    process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thrd_ptr);
     kernel_iommu_table_4k_present_cleared_implies_u_step(mid, post, iommu_table_ptr, iova);
     kernel_u_domains_projection(pre);
@@ -315,7 +315,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
-    assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_wf); };
+    process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
     if let Some(did) = pre.it_mp.spec_index(iommu_table_ptr).view().did {
         assert(mid.iommu_tlb.view().dom().contains(did) ==> vtd_domain_id_valid(did)) by { reveal(IommuTLB::inv); };
         kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);

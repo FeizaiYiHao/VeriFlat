@@ -218,15 +218,6 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let (pg_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thrd_ptr, ctn_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
-            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)) by {
-                old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
-                pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-            };
-            assert(krnl.prc_mp.dom().contains(prc_ptr) && krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr
-                && krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr) by {
-                process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-                process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-            };
             assert(!(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie)) by {
                 process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
             };
@@ -395,9 +386,9 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
             assert(nonwindow_typed_lock_maps_unchanged(&entry_lctx, lctx)) by {
+                broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
                 map_insert_overwrite_lemma(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write },
                     TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
-                map_insert_remove_absent_lemma(entry_lctx.page_lock_map(), pg_idx, TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
             };
             assert(kernel_thread_quota_4k_changed(old(krnl), krnl, thrd_ptr, -1)) by { reveal(kernel_thread_quota_4k_changed); };
         }

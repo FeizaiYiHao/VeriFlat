@@ -79,9 +79,9 @@ pub fn reclaim_last_lock_4k_cache_with_room(krnl: &mut KernelK, allc_ptr: RwLock
         drain_4k_cache_batch(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cache_perm), Tracked(&pool_perm));
         krnl.wunlock_allocator_global_pool_4k(allc_ptr, Tracked(&mut *lctx), Tracked(pool_perm));
         proof {
+            broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(lctx.allocator_global_pool_4k_lock_map() =~= old(lctx).allocator_global_pool_4k_lock_map());
         }
     }
     proof {

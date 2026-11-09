@@ -88,22 +88,20 @@ fn refund_unmap_1g_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
         };
     }
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_1g(allc_ptr, Tracked(&mut *lctx));
-    proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
     return_free_quota_1g(krnl, thrd_ptr, owner, depth, allc_ptr, &mut counter, Tracked(&mut *lctx), thread_perm, Tracked(&quota_perm));
     assert(krnl.allc_1g_mp.spec_index(allc_ptr).wf()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allc_ptr); };
     krnl.wunlock_allocator_quota_1g(allc_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
     proof {
-        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).allocator_quota_1g_lock_map(), allc_ptr, TypedHeldLock { lock_id: krnl.allc_1g_mp.spec_index(allc_ptr).quota.lock_id(), mode: TypedLockMode::Write }); };
+        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged; };
         assert(kernel_container_quota_1g_changed(&steps.snapshot_k(), &*krnl, owner, amount as int)) by {
-            reveal(kernel_container_quota_1g_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            reveal(kernel_container_quota_1g_changed); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
         };
         krnl.kernel_step_boundary_container_quota_1g_changed(&mut *lctx, &mut *steps, owner, amount as int, old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container);
         assert(krnl.ctn_mp.dom().contains(owner) && (depth > 0 ==> krnl.ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1))
             && krnl.ctn_mp.spec_index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1)) by {
             let origin = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
             let uppers = krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view();
-            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thrd_mp, origin, thrd_ptr);
-            container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, owner); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, uppers[depth - 1]);
+            thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, owner); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, uppers[depth - 1]);
             broadcast use vstd::seq::Seq::lemma_index_contains;
         };
     }
