@@ -162,7 +162,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, Gho
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 
-    pub fn borrow<'a>(&self, key: usize, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow<'a>(&'a self, key: usize, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.perms_wf(),
             self.dom().contains(key),
@@ -177,7 +177,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, Gho
         return ret;
     }
 
-    pub fn borrow_typed<'a>(&self, key: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow_typed<'a>(&'a self, key: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
         where
             T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             ROT: LockOwnerIdTrait,

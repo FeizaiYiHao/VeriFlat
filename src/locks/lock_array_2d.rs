@@ -151,7 +151,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
         wunlock_object_minor(&PPtr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp, Ghost(obj));
     }
 
-    pub fn borrow_typed<'a>(&self, row: usize, col: usize, Ghost(held): Ghost<Map<(usize, usize), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow_typed<'a>(&'a self, row: usize, col: usize, Ghost(held): Ghost<Map<(usize, usize), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.inv(),
             index_valid(ROWS, row),

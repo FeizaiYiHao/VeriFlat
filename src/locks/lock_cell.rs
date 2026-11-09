@@ -220,7 +220,7 @@ impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, RO
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     #[verifier::external_body]
-    pub fn borrow<'a,>(&self, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow<'a,>(&'a self, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.is_init(),
             lp.view().state() is WriteLock ==> self.write_lock_perm_match(lp.view()),

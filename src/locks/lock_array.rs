@@ -164,7 +164,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS
 
     // @Xiangdong comeback
     #[verifier::external_body]
-    pub fn borrow<'a,>(&self, index: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow<'a,>(&'a self, index: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.inv(),
             0 <= index < N,
@@ -177,7 +177,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS
         self.storage.ar.index(index).borrow(lp)
     }
 
-    pub fn borrow_typed<'a>(&self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow_typed<'a>(&'a self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.inv(),
             index_valid(N, index),
@@ -231,7 +231,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS
         }
     }
 
-    pub fn borrow<'a>(&self, index: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow<'a>(&'a self, index: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.inv(),
             0 <= index < N,
@@ -246,7 +246,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS
         borrow(&PPtr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), lp)
     }
 
-    pub fn borrow_typed<'a>(&self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow_typed<'a>(&'a self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
             self.inv(),
             index_valid(N, index),

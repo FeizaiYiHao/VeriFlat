@@ -764,7 +764,7 @@ pub fn put<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(pptr: &PPtr<LockCell<T
     unsafe { core::ptr::write(core::ptr::addr_of_mut!((*p).value), v) }
 }
 #[verifier::external_body]
-pub fn borrow<'a, T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(pptr: &PPtr<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked(perm): Tracked<& LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
+pub fn borrow<'a, T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(pptr: &PPtr<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked(perm): Tracked<&'a LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
     requires
         pptr.addr() == perm.addr(),
         perm.is_init(),
