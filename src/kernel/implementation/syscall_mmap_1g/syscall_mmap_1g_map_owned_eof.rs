@@ -64,7 +64,11 @@ pub(super) open spec fn map_owned_1g_page_eof_transition_framing(pre: KernelK, p
     &&& new_page.being_killed() == old_page.being_killed()
     &&& new_page.view_rodata() == old_page.view_rodata()
     &&& new_page.view_ghost() == old_page.view_ghost()
-    &&& new_page.view() == (Page { state: PageState::Mapped1g, mappings: new_page.view().mappings, ref_count: 1, ..old_page.view() })
+    &&& new_page.view() == (Page { state: PageState::Mapped1g, mappings: new_page.view().mappings, ref_count: 1, perm_1g: new_page.view().perm_1g, ..old_page.view() })
+    &&& new_page.view().perm_1g.view() is Some
+    &&& new_page.view().perm_1g.view().unwrap().is_init()
+    &&& new_page.view().perm_1g.view().unwrap().addr() == old_page.view().perm_1g.view().unwrap().addr()
+    &&& new_page.view().perm_1g.view().unwrap().value().view() == Seq::new(PAGE_SZ_1G as nat, |i: int| 0u8)
     &&& new_page.view().mappings() == Set::empty().insert((pagetable_ptr, va))
     &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
     &&& new_thread.is_init()

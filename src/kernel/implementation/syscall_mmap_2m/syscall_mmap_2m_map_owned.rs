@@ -77,6 +77,10 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
             final(krnl).pt_mp == old(krnl).pt_mp,
             final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable_ptr, final(krnl).pt_lower.view().spec_index(pagetable_ptr)),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(pg_ptr)),
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_2m.view() is Some,
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_2m.view().unwrap().is_init(),
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_2m.view().unwrap().addr() == pg_ptr,
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_2m.view().unwrap().value().view() == Seq::new(PAGE_SZ_2M as nat, |i: int| 0u8),
             final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
             *final(krnl) == (KernelK { pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) }),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m()
@@ -102,7 +106,7 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
         let pg_idx = page_ptr2page_index(pg_ptr);
         let indices = va2index(va);
         assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv() && krnl.thrd_mp.perms_wf()
-            && krnl.thrd_mp.spec_index(thrd_ptr).inv()) by {
+            && krnl.thrd_mp.spec_index(thrd_ptr).inv() && krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr) by {
             pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
             thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         };
@@ -128,11 +132,13 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
             let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
             target_l2_ptr = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap().addr;
         }
-        zero_2m_page(pg_ptr);
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         let page_owner;
         {
             let page = krnl.pg_arr.borrow_mut_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), page_lock_perm);
+            let tracked mut perm = page.perm_2m.borrow_mut().tracked_take();
+            zero_2m_page(pg_ptr, Tracked(&mut perm));
+            proof { *page.perm_2m.borrow_mut() = Some(perm); }
             page_owner = page.owning_container;
             page.state = PageState::Mapped2m;
             page.mappings = Ghost(Set::empty().insert((pagetable_ptr, va)));

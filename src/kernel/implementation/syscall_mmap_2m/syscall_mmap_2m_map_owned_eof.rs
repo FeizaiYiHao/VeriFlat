@@ -44,7 +44,11 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
     &&& new_page.being_killed() == old_page.being_killed()
     &&& new_page.view_rodata() == old_page.view_rodata()
     &&& new_page.view_ghost() == old_page.view_ghost()
-    &&& new_page.view() == (Page { state: PageState::Mapped2m, mappings: new_page.view().mappings, ref_count: 1, ..old_page.view() })
+    &&& new_page.view() == (Page { state: PageState::Mapped2m, mappings: new_page.view().mappings, ref_count: 1, perm_2m: new_page.view().perm_2m, ..old_page.view() })
+    &&& new_page.view().perm_2m.view() is Some
+    &&& new_page.view().perm_2m.view().unwrap().is_init()
+    &&& new_page.view().perm_2m.view().unwrap().addr() == new_page.view().addr
+    &&& new_page.view().perm_2m.view().unwrap().value().view() == Seq::new(PAGE_SZ_2M as nat, |i: int| 0u8)
     &&& new_page.view().mappings() == Set::empty().insert((pagetable_ptr, va))
     &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr)
     &&& new_thread.is_init()
