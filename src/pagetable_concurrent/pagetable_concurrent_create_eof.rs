@@ -302,7 +302,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// field is unchanged.
     #[verifier::opaque]
     pub open spec fn create_entry_l3_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId) -> bool {
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
+        &&& post.higher == (PageTableHigher { l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, pagetable_window_locks: post.lower.pagetable_window_locks, ..pre.lower })
         &&& post.higher.l3_tables.view().dom() == pre.higher.l3_tables.view().dom()
         &&& forall|p: PageMapPtr| #![trigger post.higher.l3_tables.view().spec_index(p)]
@@ -599,7 +599,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn create_entry_l2_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         page_map_ptr: PageMapPtr) -> bool {
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
+        &&& post.higher == pre.higher
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l1_rev_map: post.lower.l1_rev_map, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != target_l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -665,9 +665,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
-        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
-        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
     }
 

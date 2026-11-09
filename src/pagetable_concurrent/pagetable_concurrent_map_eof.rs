@@ -9,7 +9,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn map_4k_page_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l1_p: PageMapPtr, target_entry: MapEntry) -> bool {
         let l2_p = pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr;
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
+        &&& post.higher == pre.higher
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, mapping_4k: post.lower.mapping_4k, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -64,13 +64,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::map_4k_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::map_4k_page_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
+        assert(post.higher.inv()) by { reveal(WholePageTable::map_4k_page_eof_transition_framing); };
     }
 
     /// EOF closure of `map_4k_page`: `va_addr_valid`.

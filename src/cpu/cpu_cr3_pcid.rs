@@ -36,7 +36,7 @@ impl CpuCr3Pcid {
             old(self).cr3() == cr3,
             old(self).pcid() == pcid,
             lctx.kernel_view_locking_state() is Release,
-            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().higher.cr3 == cr3,
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
@@ -65,7 +65,7 @@ impl CpuCr3Pcid {
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             old(tlb).inv(),
-            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().higher.cr3 == cr3,
         ensures
             final(self).wf(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),

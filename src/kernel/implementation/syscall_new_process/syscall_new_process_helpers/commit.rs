@@ -102,7 +102,7 @@ pub(in super::super) fn commit_new_process(
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.view().lock_id()),
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present

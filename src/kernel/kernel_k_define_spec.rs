@@ -5,8 +5,7 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-/// The write-maintained lower-half backup lives inside the protected higher payload; the separate ghost slot is empty.
-pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
+pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
 pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
 pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>;
 pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE, TokenCells<Page, (), (), NUM_PAGES, NO_KILL_STATE>>;
@@ -205,10 +204,10 @@ impl KernelK{
         &&& self.dflt_pt.view().kernel_l4_end == KERNEL_MEM_END_L4INDEX
         // Every page table shares the default table's kernel L4 end
         &&& forall|pt: RwLockPageTableRoot|
-            #![trigger self.pt_mp.spec_index(pt).view().kernel_l4_end]
+            #![trigger self.pt_mp.spec_index(pt).view()]
             self.pt_mp.dom().contains(pt)
                 ==>
-                self.pt_mp.spec_index(pt).view().kernel_l4_end == self.dflt_pt.view().kernel_l4_end
+                self.pt_mp.spec_index(pt).view().higher.kernel_l4_end == self.dflt_pt.view().kernel_l4_end
     }
 
     pub proof fn default_pagetable_wf_implies_view_inv(&self)
@@ -225,7 +224,7 @@ impl KernelK{
             self.pt_mp.dom().contains(pt_ptr),
         ensures
             self.dflt_pt.view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-            self.pt_mp.spec_index(pt_ptr).view().kernel_l4_end == self.dflt_pt.view().kernel_l4_end,
+            self.pt_mp.spec_index(pt_ptr).view().higher.kernel_l4_end == self.dflt_pt.view().kernel_l4_end,
     { reveal(KernelK::default_pagetable_wf); }
 
     /// Trusted krnl-view step boundary.

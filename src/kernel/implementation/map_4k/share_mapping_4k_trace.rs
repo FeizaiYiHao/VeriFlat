@@ -278,7 +278,7 @@ pub proof fn share_4k_directory_step_from_k(
         post.thrd_mp.spec_index(progress_thread).locking_thread() == mid.thrd_mp.spec_index(progress_thread).locking_thread(),
         post.thrd_mp.spec_index(progress_thread).being_killed() == mid.thrd_mp.spec_index(progress_thread).being_killed(),
         post.thrd_mp.spec_index(progress_thread).view().syscall_progress.view() == share_4k_progress_after_directory(pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view(), level),
-        pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr == prc_ptr,
+        pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == prc_ptr,
         mid.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
         level is L3 ==> whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(

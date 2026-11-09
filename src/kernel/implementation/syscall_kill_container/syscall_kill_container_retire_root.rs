@@ -234,7 +234,7 @@ pub(crate) fn kill_container_retire_root_process(
     proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     proof {
-        assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
+        assert(krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
@@ -427,7 +427,7 @@ pub(crate) fn kill_container_retire_root_commit(
         krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         if let Some(it) = iommu_table { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), it); }
-        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
+        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().higher.cr3);
         if let Some(it) = iommu_table { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
         process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
         pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);

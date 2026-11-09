@@ -87,7 +87,7 @@ pub fn create_process_from_staged_pages(
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
             old(krnl).pt_mp.dom().contains(pt) ==> final(krnl).pt_mp.spec_index(pt) == old(krnl).pt_mp.spec_index(pt),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_pg_ptr).is_empty(),
-        final(krnl).pt_mp.spec_index(pagetable_pg_ptr).view().proc_ptr == process_pg_ptr,
+        final(krnl).pt_mp.spec_index(pagetable_pg_ptr).view().higher.proc_ptr == process_pg_ptr,
         final(krnl).prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr,
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata(),

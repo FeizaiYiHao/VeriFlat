@@ -28,13 +28,13 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
     &&& new_table.view().lower_backup.view() == post.pt_lower.view().spec_index(table)
-    &&& new_table.view().kernel_entries == old_table.view().kernel_entries
-    &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
-    &&& new_table.view().cr3 == old_table.view().cr3
-    &&& new_table.view().pcid == old_table.view().pcid
-    &&& new_table.view().did == old_table.view().did
-    &&& new_table.view().proc_ptr == old_table.view().proc_ptr
-    &&& new_table.view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& new_table.view().higher.kernel_entries == old_table.view().higher.kernel_entries
+    &&& new_table.view().higher.kernel_l4_end == old_table.view().higher.kernel_l4_end
+    &&& new_table.view().higher.cr3 == old_table.view().higher.cr3
+    &&& new_table.view().higher.pcid == old_table.view().higher.pcid
+    &&& new_table.view().higher.did == old_table.view().higher.did
+    &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
+    &&& new_table.view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& new_c.page_closure() == old_c.page_closure().remove(pg_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
     &&& new_c.mapping_2m() == old_c.mapping_2m()
@@ -220,7 +220,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_page_relations(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        let proc_ptr = pre.pt_mp.spec_index(table).view().proc_ptr;
+        let proc_ptr = pre.pt_mp.spec_index(table).view().higher.proc_ptr;
         process_object_pages_owner_wf_at(pre.prc_mp, pre.pt_mp, pre.it_mp, pre.pg_arr, pg_idx);
         reveal(process_pagetable_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr);
         reveal(container_kill_retire_wf); reveal(container_allocator_wf);
@@ -385,7 +385,7 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_cpu_caches(
         pei_valid(l3i),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is None,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
@@ -425,7 +425,7 @@ pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
         pei_valid(l3i),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l3(l4i, l3i) is None,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
         pagetable_perms_wf(post.pt_mp),

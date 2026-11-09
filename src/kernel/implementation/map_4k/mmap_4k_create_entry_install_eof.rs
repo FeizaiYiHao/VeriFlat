@@ -52,11 +52,11 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
     &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_resolve_mapping_l3(l4i, l3i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.window_exists(l4i, l3i) ==> new_c.spec_resolve_mapping_l3(l4i, l3i) == old_c.spec_resolve_mapping_l3(l4i, l3i)
-    &&& new_pt.view().kernel_entries == old_pt.view().kernel_entries
-    &&& new_pt.view().kernel_l4_end == old_pt.view().kernel_l4_end
-    &&& new_pt.view().pcid == old_pt.view().pcid
-    &&& new_pt.view().cr3 == old_pt.view().cr3
-    &&& new_pt.view().proc_ptr == old_pt.view().proc_ptr
+    &&& new_pt.view().higher.kernel_entries == old_pt.view().higher.kernel_entries
+    &&& new_pt.view().higher.kernel_l4_end == old_pt.view().higher.kernel_l4_end
+    &&& new_pt.view().higher.pcid == old_pt.view().higher.pcid
+    &&& new_pt.view().higher.cr3 == old_pt.view().higher.cr3
+    &&& new_pt.view().higher.proc_ptr == old_pt.view().higher.proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -347,8 +347,8 @@ pub(super) proof fn install_staged_4k_page_table_page_eof_held_l3_resolves(pre: 
     requires
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).wf(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).wf(),
-        post.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == pre.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
-        pre.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end == pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end,
+        pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == pg_ptr,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().insert(pg_ptr),
@@ -356,15 +356,15 @@ pub(super) proof fn install_staged_4k_page_table_page_eof_held_l3_resolves(pre: 
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i) is Some
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_held_l3(l4i, l3i),
         forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)]
-            pre.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && !(l4i == indices.0 && l3i == indices.1)
+            pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && !(l4i == indices.0 && l3i == indices.1)
                 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i),
     ensures
-        (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
-            pre.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
-                ==> pre.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
-            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
-                post.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
-                    ==> post.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+            pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                ==> pre.pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                post.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> post.pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
 {
     broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq;
     reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::tables_reachable_wf);

@@ -247,7 +247,7 @@ pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
         pre.pt_mp.dom().contains(pagetable),
-        pre.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         pre.thrd_mp.dom().contains(thrd_ptr),
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,

@@ -17,7 +17,7 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
         krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         krnl.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr)),
-        krnl.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || krnl.prc_mp.spec_index(krnl.pt_mp.spec_index(pagetable).view().proc_ptr).view_rodata().view().owning_container == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        krnl.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || krnl.prc_mp.spec_index(krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container,
         krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth == thread_depth,
     ensures
         depth <= thread_depth,
@@ -25,7 +25,7 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
         if depth == thread_depth { owner == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container } else { krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
 {
     let pg_idx = page_ptr2page_index(pg_ptr);
-    let proc_ptr = krnl.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let proc_ptr = krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     let thread_proc = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
     let thread_owner = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
     assert(krnl.pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k && krnl.pg_arr.spec_index(pg_idx).view().view().mappings().contains((pagetable, va))
@@ -127,12 +127,12 @@ pub fn reclaim_last_4k_mapping(
         thread_perm.view().state() is WriteLock,
         thread_perm.view().thread_id() == old(lctx).thread_id(),
         thread_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).view_rodata().view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
         *old(direct) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
         forall|depth: int| #![trigger old(indirect)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         old(krnl).pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
@@ -201,8 +201,8 @@ pub fn reclaim_last_4k_mapping(
         write_held ==> forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
-        final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(pagetable).view().lower_backup, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher == old(krnl).pt_mp.spec_index(pagetable).view().higher,
         !write_held ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
@@ -231,7 +231,7 @@ pub fn reclaim_last_4k_mapping(
         spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize);
         if write_held { pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         process_pagetable_wf_pagetable_at(krnl.prc_mp, krnl.pt_mp, pagetable);
-        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_mp.spec_index(pagetable).view().proc_ptr);
+        process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr);
     }
     let ghost drained_pre = *krnl;
     proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); }; container_perms_wf_at(krnl.ctn_mp, owner); }

@@ -340,7 +340,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
         }),
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
-            let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
+            let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
             kernel_k_to_kernel_u(*post) == (KernelU {
                 thread_map: pre_u.thread_map.insert(thrd_ptr, ThreadU {
                     quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k,
@@ -375,7 +375,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
         reveal(process_cpu_wf); reveal(process_pagetable_wf);
     };
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
+    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
     if pre_u.process_map.dom().contains(owner) && pre_u.process_map[owner].pagetable is Some {
         assert(pre.prc_mp.spec_index(owner).view().pagetable == pagetable_ptr) by { reveal(process_pagetable_wf); };
         assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(owner, ProcessU {

@@ -9,7 +9,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn unmap_4k_page_kernel_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l1_p: PageMapPtr) -> bool {
         let l2_p = pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr;
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
+        &&& post.higher == pre.higher
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, mapping_4k: post.lower.mapping_4k, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -55,13 +55,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::unmap_4k_page_kernel_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: the leaves that read no L1 entry and no 4K mapping value.
@@ -82,11 +75,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure(),
     {
         reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
-        assert(post.higher.inv()) by {
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-            reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
-            reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
-        };
         Self::unmap_4k_page_kernel_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
@@ -271,7 +259,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn clear_held_4k_leaf_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index) -> bool {
         let l2_p = pre.spec_held_l3(target_l4i, target_l3i)->0.addr;
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
+        &&& post.higher == pre.higher
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -311,13 +299,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::clear_held_4k_leaf_eof_frame(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
         Self::clear_held_4k_leaf_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
         Self::clear_held_4k_leaf_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l1i);
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::clear_held_4k_leaf_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
     }
 
     /// EOF closure of `clear_held_4k_leaf`: the leaves that read no 4K walk, and the unchanged page closure.
@@ -341,11 +322,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
         reveal(WholePageTable::clear_held_4k_leaf_eof_transition_framing);
-        assert(post.higher.inv()) by {
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-            reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
-            reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
-        };
         assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };

@@ -32,7 +32,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(lctx).pagetable_lock_map().dom().contains(target_pagetable),
-        old(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         source_pagetable_lock_perm.state() is ReadLock || source_pagetable_lock_perm.state() is WriteLock,
         source_pagetable_lock_perm.state() is ReadLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
@@ -41,7 +41,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         source_pagetable_lock_perm.state() is WriteLock ==> source_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         source_range.wf(),
         i < source_range.len,
-        old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_va2index(source_range.start).0,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().higher.kernel_l4_end <= spec_va2index(source_range.start).0,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_range.view().spec_index(i as int)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
@@ -101,7 +101,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
         assert({
             &&& spec_index2va(source_indices) == source_va
-            &&& krnl.pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= source_indices.0
+            &&& krnl.pt_mp.spec_index(source_pagetable).view().higher.kernel_l4_end <= source_indices.0
             &&& pei_valid(source_indices.0) && pei_valid(source_indices.1) && pei_valid(source_indices.2) && pei_valid(source_indices.3)
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
         }) by {
@@ -114,7 +114,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
     {
         let source = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
-        source_entry = source.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
+        source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
     let pg_ptr = source_entry.addr;
     let pg_idx = page_ptr2page_index(pg_ptr);

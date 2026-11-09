@@ -15,7 +15,7 @@ fn reclaim_unmapped_2m_page_and_l2_ptr(
         krnl.pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
         indices == (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)),
-        krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= indices.0,
+        krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0,
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
         pagetable_perm.view().state() is ReadLock,
@@ -33,9 +33,9 @@ fn reclaim_unmapped_2m_page_and_l2_ptr(
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let l2 = pt.get_entry_2m_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    let l2 = pt.higher.get_entry_2m_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
     (l2.addr, l3.addr)
 }
 
@@ -52,7 +52,7 @@ fn remove_2m_mapping_without_free_in_window(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(krnl).pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
@@ -158,7 +158,7 @@ fn reclaim_last_2m_mapping_in_window(
         forall|depth: int| #![trigger old(indirect)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         old(krnl).pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
@@ -296,7 +296,7 @@ fn remove_last_2m_mapping_to_allocator_in_window(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(krnl).pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
@@ -443,7 +443,7 @@ pub fn reclaim_unmapped_2m_page_in_window(
         forall|depth: int| #![trigger old(indirect)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth),
         old(krnl).pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).stale_cpus is None,

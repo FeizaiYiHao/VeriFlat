@@ -29,6 +29,11 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub kernel_entries: Ghost<Seq<PageEntry>>,
     pub proc_ptr: RwLockProcessPtr,
     pub table_stale_cpus: Ghost<Set<CpuId>>,
+}
+
+/// The part of a page table the big lock protects: its upper half and the window-half snapshot.
+pub struct PageTableBigLocked<const TABLE_TYPE: PTType> {
+    pub higher: PageTableHigher<TABLE_TYPE>,
     /// Snapshot of the window half maintained only while the big lock is write-held.
     pub lower_backup: Ghost<PageTableLower<TABLE_TYPE>>,
 }
@@ -366,7 +371,11 @@ impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTableHigher<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableBigLocked<TABLE_TYPE> {
+    open spec fn inv(&self) -> bool { self.higher.inv() }
+}
+
+impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTableBigLocked<TABLE_TYPE> {
     open spec fn lock_major_1(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_2(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 0x233 }
@@ -382,7 +391,7 @@ impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTableHigher<TABLE_TYPE> {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTableHigher<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTableBigLocked<TABLE_TYPE> {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::none() }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::none() }
 }

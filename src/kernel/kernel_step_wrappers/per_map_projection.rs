@@ -332,7 +332,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
+            let owner = pre.pt_mp.spec_index(table).view().higher.proc_ptr;
             kernel_k_to_kernel_u(*post).process_map == if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
                 a.process_map.insert(owner, ProcessU {
                     pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
@@ -346,7 +346,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
+    let owner = pre.pt_mp.spec_index(table).view().higher.proc_ptr;
     if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
         assert_maps_equal!(b.process_map, a.process_map.insert(owner, ProcessU {
             pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),

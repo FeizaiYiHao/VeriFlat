@@ -52,7 +52,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::remove_l2_entry_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::remove_l2_entry_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::remove_l2_entry_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
-
     }
 
     /// EOF closure of `remove_l2_entry`: the leaves that need no walk uniqueness, and the shrunk page closure.
@@ -271,7 +270,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn remove_l3_entry_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr)
         -> bool {
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
+        &&& post.higher == (PageTableHigher { l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
         &&& post.higher.l2_rev_map.view() == pre.higher.l2_rev_map.view().remove(target_l2_p)
         &&& post.higher.l3_tables.view() =~= pre.higher.l3_tables.view().insert(target_l3_p, post.higher.l3_tables.view().spec_index(target_l3_p))
         &&& post.higher.l3_tables.view().spec_index(target_l3_p).addr() == target_l3_p
@@ -324,13 +323,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::remove_l3_entry_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_window_locked_by_thread(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::remove_l3_entry_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
     }
 
     /// EOF closure of `remove_l3_entry`: the big-lock half `higher.inv()`.

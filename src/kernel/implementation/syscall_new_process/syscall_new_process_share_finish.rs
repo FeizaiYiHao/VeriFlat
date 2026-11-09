@@ -122,7 +122,7 @@ pub(super) fn share_and_finish_new_process(
         current_thread_lock_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
         source_pagetable_ptr != target_pagetable_ptr,
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr,
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr == parent_ptr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         source_pagetable_lock_perm.view().state() is ReadLock,
         source_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -130,7 +130,7 @@ pub(super) fn share_and_finish_new_process(
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.view().lock_id()),
         entry_k.pt_mp.dom().contains(source_pagetable_ptr),
         whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).wf(),
-        entry_k.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        entry_k.pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present
@@ -158,10 +158,10 @@ pub(super) fn share_and_finish_new_process(
         entry_lctx.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.dom().contains(target_pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable_ptr, TypedLockMode::Write),
-        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().proc_ptr == child_ptr,
-        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end,
+        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().higher.proc_ptr == child_ptr,
+        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).is_empty(),
-        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         target_pagetable_lock_perm.view().state() is WriteLock,
         target_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(target_pagetable_ptr).locking_thread()->Write_lock_id,

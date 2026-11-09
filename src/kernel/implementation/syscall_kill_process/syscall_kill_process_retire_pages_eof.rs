@@ -224,7 +224,7 @@ proof fn kill_retire_table_page_eof_tlb_caches(
         !iommu ==> pre.pt_mp.dom().contains(table),
         !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
     ensures
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
@@ -271,7 +271,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
         !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
         !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         thread_perms_wf(post.thrd_mp),
         post.allc_4k_mp.perms_wf(),
         post.allc_4k_mp.spec_index(allc_ptr).wf(),

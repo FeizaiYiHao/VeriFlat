@@ -113,8 +113,8 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
         old(lctx).kernel_view_locking_state() == pre_lctx.kernel_view_locking_state(),
         rlock_ensures(pre_k.pt_mp.spec_index(pagetable_ptr), old(krnl).pt_mp.spec_index(pagetable_ptr), pre_k.pt_mp.lock_id_by_key(pagetable_ptr), old(lctx), pagetable_lock_perm),
         typed_lock_maps_inserted(&pre_lctx, old(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: old(krnl).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Read }),
-        old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0,
-        old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_windows_exist(va_range),
+        old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= spec_va2index(va).0,
+        old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_mapping_4k_va_range_windows_exist(va_range),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),

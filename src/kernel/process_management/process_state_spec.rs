@@ -27,14 +27,11 @@ pub proof fn process_state_lock_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockP
 // Proof dependencies (confirmed): process_thread_wf.
 #[verifier::opaque]
 pub open spec fn process_emptied_threads_wf(prc_mp: ProcessLockedMap, thrd_mp: ThreadLockedMap) -> bool {
-    forall|p: RwLockProcessPtr, t: RwLockThreadPtr|
-        #![trigger prc_mp.spec_index(p).view().owned_threads.view().contains(t)]
-        prc_mp.dom().contains(p)
-            && prc_mp.spec_index(p).view().state.view() is TablesEmptied
-            && prc_mp.spec_index(p).view().owned_threads.view().contains(t)
-            ==>
-            thrd_mp.dom().contains(t)
-            && thrd_mp.spec_index(t).view().exited.view()
+    forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.dom().contains(p)]
+        prc_mp.dom().contains(p) && prc_mp.spec_index(p).view().state.view() is TablesEmptied ==> forall|t: RwLockThreadPtr|
+            #![trigger prc_mp.spec_index(p).view().owned_threads.view().contains(t)]
+            prc_mp.spec_index(p).view().owned_threads.view().contains(t) ==> thrd_mp.dom().contains(t) && thrd_mp.spec_index(t).view().exited.view()
 }
 
 pub proof fn process_emptied_threads_wf_at(prc_mp: ProcessLockedMap, thrd_mp: ThreadLockedMap, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)

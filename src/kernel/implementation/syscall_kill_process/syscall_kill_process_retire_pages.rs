@@ -396,7 +396,7 @@ pub(crate) fn kill_retire_table_pages(
                 pagetable_perms_wf_at(krnl.pt_mp, table);
                 pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table); mapped_1g_page_pagetable_wf_table_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table);
             }
-            krnl.pt_mp.borrow_typed(table, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(table_perm)).next_structure_page(Tracked(krnl.pt_lower.borrow().tracked_borrow(table)))
+            krnl.pt_mp.borrow_typed(table, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(table_perm)).higher.next_structure_page(Tracked(krnl.pt_lower.borrow().tracked_borrow(table)))
         };
         if scan.table_page().is_none() {
             proof {
@@ -406,7 +406,7 @@ pub(crate) fn kill_retire_table_pages(
                     assert(krnl.it_mp.spec_index(table).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(table).view().kernel_entries_wf_iommu_l4_end_at(); };
                 } else {
                     assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target); };
-                    assert(krnl.pt_mp.spec_index(table).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(table); };
+                    assert(krnl.pt_mp.spec_index(table).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(table); };
                     assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), table).mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
                         process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
                         mapped_1g_page_pagetable_wf_table_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table);
@@ -486,7 +486,7 @@ pub(crate) fn kill_retire_next_table_page(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& old(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& old(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },
@@ -532,7 +532,7 @@ pub(crate) fn kill_retire_next_table_page(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& final(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& final(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },
@@ -585,7 +585,7 @@ pub(crate) fn kill_retire_table_page_and_unlock(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& old(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& old(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },
@@ -652,7 +652,7 @@ pub(crate) fn kill_retire_table_page_and_unlock(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& final(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& final(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },
@@ -805,7 +805,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& old(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& old(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },
@@ -857,7 +857,7 @@ pub(crate) fn kill_retire_table_page_to_cache(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.hidden_l1_tables_in_locked_windows()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
-            &&& final(krnl).pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& final(krnl).pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
                 whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i) is None
         },

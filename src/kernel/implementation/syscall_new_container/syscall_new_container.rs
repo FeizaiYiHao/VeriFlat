@@ -516,7 +516,7 @@ fn new_container_lock_entry(
             &&& e.cpu_set_lock_perm.view().state() is WriteLock
             &&& e.cpu_set_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& e.cpu_set_lock_perm.view().lock_id() == final(krnl).cpu_set_mp.spec_index(e.parent_cpu_set).locking_thread()->Write_lock_id
-            &&& final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(e.source_range.start)
+            &&& final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(e.source_range.start)
             &&& final(lctx).page_lock_map().dom().is_empty()
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom() =~= set![e.parent_container_ptr]

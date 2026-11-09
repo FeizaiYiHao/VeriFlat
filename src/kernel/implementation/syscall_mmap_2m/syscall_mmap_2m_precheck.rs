@@ -70,7 +70,7 @@ pub(super) fn mmap_2m_precheck(krnl: &KernelK, range: &VaRange2M, cover: &VaRang
     let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
     let start_indices = va2index(range_start);
-    if start_indices.0 < pagetable.kernel_l4_end { return (Mmap2mPrecheck::Invalid, Ghost(None), Ghost(0)); }
+    if start_indices.0 < pagetable.higher.kernel_l4_end { return (Mmap2mPrecheck::Invalid, Ghost(None), Ghost(0)); }
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
         spec_va_4k_index_roundtrip_at(range_start, start_indices.0, start_indices.1, start_indices.2, 0usize);
@@ -78,14 +78,14 @@ pub(super) fn mmap_2m_precheck(krnl: &KernelK, range: &VaRange2M, cover: &VaRang
     let mut i: usize = 0;
     while i < range_len
         invariant
-            (WholePageTable { higher: *pagetable, lower: *lower }) == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr),
-            (WholePageTable { higher: *pagetable, lower: *lower }).wf(),
+            (WholePageTable { higher: pagetable.higher, lower: *lower }) == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr),
+            (WholePageTable { higher: pagetable.higher, lower: *lower }).wf(),
             range.wf(),
             range_len == range.len,
             range_start == range.start,
             i <= range_len,
             spec_va_4k_valid(range_start),
-            pagetable.kernel_l4_end <= spec_v2l4index(range_start),
+            pagetable.higher.kernel_l4_end <= spec_v2l4index(range_start),
             forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> {
                 let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let idx = spec_va2index(range.view()[j]);
@@ -122,27 +122,27 @@ pub(super) fn mmap_2m_precheck(krnl: &KernelK, range: &VaRange2M, cover: &VaRang
                         va == add(prev_va, 0x200000usize);
             }
         }
-        if let Some(l4_entry) = pagetable.get_entry_l4(l4i) {
-            if pagetable.get_entry_1g_l3(l4i, l3i, &l4_entry).is_some() {
-                proof { pagetable.wf_mapping_1g_at(l4i, l3i); }
+        if let Some(l4_entry) = pagetable.higher.get_entry_l4(l4i) {
+            if pagetable.higher.get_entry_1g_l3(l4i, l3i, &l4_entry).is_some() {
+                proof { pagetable.higher.wf_mapping_1g_at(l4i, l3i); }
                 return (Mmap2mPrecheck::InUse, Ghost(None), Ghost(i as int));
             }
-            if let Some(l3_entry) = pagetable.get_entry_l3(l4i, l3i, &l4_entry) {
-                if pagetable.get_entry_2m_l2(Tracked(lower), l4i, l3i, l2i, &l3_entry).is_some() {
-                    proof { (WholePageTable { higher: *pagetable, lower: *lower }).wf_mapping_2m_at(l4i, l3i, l2i); }
+            if let Some(l3_entry) = pagetable.higher.get_entry_l3(l4i, l3i, &l4_entry) {
+                if pagetable.higher.get_entry_2m_l2(Tracked(lower), l4i, l3i, l2i, &l3_entry).is_some() {
+                    proof { (WholePageTable { higher: pagetable.higher, lower: *lower }).wf_mapping_2m_at(l4i, l3i, l2i); }
                     return (Mmap2mPrecheck::InUse, Ghost(None), Ghost(i as int));
                 }
             }
         }
         let end_va = index2va((l4i, l3i, l2i, 511));
         proof {
-            pagetable.wf_mapping_1g_at(l4i, l3i); (WholePageTable { higher: *pagetable, lower: *lower }).wf_mapping_2m_at(l4i, l3i, l2i);
+            pagetable.higher.wf_mapping_1g_at(l4i, l3i); (WholePageTable { higher: pagetable.higher, lower: *lower }).wf_mapping_2m_at(l4i, l3i, l2i);
             spec_va_4k_index_roundtrip_at(end_va, l4i, l3i, l2i, 511usize);
             assert(((l4i as usize) << 39 | (l3i as usize) << 30 | (l2i as usize) << 21 | (0usize) << 12) <= ((l4i as usize) << 39 | (l3i as usize) << 30 | (l2i as usize) << 21 | (511usize) << 12))
                 by (bit_vector) requires l4i < 512, l3i < 512, l2i < 512;
         }
-        if !pagetable.mapping_4k_va_range_empty(Tracked(lower), va, end_va) {
-            let found = pagetable.next_mapped_4k_from(Tracked(lower), (l4i, l3i, l2i, 0));
+        if !pagetable.higher.mapping_4k_va_range_empty(Tracked(lower), va, end_va) {
+            let found = pagetable.higher.next_mapped_4k_from(Tracked(lower), (l4i, l3i, l2i, 0));
             return (Mmap2mPrecheck::InUse, Ghost(found), Ghost(i as int));
         }
         i = i + 1;

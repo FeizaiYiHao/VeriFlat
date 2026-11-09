@@ -110,9 +110,9 @@ pub(super) fn unmap_4k_unmap_and_finish(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable),
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
         forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < va_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va_range.view().spec_index(j)).present

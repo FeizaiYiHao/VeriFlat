@@ -176,17 +176,17 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             }),
             final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed(),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid,
             final(krnl).pt_mp.spec_index(pagetable_ptr).inv(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).wf(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end(),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i) is Some,
             forall|l4j: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(l4j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4j)]
@@ -308,9 +308,9 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view().remove(pg_ptr),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k - 1,
             final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid,
             final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed(),
             final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
             final(krnl).pt_lower == old(krnl).pt_lower,
@@ -322,7 +322,7 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4i) is Some,
             forall|l4j: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(l4j)]
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(l4j)]
@@ -511,12 +511,7 @@ pub open spec fn mmap_1g_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
                     &&& final(krnl).pt_mp.dom().contains(pagetable_ptr)
                     &&& final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr)
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) ==> {
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view()
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_lock() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_lock()
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() == old(krnl).pt_mp.spec_index(pagetable_ptr).is_init()
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata()
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).control() == old(krnl).pt_mp.spec_index(pagetable_ptr).control()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr) == old(krnl).pt_mp.spec_index(pagetable_ptr)
                         &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)
                     }
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {

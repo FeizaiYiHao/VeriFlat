@@ -282,7 +282,7 @@ impl Cpu {
             old(self).view().current_cr3 == cr3,
             old(self).view().current_pcid == pcid,
             lctx.kernel_view_locking_state() is Release,
-            old(self).view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
+            old(self).view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().higher.cr3 == cr3,
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
@@ -708,7 +708,7 @@ impl CpuLockedArray {
             needflush_perm.view().lock_id() == old(needflush).spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
             old(hw_cr3_pcid)[cpu_id as int].owner_cpu() == cpu_id,
             k.pt_mp.dom().contains(pagetable_ptr),
-            k.pt_mp.spec_index(pagetable_ptr).view().cr3 == cr3,
+            k.pt_mp.spec_index(pagetable_ptr).view().higher.cr3 == cr3,
         ensures
             pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
             final(needflush).inv(),

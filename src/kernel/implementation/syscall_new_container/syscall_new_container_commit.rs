@@ -69,7 +69,7 @@ pub(super) fn commit_new_container(
         parent_cpu_set_lock_perm.view().state() is WriteLock,
         parent_cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_cpu_set_lock_perm.view().lock_id() == old(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
@@ -272,7 +272,7 @@ fn commit_new_container_publish(
         parent_cpu_set_lock_perm.view().state() is WriteLock,
         parent_cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_cpu_set_lock_perm.view().lock_id() == old(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present
@@ -485,10 +485,10 @@ fn commit_new_container_publish(
         ret.8.view().thread_id() == final(lctx).thread_id(),
         ret.8.view().lock_id() == final(krnl).pt_mp.spec_index(ret.2).locking_thread()->Write_lock_id,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.2).is_empty(),
-        final(krnl).pt_mp.spec_index(ret.2).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(ret.2).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
-        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).view() == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view(),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
 {
@@ -540,7 +540,7 @@ fn commit_new_container_publish_staged(
         caller_cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view()[caller_cpu_id as int] is InStep,
         old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         process_quota_4k <= funding_page_count,
         funding_page_count <= usize::MAX - 9 - 3 * source_range.len,
         source_range.wf(),
@@ -806,10 +806,10 @@ fn commit_new_container_publish_staged(
         ret.8.view().thread_id() == final(lctx).thread_id(),
         ret.8.view().lock_id() == final(krnl).pt_mp.spec_index(ret.2).locking_thread()->Write_lock_id,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.2).is_empty(),
-        final(krnl).pt_mp.spec_index(ret.2).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(ret.2).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
-        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).view() == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view(),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
 {

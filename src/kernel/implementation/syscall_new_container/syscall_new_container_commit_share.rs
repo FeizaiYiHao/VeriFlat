@@ -149,13 +149,13 @@ pub(super) fn commit_new_container_share_and_finish(
         child_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
         child_pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(child_pagetable_ptr).locking_thread()->Write_lock_id,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).is_empty(),
-        old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(child_pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         source_range.wf(),
         source_range.len > 0,
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         entry_k.pt_mp.dom().contains(source_pagetable_ptr),
         whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).wf(),
-        entry_k.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        entry_k.pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(source_range.start),
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present

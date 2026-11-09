@@ -32,7 +32,7 @@ pub fn map_shared_page_into_iommu_4k(
         !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).pt_mp.dom().contains(source_pagetable),
-        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == prc_ptr,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
         source_pagetable_lock_perm.state() is ReadLock,
         source_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -86,7 +86,7 @@ pub fn map_shared_page_into_iommu_4k(
     {
         let source = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
-        source_entry = source.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
+        source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
     let pg_ptr = source_entry.addr;
     let pg_idx = page_ptr2page_index(pg_ptr);

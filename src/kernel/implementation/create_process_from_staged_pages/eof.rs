@@ -83,11 +83,11 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.pt_mp.view().spec_index(pagetable_pg_ptr).addr() == pagetable_pg_ptr
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).is_init()
     &&& !post.pt_mp.spec_index(pagetable_pg_ptr).being_killed()
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().proc_ptr == process_pg_ptr
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().pcid_value() == pcid
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().cr3 == l4_pg_ptr
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.proc_ptr == process_pg_ptr
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.pcid_value() == pcid
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.cr3 == l4_pg_ptr
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_pg_ptr, post.pt_lower.view().spec_index(pagetable_pg_ptr))
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_pg_ptr)
     &&& forall|pt_ptr: RwLockPageTableRoot|
@@ -966,7 +966,7 @@ pub(super) proof fn create_process_from_staged_pages_eof_inv(
         forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)]
             pre.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).is_empty(),
-        post.pt_mp.spec_index(pagetable_pg_ptr).view().proc_ptr == process_pg_ptr,
+        post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.proc_ptr == process_pg_ptr,
         post.prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr,
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
         post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),

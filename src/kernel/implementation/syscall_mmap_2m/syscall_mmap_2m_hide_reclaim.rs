@@ -26,9 +26,9 @@ fn mmap_2m_window_links_l1(krnl: &KernelK, pagetable_ptr: RwLockPageTableRoot, v
     let indices = va2index(va);
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).is_some()
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    pt.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).is_some()
 }
 
 /// The L2 page and the L2 entry word of the held 2M window of `va` in the read-held page table `pagetable_ptr`.
@@ -66,9 +66,9 @@ fn mmap_2m_window_l2_word(krnl: &KernelK, pagetable_ptr: RwLockPageTableRoot, va
     let indices = va2index(va);
     let pt = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let word = pt.get_l2_entry_word_write_held(Tracked(lower), indices.0, indices.1, indices.2, &l3);
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    let word = pt.higher.get_l2_entry_word_write_held(Tracked(lower), indices.0, indices.1, indices.2, &l3);
     (l3.addr, word)
 }
 
@@ -406,7 +406,7 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         process_perms_wf_at(krnl.prc_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
-        krnl.pt_mp.spec_index(pagetable_ptr).view().table_pages_wf_cr3_at();
+        krnl.pt_mp.spec_index(pagetable_ptr).view().higher.table_pages_wf_cr3_at();
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
     let ghost flush_lctx = *lctx;

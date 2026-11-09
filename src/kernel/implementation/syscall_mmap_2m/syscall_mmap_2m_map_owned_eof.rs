@@ -28,7 +28,7 @@ pub(super) open spec fn map_owned_2m_page_eof_transition_framing(pre: KernelK, p
     &&& new_pt.lower.window_stale_cpus == old_pt.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_pt.lower.l2_owner(p, i)] new_pt.lower.l2_owner(p, i) == old_pt.lower.l2_owner(p, i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-        pre.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_pt.spec_resolve_mapping_l2(l4i, l3i, l2i)
+        pre.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_resolve_mapping_l2(l4i, l3i, l2i) == old_pt.spec_resolve_mapping_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_pt.spec_held_l2(l4i, l3i, l2i)]
         old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_held_l2(l4i, l3i, l2i) == old_pt.spec_held_l2(l4i, l3i, l2i)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)]

@@ -56,7 +56,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::hide_l1_page_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::hide_l1_page_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         assert(post.higher.inv() && post.va_addr_valid() && post.page_closure() =~= pre.page_closure()) by { reveal(WholePageTable::hide_l1_page_eof_transition_framing); };
-
     }
 
     /// EOF closure of `hide_l1_page`: the table-shape leaves of the window half. The hidden entry keeps the L1 page and its
@@ -250,7 +249,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::unlink_hidden_l1_page_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::unlink_hidden_l1_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::unlink_hidden_l1_page_eof_hidden_l1_tables_in_locked_windows(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
-
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: the leaves that read no walk, and the shrunk page closure.
@@ -411,7 +409,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// longer owns the L1 page `target_l1_p`, which leaves the L1 reverse index; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn unlink_unresolvable_l1_page_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr) -> bool {
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
+        &&& post.higher == pre.higher
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l1_rev_map: post.lower.l1_rev_map, ..pre.lower })
         &&& post.lower.l1_rev_map == pre.lower.l1_rev_map.remove(target_l1_p)
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
@@ -451,13 +449,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::unlink_unresolvable_l1_page_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::unlink_unresolvable_l1_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         assert(pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows()) by { reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing); };
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
     }
 
     /// EOF closure of `unlink_unresolvable_l1_page`: the leaves that read no walk, and the shrunk page closure.
@@ -483,11 +474,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
     {
         reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
-        assert(post.higher.inv()) by {
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-            reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
-            reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
-        };
         assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };

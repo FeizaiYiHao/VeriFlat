@@ -136,7 +136,7 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
         held_threads_unchanged(entry.thrd_mp, krnl.thrd_mp, held),
         held_processes_unchanged(entry.prc_mp, krnl.prc_mp, held),
         krnl.pt_mp.dom().contains(pagetable),
-        krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view() }),
+        krnl.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view().higher }),
         typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> {
             &&& krnl.pt_mp.spec_index(pagetable).locking_thread() == entry.pt_mp.spec_index(pagetable).locking_thread()
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).mapping_4k()
@@ -339,7 +339,7 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
         unmapped < range.len,
         range.view()[unmapped as int] == va,
-        pre.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         process_pagetable_wf(pre.prc_mp, pre.pt_mp),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         pre.pt_mp.dom().contains(pagetable),
@@ -347,7 +347,7 @@ pub proof fn unmap_4k_leaf_range_steps_from_k(
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va].present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va] }),

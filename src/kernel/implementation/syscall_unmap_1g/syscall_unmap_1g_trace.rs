@@ -231,7 +231,7 @@ pub(super) proof fn unmap_1g_leaf_range_steps_from_k(
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
         pre.pt_mp.dom().contains(pagetable),
-        pre.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         pre.thrd_mp.dom().contains(thrd_ptr),
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
@@ -242,7 +242,7 @@ pub(super) proof fn unmap_1g_leaf_range_steps_from_k(
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va].present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g()

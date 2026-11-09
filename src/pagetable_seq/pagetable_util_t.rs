@@ -16,7 +16,7 @@ use super::pagetable_util_t_eof::*;
 /// object.
 #[verifier::external_body]
 pub fn retype_pagetable_rwlock_to_4k_page_perms(
-    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
+    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -24,7 +24,7 @@ pub fn retype_pagetable_rwlock_to_4k_page_perms(
         pagetable_perm.addr() == pagetable_ptr,
         pagetable_perm.value().is_init(),
         pagetable_perm.value().view().inv(),
-        pagetable_perm.value().view().l3_tables.view().dom() + pagetable_perm.value().view().l4_table.view().dom() =~= set![pagetable_perm.value().view().cr3],
+        pagetable_perm.value().view().higher.l3_tables.view().dom() + pagetable_perm.value().view().higher.l4_table.view().dom() =~= set![pagetable_perm.value().view().higher.cr3],
         pagetable_perm.value().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: lock_perm.lock_id() }),
         lock_perm.state() is WriteLock,
         lock_perm.thread_id() == old(lctx).thread_id(),
@@ -38,7 +38,7 @@ pub fn retype_pagetable_rwlock_to_4k_page_perms(
         ret.0.view().is_init(),
         ret.0.view().addr() == pagetable_ptr,
         ret.1.view().is_init(),
-        ret.1.view().addr() == pagetable_perm.value().view().cr3,
+        ret.1.view().addr() == pagetable_perm.value().view().higher.cr3,
 {
     (Tracked::assume_new(), Tracked::assume_new())
 }
@@ -83,7 +83,6 @@ impl KernelK {
     pub fn retype_page_to_pagetable_and_insert(&mut self, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>, Tracked(lower): Tracked<PageTableLower<PT_TYPE>>,
         Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
-            higher.lower_backup.view() == lower,
             old(self).pt_mp.perms_wf(),
             !old(self).pt_mp.dom().contains(pg_ptr),
             page_perm.is_init(),
@@ -114,7 +113,7 @@ impl KernelK {
                 old(self).pt_mp.dom().contains(ptr) ==> final(self).pt_mp.lock_id_by_key(ptr) == old(self).pt_mp.lock_id_by_key(ptr),
             final(self).pt_lower.view() == old(self).pt_lower.view().insert(pg_ptr, lower),
             final(self).pt_mp.spec_index(pg_ptr).is_init(),
-            final(self).pt_mp.spec_index(pg_ptr).view() == higher,
+            final(self).pt_mp.spec_index(pg_ptr).view().higher == higher,
             final(self).pt_mp.spec_index(pg_ptr).view().lower_backup.view() == lower,
             forall|r: RwLockPageTableRoot|
                 #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), r)]
@@ -221,7 +220,7 @@ impl KernelK {
             old(self).pt_mp.spec_index(pagetable_ptr).is_init(),
             old(self).pt_lower.view().dom().contains(pagetable_ptr),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).wf(),
-            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).page_closure() =~= set![old(self).pt_mp.spec_index(pagetable_ptr).view().cr3],
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).page_closure() =~= set![old(self).pt_mp.spec_index(pagetable_ptr).view().higher.cr3],
             lock_perm.state() is WriteLock,
             lock_perm.thread_id() == old(lctx).thread_id(),
             lock_perm.lock_id() == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -253,7 +252,7 @@ impl KernelK {
             ret.0.view().is_init(),
             ret.0.view().addr() == pagetable_ptr,
             ret.1.view().is_init(),
-            ret.1.view().addr() == old(self).pt_mp.spec_index(pagetable_ptr).view().cr3,
+            ret.1.view().addr() == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.cr3,
     {
         proof {
             self.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
@@ -332,8 +331,8 @@ impl KernelK {
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is RemoveCpu ==> ({
                 let cpu_id = update->RemoveCpu_cpu_id;
-                let pcid = old(self).pt_mp.spec_index(root).view().pcid->Some_0;
-                &&& old(self).pt_mp.spec_index(root).view().pcid is Some
+                let pcid = old(self).pt_mp.spec_index(root).view().higher.pcid->Some_0;
+                &&& old(self).pt_mp.spec_index(root).view().higher.pcid is Some
                 &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
                 &&& old(self).cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                     || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -351,7 +350,7 @@ impl KernelK {
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is RemoveCpu ==> ({
                 let cpu_id = update->RemoveCpu_cpu_id;
-                let pcid = old(self).pt_mp.spec_index(root).view().pcid->Some_0;
+                let pcid = old(self).pt_mp.spec_index(root).view().higher.pcid->Some_0;
                 let dirty_entry = old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
                 ||| old(self).cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
                 ||| old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
@@ -375,7 +374,8 @@ impl KernelK {
                 &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
                 &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
                 &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
-                &&& final(self).pt_mp.spec_index(root).view() == (PageTableHigher { lower_backup: Ghost(if WRITE { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+                &&& final(self).pt_mp.spec_index(root).view().higher == old(self).pt_mp.spec_index(root).view().higher
+                &&& final(self).pt_mp.spec_index(root).view().lower_backup == if WRITE { Ghost(final(self).pt_lower.view().spec_index(root)) } else { old(self).pt_mp.spec_index(root).view().lower_backup }
             },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
@@ -447,11 +447,11 @@ impl KernelK {
             table_perm.state() is WriteLock,
             table_perm.thread_id() == lctx.thread_id(),
             table_perm.lock_id() == old(self).pt_mp.spec_index(root).locking_thread()->Write_lock_id,
-            update is Set ==> old(self).pt_mp.spec_index(root).view().table_stale_cpus.view().subset_of(update->Set_cpus),
+            update is Set ==> old(self).pt_mp.spec_index(root).view().higher.table_stale_cpus.view().subset_of(update->Set_cpus),
             update is RemoveCpu ==> ({
                 let cpu_id = update->RemoveCpu_cpu_id;
-                let pcid = old(self).pt_mp.spec_index(root).view().pcid->Some_0;
-                &&& old(self).pt_mp.spec_index(root).view().pcid is Some
+                let pcid = old(self).pt_mp.spec_index(root).view().higher.pcid->Some_0;
+                &&& old(self).pt_mp.spec_index(root).view().higher.pcid is Some
                 &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
                 &&& old(self).cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                     || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -460,7 +460,7 @@ impl KernelK {
             }),
             update is RemoveCpu ==> ({
                 let cpu_id = update->RemoveCpu_cpu_id;
-                let pcid = old(self).pt_mp.spec_index(root).view().pcid->Some_0;
+                let pcid = old(self).pt_mp.spec_index(root).view().higher.pcid->Some_0;
                 let dirty_entry = old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
                 ||| old(self).cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
                 ||| old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
@@ -478,8 +478,9 @@ impl KernelK {
             forall|k: RwLockPageTableRoot| #![trigger final(self).pt_mp.lock_id_by_key(k)] old(self).pt_mp.dom().contains(k) ==> final(self).pt_mp.lock_id_by_key(k) == old(self).pt_mp.lock_id_by_key(k),
             final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread(),
             final(self).pt_mp.spec_index(root).being_killed() == old(self).pt_mp.spec_index(root).being_killed(),
-            final(self).pt_mp.spec_index(root).view() == (PageTableHigher { table_stale_cpus: final(self).pt_mp.spec_index(root).view().table_stale_cpus, ..old(self).pt_mp.spec_index(root).view() }),
-            final(self).pt_mp.spec_index(root).view().table_stale_cpus.view() == table_stale_cpus_after(update, old(self).pt_mp.spec_index(root).view().table_stale_cpus.view()),
+            final(self).pt_mp.spec_index(root).view().higher == (PageTableHigher { table_stale_cpus: final(self).pt_mp.spec_index(root).view().higher.table_stale_cpus, ..old(self).pt_mp.spec_index(root).view().higher }),
+            final(self).pt_mp.spec_index(root).view().lower_backup == old(self).pt_mp.spec_index(root).view().lower_backup,
+            final(self).pt_mp.spec_index(root).view().higher.table_stale_cpus.view() == table_stale_cpus_after(update, old(self).pt_mp.spec_index(root).view().higher.table_stale_cpus.view()),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
@@ -490,7 +491,7 @@ impl KernelK {
             old(self).pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
         }
         let pagetable = self.pt_mp.borrow_mut_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(table_perm));
-        pagetable.table_stale_cpus = Ghost(table_stale_cpus_after(update, pagetable.table_stale_cpus.view()));
+        pagetable.higher.table_stale_cpus = Ghost(table_stale_cpus_after(update, pagetable.higher.table_stale_cpus.view()));
         proof {
             assert(table_stale_cpus_update_eof_transition_framing(*old(self), *self, root)) by { reveal(table_stale_cpus_update_eof_transition_framing); };
             table_stale_cpus_update_eof(*old(self), *self, root, update);

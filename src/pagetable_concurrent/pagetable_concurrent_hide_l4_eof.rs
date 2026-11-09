@@ -7,7 +7,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// 2M and 1G mapping and every window under it leaves its map; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn hide_l4_entry_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index) -> bool {
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l4_table: post.higher.l4_table, mapping_1g: post.higher.mapping_1g, ..pre.higher })
+        &&& post.higher == (PageTableHigher { l4_table: post.higher.l4_table, mapping_1g: post.higher.mapping_1g, ..pre.higher })
         &&& post.lower == (PageTableLower { mapping_4k: post.lower.mapping_4k, mapping_2m: post.lower.mapping_2m, pagetable_window_locks: post.lower.pagetable_window_locks, ..pre.lower })
         &&& post.higher.l4_table.view().dom() == pre.higher.l4_table.view().dom()
         &&& forall|p: PageMapPtr| #![trigger post.higher.l4_table.view().spec_index(p)]

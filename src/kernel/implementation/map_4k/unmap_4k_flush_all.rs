@@ -33,7 +33,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
         WRITE ==> table_perm.state() is WriteLock,
         WRITE ==> table_perm.thread_id() == old(lctx).thread_id(),
         WRITE ==> table_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        WRITE ==> old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS) || old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        WRITE ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS) || old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> forall|k: (PageMapPtr, L2Index)|
             #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains(k)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains(k)
@@ -41,8 +41,8 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))
             ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
                 || whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS)),
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
         page_ptr_valid(cr3),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
@@ -122,9 +122,9 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
         final(krnl).cpu_arr.spec_index(local_cpu).view().being_killed() == old(krnl).cpu_arr.spec_index(local_cpu).view().being_killed(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().killer_info() == old(krnl).cpu_arr.spec_index(local_cpu).view().killer_info(),
         final(krnl).pt_mp.dom().contains(pagetable),
-        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
         !WRITE ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Read) ==> final(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id())
             == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id()),
@@ -225,8 +225,8 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
             krnl.cpu_op.view().view()[local_cpu as int] == old(krnl).cpu_op.view().view()[local_cpu as int],
             old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
             krnl.pt_mp.dom().contains(pagetable),
-            krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-            krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3,
+            krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+            krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             pcid != KERNEL_DEFAULT_PCID,
@@ -249,9 +249,9 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
             held.pagetable_lock_map().dom().contains(pagetable),
             old(krnl).inv(),
             krnl.cpu_arr.spec_index(local_cpu).view().view() == old(krnl).cpu_arr.spec_index(local_cpu).view().view(),
-            krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
-            krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(cpu_id, NUM_CPUS) || krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            !WRITE ==> krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+            krnl.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
+            krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(cpu_id, NUM_CPUS) || krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            !WRITE ==> krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             WRITE == typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write),
             WRITE ==> table_perm.state() is WriteLock,
             WRITE ==> table_perm.thread_id() == lctx.thread_id(),

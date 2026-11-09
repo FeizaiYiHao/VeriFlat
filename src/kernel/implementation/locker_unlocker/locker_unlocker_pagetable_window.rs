@@ -55,15 +55,16 @@ impl KernelK {
                 &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
                 &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
                 &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
-                &&& final(self).pt_mp.spec_index(root).view()
-                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+                &&& final(self).pt_mp.spec_index(root).view().higher
+                    == old(self).pt_mp.spec_index(root).view().higher
+                &&& final(self).pt_mp.spec_index(root).view().lower_backup == if old(self).pt_mp.spec_index(root).wlocked() { Ghost(final(self).pt_lower.view().spec_index(root)) } else { old(self).pt_mp.spec_index(root).view().lower_backup }
             },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
-                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
+                == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -137,7 +138,7 @@ impl KernelK {
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
         let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
-        let ret = higher.lock_window(Tracked(&mut lower), Ghost(root), l4i, l3i, l2i, Tracked(&mut *lctx));
+        let ret = higher.higher.lock_window(Tracked(&mut lower), Ghost(root), l4i, l3i, l2i, Tracked(&mut *lctx));
         proof {
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
         }
@@ -213,15 +214,16 @@ impl KernelK {
                 &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
                 &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
                 &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
-                &&& final(self).pt_mp.spec_index(root).view()
-                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+                &&& final(self).pt_mp.spec_index(root).view().higher
+                    == old(self).pt_mp.spec_index(root).view().higher
+                &&& final(self).pt_mp.spec_index(root).view().lower_backup == if old(self).pt_mp.spec_index(root).wlocked() { Ghost(final(self).pt_lower.view().spec_index(root)) } else { old(self).pt_mp.spec_index(root).view().lower_backup }
             },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
-                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
+                == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -272,7 +274,7 @@ impl KernelK {
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
         let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
-        higher.unlock_window(Tracked(&mut lower), Ghost(root), l4i, l3i, l2i, Tracked(&mut *lctx), lp);
+        higher.higher.unlock_window(Tracked(&mut lower), Ghost(root), l4i, l3i, l2i, Tracked(&mut *lctx), lp);
         proof {
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
         }

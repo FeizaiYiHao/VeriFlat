@@ -95,7 +95,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& process.view().pagetable == pagetable_ptr
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
             &&& !(table.locking_thread() is Write)
-            &&& table.view().kernel_l4_end <= spec_v2l4index(range.start)
+            &&& table.view().higher.kernel_l4_end <= spec_v2l4index(range.start)
             &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view().spec_index(j))
                 && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).present
             &&& range.wf()

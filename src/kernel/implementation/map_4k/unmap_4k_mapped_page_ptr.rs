@@ -42,7 +42,7 @@ pub(super) fn unmap_4k_mapped_page_ptr(
         krnl.pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
         indices == spec_va2index(va),
-        krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= indices.0,
+        krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0,
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         pagetable_perm.view().thread_id() == lctx.thread_id(),
         pagetable_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
@@ -60,10 +60,10 @@ pub(super) fn unmap_4k_mapped_page_ptr(
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-    pt.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap().addr
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    let l2 = pt.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+    pt.higher.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap().addr
 }
 
 /// Reads the L2 and L1 pages on the path to the 4K leaf `va` of the read- or write-locked page table `pagetable`.
@@ -76,7 +76,7 @@ pub(super) fn unmap_4k_leaf_table_ptrs(
         krnl.pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
         indices == spec_va2index(va),
-        krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= indices.0,
+        krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0,
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         pagetable_perm.view().thread_id() == lctx.thread_id(),
         pagetable_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
@@ -96,9 +96,9 @@ pub(super) fn unmap_4k_leaf_table_ptrs(
     }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    let l2 = pt.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
     (l3.addr, l2.addr)
 }
 }

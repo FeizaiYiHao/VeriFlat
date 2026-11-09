@@ -239,12 +239,12 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
     &&& forall|ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(ptr)] pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
     &&& !post.pt_mp.spec_index(pagetable_page).being_killed()
-    &&& post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page
-    &&& post.pt_mp.spec_index(pagetable_page).view().pcid is Some
-    &&& post.pt_mp.spec_index(pagetable_page).view().pcid_value() == root_pcid
-    &&& post.pt_mp.spec_index(pagetable_page).view().cr3 == l4_page
-    &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
-    &&& post.pt_mp.spec_index(pagetable_page).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.proc_ptr == process_page
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.pcid is Some
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.pcid_value() == root_pcid
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.cr3 == l4_page
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
     &&& post.pt_mp.spec_index(pagetable_page).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_page)
     &&& forall|pt_ptr: RwLockPageTableRoot|
@@ -407,7 +407,7 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
         post.allc_4k_mp.spec_index(allocator_4k_page).total_free_pages.view() == funding_pages.len(),
         post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty(),
-        post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
+        post.pt_mp.spec_index(pagetable_page).view().higher.proc_ptr == process_page,
         post.prc_mp.spec_index(process_page).view().iommu_table is None,
         post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
         post.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq,

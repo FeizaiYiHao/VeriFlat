@@ -150,7 +150,7 @@ fn new_process_lock_entry(
             &&& x.source_pagetable_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).locking_thread() is Read
             &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(final(lctx).thread_id(), x.source_pagetable_lock_perm.view().lock_id())
-            &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(x.source_range.start)
+            &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(x.source_range.start)
             &&& final(lctx).page_lock_map().dom().is_empty()
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ2m)

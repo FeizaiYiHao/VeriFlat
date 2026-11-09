@@ -13,7 +13,7 @@ pub proof fn hide_user_l4_entries_hide_step_pre_from_k(pre: &KernelK, post: &Ker
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
-    let prc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let prc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(*pre, *post, pagetable, l4i);
@@ -37,7 +37,7 @@ pub proof fn hide_user_l4_entries_hide_step_from_k(pre: &KernelK, post: &KernelK
     ensures
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let prc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let prc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
             let table = old_u.process_map[prc_ptr].pagetable->Some_0;
             &&& old_u.process_map.dom().contains(prc_ptr)
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
@@ -79,7 +79,7 @@ pub proof fn hide_user_l4_entries_steps_from_k(steps: Seq<KernelStep>, start: in
     ensures
         forall|k: int| #![trigger hidden[k]] 0 <= k < count ==> {
             let step = steps[start + k];
-            let prc_ptr = hidden[k].1.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let prc_ptr = hidden[k].1.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
             let table = step.old_u.process_map[prc_ptr].pagetable->Some_0;
             &&& step.old_u.process_map.dom().contains(prc_ptr)
             &&& step.new_u == (KernelU {

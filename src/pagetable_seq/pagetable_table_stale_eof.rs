@@ -20,7 +20,8 @@ pub open spec fn table_stale_cpus_update_eof_transition_framing(pre: KernelK, po
     &&& after.being_killed() == before.being_killed()
     &&& after.killer_info() == before.killer_info()
     &&& after.control() == before.control()
-    &&& after.view() == (PageTableHigher { table_stale_cpus: after.view().table_stale_cpus, ..before.view() })
+    &&& after.view().higher == (PageTableHigher { table_stale_cpus: after.view().higher.table_stale_cpus, ..before.view().higher })
+    &&& after.view().lower_backup == before.view().lower_backup
     &&& after_table.kernel_l4_end() == before_table.kernel_l4_end()
     &&& after_table.mapping_4k() == before_table.mapping_4k()
     &&& after_table.mapping_2m() == before_table.mapping_2m()
@@ -52,12 +53,12 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
         pre.pt_mp.spec_index(root).locking_thread() is Write,
         post.pt_mp.perms_wf(),
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
-        post.pt_mp.spec_index(root).view().table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().table_stale_cpus.view()),
-        update is Set ==> pre.pt_mp.spec_index(root).view().table_stale_cpus.view().subset_of(update->Set_cpus),
+        post.pt_mp.spec_index(root).view().higher.table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view()),
+        update is Set ==> pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view().subset_of(update->Set_cpus),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
-            &&& pre.pt_mp.spec_index(root).view().pcid is Some
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
+            &&& pre.pt_mp.spec_index(root).view().higher.pcid is Some
             &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -66,7 +67,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
         }),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
             let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
             ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
             ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
@@ -162,12 +163,12 @@ proof fn table_stale_cpus_update_eof_tlb_wf(pre: KernelK, post: KernelK, root: R
         pre.inv(),
         pre.pt_mp.dom().contains(root),
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
-        post.pt_mp.spec_index(root).view().table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().table_stale_cpus.view()),
-        update is Set ==> pre.pt_mp.spec_index(root).view().table_stale_cpus.view().subset_of(update->Set_cpus),
+        post.pt_mp.spec_index(root).view().higher.table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view()),
+        update is Set ==> pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view().subset_of(update->Set_cpus),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
-            &&& pre.pt_mp.spec_index(root).view().pcid is Some
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
+            &&& pre.pt_mp.spec_index(root).view().higher.pcid is Some
             &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -189,11 +190,11 @@ proof fn table_stale_cpus_update_eof_structure_cache_wf(pre: KernelK, post: Kern
         pre.inv(),
         pre.pt_mp.dom().contains(root),
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
-        post.pt_mp.spec_index(root).view().table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().table_stale_cpus.view()),
-        update is Set ==> pre.pt_mp.spec_index(root).view().table_stale_cpus.view().subset_of(update->Set_cpus),
+        post.pt_mp.spec_index(root).view().higher.table_stale_cpus.view() == table_stale_cpus_after(update, pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view()),
+        update is Set ==> pre.pt_mp.spec_index(root).view().higher.table_stale_cpus.view().subset_of(update->Set_cpus),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
             let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
             ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
             ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid

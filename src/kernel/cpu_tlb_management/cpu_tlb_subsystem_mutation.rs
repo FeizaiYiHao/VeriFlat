@@ -58,7 +58,7 @@ pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut
         pcid_valid(pcid),
         old(cpu_array).spec_index(cpu_id).view().view().view().current_cr3 == cr3,
         old(cpu_array).spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(cpu_array).spec_index(cpu_id).view().view().view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
+        old(cpu_array).spec_index(cpu_id).view().view().view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().higher.cr3 == cr3,
         lctx.kernel_view_locking_state() is Release,
     ensures
         final(cpu_array).inv(),

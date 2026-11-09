@@ -930,7 +930,7 @@ pub(super) proof fn create_process_with_iommu_from_staged_pages_eof_inv(
         forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)]
             pre.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_pg_ptr).is_empty(),
-        post.pt_mp.spec_index(pagetable_pg_ptr).view().proc_ptr == process_pg_ptr,
+        post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.proc_ptr == process_pg_ptr,
         post.prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr,
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
         post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),

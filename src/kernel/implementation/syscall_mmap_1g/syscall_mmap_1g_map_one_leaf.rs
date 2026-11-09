@@ -93,11 +93,11 @@ pub(super) fn mmap_1g_map_one_leaf(
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr,
-        final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus,
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid,
         ({
             let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let post = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);

@@ -16,7 +16,7 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
         new_k.pt_mp.dom() =~= old_k.pt_mp.dom().insert(pg_ptr),
         forall|ptr: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(ptr)] #![trigger old_k.pt_mp.spec_index(ptr)] old_k.pt_mp.dom().contains(ptr) ==> new_k.pt_mp.spec_index(ptr) == old_k.pt_mp.spec_index(ptr),
         new_k.pt_mp.spec_index(pg_ptr).is_init(),
-        new_k.pt_mp.spec_index(pg_ptr).view() == higher,
+        new_k.pt_mp.spec_index(pg_ptr).view().higher == higher,
         new_k.pt_mp.spec_index(pg_ptr).view().lower_backup.view() == lower,
         new_k.pt_mp.spec_index(pg_ptr).write_lock_perm_match(&lock_perm),
         lock_perm.thread_id() == new_lctx.thread_id(),
@@ -79,7 +79,7 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
         old_k.pt_mp.dom().contains(pagetable_ptr),
         old_k.pt_lower.view().dom().contains(pagetable_ptr),
         whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).wf(),
-        whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure() =~= set![old_k.pt_mp.spec_index(pagetable_ptr).view().cr3],
+        whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure() =~= set![old_k.pt_mp.spec_index(pagetable_ptr).view().higher.cr3],
         new_k == (KernelK { pt_mp: new_k.pt_mp, pt_lower: new_k.pt_lower, ..old_k }),
         new_k.pt_mp.dom() =~= old_k.pt_mp.dom().remove(pagetable_ptr),
         forall|p: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(p)] new_k.pt_mp.dom().contains(p) ==> new_k.pt_mp.spec_index(p) == old_k.pt_mp.spec_index(p),
@@ -116,7 +116,7 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
     assert(pagetable_window_stale_cpus_only_when_locked(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_stale_cpus_only_when_locked(new_k.pt_mp, new_k.pt_lower.view())) by {
         reveal(pagetable_window_stale_cpus_only_when_locked);
     };
-    let removed = old_k.pt_mp.spec_index(pagetable_ptr).view();
+    let removed = old_k.pt_mp.spec_index(pagetable_ptr).view().higher;
     assert(removed.l3_tables.view().dom().subset_of(whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure())
         && removed.l4_table.view().dom().disjoint(removed.l3_tables.view().dom())) by { reveal(PageTableHigher::table_pages_wf); };
     assert(removed.l3_tables.view().dom() =~= Set::<PageMapPtr>::empty()) by { reveal(PageTableHigher::wf_l4); };

@@ -345,7 +345,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
         ({
             let a = kernel_k_to_kernel_u(*pre);
             let b = kernel_k_to_kernel_u(*post);
-            let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
+            let owner = pre.pt_mp.spec_index(table).view().higher.proc_ptr;
             &&& a.thread_map.dom().contains(thread)
             &&& a.thread_map[thread].lock_state is WriteLocked
             &&& a.thread_map[thread].quota_4k > 0

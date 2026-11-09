@@ -298,7 +298,7 @@ pub open spec fn container_process_page_pagetable_wf(ctn_mp: ContainerLockedMap,
             && pg_arr.spec_index(p_i).view().view().is_mapped()
             && pg_arr.spec_index(p_i).view().view().mappings().contains((pt, va))
             ==> {
-                let prc_ptr = pt_mp.spec_index(pt).view().proc_ptr;
+                let prc_ptr = pt_mp.spec_index(pt).view().higher.proc_ptr;
                 let page_owner = pg_arr.spec_index(p_i).view().view().owning_container;
                 &&& pt_mp.dom().contains(pt)
                 &&& prc_mp.dom().contains(prc_ptr)
@@ -323,7 +323,7 @@ pub proof fn container_process_page_pagetable_wf_at(
         pg_arr.spec_index(pg_idx).view().view().mappings().contains((pt_ptr, va)),
     ensures
         ({
-            let prc_ptr = pt_mp.spec_index(pt_ptr).view().proc_ptr;
+            let prc_ptr = pt_mp.spec_index(pt_ptr).view().higher.proc_ptr;
             let page_owner = pg_arr.spec_index(pg_idx).view().view().owning_container;
             &&& pt_mp.dom().contains(pt_ptr)
             &&& prc_mp.dom().contains(prc_ptr)

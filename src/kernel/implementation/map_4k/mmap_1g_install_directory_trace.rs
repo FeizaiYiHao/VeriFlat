@@ -45,7 +45,7 @@ pub(super) proof fn mmap_1g_directory_step_from_k(pre: &KernelK, post: &KernelK,
     kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     let pre_u = kernel_k_to_kernel_u(*pre);
-    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
+    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
     if pre_u.process_map.dom().contains(owner) && pre_u.process_map[owner].pagetable is Some {
         assert(pre_u.process_map.insert(owner, ProcessU {
             pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, ..pre_u.process_map[owner].pagetable->Some_0 }),

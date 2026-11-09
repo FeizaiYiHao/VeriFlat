@@ -20,13 +20,13 @@ pub open spec fn process_object_pages_owner_wf(prc_mp: ProcessLockedMap, pt_mp: 
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })
                 ==> page.owning_container == prc_mp.spec_index(pg_ptr).view_rodata().view().owning_container
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } })
-                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(pg_ptr).view().proc_ptr).view_rodata().view().owning_container
+                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(pg_ptr).view().higher.proc_ptr).view_rodata().view().owning_container
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } })
                 ==> page.owning_container == prc_mp.spec_index(it_mp.spec_index(pg_ptr).view().proc_ptr).view_rodata().view().owning_container
             &&& page.state is Allocated4k
                 && alloc_state is PageTable
                 && alloc_state->PageTable_table_type == PT_TYPE
-                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(alloc_state->PageTable_pagetable_root).view().proc_ptr).view_rodata().view().owning_container
+                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(alloc_state->PageTable_pagetable_root).view().higher.proc_ptr).view_rodata().view().owning_container
             &&& page.state is Allocated4k
                 && alloc_state is PageTable
                 && alloc_state->PageTable_table_type == IOMMU_TYPE
@@ -46,13 +46,13 @@ pub proof fn process_object_pages_owner_wf_at(prc_mp: ProcessLockedMap, pt_mp: P
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })
                 ==> page.owning_container == prc_mp.spec_index(pg_ptr).view_rodata().view().owning_container
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } })
-                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(pg_ptr).view().proc_ptr).view_rodata().view().owning_container
+                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(pg_ptr).view().higher.proc_ptr).view_rodata().view().owning_container
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } })
                 ==> page.owning_container == prc_mp.spec_index(it_mp.spec_index(pg_ptr).view().proc_ptr).view_rodata().view().owning_container
             &&& page.state is Allocated4k
                 && alloc_state is PageTable
                 && alloc_state->PageTable_table_type == PT_TYPE
-                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(alloc_state->PageTable_pagetable_root).view().proc_ptr).view_rodata().view().owning_container
+                ==> page.owning_container == prc_mp.spec_index(pt_mp.spec_index(alloc_state->PageTable_pagetable_root).view().higher.proc_ptr).view_rodata().view().owning_container
             &&& page.state is Allocated4k
                 && alloc_state is PageTable
                 && alloc_state->PageTable_table_type == IOMMU_TYPE

@@ -468,7 +468,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         post.prc_mp.spec_index(process).being_killed() == pre.prc_mp.spec_index(process).being_killed(),
         post.pt_mp.dom() == pre.pt_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> {
-            &&& post.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(p).view().lower_backup, ..pre.pt_mp.spec_index(p).view() })
+            &&& post.pt_mp.spec_index(p).view().higher == pre.pt_mp.spec_index(p).view().higher
             &&& p != pagetable ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
         },
         lock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),

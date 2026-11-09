@@ -18,7 +18,7 @@ pub proof fn structure_caches_dirty_maps_and_table_structures_unchanged_implies_
             let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), t);
             let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), t);
             &&& post.pt_mp.dom().contains(t)
-            &&& after.higher == (PageTableHigher { lower_backup: after.higher.lower_backup, ..before.higher })
+            &&& after.higher == before.higher
             &&& after.lower.window_stale_cpus == before.lower.window_stale_cpus
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger after.lower.l2_entry(p, i)] after.lower.l2_entry(p, i) == before.lower.l2_entry(p, i)
             &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_held_l2(l4i, l3i, l2i)]

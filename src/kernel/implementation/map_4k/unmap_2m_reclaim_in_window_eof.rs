@@ -146,7 +146,7 @@ proof fn reclaim_unmapped_2m_page_in_window_eof_cpu_caches(pre: KernelK, post: K
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         ({
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
@@ -195,7 +195,7 @@ pub(super) proof fn remove_2m_mapping_without_free_in_window_eof(pre: KernelK, p
         remove_2m_mapping_without_free_in_window_eof_transition_framing(pre, post, pagetable, va, pg_ptr, l2_ptr),
         pre.pt_mp.dom().contains(pagetable),
         va_2m_valid(va),
-        pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
@@ -585,7 +585,7 @@ pub(super) proof fn remove_last_2m_mapping_to_allocator_in_window_eof(
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_2m_valid(va)
-            &&& pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va)
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va)
             &&& old_c.mapping_2m().dom().contains(va)
             &&& !old_c.mapping_2m().spec_index(va).present
             &&& old_c.mapping_2m().spec_index(va).addr == pg_ptr

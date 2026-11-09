@@ -54,12 +54,12 @@ fn ipc_pages_target_free(
     }
     let pagetable = krnl.pt_mp.borrow_typed(target_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(target_pagetable_lock_perm));
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(target_pagetable);
-    if !pagetable.mapping_4k_va_range_empty(Tracked(lower), range_start, end_va) {
+    if !pagetable.higher.mapping_4k_va_range_empty(Tracked(lower), range_start, end_va) {
         proof { broadcast use spec_va_4k_valid_index_roundtrip; }
-        let found = pagetable.next_mapped_4k_from(Tracked(lower), start_indices);
+        let found = pagetable.higher.next_mapped_4k_from(Tracked(lower), start_indices);
         return (false, Ghost(found));
     }
-    (pagetable.mapping_4k_va_range_buildable(Tracked(lower), target_range), Ghost(None))
+    (pagetable.higher.mapping_4k_va_range_buildable(Tracked(lower), target_range), Ghost(None))
 }
 
 /// Runs the source owner check of a pages rendezvous whose containers are not related by ancestry, keeping every fact of the held
@@ -145,8 +145,8 @@ fn ipc_pages_check_source_owners(
         source_pagetable != target_pagetable,
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(krnl).pt_mp.dom().contains(target_pagetable),
-        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process,
-        old(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -165,12 +165,13 @@ fn ipc_pages_check_source_owners(
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).leaves_present(),
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        fill ==> old(krnl).pt_mp.spec_index(target_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-        fill ==> forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        fill ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        fill ==> forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         source_user == (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         target_user == (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
@@ -277,8 +278,8 @@ fn ipc_pages_check_source_owners(
         source_pagetable != target_pagetable,
         final(krnl).pt_mp.dom().contains(source_pagetable),
         final(krnl).pt_mp.dom().contains(target_pagetable),
-        final(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process,
-        final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        final(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process,
+        final(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -297,12 +298,13 @@ fn ipc_pages_check_source_owners(
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).leaves_present(),
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        fill ==> final(krnl).pt_mp.spec_index(target_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-        fill ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-            final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-            final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        fill ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        fill ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i)]
+            final(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            final(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         source_user == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         target_user == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
@@ -474,8 +476,8 @@ pub(super) fn ipc_pages_check_tables(
         source_pagetable != target_pagetable,
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(krnl).pt_mp.dom().contains(target_pagetable),
-        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process,
-        old(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -494,12 +496,13 @@ pub(super) fn ipc_pages_check_tables(
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).leaves_present(),
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
         fill ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        fill ==> old(krnl).pt_mp.spec_index(target_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-        fill ==> forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        fill ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        fill ==> forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         source_user == (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         target_user == (whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
@@ -601,8 +604,8 @@ pub(super) fn ipc_pages_check_tables(
         source_pagetable != target_pagetable,
         final(krnl).pt_mp.dom().contains(source_pagetable),
         final(krnl).pt_mp.dom().contains(target_pagetable),
-        final(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process,
-        final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        final(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process,
+        final(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -621,12 +624,13 @@ pub(super) fn ipc_pages_check_tables(
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).leaves_present(),
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
         fill ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-        fill ==> final(krnl).pt_mp.spec_index(target_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-        fill ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-            final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-            final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        fill ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        fill ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i)]
+            final(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i) is Some
+                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        fill ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            final(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                ==> final(krnl).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         source_user == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0),
         target_user == (whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]

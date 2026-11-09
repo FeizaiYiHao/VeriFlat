@@ -83,7 +83,7 @@ pub(super) proof fn reclaim_hidden_l1_page_to_cache_eof_held_windows(
         reclaim_hidden_l1_page_to_cache_eof_transition_framing(pre, post, pagetable, va, l2_ptr, l1_ptr, allc_ptr, cpu_id, node_addr),
         pre.pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
-        pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l3(spec_va2index(va).0, spec_va2index(va).1) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l3(spec_va2index(va).0, spec_va2index(va).1)->0.addr == l2_ptr,
     ensures
@@ -266,7 +266,7 @@ proof fn reclaim_hidden_l1_page_to_cache_eof_page_relations(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
         process_object_pages_owner_wf_at(pre.prc_mp, pre.pt_mp, pre.it_mp, pre.pg_arr, pg_idx);
         reveal(process_pagetable_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr);
         reveal(container_kill_retire_wf); reveal(container_allocator_wf);

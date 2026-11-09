@@ -113,7 +113,7 @@ impl CpuTLB {
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             lctx.kernel_view_locking_state() is Release,
-            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().higher.cr3 == cr3,
         ensures
             final(self).inv(),
             final(hardware).cr3() == cr3,

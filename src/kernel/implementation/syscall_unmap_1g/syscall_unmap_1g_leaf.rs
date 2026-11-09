@@ -19,7 +19,7 @@ pub(super) fn unmap_1g_hide_leaf(
         va_1g_valid(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().spec_index(va).present,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view().subset_of(Set::range(0usize, NUM_CPUS)),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view().subset_of(Set::range(0usize, NUM_CPUS)),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
@@ -40,11 +40,11 @@ pub(super) fn unmap_1g_hide_leaf(
         ret.0.view().pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
         ret.0.view().pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         ret.0.view().pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        ret.0.view().pt_mp.spec_index(pagetable).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr,
-        ret.0.view().pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
-        ret.0.view().pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
-        ret.0.view().pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        ret.0.view().pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        ret.0.view().pt_mp.spec_index(pagetable).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr,
+        ret.0.view().pt_mp.spec_index(pagetable).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3,
+        ret.0.view().pt_mp.spec_index(pagetable).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid,
+        ret.0.view().pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
+        ret.0.view().pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         ret.0.view().thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
         ret.0.view().thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         ret.0.view().thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
@@ -87,7 +87,7 @@ pub(super) fn unmap_1g_hide_leaf(
     let ghost locked = *krnl;
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        krnl.pt_mp.spec_index(pagetable).view().wf_mapping_1g_at(l4i, l3i); krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+        krnl.pt_mp.spec_index(pagetable).view().higher.wf_mapping_1g_at(l4i, l3i); krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     pagetable_map_hide_1g_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, (l4i, l3i), Tracked(&mut *lctx), pagetable_perm);
     proof {

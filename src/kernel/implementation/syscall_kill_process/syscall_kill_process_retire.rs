@@ -302,7 +302,7 @@ pub(crate) fn kill_retire_process(
     proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     proof {
-        assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
+        assert(krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
@@ -621,7 +621,7 @@ pub(crate) fn kill_retire_commit(
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         if let Some(it) = iommu_table { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), it); }
-        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().cr3);
+        pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, krnl.pt_mp.spec_index(pagetable).view().higher.cr3);
         if let Some(it) = iommu_table { iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, krnl.it_mp.spec_index(it).view().cr3); }
         process_pages_wf_process_at(krnl.prc_mp, krnl.pg_arr, target);
         pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
@@ -761,8 +761,8 @@ pub(crate) fn kill_retire_remove_tables(
         iommu_table_perms_wf(old(krnl).it_mp),
         old(krnl).pt_mp.dom().contains(pagetable),
         page_ptr_valid(pagetable),
-        page_ptr_valid(old(krnl).pt_mp.spec_index(pagetable).view().cr3),
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure() =~= set![old(krnl).pt_mp.spec_index(pagetable).view().cr3],
+        page_ptr_valid(old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure() =~= set![old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3],
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pt_lock_perm.state() is WriteLock,
         pt_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -818,7 +818,7 @@ pub(crate) fn kill_retire_remove_tables(
         forall|t: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(t)] final(krnl).it_mp.dom().contains(t) ==> final(krnl).it_mp.spec_index(t) == old(krnl).it_mp.spec_index(t),
         forall|t: RwLockPageTableRoot| #![trigger final(krnl).it_mp.lock_id_by_key(t)] final(krnl).it_mp.dom().contains(t) ==> final(krnl).it_mp.lock_id_by_key(t) == old(krnl).it_mp.lock_id_by_key(t),
         ret.view().dom().contains(page_ptr2page_index(pagetable)),
-        ret.view().dom().contains(page_ptr2page_index(old(krnl).pt_mp.spec_index(pagetable).view().cr3)),
+        ret.view().dom().contains(page_ptr2page_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3)),
         iommu_table is Some ==> ret.view().dom().contains(page_ptr2page_index(iommu_table->Some_0)) && ret.view().dom().contains(page_ptr2page_index(old(krnl).it_mp.spec_index(iommu_table->Some_0).view().cr3)),
         forall|i: PageIndex| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) ==> ret.view()[i].is_init() && ret.view()[i].addr() == page_index2page_ptr(i),
 {
@@ -828,7 +828,7 @@ pub(crate) fn kill_retire_remove_tables(
     let tracked mut page_perms: Map<PageIndex, PagePerm4k> = Map::tracked_empty();
     proof {
         page_perms.tracked_insert(page_ptr2page_index(pagetable), pt_object_perm);
-        page_perms.tracked_insert(page_ptr2page_index(entry.pt_mp.spec_index(pagetable).view().cr3), pt_root_perm);
+        page_perms.tracked_insert(page_ptr2page_index(entry.pt_mp.spec_index(pagetable).view().higher.cr3), pt_root_perm);
     }
     if let Some(it) = iommu_table {
         proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it); }

@@ -20,7 +20,7 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0, NUM_CPUS),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0, NUM_CPUS),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is Some,
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] !old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)),
@@ -44,12 +44,7 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
             ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == hidden.view().cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.lock_id_by_key(pagetable) == hidden.view().pt_mp.lock_id_by_key(pagetable),
-        final(krnl).pt_mp.spec_index(pagetable).view() == hidden.view().pt_mp.spec_index(pagetable).view(),
-        final(krnl).pt_mp.spec_index(pagetable).view_lock() == hidden.view().pt_mp.spec_index(pagetable).view_lock(),
-        final(krnl).pt_mp.spec_index(pagetable).is_init() == hidden.view().pt_mp.spec_index(pagetable).is_init(),
-        final(krnl).pt_mp.spec_index(pagetable).view_rodata() == hidden.view().pt_mp.spec_index(pagetable).view_rodata(),
-        final(krnl).pt_mp.spec_index(pagetable).locking_thread() == hidden.view().pt_mp.spec_index(pagetable).locking_thread(),
-        final(krnl).pt_mp.spec_index(pagetable).control() == hidden.view().pt_mp.spec_index(pagetable).control(),
+        final(krnl).pt_mp.spec_index(pagetable) == hidden.view().pt_mp.spec_index(pagetable),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(hidden.view().pt_mp, hidden.view().pt_lower.view(), pagetable),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -102,7 +97,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0, NUM_CPUS),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0, NUM_CPUS),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] !old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms.dom().contains(p) && pei_valid(i)
@@ -141,8 +136,8 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
         ({
-            let old_h = old(krnl).pt_mp.spec_index(pagetable).view();
-            let new_h = final(krnl).pt_mp.spec_index(pagetable).view();
+            let old_h = old(krnl).pt_mp.spec_index(pagetable).view().higher;
+            let new_h = final(krnl).pt_mp.spec_index(pagetable).view().higher;
             &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
             &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
             &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
@@ -201,7 +196,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             KERNEL_MEM_END_L4INDEX <= l4i <= 512,
             e == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable),
             e.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
-            old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0, NUM_CPUS),
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0, NUM_CPUS),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
             pagetable_perm.view().state() is WriteLock,
             pagetable_perm.view().thread_id() == old(lctx).thread_id(),
@@ -237,8 +232,8 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             krnl.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
             ({
-                let old_h = old(krnl).pt_mp.spec_index(pagetable).view();
-                let new_h = krnl.pt_mp.spec_index(pagetable).view();
+                let old_h = old(krnl).pt_mp.spec_index(pagetable).view().higher;
+                let new_h = krnl.pt_mp.spec_index(pagetable).view().higher;
                 &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
                 &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
                 &&& new_h.l3_tables == old_h.l3_tables && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
@@ -270,7 +265,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         decreases 512 - l4i,
     {
         proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
-        let root = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm).get_entry_l4(l4i);
+        let root = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm).higher.get_entry_l4(l4i);
         if root.is_some() {
             let ghost before = steps.view();
             let ghost pre = *krnl;

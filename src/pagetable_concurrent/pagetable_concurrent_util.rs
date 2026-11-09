@@ -32,13 +32,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             ret.mapping_1g.view() == Map::<VAddr, MapEntry>::empty(),
             ret.proc_ptr == proc_ptr,
             ret.table_stale_cpus.view() == Set::<CpuId>::empty(),
-            ret.lower_backup.view() == PageTableLower::<TABLE_TYPE>::spec_empty(),
     {
         let mut ret = Self {
             cr3: page_map_ptr, pcid, did: None, kernel_l4_end: mem_end_l4_index, l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()), l3_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l2_rev_map: Ghost(Map::<PageMapPtr, (L4Index, L3Index)>::empty()), mapping_1g: Ghost(Map::<VAddr, MapEntry>::empty()), kernel_entries: kernel_entries_ghost,
-            proc_ptr, table_stale_cpus: Ghost(Set::<CpuId>::empty()), lower_backup: Ghost(PageTableLower::spec_empty()),
+            proc_ptr, table_stale_cpus: Ghost(Set::<CpuId>::empty()),
         };
         proof {
             ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);

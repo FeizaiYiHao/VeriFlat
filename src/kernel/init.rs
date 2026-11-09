@@ -316,7 +316,7 @@ pub fn adopt_boot_dom0_pagetable(
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()), lower_backup: Ghost(PageTableLower::spec_empty()),
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
     };
     (higher, Tracked::assume_new())
 }
@@ -686,32 +686,32 @@ pub open spec fn boot_kernel_state(
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.hidden_l1_tables_in_locked_windows()
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().proc_ptr == layout.root_process
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_l4_end == kernel_l4_end
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_entries.view() == kernel_entries
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.cr3 == layout.cpu_cr3
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.pcid == Some(1usize)
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.pcid_value() == 1
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.proc_ptr == layout.root_process
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.kernel_l4_end == kernel_l4_end
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.kernel_entries.view() == kernel_entries
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).page_closure() =~= cpu_page_closure
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& forall|l4i: L4Index|
-        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i)]
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l4(l4i)]
         kernel_l4_end <= l4i
             && pei_valid(l4i)
-            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l4(l4i) is Some
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l4(l4i) is Some
             ==>
-            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l4(l4i) is Some
+            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some
     &&& forall|l4i: L4Index, l3i: L3Index|
-        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i)]
+        #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l3(l4i, l3i)]
         kernel_l4_end <= l4i
             && pei_valid(l4i)
             && pei_valid(l3i)
-            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_held_l3(l4i, l3i) is Some
+            && krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
             ==>
-            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some
+            krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some
     // IOMMU table.
     &&& krnl.it_mp.perms_wf()
     &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
@@ -1126,7 +1126,7 @@ pub fn finish_init_from_boot(
     let mut allc_2m_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_2M>::new_empty();
     let mut allc_1g_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_1G>::new_empty();
 
-    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
+    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, PageTableBigLocked { higher: cpu_pagetable, lower_backup: Ghost(PageTableLower::spec_empty()) }, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
     let tracked mut root_retype_lctx = LocalContext::new_bootstrap(0);
     proof { assert(ctn_mp.typed_lock_map_aligned(root_retype_lctx.container_lock_map(), root_retype_lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }

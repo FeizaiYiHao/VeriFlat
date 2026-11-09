@@ -25,7 +25,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
     ensures
         ({
             let a = kernel_k_to_kernel_u(pre);
-            let prc_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
+            let prc_ptr = pre.pt_mp.spec_index(root).view().higher.proc_ptr;
             let table = pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()).spec_index(root);
             let hidden = PageTableU {
                 mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),
@@ -44,7 +44,7 @@ pub proof fn pagetable_l4_entry_hidden_implies_u_pagetable_l4_range_removed(pre:
 {
     let a = kernel_k_to_kernel_u(pre);
     let b = kernel_k_to_kernel_u(post);
-    let prc_ptr = pre.pt_mp.spec_index(root).view().proc_ptr;
+    let prc_ptr = pre.pt_mp.spec_index(root).view().higher.proc_ptr;
     let table = pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()).spec_index(root);
     let hidden = PageTableU {
         mapping_4k: table.mapping_4k.remove_keys(table.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == l4i)),

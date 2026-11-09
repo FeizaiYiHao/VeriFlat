@@ -180,7 +180,7 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_relations(
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
         reveal(container_process_page_pagetable_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
     };
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
@@ -226,7 +226,7 @@ pub(crate) proof fn kill_reclaim_held_4k_page_scoped_eof(
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr
             &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None
-            &&& pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -692,7 +692,7 @@ proof fn kill_retire_table_page_scoped_eof_page_relations(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        let proc_ptr = if iommu { pre.it_mp.spec_index(table).view().proc_ptr } else { pre.pt_mp.spec_index(table).view().proc_ptr };
+        let proc_ptr = if iommu { pre.it_mp.spec_index(table).view().proc_ptr } else { pre.pt_mp.spec_index(table).view().higher.proc_ptr };
         page_ptr_valid_imply_page_index_valid(); process_object_pages_owner_wf_at(pre.prc_mp, pre.pt_mp, pre.it_mp, pre.pg_arr, page_ptr2page_index(pg_ptr));
         reveal(process_pagetable_wf); reveal(process_iommu_table_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr);
         reveal(container_kill_retire_wf); reveal(container_allocator_wf);
@@ -756,7 +756,7 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
         !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
         !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         post.allc_4k_mp.perms_wf(),
         post.allc_4k_mp.spec_index(allc_ptr).wf(),
     ensures

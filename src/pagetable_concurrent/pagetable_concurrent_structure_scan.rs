@@ -135,7 +135,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             table_page_unreferenced_by_structure_caches(*cpu_tlb, *cpu_arr, *needflush, scan.spec_table_page()->Some_0),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
-            final(self).lower_backup == old(self).lower_backup,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -178,27 +177,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_1g_l3(l4i, l3i),
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,
-            {
-                let after = WholePageTable { higher: PageTableHigher { lower_backup: Ghost(*final(lower)), ..*final(self) }, lower: *final(lower) };
-                &&& after.wf()
-                &&& after.page_closure() =~= (WholePageTable { higher: *old(self), lower: *old(lower) }).page_closure().remove(scan.spec_table_page()->Some_0)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
-                    #![trigger after.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
-                    #![trigger (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
-                    old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                        ==> after.window_locked_by_thread(l4i, l3i, l2i, thread_id) == (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                    old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && after.spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
-                        ==> after.spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_held_2m_l2(l4i, l3i, l2i)]
-                    old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && after.spec_held_2m_l2(l4i, l3i, l2i) is Some
-                        ==> after.spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i)
-                &&& forall|l4i: L4Index, l3i: L3Index| #![trigger after.spec_held_1g_l3(l4i, l3i)]
-                    old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && after.spec_held_1g_l3(l4i, l3i) is Some
-                        ==> after.spec_held_1g_l3(l4i, l3i) == (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_held_1g_l3(l4i, l3i)
-                &&& forall|l4i: L4Index| #![trigger after.higher.spec_resolve_mapping_l4(l4i)]
-                    old(self).kernel_l4_end <= l4i && pei_valid(l4i) && old(self).spec_resolve_mapping_l4(l4i) is None ==> after.higher.spec_resolve_mapping_l4(l4i) is None
-            },
     {
         match scan {
             StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } => {

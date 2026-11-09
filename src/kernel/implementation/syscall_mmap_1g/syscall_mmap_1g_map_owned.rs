@@ -73,11 +73,11 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
             final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
             final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed(),
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().cr3,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().pcid,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pcid,
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(pg_ptr)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_1g.view() is Some,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().perm_1g.view().unwrap().is_init(),
@@ -130,7 +130,7 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
         let target_l3_ptr;
         {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
-            target_l3_ptr = pagetable.get_entry_l4(l4i).unwrap().addr;
+            target_l3_ptr = pagetable.higher.get_entry_l4(l4i).unwrap().addr;
         }
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         let page_owner;

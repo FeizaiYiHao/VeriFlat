@@ -9,8 +9,8 @@ verus! {
 #[verifier::opaque]
 pub(super) open spec fn map_owned_1g_page_eof_transition_framing(pre: KernelK, post: KernelK, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
     let pg_idx = page_ptr2page_index(pg_ptr);
-    let old_h = pre.pt_mp.spec_index(pagetable_ptr).view();
-    let new_h = post.pt_mp.spec_index(pagetable_ptr).view();
+    let old_h = pre.pt_mp.spec_index(pagetable_ptr).view().higher;
+    let new_h = post.pt_mp.spec_index(pagetable_ptr).view().higher;
     let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
     let new_pt = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
     let old_page = pre.pg_arr.spec_index(pg_idx).view();

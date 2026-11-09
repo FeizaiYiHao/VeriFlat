@@ -8,7 +8,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn remove_l4_entry_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3_p: PageMapPtr) -> bool {
         &&& post.lower == pre.lower
-        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l4_table: post.higher.l4_table, l3_rev_map: post.higher.l3_rev_map, l3_tables: post.higher.l3_tables, ..pre.higher })
+        &&& post.higher == (PageTableHigher { l4_table: post.higher.l4_table, l3_rev_map: post.higher.l3_rev_map, l3_tables: post.higher.l3_tables, ..pre.higher })
         &&& post.higher.l3_rev_map.view() == pre.higher.l3_rev_map.view().remove(target_l3_p)
         &&& post.higher.l3_tables.view() == pre.higher.l3_tables.view().remove(target_l3_p)
         &&& post.higher.l4_table.view() =~= pre.higher.l4_table.view().insert(pre.cr3(), post.higher.l4_table.view().spec_index(pre.cr3()))
@@ -47,13 +47,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::remove_l4_entry_eof_walks(pre, post, target_l4i, target_l3_p);
         Self::remove_l4_entry_eof_wf_window_locks(pre, post, target_l4i, target_l3_p);
         Self::remove_l4_entry_eof_window_locked_by_thread(pre, post, target_l4i, target_l3_p);
-        assert(post.higher.inv()) by {
-            reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
-            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
-            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
-            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
-            reveal(PageTableHigher::kernel_entries_wf);
-        };
     }
 
     /// EOF closure of `remove_l4_entry`: the big-lock half `higher.inv()`.

@@ -552,7 +552,7 @@ pub(super) fn new_process_lock_source_windows(
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).mapping_4k(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).mapping_2m(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), root).mapping_1g(),
-        ret.0 == (final(krnl).pt_mp.spec_index(root).view().kernel_l4_end <= spec_v2l4index(range.start) && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+        ret.0 == (final(krnl).pt_mp.spec_index(root).view().higher.kernel_l4_end <= spec_v2l4index(range.start) && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k().dom().contains(range.view().spec_index(j))
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).mapping_4k().spec_index(range.view().spec_index(j)).present
         }),
@@ -585,7 +585,7 @@ pub(super) fn new_process_lock_source_windows(
     proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
     let pagetable = krnl.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
     let tracked empty_perms: Map<WindowVa, LockPerm> = Map::tracked_empty();
-    if pagetable.kernel_l4_end > start_indices.0 {
+    if pagetable.higher.kernel_l4_end > start_indices.0 {
         proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), root); }
         return (false, Tracked(empty_perms));
     }

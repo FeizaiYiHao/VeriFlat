@@ -16,17 +16,17 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
         page_ptr_valid(pg_ptr),
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
         post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(pg_ptr)),
-        post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr == pre_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr,
+        post_pagetable_map.spec_index(pagetable_ptr).view().higher.proc_ptr == pre_pagetable_map.spec_index(pagetable_ptr).view().higher.proc_ptr,
         post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_mapped(),
         post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings() == if pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k {
                 pre_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().insert((pagetable_ptr, va))
             } else {
                 Set::empty().insert((pagetable_ptr, va))
             },
-        process_map.dom().contains(post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr),
+        process_map.dom().contains(post_pagetable_map.spec_index(pagetable_ptr).view().higher.proc_ptr),
         {
             let owner = post_page_array.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container;
-            let mapping_process = post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr;
+            let mapping_process = post_pagetable_map.spec_index(pagetable_ptr).view().higher.proc_ptr;
             ||| process_map.spec_index(mapping_process).view_rodata().view().owning_container == owner
             ||| container_map.spec_index(owner).view_ghost().subtree_set.view().contains(process_map.spec_index(mapping_process).view_rodata().view().owning_container)
         },

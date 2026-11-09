@@ -56,7 +56,7 @@ pub open spec fn cpu_dirty_map_pagetable_pcid_match(pt_mp: PageTableLockedMap, c
             ==> {
                 let dirty = cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap();
                 &&& pt_mp.dom().contains(dirty.pagetable_ptr)
-                &&& pt_mp.spec_index(dirty.pagetable_ptr).view().pcid_value() == pcid
+                &&& pt_mp.spec_index(dirty.pagetable_ptr).view().higher.pcid_value() == pcid
             }
 }
 

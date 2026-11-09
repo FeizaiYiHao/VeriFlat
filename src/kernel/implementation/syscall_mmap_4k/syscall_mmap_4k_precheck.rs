@@ -41,7 +41,7 @@ pub(super) enum Mmap4kPrecheck {
                     &&& !pagetable.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 }
             },
-            (ret.0 is Invalid) == (spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end),
+            (ret.0 is Invalid) == (spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end),
             !(ret.0 is Invalid) ==> {
                 let pagetable = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let end_va = range.view().spec_index((range.len - 1) as int);
@@ -79,13 +79,13 @@ pub(super) enum Mmap4kPrecheck {
         }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-        if start_indices.0 < pagetable.kernel_l4_end { return (Mmap4kPrecheck::Invalid, Ghost(None)); }
-        if !pagetable.mapping_4k_va_range_empty(Tracked(lower), range_start, end_va) {
+        if start_indices.0 < pagetable.higher.kernel_l4_end { return (Mmap4kPrecheck::Invalid, Ghost(None)); }
+        if !pagetable.higher.mapping_4k_va_range_empty(Tracked(lower), range_start, end_va) {
             proof { broadcast use spec_va_4k_valid_index_roundtrip; }
-            let found = pagetable.next_mapped_4k_from(Tracked(lower), start_indices);
+            let found = pagetable.higher.next_mapped_4k_from(Tracked(lower), start_indices);
             return (Mmap4kPrecheck::InUse, Ghost(found));
         }
-        if !pagetable.mapping_4k_va_range_buildable(Tracked(lower), range) { return (Mmap4kPrecheck::InUse, Ghost(None)); }
+        if !pagetable.higher.mapping_4k_va_range_buildable(Tracked(lower), range) { return (Mmap4kPrecheck::InUse, Ghost(None)); }
         (Mmap4kPrecheck::Ready, Ghost(None))
     }
 }

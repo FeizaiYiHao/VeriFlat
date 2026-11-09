@@ -361,10 +361,10 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_cpu_caches(
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
-        pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None
             || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present,
-        pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
@@ -394,9 +394,9 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_1g_valid(va)
-            &&& pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va)
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va)
             &&& old_c.spec_resolve_mapping_l4(spec_v2l4index(va)) is None || !old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.perm.present
-            &&& pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
             &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
             &&& page_ptr_valid(pg_ptr)

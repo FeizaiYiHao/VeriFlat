@@ -147,7 +147,7 @@ pub(super) fn mmap_4k_fill_enter(
             mmap_4k_enter_step_pre_from_k(&old(steps).snapshot_k(), cpu_id, prc_ptr, thrd_ptr);
             mmap_4k_fill_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), kernel_k_to_kernel_u(locked_k), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, va,
                 range, *va_range, whole_pagetable(locked_k.pt_mp, locked_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, locked_k.thrd_mp.spec_index(thrd_ptr).view().quota_4k,
-                locked_k.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), entered_k.pt_mp.spec_index(pagetable_ptr).view().proc_ptr);
+                locked_k.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), entered_k.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr);
             mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(locked_k), cpu_id, *va_range, Mmap4kPhase::Fill);
         };
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);

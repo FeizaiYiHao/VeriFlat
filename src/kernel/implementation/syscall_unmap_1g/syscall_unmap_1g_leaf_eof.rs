@@ -6,8 +6,8 @@ verus! {
 /// unchanged.
 #[verifier::opaque]
 pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr) -> bool {
-    let old_h = pre.pt_mp.spec_index(pagetable).view();
-    let new_h = post.pt_mp.spec_index(pagetable).view();
+    let old_h = pre.pt_mp.spec_index(pagetable).view().higher;
+    let new_h = post.pt_mp.spec_index(pagetable).view().higher;
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     let target = (spec_v2l4index(va), spec_v2l3index(va));
@@ -63,7 +63,7 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
         pre.pt_mp.dom().contains(pagetable),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
-        pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
@@ -89,7 +89,7 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
         assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
             broadcast use spec_va_1g_valid_index_roundtrip;
             reveal(mapped_1g_page_pagetable_wf);
-            pre.pt_mp.spec_index(pagetable).view().spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
+            pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
             assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr);
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };

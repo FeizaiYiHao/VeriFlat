@@ -37,8 +37,8 @@ pub fn reclaim_held_leaves(
         thread_perm.view().state() is WriteLock,
         thread_perm.view().thread_id() == old(lctx).thread_id(),
         thread_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || old(lctx).process_lock_map().dom().contains(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr)
-            && old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).view_rodata().view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable || old(lctx).process_lock_map().dom().contains(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr)
+            && old(krnl).prc_mp.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr).view_rodata().view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
         *old(direct_4k) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
         forall|depth: int| #![trigger old(indirect_4k)[depth]] 0 <= depth < old(krnl).thrd_mp.spec_index(thrd_ptr).view().container_depth ==> old(indirect_4k)[depth] == old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         *old(direct_2m) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
@@ -50,7 +50,7 @@ pub fn reclaim_held_leaves(
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
@@ -95,7 +95,7 @@ pub fn reclaim_held_leaves(
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
-            &&& new_c.higher == (PageTableHigher { lower_backup: new_c.higher.lower_backup, l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g().submap_of(old_c.mapping_1g()) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& new_c.lower.hidden_l1_tables_in_locked_windows()
@@ -154,7 +154,7 @@ pub fn reclaim_held_leaves(
             pagetable_perm.view().thread_id() == old(lctx).thread_id(),
             pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
             old(krnl).pt_mp.dom().contains(pagetable),
-            old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             forall|l4i: L4Index| #![trigger e.spec_resolve_mapping_l4(l4i)] e.kernel_l4_end() <= l4i && pei_valid(l4i) ==> e.spec_resolve_mapping_l4(l4i) is None,
             forall|p: PageMapPtr, i: L2Index| #![trigger e.lower.l2_owner(p, i)] e.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> e.lower.l2_owner(p, i) is None,
             reclaim_held_leaves_eol_loop_framing(*old(krnl), *krnl, old(lctx), pagetable, thrd_ptr, *indirect_4k, *direct_4k, *indirect_2m, *direct_2m, *indirect_1g, *direct_1g, cursor),
@@ -208,7 +208,7 @@ fn reclaim_held_leaf(
         pagetable_perm.view().lock_id() == k0.pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         k0.pt_mp.dom().contains(pagetable),
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
-        k0.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        k0.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).lower.l2_owner(p, i)]

@@ -247,9 +247,9 @@ pub proof fn process_pagetable_match_preserved_for_pagetable_fields_eq(process_m
         forall|pt_ptr: RwLockPageTableRoot|
             #![trigger new_pagetable_map.spec_index(pt_ptr).view()]
             new_pagetable_map.dom().contains(pt_ptr) ==> {
-                &&& new_pagetable_map.spec_index(pt_ptr).view().cr3 == old_pagetable_map.spec_index(pt_ptr).view().cr3
-                &&& new_pagetable_map.spec_index(pt_ptr).view().proc_ptr == old_pagetable_map.spec_index(pt_ptr).view().proc_ptr
-                &&& new_pagetable_map.spec_index(pt_ptr).view().pcid_value() == old_pagetable_map.spec_index(pt_ptr).view().pcid_value()
+                &&& new_pagetable_map.spec_index(pt_ptr).view().higher.cr3 == old_pagetable_map.spec_index(pt_ptr).view().higher.cr3
+                &&& new_pagetable_map.spec_index(pt_ptr).view().higher.proc_ptr == old_pagetable_map.spec_index(pt_ptr).view().higher.proc_ptr
+                &&& new_pagetable_map.spec_index(pt_ptr).view().higher.pcid_value() == old_pagetable_map.spec_index(pt_ptr).view().higher.pcid_value()
             },
     ensures
         process_pagetable_wf(process_map, new_pagetable_map),

@@ -79,7 +79,7 @@ pub(super) proof fn create_process_with_iommu_from_staged_pages_eof_process_kern
             index_valid(NUM_PAGES, pg_idx) ==> {
                 let page = post.pg_arr.spec_index(pg_idx).view().view();
                 let ptr = page_index2page_ptr(pg_idx);
-                page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }) ==> page.owning_container == post.prc_mp.spec_index(post.pt_mp.spec_index(ptr).view().proc_ptr).view_rodata().view().owning_container
+                page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }) ==> page.owning_container == post.prc_mp.spec_index(post.pt_mp.spec_index(ptr).view().higher.proc_ptr).view_rodata().view().owning_container
             },
 {
     hide(Seq::contains); reveal(create_process_from_staged_pages_eof_transition_framing);
@@ -163,7 +163,7 @@ pub(super) proof fn create_process_with_iommu_from_staged_pages_eof_process_kern
             index_valid(NUM_PAGES, pg_idx) ==> {
                 let page = post.pg_arr.spec_index(pg_idx).view().view();
                 let state = page.state->Allocated4k_state;
-                page.state is Allocated4k && state is PageTable && state->PageTable_table_type == PT_TYPE ==> page.owning_container == post.prc_mp.spec_index(post.pt_mp.spec_index(state->PageTable_pagetable_root).view().proc_ptr).view_rodata().view().owning_container
+                page.state is Allocated4k && state is PageTable && state->PageTable_table_type == PT_TYPE ==> page.owning_container == post.prc_mp.spec_index(post.pt_mp.spec_index(state->PageTable_pagetable_root).view().higher.proc_ptr).view_rodata().view().owning_container
             },
 {
     reveal(create_process_from_staged_pages_eof_transition_framing);

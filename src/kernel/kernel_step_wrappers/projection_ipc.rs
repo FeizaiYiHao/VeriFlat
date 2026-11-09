@@ -575,7 +575,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
             current_thread: pre.cpu_arr.spec_index(c).value.view().view().current_thread, killed: pre.cpu_arr.spec_index(c).value.being_killed(),
             op: pre.cpu_op.view().view()[c as int],
         }),
-        pagetable && post.inv() ==> kernel_k_to_kernel_u(*pre).kernel_l4_end == post.pt_mp.spec_index(post.prc_mp.spec_index(prc_ptr).view().pagetable).view().kernel_l4_end,
+        pagetable && post.inv() ==> kernel_k_to_kernel_u(*pre).kernel_l4_end == post.pt_mp.spec_index(post.prc_mp.spec_index(prc_ptr).view().pagetable).view().higher.kernel_l4_end,
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
             let mode = if write_locked { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };

@@ -6,8 +6,8 @@ verus! {
 /// and every other field of its record stay.
 #[verifier::opaque]
 pub(super) open spec fn mmap_1g_hide_l3_entry_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index) -> bool {
-    let old_h = pre.pt_mp.spec_index(pagetable).view();
-    let new_h = post.pt_mp.spec_index(pagetable).view();
+    let old_h = pre.pt_mp.spec_index(pagetable).view().higher;
+    let new_h = post.pt_mp.spec_index(pagetable).view().higher;
     let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
     let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
@@ -62,7 +62,7 @@ pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, paget
         pre.inv(),
         mmap_1g_hide_l3_entry_eof_transition_framing(pre, post, pagetable, l4i, l3i),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
-        pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),

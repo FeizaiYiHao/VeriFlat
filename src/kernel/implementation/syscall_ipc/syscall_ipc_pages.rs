@@ -86,13 +86,13 @@ fn ipc_lock_tables_and_share_pages(
         !old(krnl).prc_mp.spec_index(target_process).view().zombie,
         old(krnl).prc_mp.spec_index(source_process).view().pagetable == source_pagetable,
         old(krnl).prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
-        old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process,
+        old(krnl).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process,
         old(krnl).thrd_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable,
         old(krnl).prc_mp.dom().contains(target_process),
         source_pagetable != target_pagetable,
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(krnl).pt_mp.dom().contains(target_pagetable),
-        old(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
@@ -475,8 +475,8 @@ fn ipc_map_pages_and_release_tables(
             &&& krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable
             &&& krnl.pt_mp.dom().contains(source_pagetable)
             &&& krnl.pt_mp.dom().contains(target_pagetable)
-            &&& krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr == source_process
-            &&& krnl.pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process
+            &&& krnl.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == source_process
+            &&& krnl.pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process
             &&& source_pagetable != target_pagetable
         }) by {
             process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, source_thread); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, target_thread);

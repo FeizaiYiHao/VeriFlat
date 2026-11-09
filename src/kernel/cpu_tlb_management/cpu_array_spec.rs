@@ -47,8 +47,8 @@ pub proof fn cpu_current_pcid_pagetable_match_at(cpu_arr: CpuLockedArray, dflt_p
             && cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
             && cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pt_ptr
             ==>
-            cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pt_mp.spec_index(pt_ptr).view().proc_ptr)
-            && cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == pt_mp.spec_index(pt_ptr).view().cr3,
+            cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pt_mp.spec_index(pt_ptr).view().higher.proc_ptr)
+            && cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == pt_mp.spec_index(pt_ptr).view().higher.cr3,
 { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(process_pagetable_wf); }
 
 /// Each cpu owns its hardware cr3/pcid word, which equals the cpu's recorded (current_cr3, current_pcid) except while

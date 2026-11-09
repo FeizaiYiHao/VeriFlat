@@ -68,7 +68,7 @@ pub(super) fn schedule_switch_read_target(
     let depth = process.depth;
     assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
-        krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
+        krnl.pt_mp.spec_index(next_pagetable).view().higher.table_pages_wf_cr3_at();
     };
     let shard = krnl.sched_mp.borrow_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(scheduler_lock_perm));
     let (next_node, _) = shard.queue.peek_head();
@@ -236,7 +236,7 @@ pub(super) fn schedule_switch_commit(
             &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
-        assert(krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); };
+        assert(krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().higher.cr3 == cr3) by { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); };
     }
     let ghost pre = *krnl;
     krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid,

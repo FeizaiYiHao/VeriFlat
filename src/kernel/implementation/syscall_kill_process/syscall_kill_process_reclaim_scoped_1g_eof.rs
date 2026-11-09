@@ -316,7 +316,7 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_allocator_quota_wf(
     reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+        let proc_ptr = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
         reveal(container_process_page_pagetable_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
     };
 }
@@ -330,9 +330,9 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_cpu_caches(
         kill_reclaim_held_1g_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr),
         pre.pt_mp.dom().contains(pagetable),
         va_1g_valid(va),
-        pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va),
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None,
-        pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
     ensures
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
@@ -359,10 +359,10 @@ pub(crate) proof fn kill_reclaim_held_1g_page_scoped_eof(
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_1g_valid(va)
-            &&& pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(va)
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(va)
             &&& old_c.spec_resolve_mapping_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is None
             &&& !old_c.mapping_1g().dom().contains(va)
-            &&& pre.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty()
+            &&& pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some
             &&& old_c.spec_held_1g_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr == pg_ptr
             &&& page_ptr_valid(pg_ptr)

@@ -61,30 +61,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i),
             (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
                 perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
-            {
-                let after = WholePageTable { higher: PageTableHigher { lower_backup: Ghost(*final(lower)), ..*self }, lower: *final(lower) };
-                &&& after.wf()
-                &&& after.page_closure() == (WholePageTable { higher: *self, lower: *old(lower) }).page_closure()
-                &&& after.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
-                    perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
-                &&& forall|l4i: L4Index|
-                    #![trigger pei_valid(l4i)]
-                    self.kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
-                        #![trigger pei_valid(l3i)]
-                        pei_valid(l3i) ==> forall|l2i: L2Index|
-                            #![trigger after.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                            pei_valid(l2i) ==> after.spec_resolve_mapping_l2(l4i, l3i, l2i)
-                                == (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_held_l2(l4i, l3i, l2i)]
-                    self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> after.spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4i, l3i, l2i)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger after.spec_held_2m_l2(l4i, l3i, l2i)]
-                    self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> after.spec_held_2m_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_2m_l2(l4i, l3i, l2i)
-                &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger after.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-                    self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i)
-                        ==> after.spec_held_4k_l1(l4i, l3i, l2i, l1i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)
-                &&& after.spec_held_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
-                    perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
-            },
     {
         proof {
             let c = WholePageTable { higher: *self, lower: *lower };
@@ -105,13 +81,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             lower.mapping_4k = lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry);
             let pre = WholePageTable { higher: *self, lower: *old(lower) };
             let post = WholePageTable { higher: *self, lower: *lower };
-            assert(WholePageTable::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by { reveal(WholePageTable::map_4k_page_eof_transition_framing); };
-            assert(WholePageTable::map_4k_page_eof_transition_framing(pre,
-                WholePageTable { higher: PageTableHigher { lower_backup: Ghost(post.lower), ..post.higher }, ..post }, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by { reveal(WholePageTable::map_4k_page_eof_transition_framing); };
+            assert(WholePageTable::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by {
+                reveal(WholePageTable::map_4k_page_eof_transition_framing);
+            };
             WholePageTable::map_4k_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
-            WholePageTable::map_4k_page_eof(pre, WholePageTable { higher: PageTableHigher { lower_backup: Ghost(post.lower), ..post.higher }, ..post }, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
             WholePageTable::map_4k_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
-            WholePageTable::map_4k_page_eof_held_chain(pre, WholePageTable { higher: PageTableHigher { lower_backup: Ghost(post.lower), ..post.higher }, ..post }, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
         }
     }
 
@@ -183,7 +157,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             lower.mapping_2m = lower.mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry);
             let pre = WholePageTable { higher: *self, lower: *old(lower) };
             let post = WholePageTable { higher: *self, lower: *lower };
-            assert(WholePageTable::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry)) by { reveal(WholePageTable::map_2m_page_eof_transition_framing); };
+            assert(WholePageTable::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry)) by {
+                reveal(WholePageTable::map_2m_page_eof_transition_framing);
+            };
             WholePageTable::map_2m_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
             WholePageTable::map_2m_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
         }
@@ -207,7 +183,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             target_entry.present,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
-            final(self).lower_backup == old(self).lower_backup,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -275,7 +250,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             self.mapping_1g = Ghost(self.mapping_1g.view().insert(spec_index2va((target_l4i, target_l3i, 0, 0)), *target_entry));
             let pre = (WholePageTable { higher: *old(self), lower: *lower });
             let post = WholePageTable { higher: *self, lower: *lower };
-            assert(WholePageTable::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry)) by { reveal(WholePageTable::map_1g_page_eof_transition_framing); };
+            assert(WholePageTable::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry)) by {
+                reveal(WholePageTable::map_1g_page_eof_transition_framing);
+            };
             WholePageTable::map_1g_page_eof(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
             WholePageTable::map_1g_page_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);
             WholePageTable::map_1g_page_eof_held_chain(pre, post, target_l4i, target_l3i, target_l3_p, *target_entry);

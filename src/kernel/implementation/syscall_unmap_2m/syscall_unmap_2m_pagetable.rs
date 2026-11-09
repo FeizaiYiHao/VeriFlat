@@ -109,8 +109,8 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     assert({
         &&& krnl.pt_mp.dom().contains(pagetable)
         &&& krnl.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable
-        &&& krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3
-        &&& krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid)
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid)
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == cr3
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid
         &&& page_ptr_valid(cr3)
@@ -119,7 +119,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     }) by {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         process_perms_wf_at(krnl.prc_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
+        krnl.pt_mp.spec_index(pagetable).view().higher.table_pages_wf_cr3_at();
     };
     assert(old(steps).snapshot_k().pt_mp.dom().contains(pagetable)
         && pagetable == old(steps).snapshot_k().prc_mp.spec_index(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view().pagetable) by {
@@ -134,7 +134,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
-    let l4_ok = pt.kernel_l4_end <= indices.0;
+    let l4_ok = pt.higher.kernel_l4_end <= indices.0;
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &cover, Tracked(&pagetable_perm), Tracked(&mut *lctx));
         if unmap_2m_range_mapped_present(krnl, &va_range, &cover, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
@@ -281,7 +281,7 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
         cover.wf(),
         krnl.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         krnl.pt_mp.dom().contains(pagetable_ptr),
-        krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start),
+        krnl.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(range.start),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == lctx.thread_id(),
@@ -292,7 +292,7 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(range.view()[j]).present
         },
         ret ==> forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
-            &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.view()[j])
+            &&& krnl.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
             &&& window_of(range.view()[j]).va == range.view()[j]
             &&& va_range_2m_windows(range.covering_4k_range()).contains(window_of(range.view()[j]))
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is Some
@@ -319,16 +319,16 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
             *cover == range.covering_4k_range(),
             cover.wf(),
             table == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr),
-            table == (WholePageTable { higher: *pagetable, lower: *lower }),
+            table == (WholePageTable { higher: pagetable.higher, lower: *lower }),
             table.wf(),
-            pagetable.kernel_l4_end <= spec_v2l4index(range.start),
+            pagetable.higher.kernel_l4_end <= spec_v2l4index(range.start),
             forall|j: int| #![trigger cover.view()[j]] 0 <= j < cover.len ==> va_range_2m_windows(*cover).contains(window_of(cover.view()[j])),
             forall|k: usize| 0 <= k < cover.len ==> cover.view().spec_index(k as int) == spec_va_add_range(cover.start, k),
             forall|k: usize| 0 <= k < range.len ==> range.view().spec_index(k as int) == spec_va_add_range_2m(range.start, k),
             forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> {
                 &&& table.mapping_2m().dom().contains(range.view()[j])
                 &&& table.mapping_2m().spec_index(range.view()[j]).present
-                &&& pagetable.kernel_l4_end <= spec_v2l4index(range.view()[j])
+                &&& pagetable.higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& va_range_2m_windows(*cover).contains(window_of(range.view()[j]))
                 &&& table.higher.spec_resolve_mapping_l3(spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j])) is Some
@@ -345,11 +345,11 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
             spec_v2l4index_monotonic(range.start, va);
             table.wf_mapping_2m_at(indices.0, indices.1, indices.2);
         }
-        let (l3_entry, _) = pagetable.resolve_mapping_4k_l3(indices.0, indices.1);
+        let (l3_entry, _) = pagetable.higher.resolve_mapping_4k_l3(indices.0, indices.1);
         match l3_entry {
             None => { return false; },
             Some(l3_entry) => {
-                match pagetable.get_entry_2m_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry) {
+                match pagetable.higher.get_entry_2m_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry) {
                     None => { return false; },
                     Some(l2_entry) => { if !l2_entry.perm.present { return false; } },
                 }

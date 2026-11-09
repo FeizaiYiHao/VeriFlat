@@ -38,7 +38,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
             || (!old(krnl).prc_mp.spec_index(target_process).view().zombie && !(old(krnl).prc_mp.spec_index(target_process).view().state.view() is TablesEmptied)),
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(krnl).pt_mp.dom().contains(target_pagetable),
-        old(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr == target_process,
         source_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         source_pagetable_lock_perm.state() is ReadLock || source_pagetable_lock_perm.state() is WriteLock,
         source_pagetable_lock_perm.state() is ReadLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
@@ -57,18 +57,6 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
             == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         share_mapping_4k_leaf_ready(old(krnl), source_pagetable, target_pagetable, target_container, source_va, target_va),
     ensures
-        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
-                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some)
-            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-                final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
-                    ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                ==> old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
-            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-                final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                    ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -79,7 +67,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, target_pagetable),
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(target_pagetable, final(krnl).pt_lower.view().spec_index(target_pagetable)),
         final(krnl).pt_mp.spec_index(target_pagetable).locking_thread() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread(),
-        final(krnl).pt_mp.spec_index(target_pagetable).view() == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(target_pagetable).view().lower_backup, ..old(krnl).pt_mp.spec_index(target_pagetable).view() }),
+        final(krnl).pt_mp.spec_index(target_pagetable).view().higher == old(krnl).pt_mp.spec_index(target_pagetable).view().higher,
         !target_write_held ==> final(krnl).pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp.spec_index(target_pagetable).view(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_4k()
             == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k().insert(target_va, whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va)),
@@ -98,7 +86,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)]
             #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            old(krnl).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
@@ -122,7 +110,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
     {
         let source = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
-        source_entry = source.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
+        source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
     let pg_ptr = source_entry.addr;
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -145,9 +133,9 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
     {
         let target = krnl.pt_mp.borrow_typed(target_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(target_pagetable_lock_perm));
         let tracked target_lower = krnl.pt_lower.borrow().tracked_borrow(target_pagetable);
-        let target_l3_entry = target.resolve_mapping_4k_l3(target_indices.0, target_indices.1).0.unwrap();
+        let target_l3_entry = target.higher.resolve_mapping_4k_l3(target_indices.0, target_indices.1).0.unwrap();
         target_l2_ptr = target_l3_entry.addr;
-        target_l1_ptr = target.get_entry_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2, &target_l3_entry).unwrap().addr;
+        target_l1_ptr = target.higher.get_entry_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2, &target_l3_entry).unwrap().addr;
     }
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;

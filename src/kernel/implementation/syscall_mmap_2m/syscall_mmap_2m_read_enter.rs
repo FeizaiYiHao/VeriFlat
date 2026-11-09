@@ -233,7 +233,7 @@ pub(super) fn mmap_2m_try_read_enter(
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     let (user_range, windows_exist) = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm));
-        if va2index(va).0 < pagetable.kernel_l4_end { (false, false) } else { (true, pagetable.mapping_4k_va_range_windows_exist(&cover)) }
+        if va2index(va).0 < pagetable.higher.kernel_l4_end { (false, false) } else { (true, pagetable.higher.mapping_4k_va_range_windows_exist(&cover)) }
     };
     if !user_range {
         mmap_2m_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),

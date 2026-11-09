@@ -38,8 +38,8 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))
             ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
                 || whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS)),
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
         page_ptr_valid(cr3),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
@@ -212,8 +212,8 @@ pub fn flush_pagetable_tlbs_va_range(krnl: &mut KernelK, pagetable: RwLockPageTa
             krnl.cpu_op.view().view()[local_cpu as int] == old(krnl).cpu_op.view().view()[local_cpu as int],
             old(krnl).cpu_op.view().view()[local_cpu as int] is InStep,
             krnl.pt_mp.dom().contains(pagetable),
-            krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-            krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3,
+            krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+            krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             pcid != KERNEL_DEFAULT_PCID,

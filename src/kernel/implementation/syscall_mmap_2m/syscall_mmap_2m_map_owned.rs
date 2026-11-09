@@ -129,8 +129,8 @@ use super::syscall_mmap_2m_map_owned_eof::{map_owned_2m_page_eof, map_owned_2m_p
         let target_l2_ptr;
         {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
-            let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
-            target_l2_ptr = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap().addr;
+            let l4_entry = pagetable.higher.get_entry_l4(indices.0).unwrap();
+            target_l2_ptr = pagetable.higher.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap().addr;
         }
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
         let page_owner;

@@ -176,7 +176,7 @@ pub(super) fn publish_staged_process(
         source_pagetable_ptr != ret.1,
         final(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
-        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr,
+        final(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr == parent_ptr,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
         source_pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).view() == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view(),
@@ -185,10 +185,10 @@ pub(super) fn publish_staged_process(
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         final(krnl).pt_mp.dom().contains(ret.1),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), ret.1, TypedLockMode::Write),
-        final(krnl).pt_mp.spec_index(ret.1).view().proc_ptr == ret.0,
-        final(krnl).pt_mp.spec_index(ret.1).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end,
+        final(krnl).pt_mp.spec_index(ret.1).view().higher.proc_ptr == ret.0,
+        final(krnl).pt_mp.spec_index(ret.1).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
-        final(krnl).pt_mp.spec_index(ret.1).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(ret.1).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ret.3.view().state() is WriteLock,
         ret.3.view().thread_id() == final(lctx).thread_id(),
         ret.3.view().lock_id() == final(krnl).pt_mp.spec_index(ret.1).locking_thread()->Write_lock_id,
@@ -211,8 +211,9 @@ pub(super) fn publish_staged_process(
         target_pagetable_ptr, None, source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(ep_idx),
     );
     proof {
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_wf); };
-        assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().higher.proc_ptr
+            == parent_ptr) by { process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, current_thrd_ptr); reveal(process_pagetable_wf); };
+        assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().higher.kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
         };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);

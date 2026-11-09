@@ -151,7 +151,7 @@ pub open spec fn held_cpu_sets_unchanged(pre: CpuSetLockedMap, post: CpuSetLocke
         }
 }
 
-/// A write-held page table keeps its payload (including the lower-half backup in `view()`) and lock state; a read-held one keeps its payload, this thread's read hold and reader token, and kill mark, while other readers and window updates proceed.
+/// A write-held page table keeps its whole big-lock entry; a read-held one keeps its payload, this thread's read hold and reader token, and kill mark, while other readers and window updates proceed.
 pub open spec fn held_pagetables_unchanged(pre: PageTableLockedMap, post: PageTableLockedMap, lctx: &LocalContext) -> bool {
     forall|pt: RwLockPageTableRoot|
         #![trigger lctx.pagetable_lock_map().dom().contains(pt)]
@@ -159,14 +159,7 @@ pub open spec fn held_pagetables_unchanged(pre: PageTableLockedMap, post: PageTa
         #![trigger post.spec_index(pt)]
         lctx.pagetable_lock_map().dom().contains(pt) ==> {
             &&& post.dom().contains(pt)
-            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Write) ==> {
-                &&& post.spec_index(pt).view_lock() == pre.spec_index(pt).view_lock()
-                &&& post.spec_index(pt).is_init() == pre.spec_index(pt).is_init()
-                &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
-                &&& post.spec_index(pt).view_rodata() == pre.spec_index(pt).view_rodata()
-                &&& post.spec_index(pt).locking_thread() == pre.spec_index(pt).locking_thread()
-                &&& post.spec_index(pt).control() == pre.spec_index(pt).control()
-            }
+            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Write) ==> post.spec_index(pt) == pre.spec_index(pt)
             &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Read) ==> {
                 &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
                 &&& post.spec_index(pt).rlocked_by_thread(lctx.thread_id())
@@ -183,14 +176,7 @@ pub open spec fn held_pagetables_unchanged_except(pre: PageTableLockedMap, post:
         #![trigger post.spec_index(pt)]
         lctx.pagetable_lock_map().dom().contains(pt) && !exceptions.contains(pt) ==> {
             &&& post.dom().contains(pt)
-            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Write) ==> {
-                &&& post.spec_index(pt).view_lock() == pre.spec_index(pt).view_lock()
-                &&& post.spec_index(pt).is_init() == pre.spec_index(pt).is_init()
-                &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
-                &&& post.spec_index(pt).view_rodata() == pre.spec_index(pt).view_rodata()
-                &&& post.spec_index(pt).locking_thread() == pre.spec_index(pt).locking_thread()
-                &&& post.spec_index(pt).control() == pre.spec_index(pt).control()
-            }
+            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Write) ==> post.spec_index(pt) == pre.spec_index(pt)
             &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pt, TypedLockMode::Read) ==> {
                 &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
                 &&& post.spec_index(pt).rlocked_by_thread(lctx.thread_id())

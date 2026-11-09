@@ -55,7 +55,7 @@ pub open spec fn kill_reclaim_state(
     &&& target.view().owned_threads.view().len() == 0
     &&& target.view().pci_cleared.view()
     &&& k.pt_mp.dom().contains(pagetable)
-    &&& k.pt_mp.spec_index(pagetable).view().proc_ptr == chain[chain.len() - 1]
+    &&& k.pt_mp.spec_index(pagetable).view().higher.proc_ptr == chain[chain.len() - 1]
     &&& pagetable_perm.state() is WriteLock
     &&& pagetable_perm.thread_id() == lctx.thread_id()
     &&& pagetable_perm.lock_id() == k.pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id

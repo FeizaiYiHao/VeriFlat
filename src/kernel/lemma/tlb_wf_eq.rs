@@ -13,7 +13,7 @@ pub proof fn tlb_wf_spec_preserved_for_4k_mapping_insert(cpu_tlb: CpuTLB, cpu_ar
         pre_pt.dom().contains(pagetable_ptr),
         post_pt.unchanged_except(&pre_pt, pagetable_ptr),
         post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr)),
-        post_pt.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: post_pt.spec_index(pagetable_ptr).view().lower_backup, ..pre_pt.spec_index(pagetable_ptr).view() }),
+        post_pt.spec_index(pagetable_ptr).view().higher == pre_pt.spec_index(pagetable_ptr).view().higher,
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).wf(),
         whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
         whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.window_stale_cpus == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.window_stale_cpus,

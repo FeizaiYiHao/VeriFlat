@@ -409,7 +409,7 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va].present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va] }),
@@ -421,11 +421,11 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().proc_ptr).view().zombie,
+        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().zombie,
     ensures
         {
             let before = kernel_k_to_kernel_u(*pre);
-            let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
             &&& before.process_map.dom().contains(process)
             &&& before.process_map[process].pagetable is Some
             &&& before.process_map[process].pagetable->Some_0.mapping_4k.dom().contains(va)
@@ -443,7 +443,7 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
-    let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     if pre.prc_mp.dom().contains(process) { kernel_process_projection_at(pre, process); } if post.prc_mp.dom().contains(process) { kernel_process_projection_at(post, process); }
     if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_projection_at(pre, thrd_ptr); }
     assert_maps_equal!(after.process_map[process].pagetable->Some_0.mapping_4k, before.process_map[process].pagetable->Some_0.mapping_4k.remove(va), a => {});
@@ -586,7 +586,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre: &Ke
         }),
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
-            let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
+            let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
             kernel_k_to_kernel_u(*post) == (KernelU {
                 thread_map: pre_u.thread_map.insert(thrd_ptr, ThreadU {
                     quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k,
@@ -621,7 +621,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre: &Ke
         reveal(process_cpu_wf); reveal(process_pagetable_wf);
     };
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
+    let owner = pre.pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr;
     if pre_u.process_map.dom().contains(owner) && pre_u.process_map[owner].pagetable is Some {
         assert(pre.prc_mp.spec_index(owner).view().pagetable == pagetable_ptr) by { reveal(process_pagetable_wf); };
         assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(owner, ProcessU {
@@ -666,7 +666,7 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
-        post.pt_mp.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(pagetable_ptr).view().lower_backup, ..pre.pt_mp.spec_index(pagetable_ptr).view() }),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher == pre.pt_mp.spec_index(pagetable_ptr).view().higher,
         post.pt_mp.spec_index(pagetable_ptr).lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
     ensures
         ({
@@ -750,7 +750,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
         match table {
             Some(p) => {
                 &&& post.pt_mp.unchanged_except(&pre.pt_mp, p)
-                &&& post.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(p).view().lower_backup, ..pre.pt_mp.spec_index(p).view() })
+                &&& post.pt_mp.spec_index(p).view().higher == pre.pt_mp.spec_index(p).view().higher
                 &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
             },
             None => post.pt_mp == pre.pt_mp,

@@ -119,8 +119,8 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     assert({
         &&& krnl.pt_mp.dom().contains(pagetable)
         &&& krnl.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable
-        &&& krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3
-        &&& krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid)
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid)
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == cr3
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid
         &&& page_ptr_valid(cr3)
@@ -129,7 +129,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     }) by {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
         process_perms_wf_at(krnl.prc_mp, prc_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
+        krnl.pt_mp.spec_index(pagetable).view().higher.table_pages_wf_cr3_at();
     };
     assert(old(steps).snapshot_k().pt_mp.dom().contains(pagetable)
         && pagetable == old(steps).snapshot_k().prc_mp.spec_index(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view().pagetable) by {
@@ -144,7 +144,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
-    let l4_ok = pt.kernel_l4_end <= indices.0;
+    let l4_ok = pt.higher.kernel_l4_end <= indices.0;
     proof { assert(va_range == spec_va_range_4k(va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));

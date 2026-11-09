@@ -85,11 +85,12 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
         &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()
         &&& post.pt_mp.spec_index(root).locking_thread() == pre.pt_mp.spec_index(root).locking_thread()
         &&& post.pt_mp.spec_index(root).control() == pre.pt_mp.spec_index(root).control()
-        &&& post.pt_mp.spec_index(root).view() == (PageTableHigher { lower_backup: Ghost(if root_write_held { post.pt_lower.view().spec_index(root) } else { pre.pt_mp.spec_index(root).view().lower_backup.view() }), ..pre.pt_mp.spec_index(root).view() })
+        &&& post.pt_mp.spec_index(root).view().higher == pre.pt_mp.spec_index(root).view().higher
+        &&& post.pt_mp.spec_index(root).view().lower_backup == if root_write_held { Ghost(post.pt_lower.view().spec_index(root)) } else { pre.pt_mp.spec_index(root).view().lower_backup }
     }
     &&& post.pt_lower.view() =~= pre.pt_lower.view().insert(root, post.pt_lower.view().spec_index(root))
     &&& post.pt_lower.view().dom() =~= pre.pt_lower.view().dom()
-    &&& after.higher == (PageTableHigher { lower_backup: after.higher.lower_backup, ..before.higher })
+    &&& after.higher == before.higher
     &&& after.lower == (PageTableLower { window_stale_cpus: after.lower.window_stale_cpus, ..before.lower })
     &&& after.mapping_4k() == before.mapping_4k()
     &&& after.mapping_2m() == before.mapping_2m()
@@ -103,8 +104,8 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
         #![trigger after.window_locked_by_thread(l4, l3, l2, t)]
         #![trigger before.window_locked_by_thread(l4, l3, l2, t)]
         after.window_locked_by_thread(l4, l3, l2, t) == before.window_locked_by_thread(l4, l3, l2, t)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] #![trigger before.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] #![trigger before.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
@@ -135,8 +136,8 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
             || cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
-            &&& pre.pt_mp.spec_index(root).view().pcid is Some
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
+            &&& pre.pt_mp.spec_index(root).view().higher.pcid is Some
             &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -149,7 +150,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
             || structure_cache_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
             let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
             ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
             ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
@@ -249,16 +250,11 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
 proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
     requires
         pre.wf(),
-        post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher }),
+        post.higher == pre.higher,
         post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
     ensures
         post.wf(),
 {
-    assert(post.higher.inv()) by {
-        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
-        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
-        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
-    };
     assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
@@ -312,8 +308,8 @@ proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK
             || cpu_tlb_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
-            &&& pre.pt_mp.spec_index(root).view().pcid is Some
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
+            &&& pre.pt_mp.spec_index(root).view().higher.pcid is Some
             &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
             &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
@@ -362,7 +358,7 @@ proof fn window_stale_cpus_update_eof_structure_cache_wf_new_map(pre: KernelK, p
             || structure_cache_wf(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
         update is RemoveCpu ==> ({
             let cpu_id = update->RemoveCpu_cpu_id;
-            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            let pcid = pre.pt_mp.spec_index(root).view().higher.pcid->Some_0;
             let dirty_entry = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
             ||| pre.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
             ||| pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid

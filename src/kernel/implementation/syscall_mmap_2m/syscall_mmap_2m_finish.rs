@@ -55,7 +55,7 @@ pub(super) fn mmap_2m_unlock_range_and_finish(
         old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
         va_range.covering_4k_range().wf(),
-        old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_windows_exist(&va_range.covering_4k_range()),
+        old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_mapping_4k_va_range_windows_exist(&va_range.covering_4k_range()),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && va_range_2m_windows(va_range.covering_4k_range()).contains(w)),
         forall|w: WindowVa| #![trigger va_range_2m_windows(va_range.covering_4k_range()).contains(w)] va_range_2m_windows(va_range.covering_4k_range()).contains(w) ==> {

@@ -402,7 +402,7 @@ pub proof fn kernel_pagetable_1g_present_cleared_and_progress_changed_implies_u_
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va].present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()[va] }),
@@ -414,11 +414,11 @@ pub proof fn kernel_pagetable_1g_present_cleared_and_progress_changed_implies_u_
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().proc_ptr).view().zombie,
+        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().zombie,
     ensures
         ({
             let before = kernel_k_to_kernel_u(*pre);
-            let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
             &&& before.process_map.dom().contains(process)
             &&& before.process_map[process].pagetable is Some
             &&& before.process_map[process].pagetable->Some_0.mapping_1g.dom().contains(va)
@@ -436,7 +436,7 @@ pub proof fn kernel_pagetable_1g_present_cleared_and_progress_changed_implies_u_
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
-    let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     if pre.prc_mp.dom().contains(process) { kernel_process_projection_at(pre, process); } if post.prc_mp.dom().contains(process) { kernel_process_projection_at(post, process); }
     if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_projection_at(pre, thrd_ptr); }
     assert_maps_equal!(after.process_map[process].pagetable->Some_0.mapping_1g, before.process_map[process].pagetable->Some_0.mapping_1g.remove(va), a => {});
@@ -461,7 +461,7 @@ pub proof fn kernel_pagetable_l3_hidden_and_progress_changed_implies_u_step(pre:
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        post.pt_mp.spec_index(pagetable).view().higher.proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
@@ -471,11 +471,11 @@ pub proof fn kernel_pagetable_l3_hidden_and_progress_changed_implies_u_step(pre:
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().proc_ptr).view().zombie,
+        !pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().zombie,
     ensures
         ({
             let before = kernel_k_to_kernel_u(*pre);
-            let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+            let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
             &&& before.process_map.dom().contains(process)
             &&& before.process_map[process].pagetable is Some
             &&& before.thread_map.dom().contains(thrd_ptr)
@@ -494,7 +494,7 @@ pub proof fn kernel_pagetable_l3_hidden_and_progress_changed_implies_u_step(pre:
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
-    let process = pre.pt_mp.spec_index(pagetable).view().proc_ptr;
+    let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     if pre.prc_mp.dom().contains(process) { kernel_process_projection_at(pre, process); } if post.prc_mp.dom().contains(process) { kernel_process_projection_at(post, process); }
     if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_projection_at(pre, thrd_ptr); }
     assert_maps_equal!(after.process_map, before.process_map.insert(process, ProcessU {

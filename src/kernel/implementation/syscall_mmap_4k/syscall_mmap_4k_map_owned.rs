@@ -145,9 +145,9 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
         {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
             let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-            let l3_entry = pagetable.resolve_mapping_4k_l3(indices.0, indices.1).0.unwrap();
+            let l3_entry = pagetable.higher.resolve_mapping_4k_l3(indices.0, indices.1).0.unwrap();
             target_l2_ptr = l3_entry.addr;
-            target_l1_ptr = pagetable.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry).unwrap().addr;
+            target_l1_ptr = pagetable.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry).unwrap().addr;
         }
 
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);

@@ -65,14 +65,14 @@ pub(super) fn unmap_2m_range(
         pagetable_perm.view().state() is ReadLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_perm.view().lock_id()),
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
         range.wf(),
         range.len > 0,
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
-            &&& old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(range.view()[j])
+            &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
             &&& window_of(range.view()[j]).va == range.view()[j]
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
             &&& window_perms.dom().contains(window_of(range.view()[j]))
@@ -171,14 +171,14 @@ pub(super) fn unmap_2m_range(
             krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
             krnl.pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-            old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
             range.wf(),
             range.len > 0,
             forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
-                &&& old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(range.view()[j])
+                &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
                 &&& window_perms.dom().contains(window_of(range.view()[j]))
@@ -315,14 +315,14 @@ pub(super) fn unmap_2m_range(
             krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
             krnl.pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-            old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
             range.wf(),
             range.len > 0,
             forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
-                &&& old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_v2l4index(range.view()[j])
+                &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
                 &&& window_perms.dom().contains(window_of(range.view()[j]))
@@ -423,8 +423,8 @@ fn flush_unmap_2m_range_tlbs(
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))
             ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None
                 || whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS)),
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
         page_ptr_valid(cr3),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,

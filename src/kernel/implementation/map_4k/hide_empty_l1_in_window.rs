@@ -11,7 +11,7 @@ fn hide_empty_l1_table_ptrs(krnl: &KernelK, pagetable: RwLockPageTableRoot, indi
         krnl.inv(),
         typed_lock_maps_aligned(krnl, lctx),
         krnl.pt_mp.dom().contains(pagetable),
-        krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
+        krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
         pagetable_perm.view().state() is ReadLock,
@@ -25,9 +25,9 @@ fn hide_empty_l1_table_ptrs(krnl: &KernelK, pagetable: RwLockPageTableRoot, indi
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
     let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-    let l4 = pt.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
+    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+    let l2 = pt.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
     (l3.addr, l2.addr)
 }
 
@@ -44,7 +44,7 @@ pub fn hide_empty_l1_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoo
         old(lctx).kernel_view_locking_state() is Acquire,
         old(krnl).pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         forall|l1i: L1Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i)))]
             pei_valid(l1i) ==> !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, l1i))),

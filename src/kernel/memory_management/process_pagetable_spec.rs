@@ -13,17 +13,17 @@ pub open spec fn process_pagetable_wf(prc_mp: ProcessLockedMap, pt_mp: PageTable
             &&& pt_mp.dom().contains(process.view().pagetable)
             &&& process.view_rodata().view().pagetable == process.view().pagetable
             &&& process.view_rodata().view().pcid == process.view().pcid
-            &&& process.view_rodata().view().cr3 == table.cr3
-            &&& table.proc_ptr == p
-            &&& table.pcid_value() == process.view().pcid
+            &&& process.view_rodata().view().cr3 == table.higher.cr3
+            &&& table.higher.proc_ptr == p
+            &&& table.higher.pcid_value() == process.view().pcid
         }
     // Page table -> process.
     &&& forall|pt: RwLockPageTableRoot|
-        #![trigger pt_mp.spec_index(pt).view().proc_ptr]
+        #![trigger pt_mp.spec_index(pt).view().higher.proc_ptr]
         pt_mp.dom().contains(pt)
             ==>
-            prc_mp.dom().contains(pt_mp.spec_index(pt).view().proc_ptr)
-            && prc_mp.spec_index(pt_mp.spec_index(pt).view().proc_ptr).view().pagetable == pt
+            prc_mp.dom().contains(pt_mp.spec_index(pt).view().higher.proc_ptr)
+            && prc_mp.spec_index(pt_mp.spec_index(pt).view().higher.proc_ptr).view().pagetable == pt
 }
 
 pub proof fn process_pagetable_wf_process_at(prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, prc_ptr: RwLockProcessPtr)
@@ -36,9 +36,9 @@ pub proof fn process_pagetable_wf_process_at(prc_mp: ProcessLockedMap, pt_mp: Pa
             &&& pt_mp.dom().contains(process.view().pagetable)
             &&& process.view_rodata().view().pagetable == process.view().pagetable
             &&& process.view_rodata().view().pcid == process.view().pcid
-            &&& process.view_rodata().view().cr3 == table.cr3
-            &&& table.proc_ptr == prc_ptr
-            &&& table.pcid_value() == process.view().pcid
+            &&& process.view_rodata().view().cr3 == table.higher.cr3
+            &&& table.higher.proc_ptr == prc_ptr
+            &&& table.higher.pcid_value() == process.view().pcid
         }),
 { reveal(process_pagetable_wf); }
 
@@ -47,8 +47,8 @@ pub proof fn process_pagetable_wf_pagetable_at(prc_mp: ProcessLockedMap, pt_mp: 
         process_pagetable_wf(prc_mp, pt_mp),
     ensures
         pt_mp.dom().contains(pt_ptr) ==> ({
-            &&& prc_mp.dom().contains(pt_mp.spec_index(pt_ptr).view().proc_ptr)
-            &&& prc_mp.spec_index(pt_mp.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
+            &&& prc_mp.dom().contains(pt_mp.spec_index(pt_ptr).view().higher.proc_ptr)
+            &&& prc_mp.spec_index(pt_mp.spec_index(pt_ptr).view().higher.proc_ptr).view().pagetable == pt_ptr
         }),
 { reveal(process_pagetable_wf); }
 }

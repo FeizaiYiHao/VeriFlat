@@ -153,9 +153,9 @@ pub(super) fn map_one_mmap_4k_page(
     let l2_present = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
-        let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
-        let l3_entry = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap();
-        pagetable.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry).is_some()
+        let l4_entry = pagetable.higher.get_entry_l4(indices.0).unwrap();
+        let l3_entry = pagetable.higher.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap();
+        pagetable.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry).is_some()
     };
     if !l2_present {
         let _ = install_one_mmap_4k_directory_page(

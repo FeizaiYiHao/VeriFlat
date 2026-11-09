@@ -14,7 +14,7 @@ pub(super) open spec fn pagetable_map_unlink_hidden_l3_l1_page_eof_transition_fr
     &&& post_pt.spec_index(pagetable_ptr).locking_thread() == pre_pt.spec_index(pagetable_ptr).locking_thread()
     &&& post_pt.spec_index(pagetable_ptr).being_killed() == pre_pt.spec_index(pagetable_ptr).being_killed()
     &&& post_pt.spec_index(pagetable_ptr).view_rodata() == pre_pt.spec_index(pagetable_ptr).view_rodata()
-    &&& post_pt.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: post_pt.spec_index(pagetable_ptr).view().lower_backup, ..pre_pt.spec_index(pagetable_ptr).view() })
+    &&& post_pt.spec_index(pagetable_ptr).view().higher == pre_pt.spec_index(pagetable_ptr).view().higher
     &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
     &&& post_pt.spec_index(pagetable_ptr).view().lower_backup.view() == post_lower.spec_index(pagetable_ptr)
     &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
@@ -27,6 +27,7 @@ pub(super) open spec fn pagetable_map_unlink_hidden_l3_l1_page_eof_transition_fr
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_4k()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_2m()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).mapping_1g()
+    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
         #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
@@ -47,7 +48,6 @@ pub(super) proof fn pagetable_map_unlink_hidden_l3_l1_page_eof(
     thread_id: LockThreadId,
 )
     requires
-        whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
         pagetable_perms_wf(pre_pt),
         pre_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
         pagetable_lower_wf(pre_pt, pre_lower),
@@ -77,7 +77,6 @@ pub(super) proof fn pagetable_map_unlink_hidden_l3_l1_page_eof(
         page_mappings_pagetable_wf(post_pt, post_lower, page_array),
 {
     reveal(pagetable_map_unlink_hidden_l3_l1_page_eof_transition_framing);
-    pagetable_lock_op_preserves_invariant_fields(pre_pt, post_pt, post_lower, pagetable_ptr);
     assert(page_mappings_pagetable_wf(post_pt, post_lower, page_array)) by {
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
@@ -137,7 +136,7 @@ pub(super) open spec fn pagetable_map_remove_l3_entry_eof_transition_framing(
         pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) ==> post_c.spec_held_2m_l2(i4, i3, i2) == pre_c.spec_held_2m_l2(i4, i3, i2)
     &&& forall|i4: L4Index, i3: L3Index| #![trigger post_c.spec_held_1g_l3(i4, i3)] #![trigger pre_c.spec_held_1g_l3(i4, i3)]
         pre_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> post_c.spec_held_1g_l3(i4, i3) == pre_c.spec_held_1g_l3(i4, i3)
-    &&& post_pt.spec_index(pagetable_ptr).view().table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
 }
 
 /// EOF closure of `pagetable_map_remove_l3_entry`: the big-lock and window-half invariants after the L2 page of an unresolvable L3 entry is unlinked; every held leaf stays, so the page records keep following the held chains. The unresolvable entry had no window, so the window locks stay.

@@ -30,19 +30,20 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-            final(self).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+            final(self).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower.l2_owner(p, i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower.l2_perms.dom().contains(p) && pei_valid(i)
                     ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).lower.l2_owner(p, i) is None,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i)]
-                final(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i) is Some ==> final(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
-                final(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
-                    ==> final(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) is Some
+                    ==> final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -62,7 +63,7 @@ impl KernelK {
             final(self).pt_mp.spec_index(pagetable_ptr).wlocked_by(final(lctx)),
             final(self).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
             final(self).pt_mp.spec_index(pagetable_ptr).inv(),
-            final(self).pt_mp.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup, ..old(self).pt_mp.spec_index(pagetable_ptr).view() }),
+            final(self).pt_mp.spec_index(pagetable_ptr).view().higher == old(self).pt_mp.spec_index(pagetable_ptr).view().higher,
             final(self).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(self).pt_mp.spec_index(pagetable_ptr).view_rodata(),
             final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup.view() == final(self).pt_lower.view().spec_index(pagetable_ptr),
             final(self).pt_mp.spec_index(pagetable_ptr).being_killed() == old(self).pt_mp.spec_index(pagetable_ptr).being_killed(),
@@ -135,8 +136,8 @@ impl KernelK {
         ensures
             old(self).pt_mp.spec_index(source_pagetable).locking_thread() is None,
             old(self).pt_mp.spec_index(target_pagetable).locking_thread() is None,
-            final(self).pt_mp.spec_index(source_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(source_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(source_pagetable).view() }),
-            final(self).pt_mp.spec_index(target_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(target_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(target_pagetable).view() }),
+            final(self).pt_mp.spec_index(source_pagetable).view().higher == old(self).pt_mp.spec_index(source_pagetable).view().higher,
+            final(self).pt_mp.spec_index(target_pagetable).view().higher == old(self).pt_mp.spec_index(target_pagetable).view().higher,
             final(self).pt_mp.spec_index(source_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(source_pagetable),
             final(self).pt_mp.spec_index(target_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(target_pagetable),
             forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != source_pagetable && p != target_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
@@ -148,26 +149,28 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable).lower.hidden_l1_tables_in_locked_windows(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), source_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-            final(self).pt_mp.spec_index(source_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            final(self).pt_mp.spec_index(target_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(self).pt_mp.spec_index(source_pagetable).view().spec_held_l4(l4i)]
-                final(self).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(source_pagetable).view().spec_held_l4(l4i) is Some ==> final(self).pt_mp.spec_index(source_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(self).pt_mp.spec_index(source_pagetable).view().spec_held_l3(l4i, l3i)]
-                final(self).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(source_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                    ==> final(self).pt_mp.spec_index(source_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(self).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
-                final(self).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some ==> final(self).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(self).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
-                final(self).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                    ==> final(self).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+            final(self).pt_mp.spec_index(source_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            final(self).pt_mp.spec_index(target_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(source_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_held_l4(l4i) is Some
+                    ==> final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(source_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(source_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> final(self).pt_mp.spec_index(source_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l4(l4i) is Some
+                    ==> final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(target_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(target_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> final(self).pt_mp.spec_index(target_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -238,16 +241,17 @@ impl KernelK {
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
-            old(self).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i)]
-                old(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i) is Some ==> old(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
-                old(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
-                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+            old(self).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
+                old(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) is Some
+                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                old(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] !old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
             lock_perm.view().state() is WriteLock,
@@ -300,16 +304,17 @@ impl KernelK {
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-            old(self).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i)]
-                old(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i) is Some ==> old(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i)]
-                old(self).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(pagetable_ptr).view().spec_held_l3(l4i, l3i) is Some
-                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+            old(self).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
+                old(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) is Some
+                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                old(self).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -471,23 +476,24 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), read_pagetable).hidden_leaves_in_locked_windows(),
             !old(self).pt_mp.spec_index(write_pagetable).locked(),
             final(self).pt_mp.spec_index(write_pagetable).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
-            final(self).pt_mp.spec_index(write_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(write_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(write_pagetable).view() }),
+            final(self).pt_mp.spec_index(write_pagetable).view().higher == old(self).pt_mp.spec_index(write_pagetable).view().higher,
             final(self).pt_mp.spec_index(write_pagetable).view_rodata() == old(self).pt_mp.spec_index(write_pagetable).view_rodata(),
             final(self).pt_mp.spec_index(write_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(write_pagetable),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, write_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable).leaves_present(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable).lower.hidden_l1_tables_in_locked_windows(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
-            final(self).pt_mp.spec_index(write_pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
-                #![trigger final(self).pt_mp.spec_index(write_pagetable).view().spec_held_l4(l4i)]
-                final(self).pt_mp.spec_index(write_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(write_pagetable).view().spec_held_l4(l4i) is Some ==> final(self).pt_mp.spec_index(write_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().proc_ptr).view().state.view() is TablesEmptied)
-                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger final(self).pt_mp.spec_index(write_pagetable).view().spec_held_l3(l4i, l3i)]
-                final(self).pt_mp.spec_index(write_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(write_pagetable).view().spec_held_l3(l4i, l3i) is Some
-                    ==> final(self).pt_mp.spec_index(write_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+            final(self).pt_mp.spec_index(write_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index|
+                #![trigger final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(write_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_held_l4(l4i) is Some
+                    ==> final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+            !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().higher.proc_ptr).view().state.view() is TablesEmptied)
+                && !(final(self).prc_mp.spec_index(final(self).pt_mp.spec_index(write_pagetable).view().higher.proc_ptr).view().state.view() is Zombie) ==> forall|l4i: L4Index, l3i: L3Index|
+                #![trigger final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(write_pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+                    ==> final(self).pt_mp.spec_index(write_pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != read_pagetable && p != write_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),

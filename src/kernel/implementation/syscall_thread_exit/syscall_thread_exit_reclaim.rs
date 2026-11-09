@@ -312,16 +312,16 @@ fn thread_exit_reclaim_lock_table(
             &&& ret.1.view().unwrap().lock_id() == it.locking_thread()->Write_lock_id
         },
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower,
-        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, lower_backup: final(krnl).pt_mp.spec_index(pagetable).view().lower_backup, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms.dom().contains(p) && pei_valid(i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) is None,
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -331,8 +331,8 @@ fn thread_exit_reclaim_lock_table(
     assert({
         &&& krnl.pt_mp.dom().contains(pagetable)
         &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable
-        &&& krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3
-        &&& krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid)
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid)
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == cr3
         &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid
         &&& page_ptr_valid(cr3)
@@ -340,12 +340,12 @@ fn thread_exit_reclaim_lock_table(
         &&& pcid != KERNEL_DEFAULT_PCID
     }) by {
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
+        process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, prc_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().higher.table_pages_wf_cr3_at();
     };
     assert({
         &&& !krnl.prc_mp.spec_index(prc_ptr).view().zombie
         &&& krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable
-        &&& krnl.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr
+        &&& krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr
     }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); };
     proof { krnl.default_pagetable_wf_at(pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     assert({
@@ -542,16 +542,16 @@ fn thread_exit_reclaim_hide_roots(
         entry_k.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH,
         old(krnl).pt_mp.dom().contains(pagetable),
         iommu_table is Some ==> old(krnl).it_mp.dom().contains(iommu_table->Some_0) && old(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         0 <= start <= old(steps).view().len(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
-        old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, lower_backup: old(krnl).pt_mp.spec_index(pagetable).view().lower_backup, ..entry_pt.higher }),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..entry_pt.higher }),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower == entry_pt.lower,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         entry_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         forall|p: PageMapPtr, i: L2Index| #![trigger entry_pt.lower.l2_owner(p, i)] entry_pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> entry_pt.lower.l2_owner(p, i) is None,
@@ -603,9 +603,9 @@ fn thread_exit_reclaim_hide_roots(
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
         iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -616,7 +616,7 @@ fn thread_exit_reclaim_hide_roots(
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,

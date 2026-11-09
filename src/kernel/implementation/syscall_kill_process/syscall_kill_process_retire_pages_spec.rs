@@ -58,14 +58,14 @@ pub(crate) open spec fn kill_retire_table_page_eof_transition_framing(
         &&& new_c.mapping_2m() == old_c.mapping_2m()
         &&& new_c.mapping_1g() == old_c.mapping_1g()
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
-            old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
+            old_table.view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
         &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)]
-            old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && old_c.spec_resolve_mapping_l4(l4i) is None ==> new_c.spec_resolve_mapping_l4(l4i) is None
-        &&& new_table.view().kernel_entries == old_table.view().kernel_entries
-        &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
-        &&& new_table.view().cr3 == old_table.view().cr3
-        &&& new_table.view().pcid == old_table.view().pcid
-        &&& new_table.view().proc_ptr == old_table.view().proc_ptr
+            old_table.view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old_c.spec_resolve_mapping_l4(l4i) is None ==> new_c.spec_resolve_mapping_l4(l4i) is None
+        &&& new_table.view().higher.kernel_entries == old_table.view().higher.kernel_entries
+        &&& new_table.view().higher.kernel_l4_end == old_table.view().higher.kernel_l4_end
+        &&& new_table.view().higher.cr3 == old_table.view().higher.cr3
+        &&& new_table.view().higher.pcid == old_table.view().higher.pcid
+        &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
     }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]

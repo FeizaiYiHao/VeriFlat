@@ -66,23 +66,23 @@ pub(super) fn mmap_1g_clear_range(
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms.dom().contains(p) && pei_valid(i)
             ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) is None,
-        forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().spec_held_l4(l4i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().spec_held_l4(l4i) is Some
-            ==> old(krnl).pt_mp.spec_index(pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
-        forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().spec_held_l3(l4i, l3i)]
-            old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().spec_held_l3(l4i, l3i) is Some
-            ==> old(krnl).pt_mp.spec_index(pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
+        forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some
+            ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some
+            ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         range.wf(),
         range.len > 0,
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
@@ -127,11 +127,11 @@ pub(super) fn mmap_1g_clear_range(
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ({
             let entry = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
@@ -180,8 +180,8 @@ pub(super) fn mmap_1g_clear_range(
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable,
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
-            old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-            old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
             entry.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
             entry.lower.hidden_l1_tables_in_locked_windows(),
             forall|p: PageMapPtr, i: L2Index| #![trigger entry.lower.l2_owner(p, i)] entry.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> entry.lower.l2_owner(p, i) is None,
@@ -225,11 +225,11 @@ pub(super) fn mmap_1g_clear_range(
             krnl.pt_mp.dom().contains(pagetable),
             krnl.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            krnl.pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
-            krnl.pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
-            krnl.pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-            krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-            krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty() || krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+            krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3,
+            krnl.pt_mp.spec_index(pagetable).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid,
+            krnl.pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+            krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+            krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty() || krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
             ({
                 let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
                 &&& c.mapping_4k() == entry.mapping_4k() && c.mapping_2m() == entry.mapping_2m() && c.mapping_1g() == entry.mapping_1g()
@@ -269,8 +269,8 @@ pub(super) fn mmap_1g_clear_range(
             assert(spec_va2index(va).0 == l4i && spec_va2index(va).1 == l3i && spec_index2va((l4i, l3i, 0, 0)) == va) by { spec_va_1g_valid_index_roundtrip(va); };
         }
         let table = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let l3 = match table.get_entry_l4(l4i) {
-            Some(l4_entry) => table.get_entry_l3(l4i, l3i, &l4_entry),
+        let l3 = match table.higher.get_entry_l4(l4i) {
+            Some(l4_entry) => table.higher.get_entry_l3(l4i, l3i, &l4_entry),
             None => None,
         };
         proof {
@@ -332,8 +332,8 @@ fn mmap_1g_hide_range_slot(
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view().subset_of(Set::range(0usize, NUM_CPUS)),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view().subset_of(Set::range(0usize, NUM_CPUS)),
         range.wf(),
         i < range.len,
         spec_index2va((l4i, l3i, 0, 0)) == range.view()[i as int],
@@ -373,11 +373,11 @@ fn mmap_1g_hide_range_slot(
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
@@ -462,11 +462,11 @@ fn mmap_1g_flush_and_reclaim_range(
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-        old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty() || old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty() || old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
         ({
             let hc = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             &&& hc.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
@@ -513,11 +513,11 @@ fn mmap_1g_flush_and_reclaim_range(
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
-        final(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
-        final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == prc_ptr,
-        final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX,
-        final(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX,
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ({
             let hc = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);

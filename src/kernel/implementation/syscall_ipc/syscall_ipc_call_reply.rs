@@ -167,9 +167,9 @@ verus! {
         let cr3 = process.cr3;
         let pcid = process.pcid;
         let depth = process.depth;
-        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by {
+        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().higher.cr3 == cr3) by {
             process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
-            krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
+            krnl.pt_mp.spec_index(next_pagetable).view().higher.table_pages_wf_cr3_at();
         };
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
         let ghost before_switch = *krnl;
