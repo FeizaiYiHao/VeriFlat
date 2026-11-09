@@ -227,7 +227,6 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                     split_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
                     split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
                     krnl.kernel_step_boundary_free_2m_block_split(&mut *lctx, &mut *steps, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m);
-                    thread_quota_4k_implies_split_quota_capacity(&steps.snapshot_k(), thrd_ptr, alloc_ptr_4k);
                     split_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                         before_business, after_business, cpu_id, n, (m - 1) as usize);
                 }
@@ -246,11 +245,15 @@ pub fn syscall_split_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         if count > 0 {
             split_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
             split_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
-            steps.end_kernel_step_thread_quota_2m_to_4k_exchanged(&*krnl, &*lctx, thrd_ptr);
+            steps.end_kernel_step_thread_quota_4k_changed(&*krnl, &*lctx, thrd_ptr);
             split_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                 before_business, after_business, cpu_id, n, (count - 1) as usize);
         } else {
-            steps.end_kernel_step_cpu_and_thread_quotas_unchanged(&*krnl, &*lctx, cpu_id, thrd_ptr);
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
             split_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, ret);
         }
         split_2m_result_from_k(old(krnl), cpu_id, n, ret);

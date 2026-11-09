@@ -82,6 +82,10 @@ pub mod process_2m_mapping;
 pub mod process_1g_mapping;
 /// K->U lemma of a step that hides one resolving L3 entry of a page table.
 pub mod pagetable_l3_hidden;
+/// K facts that a container with its root process removed owns no process and a PCI-cleared process owns no PCI function.
+pub mod killed_owner_sets_empty;
+/// K->U lemma of a section that exchanges one thread's 4K and 2M quotas while changing only page, allocator, and lock state.
+pub mod thread_quota_exchange;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -120,6 +124,8 @@ pub use table_hidden::*;
 pub use process_2m_mapping::*;
 pub use process_1g_mapping::*;
 pub use pagetable_l3_hidden::*;
+pub use killed_owner_sets_empty::*;
+pub use thread_quota_exchange::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

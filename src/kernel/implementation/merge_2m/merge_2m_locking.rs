@@ -122,9 +122,9 @@ pub fn merge_2m_lock_block(krnl: &mut KernelK, head: PageIndex, Tracked(lctx): T
         decreases 512 - i,
     {
         proof {
-            reveal(LockedArray::lock_id_by_index);
             assert(old(krnl).pg_arr.lock_id_by_index((head + i) as usize).major == FREE_PAGE_LOCK_MAJOR
                 && krnl.pg_arr.lock_id_by_index((head + i) as usize).major == FREE_PAGE_LOCK_MAJOR) by {
+                reveal(LockedArray::lock_id_by_index);
                 if old(krnl).pg_arr.spec_index(head).view().view().state is Free2m {
                     hugepage_2m_wf_head_at(old(krnl).pg_arr, head);
                     if i > 0 { hugepage_2m_wf_tail_forward_at(old(krnl).pg_arr, head, (head + i) as usize); }
@@ -268,6 +268,8 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
         final(krnl).allc_2m_mp.spec_index(allocator_2m).total_free_pages == old(krnl).allc_2m_mp.spec_index(allocator_2m).total_free_pages,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
@@ -342,6 +344,9 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.kernel_view_locking_state() is Acquire,
             *krnl == (KernelK { allc_4k_mp: krnl.allc_4k_mp, ..*old(krnl) }),
+            cpu == 0 ==> *krnl == *old(krnl),
+            cpu > 0 ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl),
+            cpu > 0 ==> kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             krnl.allc_4k_mp.dom().contains(allocator_4k),
             krnl.allc_2m_mp.dom().contains(allocator_2m),
             lctx.holds_no_allocator_locks(PageSize::SZ2m),
@@ -381,7 +386,11 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
     {
         let ghost previous_allocator = krnl.allc_4k_mp.spec_index(allocator_4k);
         let Tracked(perm) = krnl.wlock_allocator_cache_4k(allocator_4k, cpu, Tracked(&mut *lctx));
-        proof { cache.tracked_insert(cpu, perm); }
+        proof {
+            cache.tracked_insert(cpu, perm);
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        }
 
         cpu += 1;
     }
@@ -390,6 +399,8 @@ pub fn freeze_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAlloc
     let Tracked(pool2m) = krnl.wlock_allocator_global_pool_2m_ordered(allocator_2m, Tracked(&mut *lctx));
 
     proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert_seqs_equal!(Seq::new((NUM_CPUS + 1) as nat, |source: int| krnl.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()),
             Seq::new((NUM_CPUS + 1) as nat, |source: int| old(krnl).allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source as usize).view().to_set()));
     }
@@ -435,6 +446,8 @@ pub fn thaw_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAllocat
         final(krnl).allc_2m_mp.spec_index(allocator_2m).total_free_pages == old(krnl).allc_2m_mp.spec_index(allocator_2m).total_free_pages,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -467,6 +480,10 @@ pub fn thaw_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAllocat
     let tracked mut cache = locks.cache;
     krnl.wunlock_allocator_global_pool_2m(allocator_2m, Tracked(&mut *lctx), Tracked(locks.pool2m));
     krnl.wunlock_allocator_global_pool_4k(allocator_4k, Tracked(&mut *lctx), Tracked(locks.pool4k));
+    proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    }
     let mut cpu = 0usize;
     while cpu < NUM_CPUS
         invariant
@@ -491,6 +508,8 @@ pub fn thaw_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAllocat
             lctx.allocator_global_pool_4k_lock_map().dom().is_empty(),
             lctx.allocator_global_pool_2m_lock_map().dom().is_empty(),
             *krnl == (KernelK { allc_4k_mp: krnl.allc_4k_mp, allc_2m_mp: krnl.allc_2m_mp, ..*old(krnl) }),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl),
+            kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             forall|c: CpuId| #![trigger cache.dom().contains(c)] cache.dom().contains(c) <==> cpu <= c < NUM_CPUS,
             forall|held: (RwLockPageAllocatorPtr, CpuId)| #![trigger lctx.allocator_cache_4k_lock_map().dom().contains(held)] lctx.allocator_cache_4k_lock_map().dom().contains(held) <==> held.0 == allocator_4k && cpu <= held.1 < NUM_CPUS,
             forall|c: CpuId| #![trigger cache[c]] cpu <= c < NUM_CPUS ==> {
@@ -526,6 +545,10 @@ pub fn thaw_merge_2m_sources(krnl: &mut KernelK, allocator_4k: RwLockPageAllocat
         let tracked perm = cache.tracked_remove(cpu);
         let ghost previous_allocator = krnl.allc_4k_mp.spec_index(allocator_4k);
         krnl.wunlock_allocator_cache_4k(allocator_4k, cpu, Tracked(&mut *lctx), Tracked(perm));
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        }
 
         cpu += 1;
     }

@@ -8,4 +8,3 @@ mod split_2m_commit_eof;
 mod split_2m_commit_eof_allocator;
 pub mod split_2m_thread_quotas;
 pub mod split_2m_entry_points;
-mod split_2m_quota_folds;

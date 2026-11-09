@@ -88,7 +88,11 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         let ghost initial_quota_2m = krnl.thrd_mp.spec_index(thrd_ptr).view().quota_2m;
         let mut m = 0usize;
         let mut available = scanner.next_candidate(krnl, alloc_ptr_4k, Tracked(&*lctx), Tracked(&source_locks.cache), Tracked(&source_locks.pool4k));
-        proof { merge_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, RetValueType::SuccessUsize { value: 0 }); }
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            merge_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, RetValueType::SuccessUsize { value: 0 });
+        }
         while m < n && available
             invariant
                 krnl.inv(),
@@ -190,6 +194,8 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                 m == 0 ==> steps.snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
                 m == 0 ==> steps.snapshot_k().cpu_arr.spec_index(cpu_id).view().locking_thread() is None,
                 m == 0 ==> steps.snapshot_k().thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
+                m == 0 ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
+                m == 0 ==> kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
                 merge_2m_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n,
                     RetValueType::SuccessUsize { value: if m > 0 && !(m < n && available) { (m - 1) as usize } else { m } }),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
@@ -279,11 +285,15 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         if count > 0 {
             merge_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
             merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
-            steps.end_kernel_step_thread_quota_4k_to_2m_exchanged(&*krnl, &*lctx, thrd_ptr);
+            steps.end_kernel_step_thread_quota_4k_changed(&*krnl, &*lctx, thrd_ptr);
             merge_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                 before_business, after_business, cpu_id, n, (count - 1) as usize);
         } else {
-            steps.end_kernel_step_cpu_and_thread_quotas_unchanged(&*krnl, &*lctx, cpu_id, thrd_ptr);
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
             merge_2m_empty_trace_implies_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id, n, ret);
         }
         merge_2m_result_from_k(old(krnl), cpu_id, n, ret);

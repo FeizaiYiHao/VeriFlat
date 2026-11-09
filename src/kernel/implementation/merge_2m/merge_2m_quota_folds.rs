@@ -12,7 +12,7 @@ pub proof fn allocator_free_page_ptrs_wf_implies_free_count_fold_bounded<const S
         allocators.dom().contains(allocator),
     ensures
         allocators.spec_index(allocator).total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
-        allocators.spec_index(allocator).total_free_pages.view() < usize::MAX,
+        allocators.spec_index(allocator).total_free_pages.view() <= usize::MAX - 512,
 {
     assert(allocators.spec_index(allocator).total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
         allocator_perms_wf_at(allocators, allocator);

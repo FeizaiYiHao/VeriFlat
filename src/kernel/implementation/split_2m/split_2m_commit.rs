@@ -75,8 +75,8 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             &&& page_perms.spec_index(index).lock_id() == final(krnl).pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
             &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
         },
-        split_2m_commit_eof_transition_framing(*old(krnl), *final(krnl), thread, allocator_4k, allocator_2m, head, source),
         final(krnl).thrd_mp.spec_index(thread).view().quota_4k == old(krnl).thrd_mp.spec_index(thread).view().quota_4k + 512,
+        final(krnl).thrd_mp.spec_index(thread).view().quota_4k <= usize::MAX - 512,
         final(krnl).thrd_mp.spec_index(thread).view().quota_2m + 1 == old(krnl).thrd_mp.spec_index(thread).view().quota_2m,
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, thrd_mp: final(krnl).thrd_mp,
             allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
@@ -328,6 +328,7 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
             reveal(split_2m_commit_eof_transition_framing);
         };
         split_2m_commit_eof_implies_kernel_inv(*old(krnl), *krnl, thread, allocator_4k, allocator_2m, head, source, lctx);
+        thread_quota_4k_implies_split_quota_capacity(krnl, thread, allocator_4k);
     }
 }
 }

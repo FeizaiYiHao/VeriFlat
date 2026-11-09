@@ -1,7 +1,7 @@
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_seqs_equal_internal};
+use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_split_2m_spec::*;
@@ -41,31 +41,8 @@ pub proof fn split_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, 
         }),
     ensures split_2m_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, m),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_projection_at(post, cpu_id);
-    kernel_thread_projection_at(pre, thread); kernel_thread_projection_at(post, thread);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    let cpu = pre_u.cpu_array[cpu_id as int];
-    let t = pre_u.thread_map[thread];
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
-        lock_state: post_u.cpu_array[cpu_id as int].lock_state, op: post_u.cpu_array[cpu_id as int].op, ..cpu
-    }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread, ThreadU {
-        lock_state: post_u.thread_map[thread].lock_state, quota_2m: (t.quota_2m - m) as usize, quota_4k: (t.quota_4k + 512 * m) as usize, ..t
-    }), ptr => { if pre.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(pre, ptr); } if post.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(post, ptr); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, ptr => {
-        if pre.ctn_mp.dom().contains(ptr) {
-            kernel_container_projection_at(pre, ptr); kernel_container_projection_at(post, ptr);
-            container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, ptr);
-        }
-    });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => {
-        if pre.prc_mp.dom().contains(ptr) { kernel_process_projection_at(pre, ptr); kernel_process_projection_at(post, ptr); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, ptr => {
-        if pre.ep_mp.dom().contains(ptr) { kernel_endpoint_projection_at(pre, ptr); kernel_endpoint_projection_at(post, ptr); }
-    });
+    kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread);
+    kernel_thread_quotas_exchanged_implies_u_step(pre, post, cpu_id, thread, (pre.thrd_mp.spec_index(thread).view().quota_4k + 512 * m) as usize, (pre.thrd_mp.spec_index(thread).view().quota_2m - m) as usize);
 }
 pub proof fn split_2m_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, thread: RwLockThreadPtr)
     requires
