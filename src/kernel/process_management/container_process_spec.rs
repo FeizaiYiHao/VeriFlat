@@ -15,6 +15,8 @@ pub open spec fn container_process_wf(ctn_mp: ContainerLockedMap, prc_mp: Proces
             // a container that owns no process is write-held
             &&& owned.is_empty() ==> ctn_mp.spec_index(c).wlocked()
             &&& !owned.is_empty() ==> prc_mp.dom().contains(root) && owned.contains(root)
+            // a container whose root process is not removed still has it
+            &&& !ctn_mp.spec_index(c).view().root_process_removed.view() ==> prc_mp.dom().contains(root) && prc_mp.spec_index(root).view_rodata().view().owning_container == c
             &&& owned.subset_of(prc_mp.dom())
             // a zombie container still owns its root, which is a zombie
             &&& ctn_mp.spec_index(c).view().zombie ==> owned.contains(root) && prc_mp.spec_index(root).view().zombie
@@ -31,6 +33,8 @@ pub open spec fn container_process_wf(ctn_mp: ContainerLockedMap, prc_mp: Proces
             &&& ctn_mp.dom().contains(ctn_ptr)
             &&& ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(p)
             &&& ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth == prc_mp.spec_index(p).view_rodata().view().container_depth
+            // a container that still has a process has not removed its root process
+            &&& !ctn_mp.spec_index(ctn_ptr).view().root_process_removed.view()
         }
 }
 
@@ -43,6 +47,7 @@ pub proof fn container_process_wf_process_at(ctn_mp: ContainerLockedMap, prc_mp:
             &&& ctn_mp.dom().contains(ctn_ptr)
             &&& ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr)
             &&& ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth == prc_mp.spec_index(prc_ptr).view_rodata().view().container_depth
+            &&& !ctn_mp.spec_index(ctn_ptr).view().root_process_removed.view()
         }),
 { reveal(container_process_wf); }
 
@@ -65,6 +70,10 @@ pub proof fn container_process_wf_root_at(ctn_mp: ContainerLockedMap, prc_mp: Pr
         !ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty() ==> {
             &&& prc_mp.dom().contains(ctn_mp.spec_index(ctn_ptr).view().root_process)
             &&& ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(ctn_mp.spec_index(ctn_ptr).view().root_process)
+        },
+        !ctn_mp.spec_index(ctn_ptr).view().root_process_removed.view() ==> {
+            &&& prc_mp.dom().contains(ctn_mp.spec_index(ctn_ptr).view().root_process)
+            &&& prc_mp.spec_index(ctn_mp.spec_index(ctn_ptr).view().root_process).view_rodata().view().owning_container == ctn_ptr
         },
 { reveal(container_process_wf); }
 

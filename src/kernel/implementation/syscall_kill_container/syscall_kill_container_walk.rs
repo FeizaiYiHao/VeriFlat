@@ -281,7 +281,7 @@ pub(crate) fn kill_container_retire_target(
         chain.len() > 1 ==> !final(krnl).ctn_mp.spec_index(parent).view().root_process_removed.view(),
 {
     proof {
-        container_perms_wf_at(krnl.ctn_mp, target); container_without_children_and_processes_owns_no_threads(*krnl, target);
+        container_perms_wf_at(krnl.ctn_mp, target); container_root_removed_implies_no_owned_processes(*krnl, target); container_without_children_and_processes_owns_no_threads(*krnl, target);
         if chain.len() > 1 { assert(krnl.ctn_mp.spec_index(chain[chain.len() - 1]).view_rodata().view().parent == Some(chain[chain.len() - 2])); }
     }
     let parent = krnl.ctn_mp.borrow_rodata(target).borrow().parent.unwrap();
@@ -294,7 +294,7 @@ pub(crate) fn kill_container_retire_target(
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
         krnl.ctn_mp.typed_lock_map_aligned_held_in_dom(lctx.container_lock_map(), lctx.thread_id());
         assert(krnl.ctn_mp.spec_index(target).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
-            && krnl.ctn_mp.spec_index(target).view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()) by { container_perms_wf_at(krnl.ctn_mp, target); container_without_children_and_processes_owns_no_threads(*krnl, target); };
+            && krnl.ctn_mp.spec_index(target).view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()) by { container_root_removed_implies_no_owned_processes(*krnl, target); container_without_children_and_processes_owns_no_threads(*krnl, target); };
     }
     kill_container_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, owner_ptr, Tracked(cpu_perm), Tracked(process_perm),
         Tracked(thread_perm), Tracked(&container_perm), Tracked(owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));

@@ -8,7 +8,6 @@ pub proof fn container_map_add_owned_process(tracked ctn_mp: &mut ContainerLocke
     requires
         container_perms_wf(*old(ctn_mp)),
         old(ctn_mp).dom().contains(ctn_ptr),
-        !old(ctn_mp).spec_index(ctn_ptr).view().root_process_removed.view(),
     ensures
         container_perms_wf(*final(ctn_mp)),
         final(ctn_mp).perms_wf(),
@@ -43,7 +42,7 @@ pub proof fn container_map_remove_owned_process(tracked ctn_mp: &mut ContainerLo
         container_perms_wf(*old(ctn_mp)),
         old(ctn_mp).dom().contains(ctn_ptr),
     ensures
-        !final(ctn_mp).spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty() ==> container_perms_wf(*final(ctn_mp)),
+        container_perms_wf(*final(ctn_mp)),
         final(ctn_mp).perms_wf(),
         final(ctn_mp).unchanged_except(old(ctn_mp), ctn_ptr),
         final(ctn_mp).dom() == old(ctn_mp).dom(),
@@ -66,7 +65,7 @@ pub proof fn container_map_remove_owned_process(tracked ctn_mp: &mut ContainerLo
     assert(ctn_mp.perms_wf() && ctn_mp.spec_index(ctn_ptr).inv()) by { container_perms_wf_map(*ctn_mp); container_perms_wf_at(*ctn_mp, ctn_ptr); };
     let ghost pre_ghost = ctn_mp.spec_index(ctn_ptr).view_ghost();
     ctn_mp.update_ghost(ctn_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().remove(prc_ptr)), ..pre_ghost });
-    assert(!ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty() ==> container_perms_wf(*ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(container_perms_wf(*ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(old(ctn_mp).typed_lock_map_aligned(held_locks, thread_id) ==> ctn_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 

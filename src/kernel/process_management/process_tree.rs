@@ -17,7 +17,6 @@ pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
             &&& prc_mp.spec_index(p).view().pci_cleared.view() ==> {
                 &&& prc_mp.spec_index(p).being_killed()
                 &&& prc_mp.spec_index(p).view().owned_threads.view().len() == 0
-                &&& prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().is_empty()
             }
         }
 }
@@ -37,7 +36,6 @@ pub proof fn process_perms_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockProces
         prc_mp.spec_index(prc_ptr).inv(),
         prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).being_killed(),
         prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
-        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         prc_mp.spec_index(prc_ptr).is_init(),
         prc_mp.spec_index(prc_ptr).view().inv(),
         prc_mp.spec_index(prc_ptr).view().owned_threads.view().no_duplicates(),

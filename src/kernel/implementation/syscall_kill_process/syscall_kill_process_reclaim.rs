@@ -119,7 +119,6 @@ pub(crate) fn kill_reassign_functions(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target).view() == (Process { pci_cleared: Ghost(true), ..old(krnl).prc_mp.spec_index(target).view() }),
         final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        final(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -159,9 +158,9 @@ pub(crate) fn kill_reassign_functions(
         krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_perm));
         let ghost after = *krnl;
         proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&before, &after)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&before, &after)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_endpoint_nonlock_fields_unchanged(before.ep_mp, after.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before, &after)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before, &after)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             kernel_restored_locks_implies_u_eq(&before, &after, cpu_id, None, Some(target), None, None, None);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
@@ -223,7 +222,6 @@ fn kill_reassign_owned_functions(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target).view() == (Process { pci_cleared: Ghost(true), ..before.prc_mp.spec_index(target).view() }),
         final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        final(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         forall|c: RwLockContainerPtr| #![trigger before_lctx.container_lock_map().dom().contains(c)] before_lctx.container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == before.ctn_mp.spec_index(c).locking_thread()
@@ -365,7 +363,6 @@ pub(crate) fn kill_retire_zombie(
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -380,13 +377,10 @@ pub(crate) fn kill_retire_zombie(
         old(steps).view().len() <= final(steps).view().len(),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         ({
-            &&& final(krnl).prc_mp.spec_index(target).view_lock() == old(krnl).prc_mp.spec_index(target).view_lock()
-            &&& final(krnl).prc_mp.spec_index(target).is_init() == old(krnl).prc_mp.spec_index(target).is_init()
             &&& final(krnl).prc_mp.spec_index(target).view() == old(krnl).prc_mp.spec_index(target).view()
             &&& final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata()
             &&& final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread()
             &&& final(krnl).prc_mp.spec_index(target).control() == old(krnl).prc_mp.spec_index(target).control()
-            &&& final(krnl).prc_mp.spec_index(target).view().uppertree_seq == old(krnl).prc_mp.spec_index(target).view().uppertree_seq
         }),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
@@ -413,7 +407,7 @@ pub(crate) fn kill_retire_zombie(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_perms_wf_at(krnl.prc_mp, target);
         let before_u = kernel_k_to_kernel_u(before);
-        kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_zombie_retire_pre_from_k(&before, target);
+        kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); process_pci_cleared_implies_no_owned_pci_functions(before, target); kill_zombie_retire_pre_from_k(&before, target);
         kernel_thread_syscall_progress_changed_implies_u_step(&before, &after, thrd_ptr);
         kill_zombie_retire_step_from_u(before_u, kernel_k_to_kernel_u(after), cpu_id, thrd_ptr, target, scope);
         kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(after), cpu_id, ctx);
@@ -443,7 +437,6 @@ pub(crate) fn kill_reclaim_live(
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         !old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -461,7 +454,6 @@ pub(crate) fn kill_reclaim_live(
         final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         final(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        final(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -540,7 +532,6 @@ pub(crate) fn kill_reclaim_lock_table(
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         !old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
-        old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         old(krnl).prc_mp.spec_index(target).view().pagetable == pagetable,
         old(krnl).prc_mp.spec_index(target).view().iommu_table == iommu_table,
     ensures
@@ -606,7 +597,7 @@ pub(crate) fn kill_reclaim_lock_table(
     proof {
         let stale = *krnl;
         let before_u = kernel_k_to_kernel_u(before);
-        kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_lock_table_pre_from_k(&before, target);
+        kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); process_pci_cleared_implies_no_owned_pci_functions(before, target); kill_lock_table_pre_from_k(&before, target);
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&before, &after, &after_lctx, target, pagetable, thrd_ptr, true);
         kill_lock_table_step_from_u(before_u, kernel_k_to_kernel_u(after), cpu_id, thrd_ptr, target, scope);
         kernel_cpu_nonlock_fields_unchanged_for_equal(after.cpu_arr, stale.cpu_arr); kernel_cpu_tlb_updated_implies_u_step(&after, &stale); kernel_u_domains_projection(&after); kernel_u_domains_projection(&stale);

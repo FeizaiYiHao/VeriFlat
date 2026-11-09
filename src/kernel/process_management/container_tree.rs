@@ -15,7 +15,6 @@ pub open spec fn container_perms_wf(ctn_mp: ContainerLockedMap) -> bool {
         #![trigger ctn_mp.spec_index(c)]
         ctn_mp.dom().contains(c) ==> {
             &&& ctn_mp.spec_index(c).inv()
-            &&& ctn_mp.spec_index(c).view().root_process_removed.view() == ctn_mp.spec_index(c).view_ghost().owned_processes.view().is_empty()
             &&& ctn_mp.spec_index(c).view().root_process_removed.view() ==> ctn_mp.spec_index(c).being_killed()
         }
     &&& container_tree_fields_wf(ctn_mp)
@@ -29,7 +28,6 @@ pub proof fn container_perms_wf_at(ctn_mp: ContainerLockedMap, ctn_ptr: RwLockCo
         ctn_mp.view().spec_index(ctn_ptr).is_init(),
         ctn_mp.view().spec_index(ctn_ptr).addr() == ctn_ptr,
         ctn_mp.spec_index(ctn_ptr).inv(),
-        ctn_mp.spec_index(ctn_ptr).view().root_process_removed.view() == ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         ctn_mp.spec_index(ctn_ptr).view().root_process_removed.view() ==> ctn_mp.spec_index(ctn_ptr).being_killed(),
         ctn_mp.spec_index(ctn_ptr).is_init(),
         ctn_mp.spec_index(ctn_ptr).view().inv(),

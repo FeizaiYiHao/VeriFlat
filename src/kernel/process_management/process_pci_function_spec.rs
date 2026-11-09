@@ -15,6 +15,8 @@ pub open spec fn process_pci_function_ownership_wf(root_table: IommuRootTable, p
             let prc_ptr = root_table.spec_index_owner(bus, device, function);
             &&& prc_mp.dom().contains(prc_ptr)
             &&& prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))
+            // a process whose PCI functions were cleared owns no slot
+            &&& !prc_mp.spec_index(prc_ptr).view().pci_cleared.view()
         }
     // Process reverse set -> root table.
     &&& forall|p: RwLockProcessPtr, bdf: PciBdf|
@@ -33,6 +35,7 @@ pub proof fn process_pci_function_ownership_wf_at(root_table: IommuRootTable, pr
             let owner = root_table.spec_index_owner(bdf.0, bdf.1, bdf.2);
             &&& prc_mp.dom().contains(owner)
             &&& prc_mp.spec_index(owner).view_ghost().owned_pci_functions.view().contains(bdf)
+            &&& !prc_mp.spec_index(owner).view().pci_cleared.view()
         }),
         prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains(bdf) ==> {
             &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)

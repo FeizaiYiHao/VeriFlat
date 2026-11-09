@@ -118,9 +118,13 @@ pub(crate) proof fn kill_container_pages_eof_retire_ready(pre: KernelK, post: Ke
         }),
     ensures
         post.inv(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     kill_container_pages_eof_memory(pre, post, ctn_ptr); kill_container_pages_eof_process(pre, post, ctn_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf);

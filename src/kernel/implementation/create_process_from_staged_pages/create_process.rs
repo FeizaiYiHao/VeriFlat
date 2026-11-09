@@ -235,7 +235,6 @@ pub fn create_process_from_staged_pages(
     proof { assert(krnl.prc_mp.perms_wf()) by { process_perms_wf_map(krnl.prc_mp); }; }
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_pg_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
     process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_pg_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
-    proof { container_perms_wf_at(old(krnl).ctn_mp, ctn_ptr); container_process_wf_process_at(old(krnl).ctn_mp, old(krnl).prc_mp, parent_ptr); }
     proof { container_map_add_owned_process(&mut krnl.ctn_mp, ctn_ptr, process_pg_ptr, lctx.container_lock_map(), lctx.thread_id()); }
     pcid_allocator_map_alloc(&mut krnl.pcid_allc_mp, pcid_allc_ptr, process_pg_ptr, pcid, Tracked(&*lctx), Tracked(pcid_allocator_lock_perm));
     proof {

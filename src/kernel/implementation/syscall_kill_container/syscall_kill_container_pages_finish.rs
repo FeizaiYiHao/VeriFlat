@@ -86,13 +86,10 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         ({
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
@@ -119,8 +116,6 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
     proof {
         kill_container_pages_eof_retire_ready(drained, *krnl, ctn_ptr);
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&drained, &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&drained, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         kernel_endpoint_nonlock_fields_unchanged_for_equal(drained.ep_mp, krnl.ep_mp);
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&drained, &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
     }
@@ -146,7 +141,7 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_root_removed_implies_no_owned_processes(*krnl, ctn_ptr);
         assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty() && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view().is_empty()) by { container_without_children_and_processes_owns_no_threads(*krnl, ctn_ptr); };
         kill_container_retire_pre_from_k(&*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
     }

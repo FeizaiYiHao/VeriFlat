@@ -439,6 +439,7 @@ verus! {
             ret.0 == if old(krnl).irt.view().spec_index_owner(bus as usize, dev as usize, fun as usize) == sender_proc { RetValueType::Success } else { RetValueType::ErrorIpcPciOwnerMismatch },
             ipc_pci_rendezvous_eof_transition_framing(*old(krnl), *final(krnl), peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc,
                 receiver_proc, (bus as usize, dev as usize, fun as usize), ret.0 is Success, ret.0, old(lctx).thread_id(), ret.1, ret.2.view()),
+            ret.0 is Success ==> !old(krnl).prc_mp.spec_index(receiver_proc).view().pci_cleared.view(),
             !old(krnl).sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
             final(krnl).irt.view().table_base() == old(krnl).irt.view().table_base(),
             final(krnl).irt.inv(),
