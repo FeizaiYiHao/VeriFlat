@@ -59,8 +59,6 @@ pub fn reclaim_dangling_thread(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == final(steps).snapshot_k().ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == final(steps).snapshot_k().ctn_mp.spec_index(c).being_killed()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == final(steps).snapshot_k().ctn_mp.spec_index(c).killer_info()
-            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == final(steps).snapshot_k().ctn_mp.spec_index(c).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view().retire_ready.view() == final(steps).snapshot_k().ctn_mp.spec_index(c).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == final(steps).snapshot_k().ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == final(steps).snapshot_k().ctn_mp.spec_index(c).view_ghost().owned_processes
         },

@@ -68,13 +68,10 @@ pub(crate) fn kill_container_pages(
         final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         ({
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),

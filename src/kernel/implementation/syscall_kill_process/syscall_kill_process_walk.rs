@@ -48,7 +48,6 @@ pub(crate) fn kill_mark_child(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
@@ -113,11 +112,6 @@ pub(crate) fn kill_mark_child(
     let ghost entered_lctx = *lctx;
     proof {
         chain_perms.tracked_insert(child_ptr, child_perm);
-        if scope is Subtree {
-            assert(kill_walk_state(entered_k, entered_lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
-        } else {
-            assert(kill_walk_state(entered_k, entered_lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
-        }
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         let before_u = kernel_k_to_kernel_u(before);
@@ -172,7 +166,6 @@ pub(crate) fn kill_first_thread(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() < old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -245,7 +238,6 @@ pub(crate) fn kill_first_thread(
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_dangling_pre_from_k(&before, target, victim_ptr);
             kill_dangling_step_from_u(before_u, kernel_k_to_kernel_u(dangling_k), cpu_id, target, victim_ptr);
             kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(dangling_k), cpu_id, ctx);
-            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
         }
     } else {
         krnl.mark_thread_kill(victim_ptr, target, Ghost(killer_info), Tracked(&mut *lctx));
@@ -324,7 +316,6 @@ pub(crate) fn kill_finish_marked_victim(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() < old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -407,7 +398,6 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
             &&& final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata()
             &&& final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread()
             &&& final(krnl).prc_mp.spec_index(target).control() == old(krnl).prc_mp.spec_index(target).control()
-            &&& final(krnl).prc_mp.spec_index(target).view().uppertree_seq == old(krnl).prc_mp.spec_index(target).view().uppertree_seq
         }),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
@@ -416,7 +406,6 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).thrd_mp.dom().contains(victim_ptr),
         final(krnl).thrd_mp.spec_index(victim_ptr).view() == (Thread {
@@ -544,7 +533,6 @@ pub(crate) fn kill_release_victim_caller(
             &&& final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata()
             &&& final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread()
             &&& final(krnl).prc_mp.spec_index(target).control() == old(krnl).prc_mp.spec_index(target).control()
-            &&& final(krnl).prc_mp.spec_index(target).view().uppertree_seq == old(krnl).prc_mp.spec_index(target).view().uppertree_seq
         }),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
@@ -553,7 +541,6 @@ pub(crate) fn kill_release_victim_caller(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).thrd_mp.dom().contains(victim_ptr),
         final(krnl).thrd_mp.spec_index(victim_ptr).view() == (Thread { caller: None, ..old(krnl).thrd_mp.spec_index(victim_ptr).view() }),
@@ -657,7 +644,6 @@ pub(crate) fn kill_unlink_victim(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() < old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len(),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -760,7 +746,6 @@ pub(crate) fn kill_reclaim_victim(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         ({
             &&& final(krnl).prc_mp.spec_index(target).view_lock() == old(krnl).prc_mp.spec_index(target).view_lock()
@@ -769,7 +754,6 @@ pub(crate) fn kill_reclaim_victim(
             &&& final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata()
             &&& final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread()
             &&& final(krnl).prc_mp.spec_index(target).control() == old(krnl).prc_mp.spec_index(target).control()
-            &&& final(krnl).prc_mp.spec_index(target).view().uppertree_seq == old(krnl).prc_mp.spec_index(target).view().uppertree_seq
         }),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
@@ -797,6 +781,74 @@ pub(crate) fn kill_reclaim_victim(
         let victim_container = reclaim_k.thrd_mp.spec_index(victim_ptr).view().owning_container;
         kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_refund_pre_from_k(&reclaim_k, target, victim_container);
         kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, prc_ptr, target, victim_container, KillStage::Walk, scope);
+    }
+}
+
+/// A walk step that keeps the children of every held process keeps the remaining walk of `chain`.
+pub proof fn kill_chain_children_unchanged_implies_walk_remaining_unchanged(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>, stage: KillStage,
+    cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, after: ProcessLockedMap,
+)
+    requires
+        kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms),
+        forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)]
+            lctx.process_lock_map().dom().contains(p) ==> after.dom().contains(p) && after.spec_index(p).view().children == k.prc_mp.spec_index(p).view().children,
+    ensures
+        kill_process_walk_remaining(after, chain, true) == kill_process_walk_remaining(k.prc_mp, chain, true),
+{
+    reveal(kill_process_walk_remaining);
+    vstd::assert_seqs_equal!(kill_process_walk_digits(after, chain), kill_process_walk_digits(k.prc_mp, chain));
+}
+
+/// Descending into `next` while the children of every held process stay unchanged lowers the remaining walk.
+pub proof fn kill_chain_children_unchanged_implies_walk_remaining_push_smaller(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>, stage: KillStage,
+    cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, after: ProcessLockedMap, next: RwLockProcessPtr,
+)
+    requires
+        kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms),
+        chain.len() < usize::MAX as nat + 1,
+        forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)]
+            lctx.process_lock_map().dom().contains(p) ==> after.dom().contains(p) && after.spec_index(p).view().children == k.prc_mp.spec_index(p).view().children,
+    ensures
+        kill_process_walk_remaining(after, chain.push(next), true) < kill_process_walk_remaining(k.prc_mp, chain, true),
+{
+    reveal(kill_process_walk_remaining);
+    seq_first_difference_smaller_implies_seq_to_nat_smaller(kill_process_walk_digits(k.prc_mp, chain), kill_process_walk_digits(after, chain.push(next)),
+        usize::MAX as nat + 1, usize::MAX as nat + 2, chain.len());
+}
+
+/// Retiring the target `target` from the children of its parent `parent`, while the children of every other held process stay unchanged, lowers the remaining walk; the walk stops once the chain is empty.
+pub proof fn kill_chain_parent_child_removed_implies_walk_remaining_pop_smaller(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>, stage: KillStage,
+    cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, after: ProcessLockedMap, parent: RwLockProcessPtr,
+    target: RwLockProcessPtr,
+)
+    requires
+        kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms),
+        0 < chain.len() <= usize::MAX as nat + 1,
+        target == chain[chain.len() - 1],
+        chain.len() > 1 ==> parent == chain[chain.len() - 2],
+        k.inv(),
+        after.spec_index(parent).view().children.view() == k.prc_mp.spec_index(parent).view().children.view().remove_value(target),
+        forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)]
+            lctx.process_lock_map().dom().contains(p) && p != parent && p != target ==> after.dom().contains(p)
+                && after.spec_index(p).view().children == k.prc_mp.spec_index(p).view().children,
+    ensures
+        kill_process_walk_remaining(after, chain.drop_last(), chain.len() > 1) < kill_process_walk_remaining(k.prc_mp, chain, true),
+{
+    reveal(kill_process_walk_remaining);
+    if chain.len() > 1 {
+        let parent_children = k.prc_mp.spec_index(parent).view().children.view();
+        let ctn = k.prc_mp.spec_index(target).view_rodata().view().owning_container;
+        assert(parent_children.len() <= usize::MAX && parent_children.remove_value(target).len() + 1 == parent_children.len()) by {
+            process_perms_wf_at(k.prc_mp, parent); k.prc_mp.spec_index(parent).view().children.wf_implies_view_len_eq_len();
+            container_process_wf_process_at(k.ctn_mp, k.prc_mp, target); per_container_process_tree_wf_at(k.ctn_mp, k.prc_mp, ctn);
+            process_children_parent_wf_parent_at(k.ctn_mp.spec_index(ctn).view().root_process, k.ctn_mp.spec_index(ctn).view_ghost().owned_processes.view(), k.prc_mp, target);
+            parent_children.index_of_first_ensures(target);
+        };
+        seq_first_difference_smaller_implies_seq_to_nat_smaller(kill_process_walk_digits(k.prc_mp, chain), kill_process_walk_digits(after, chain.drop_last()),
+            usize::MAX as nat + 1, usize::MAX as nat + 2, (chain.len() - 2) as nat);
     }
 }
 } // verus!

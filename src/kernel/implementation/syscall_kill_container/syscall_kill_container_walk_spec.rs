@@ -12,7 +12,8 @@ pub open spec fn kill_container_walk_digits(ctn_mp: ContainerLockedMap, chain: S
     })
 }
 
-pub open spec fn kill_container_walk_rank(ctn_mp: ContainerLockedMap, chain: Seq<RwLockContainerPtr>, active: bool) -> nat {
+#[verifier::opaque]
+pub open spec fn kill_container_walk_remaining(ctn_mp: ContainerLockedMap, chain: Seq<RwLockContainerPtr>, active: bool) -> nat {
     if active { 1 + seq_to_nat(
         kill_container_walk_digits(ctn_mp, chain), MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2) } else { 0 }
 }

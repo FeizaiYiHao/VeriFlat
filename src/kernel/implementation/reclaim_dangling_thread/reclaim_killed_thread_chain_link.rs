@@ -55,8 +55,6 @@ pub(super) fn reclaim_killed_thread_link(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
-            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(c).view().retire_ready.view()
             &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
                 ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
         },

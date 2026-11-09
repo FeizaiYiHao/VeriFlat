@@ -72,9 +72,11 @@ pub(crate) fn kill_container_walk_and_finish(
             walking ==> target == chain[chain.len() - 1],
             walking ==> processes_left == !krnl.ctn_mp.spec_index(target).view().root_process_removed.view(),
             walking && !processes_left ==> krnl.ctn_mp.spec_index(target).view().children.view().len() == 0,
-        decreases kill_container_walk_rank(krnl.ctn_mp, chain, walking), if processes_left { 1int } else { 0int },
+        decreases kill_container_walk_remaining(krnl.ctn_mp, chain, walking), if processes_left { 1int } else { 0int },
     {
-        let ghost digits = kill_container_walk_digits(krnl.ctn_mp, chain);
+        let ghost iter_k = *krnl;
+        let ghost iter_lctx = *lctx;
+        let ghost iter_perms = chain_perms;
         if processes_left {
             proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
             let has_children = {
@@ -84,39 +86,30 @@ pub(crate) fn kill_container_walk_and_finish(
             if has_children {
                 let next = kill_container_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                     Tracked(&mut chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
-                proof { chain = chain.push(next); }
+                proof {
+                    kill_container_chain_held_unchanged_implies_walk_remaining_push_smaller(iter_k, iter_lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm,
+                        process_perm, thread_perm, owner_perm, iter_perms, krnl.ctn_mp, next);
+                    chain = chain.push(next);
+                }
                 target = next;
-                assert(kill_container_walk_rank(krnl.ctn_mp, chain, true) < 1 + seq_to_nat(
-                    digits, MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2)) by {
-                    seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_container_walk_digits(krnl.ctn_mp, chain),
-                        MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2, digits.len());
-                };
             } else {
                 kill_container_kill_processes(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                     Tracked(&chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
-                proof { vstd::assert_seqs_equal!(kill_container_walk_digits(krnl.ctn_mp, chain), digits); }
+                proof {
+                    kill_container_chain_children_unchanged_implies_walk_remaining_unchanged(iter_k, iter_lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm,
+                        process_perm, thread_perm, owner_perm, iter_perms, krnl.ctn_mp);
+                }
                 processes_left = false;
             }
         } else {
-            let ghost parent_ptr = if chain.len() == 1 { owner_ptr } else { chain[chain.len() - 2] };
-            let ghost parent_children = krnl.ctn_mp.spec_index(parent_ptr).view().children.view();
-            assert(parent_children.len() <= usize::MAX && parent_children.remove_value(target).len() + 1 == parent_children.len()) by {
-                container_perms_wf_at(krnl.ctn_mp, parent_ptr);
-                krnl.ctn_mp.spec_index(parent_ptr).view().children.wf_implies_view_len_eq_len();
-                container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, target); container_linkedlist_wf_at(krnl.rt_ctn, krnl.ctn_mp, target);
-                parent_children.index_of_first_ensures(target);
-            };
             let parent = kill_container_retire_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                 Tracked(&mut chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
-            proof { chain = chain.drop_last(); }
+            proof {
+                kill_container_chain_parent_child_removed_implies_walk_remaining_pop_smaller(iter_k, iter_lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm,
+                    process_perm, thread_perm, owner_perm, iter_perms, krnl.ctn_mp, parent, target);
+                chain = chain.drop_last();
+            }
             if parent == owner_ptr { walking = false; } else { target = parent; processes_left = true; }
-            assert(kill_container_walk_rank(krnl.ctn_mp, chain, walking) < 1 + seq_to_nat(
-                digits, MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2)) by {
-                if walking {
-                    seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_container_walk_digits(krnl.ctn_mp, chain),
-                        MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2, (chain.len() - 1) as nat);
-                }
-            };
         }
     }
     proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
@@ -313,5 +306,71 @@ pub(crate) fn kill_container_retire_target(
             *chain_perms)) by { process_perms_wf_map(krnl.prc_mp); reveal(LockedMap::typed_lock_map_aligned); };
     }
     parent
+}
+/// A walk step that keeps the children of every held container keeps the remaining container walk of `chain`.
+pub proof fn kill_container_chain_children_unchanged_implies_walk_remaining_unchanged(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    chain: Seq<RwLockContainerPtr>, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, owner_perm: LockPerm, chain_perms: Map<RwLockContainerPtr, LockPerm>,
+    after: ContainerLockedMap,
+)
+    requires
+        kill_container_walk_state(k, lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm, process_perm, thread_perm, owner_perm, chain_perms),
+        forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)]
+            lctx.container_lock_map().dom().contains(c) ==> after.dom().contains(c) && after.spec_index(c).view().children == k.ctn_mp.spec_index(c).view().children,
+    ensures
+        kill_container_walk_remaining(after, chain, true) == kill_container_walk_remaining(k.ctn_mp, chain, true),
+{
+    reveal(kill_container_walk_remaining);
+    vstd::assert_seqs_equal!(kill_container_walk_digits(after, chain), kill_container_walk_digits(k.ctn_mp, chain));
+}
+
+/// Descending into `next` while every held container stays unchanged lowers the remaining container walk.
+pub proof fn kill_container_chain_held_unchanged_implies_walk_remaining_push_smaller(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    chain: Seq<RwLockContainerPtr>, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, owner_perm: LockPerm, chain_perms: Map<RwLockContainerPtr, LockPerm>,
+    after: ContainerLockedMap, next: RwLockContainerPtr,
+)
+    requires
+        kill_container_walk_state(k, lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm, process_perm, thread_perm, owner_perm, chain_perms),
+        chain.len() < MAX_CONTAINER_TREE_DEPTH,
+        held_containers_unchanged(k.ctn_mp, after, &lctx),
+    ensures
+        kill_container_walk_remaining(after, chain.push(next), true) < kill_container_walk_remaining(k.ctn_mp, chain, true),
+{
+    reveal(kill_container_walk_remaining);
+    seq_first_difference_smaller_implies_seq_to_nat_smaller(kill_container_walk_digits(k.ctn_mp, chain), kill_container_walk_digits(after, chain.push(next)),
+        MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2, chain.len());
+}
+
+/// Retiring the target `target` from the children of its parent `parent`, while the children of every other held container stay unchanged, lowers the remaining container walk; the walk stops once the chain is empty.
+pub proof fn kill_container_chain_parent_child_removed_implies_walk_remaining_pop_smaller(
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    chain: Seq<RwLockContainerPtr>, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, owner_perm: LockPerm, chain_perms: Map<RwLockContainerPtr, LockPerm>,
+    after: ContainerLockedMap, parent: RwLockContainerPtr, target: RwLockContainerPtr,
+)
+    requires
+        kill_container_walk_state(k, lctx, cpu_id, prc_ptr, thrd_ptr, owner_ptr, killer_info, chain, cpu_perm, process_perm, thread_perm, owner_perm, chain_perms),
+        0 < chain.len() <= MAX_CONTAINER_TREE_DEPTH,
+        target == chain[chain.len() - 1],
+        chain.len() > 1 ==> parent == chain[chain.len() - 2],
+        k.inv(),
+        after.spec_index(parent).view().children.view() == k.ctn_mp.spec_index(parent).view().children.view().remove_value(target),
+        forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)]
+            lctx.container_lock_map().dom().contains(c) && c != target && c != parent ==> after.dom().contains(c)
+                && after.spec_index(c).view().children.view() == k.ctn_mp.spec_index(c).view().children.view(),
+    ensures
+        kill_container_walk_remaining(after, chain.drop_last(), chain.len() > 1) < kill_container_walk_remaining(k.ctn_mp, chain, true),
+{
+    reveal(kill_container_walk_remaining);
+    if chain.len() > 1 {
+        let parent_children = k.ctn_mp.spec_index(parent).view().children.view();
+        assert(parent_children.len() <= usize::MAX && parent_children.remove_value(target).len() + 1 == parent_children.len()) by {
+            container_perms_wf_at(k.ctn_mp, parent); k.ctn_mp.spec_index(parent).view().children.wf_implies_view_len_eq_len();
+            container_root_wf_at(k.rt_ctn, k.ctn_mp, target); container_linkedlist_wf_at(k.rt_ctn, k.ctn_mp, target);
+            parent_children.index_of_first_ensures(target);
+        };
+        seq_first_difference_smaller_implies_seq_to_nat_smaller(kill_container_walk_digits(k.ctn_mp, chain), kill_container_walk_digits(after, chain.drop_last()),
+            MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2, (chain.len() - 2) as nat);
+    }
 }
 } // verus!

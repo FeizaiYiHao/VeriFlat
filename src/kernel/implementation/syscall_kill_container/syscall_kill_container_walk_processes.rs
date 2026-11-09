@@ -105,10 +105,12 @@ pub(crate) fn kill_container_kill_processes(
                 &&& typed_lock_map_contains_mode(marked_lctx.container_lock_map(), c, TypedLockMode::Write) ==> krnl.ctn_mp.spec_index(c).view().root_process_removed.view() == marked_k.ctn_mp.spec_index(c).view().root_process_removed.view()
             },
         decreases
-            kill_process_walk_rank(krnl.prc_mp, pchain, !done),
+            kill_process_walk_remaining(krnl.prc_mp, pchain, !done),
             if done { 0 } else { krnl.prc_mp.spec_index(ptarget).view().owned_threads.view().len() },
     {
-        let ghost digits = kill_process_walk_digits(krnl.prc_mp, pchain);
+        let ghost iter_k = *krnl;
+        let ghost iter_lctx = *lctx;
+        let ghost iter_perms = pchain_perms;
         proof {
             process_perms_wf_map(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, ptarget);
@@ -122,39 +124,31 @@ pub(crate) fn kill_container_kill_processes(
         if has_children {
             let next = kill_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ptarget, Ghost(killer_info), Ghost(pchain),
                 Tracked(&mut pchain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-            proof { pchain = pchain.push(next); }
+            proof {
+                kill_chain_children_unchanged_implies_walk_remaining_push_smaller(iter_k, iter_lctx, cpu_id, scope, prc_ptr, thrd_ptr, pchain, KillStage::Walk, *cpu_perm, *process_perm,
+                    *thread_perm, iter_perms, krnl.prc_mp, next);
+                pchain = pchain.push(next);
+            }
             ptarget = next;
-            assert(kill_process_walk_rank(krnl.prc_mp, pchain, true) < 1 + seq_to_nat(
-                digits, usize::MAX as nat + 1, usize::MAX as nat + 2)) by {
-                seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_process_walk_digits(krnl.prc_mp, pchain),
-                    usize::MAX as nat + 1, usize::MAX as nat + 2, digits.len());
-            };
         } else if has_threads {
             kill_first_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ptarget, Ghost(killer_info), Ghost(pchain), Tracked(&pchain_perms),
                 Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-            proof { vstd::assert_seqs_equal!(kill_process_walk_digits(krnl.prc_mp, pchain), digits); }
+            proof {
+                kill_chain_children_unchanged_implies_walk_remaining_unchanged(iter_k, iter_lctx, cpu_id, scope, prc_ptr, thrd_ptr, pchain, KillStage::Walk, *cpu_perm, *process_perm,
+                    *thread_perm, iter_perms, krnl.prc_mp);
+            }
         } else if ptarget == root_ptr {
             done = true;
+            assert(kill_process_walk_remaining(krnl.prc_mp, pchain, false) < kill_process_walk_remaining(krnl.prc_mp, pchain, true)) by { reveal(kill_process_walk_remaining); };
         } else {
-            let ghost parent_ptr = pchain[pchain.len() - 2];
-            let ghost parent_children = krnl.prc_mp.spec_index(parent_ptr).view().children.view();
-            assert(parent_children.len() <= usize::MAX && parent_children.remove_value(ptarget).len() + 1 == parent_children.len()) by {
-                process_perms_wf_at(krnl.prc_mp, parent_ptr);
-                krnl.prc_mp.spec_index(parent_ptr).view().children.wf_implies_view_len_eq_len();
-                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, ptarget);
-                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target);
-                process_children_parent_wf_parent_at(root_ptr, krnl.ctn_mp.spec_index(target).view_ghost().owned_processes.view(), krnl.prc_mp, ptarget);
-                parent_children.index_of_first_ensures(ptarget);
-            };
             let parent = kill_reclaim_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ptarget, Ghost(pchain), Tracked(&mut pchain_perms),
                 Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-            proof { pchain = pchain.drop_last(); }
+            proof {
+                kill_chain_parent_child_removed_implies_walk_remaining_pop_smaller(iter_k, iter_lctx, cpu_id, scope, prc_ptr, thrd_ptr, pchain, KillStage::Walk, *cpu_perm, *process_perm,
+                    *thread_perm, iter_perms, krnl.prc_mp, parent, ptarget);
+                pchain = pchain.drop_last();
+            }
             ptarget = parent;
-            assert(kill_process_walk_rank(krnl.prc_mp, pchain, true) < 1 + seq_to_nat(
-                digits, usize::MAX as nat + 1, usize::MAX as nat + 2)) by {
-                seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_process_walk_digits(krnl.prc_mp, pchain),
-                    usize::MAX as nat + 1, usize::MAX as nat + 2, (pchain.len() - 1) as nat);
-            };
         }
     }
     kill_reassign_functions(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ptarget, Ghost(pchain), Tracked(&pchain_perms), Tracked(cpu_perm),

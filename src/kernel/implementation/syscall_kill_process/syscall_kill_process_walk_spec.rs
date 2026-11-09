@@ -12,7 +12,8 @@ pub open spec fn kill_process_walk_digits(prc_mp: ProcessLockedMap, chain: Seq<R
     })
 }
 
-pub open spec fn kill_process_walk_rank(prc_mp: ProcessLockedMap, chain: Seq<RwLockProcessPtr>, active: bool) -> nat {
+#[verifier::opaque]
+pub open spec fn kill_process_walk_remaining(prc_mp: ProcessLockedMap, chain: Seq<RwLockProcessPtr>, active: bool) -> nat {
     if active { 1 + seq_to_nat(
         kill_process_walk_digits(prc_mp, chain), usize::MAX as nat + 1, usize::MAX as nat + 2) } else { 0 }
 }

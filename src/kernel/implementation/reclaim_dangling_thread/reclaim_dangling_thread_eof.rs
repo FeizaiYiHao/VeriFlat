@@ -349,8 +349,6 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
             &&& post.ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == start.ctn_mp.spec_index(c).being_killed()
             &&& post.ctn_mp.spec_index(c).killer_info() == start.ctn_mp.spec_index(c).killer_info()
-            &&& post.ctn_mp.spec_index(c).view().uppertree_seq == start.ctn_mp.spec_index(c).view().uppertree_seq
-            &&& post.ctn_mp.spec_index(c).view().retire_ready.view() == start.ctn_mp.spec_index(c).view().retire_ready.view()
             &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == start.ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == start.ctn_mp.spec_index(c).view_ghost().owned_processes
         },

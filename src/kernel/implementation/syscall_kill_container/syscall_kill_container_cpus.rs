@@ -83,7 +83,6 @@ pub(crate) fn kill_container_cpus(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         ({
             let (set_ptr, set_perm) = ret;
@@ -185,7 +184,6 @@ pub(crate) fn kill_container_cpus(
                 &&& krnl.prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
                 &&& krnl.prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
                 &&& krnl.prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-                &&& krnl.prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
             }),
             krnl.cpu_set_mp.spec_index(set_ptr).killer_info() == Some(killer_info),
             forall|j: CpuId| #![trigger krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j)] j < i ==> !krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j),
@@ -278,7 +276,6 @@ fn kill_container_cpus_enter(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         ({
             let (set_ptr, set_perm) = ret;
@@ -408,7 +405,6 @@ fn kill_container_pages_enter(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).cpu_set_mp.spec_index(set_ptr) == old(krnl).cpu_set_mp.spec_index(set_ptr),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -523,7 +519,6 @@ fn kill_container_move_cpu(
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
             &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
-            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
         }),
         final(krnl).cpu_set_mp.spec_index(set_ptr).killer_info() == old(krnl).cpu_set_mp.spec_index(set_ptr).killer_info(),
         final(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view() == old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().remove(cpu_i),
