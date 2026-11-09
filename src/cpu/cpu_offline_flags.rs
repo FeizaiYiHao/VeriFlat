@@ -102,25 +102,25 @@ impl CpuOfflineFlags {
                 &&& !ret.flags.spec_index(cpu_id).view().view().requested
             },
     {
-        let mut flag_array: Array<LockCell<OfflineFlag, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut flag_array: ArrayBuilder<LockCell<OfflineFlag, (), (), NO_KILL_STATE>, NUM_CPUS> = ArrayBuilder::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
-                flag_array.wf(),
+                flag_array.view().len() == cpu_id,
                 0 <= cpu_id <= NUM_CPUS,
                 forall|i: CpuId| #![auto] index_valid(NUM_CPUS, i) && i < cpu_id ==> {
-                    &&& flag_array.spec_index(i).inv()
-                    &&& !flag_array.spec_index(i).locked()
-                    &&& flag_array.spec_index(i).view().index() == (flags_ptr, i)
-                    &&& flag_array.spec_index(i).view().container_depth.view() == depth
-                    &&& !flag_array.spec_index(i).view().requested
+                    &&& flag_array.view()[i as int].inv()
+                    &&& !flag_array.view()[i as int].locked()
+                    &&& flag_array.view()[i as int].view().index() == (flags_ptr, i)
+                    &&& flag_array.view()[i as int].view().container_depth.view() == depth
+                    &&& !flag_array.view()[i as int].view().requested
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            flag_array.set(cpu_id, LockCell::new_unlocked(OfflineFlag::new(Ghost(flags_ptr), Ghost(cpu_id), Ghost(depth)), (), Ghost(())));
+            flag_array.push(LockCell::new_unlocked(OfflineFlag::new(Ghost(flags_ptr), Ghost(cpu_id), Ghost(depth)), (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
-        Self { owning_container: Ghost(owning_container), container_depth: Ghost(depth), flags: LockedArray::from_array(flag_array) }
+        Self { owning_container: Ghost(owning_container), container_depth: Ghost(depth), flags: LockedArray::from_array(flag_array.finish()) }
     }
 }
 }

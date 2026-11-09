@@ -79,11 +79,11 @@ impl Scheduler {
             },
             scheduler_shards_of(ret) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
     {
-        let mut shard_array: Array<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut shard_array: ArrayBuilder<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = ArrayBuilder::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
-                shard_array.wf(),
+                shard_array.view().len() == cpu_id,
                 0 <= cpu_id <= NUM_CPUS,
                 forall|i: CpuId| #![trigger shard_array.view()[i as int]] index_valid(NUM_CPUS, i) && i < cpu_id ==> {
                     &&& shard_array.view()[i as int].inv()
@@ -93,10 +93,10 @@ impl Scheduler {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
+            shard_array.push(LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
-        let ret = Self { shards: LockedArray::from_array(shard_array), owning_container };
+        let ret = Self { shards: LockedArray::from_array(shard_array.finish()), owning_container };
         assert(scheduler_shards_of(ret) =~= Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty())) by { reveal(scheduler_shards_of); };
         ret
     }
@@ -117,25 +117,25 @@ impl Scheduler {
     {
         let mut root_queue = LinkedList::new(None, None);
         root_queue.push_tail(thread_node_addr, thread_node_perm);
-        let mut shard_array: Array<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
-        shard_array.set(0, LockCell::new_unlocked(SchedulerShard { queue: root_queue, line_pad: [0usize; 2] }, (), Ghost(())));
+        let mut shard_array: ArrayBuilder<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = ArrayBuilder::new();
+        shard_array.push(LockCell::new_unlocked(SchedulerShard { queue: root_queue, line_pad: [0usize; 2] }, (), Ghost(())));
         let mut cpu_id = 1;
         while cpu_id < NUM_CPUS
             invariant
-                shard_array.wf(),
+                shard_array.view().len() == cpu_id,
                 1 <= cpu_id <= NUM_CPUS,
                 forall|i: CpuId| #![auto] index_valid(NUM_CPUS, i) && i < cpu_id ==> {
-                    &&& shard_array.spec_index(i).inv()
-                    &&& !shard_array.spec_index(i).locked()
-                    &&& shard_array.spec_index(i).view().queue.view() == if i == 0 { seq![root_thread] } else { Seq::<RwLockThreadPtr>::empty() }
-                    &&& shard_array.spec_index(i).view().queue.map() == if i == 0 { Map::<usize, RwLockThreadPtr>::empty().insert(thread_node_addr, root_thread) } else { Map::<usize, RwLockThreadPtr>::empty() }
+                    &&& shard_array.view()[i as int].inv()
+                    &&& !shard_array.view()[i as int].locked()
+                    &&& shard_array.view()[i as int].view().queue.view() == if i == 0 { seq![root_thread] } else { Seq::<RwLockThreadPtr>::empty() }
+                    &&& shard_array.view()[i as int].view().queue.map() == if i == 0 { Map::<usize, RwLockThreadPtr>::empty().insert(thread_node_addr, root_thread) } else { Map::<usize, RwLockThreadPtr>::empty() }
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
+            shard_array.push(LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
-        Self { shards: LockedArray::from_array(shard_array), owning_container }
+        Self { shards: LockedArray::from_array(shard_array.finish()), owning_container }
     }
 }
 }

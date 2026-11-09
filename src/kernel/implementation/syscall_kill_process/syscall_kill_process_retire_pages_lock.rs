@@ -46,7 +46,7 @@ pub(crate) fn kill_retire_sort_pages<const N: usize>(pages: &ArrayVec<PageIndex,
         forall|k: int| #![trigger ret.view()[k]] 0 <= k < ret.view().len() ==> pages.view().contains(ret.view()[k]),
         forall|i: int, j: int| #![trigger ret.view()[i], ret.view()[j]] 0 <= i < j < ret.view().len() ==> ret.view()[i] < ret.view()[j],
 {
-    let mut ret = ArrayVec::<PageIndex, N>::new();
+    let mut ret = ArrayVec::<PageIndex, N>::new_with_init_value(0);
     let mut i: usize = 0;
     while i < pages.len()
         invariant

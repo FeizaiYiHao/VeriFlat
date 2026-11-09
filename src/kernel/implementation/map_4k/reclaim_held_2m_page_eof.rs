@@ -418,6 +418,43 @@ proof fn remove_last_held_2m_mapping_to_allocator_eof_page_relations(
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 
+/// The 2M CPU-cache relation closes after `pg_ptr` enters shard `cpu_id` of the owner allocator's CPU cache.
+proof fn remove_last_held_2m_mapping_to_allocator_eof_cpu_cache_2m_pages(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
+    cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize, owner: RwLockContainerPtr,
+)
+    requires
+        pre.inv(),
+        remove_last_held_2m_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        ({
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            &&& page_ptr_valid(pg_ptr)
+            &&& old_page.state is Mapped2m
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& pre.allc_2m_mp.dom().contains(allc_ptr)
+            &&& !pre.allc_2m_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr
+        }),
+        post.subsystems_inv(),
+        forall|a: RwLockPageAllocatorPtr, c: CpuId| #![trigger post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c)] #![trigger pre.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c)]
+            pre.allc_2m_mp.dom().contains(a) && a != allc_ptr ==> post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view() == pre.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view(),
+    ensures
+        allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
+{
+    reveal(remove_last_held_2m_mapping_to_allocator_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
+    assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
+        reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
+        seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
+    };
+}
+
 /// The 2M allocator relations close after `pg_ptr` enters shard `cpu_id` of the owner allocator's CPU cache.
 proof fn remove_last_held_2m_mapping_to_allocator_eof_free_2m_pages(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
@@ -450,10 +487,7 @@ proof fn remove_last_held_2m_mapping_to_allocator_eof_free_2m_pages(
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
-        reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
-        seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
-    };
+    remove_last_held_2m_mapping_to_allocator_eof_cpu_cache_2m_pages(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr, owner);
     reveal(allocator_free_2m_pages_wf);
 }
 

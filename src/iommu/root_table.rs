@@ -151,7 +151,7 @@ impl IommuRootTable {
             forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_iommu_root(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_iommu_root(bus, device, function) is None,
             forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_owner(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_owner(bus, device, function) == owner_process,
     {
-        let mut root_entries: Array<VtdLegacyEntry, PCI_BUS_COUNT> = Array::new();
+        let mut root_entries: Array<VtdLegacyEntry, PCI_BUS_COUNT> = Array::new_with_init_value(VtdLegacyEntry::disabled());
         let mut bus = 0;
         while bus < PCI_BUS_COUNT
             invariant

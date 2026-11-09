@@ -64,6 +64,15 @@ pub use kernel::implementation::locker_unlocker::container_nonlock_fields_and_qu
 
 verus! {
 global size_of usize == 8;
+// Layouts of the lock objects retyped from owned pages, checked against rustc; callers of `retype_page_perm_to_rwlock`
+// and `retype_page_perm_2m_to_rwlock` discharge the layout `requires` with `broadcast use crate::VERUS_layout_of_<type>`.
+global layout ThreadRwLock is size == 2560, align == 8;
+global layout ProcessRwLock is size == 288, align == 8;
+global layout EndpointRwLock is size == 72, align == 8;
+global layout CpuSetRwLock is size == 2176, align == 64;
+global layout IommuTableRwLock is size == 64, align == 8;
+global layout PageTableRwLock is size == 2112, align == 64;
+global layout PcidAllocatorRwLock is size == 32776, align == 8;
 }
 
 pub use kernel::implementation::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;

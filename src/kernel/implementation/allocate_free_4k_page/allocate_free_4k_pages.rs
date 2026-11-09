@@ -131,7 +131,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
 {
-    let mut pages = ArrayVec::<PagePtr, N>::new();
+    let mut pages = ArrayVec::<PagePtr, N>::new_with_init_value(0);
     let tracked mut page_lock_perms: Map<PagePtr, LockPerm> = Map::tracked_empty();
     let mut i: usize = 0;
     proof {

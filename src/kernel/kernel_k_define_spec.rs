@@ -16,6 +16,11 @@ pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocato
 pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 pub type PageAllocatorUnLockedMap<const SIZE: usize> = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator<SIZE>>;
 pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
+pub type PageTableRwLock = LockCell<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
+pub type IommuTableRwLock = LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>;
+pub type CpuSetRwLock = LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuReaderSlots>;
+pub type PcidAllocatorRwLock = LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
+pub type EndpointRwLock = LockCell<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 /// The kernel state: the lock maps and lock arrays of every kernel object, the root container, the default page table,
 /// and four ghost parts.
 /// `pt_lower` is the part of each page table of `pt_mp` under small (window) locks: its L2 pages, whose entries are the

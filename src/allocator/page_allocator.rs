@@ -50,28 +50,28 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                 },
     {
         assert(linked_list.view().len() == linked_list.length) by { linked_list.wf_implies_view_len_eq_len(); };
-        let mut cache_array: Array<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: ArrayBuilder<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = ArrayBuilder::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
-                cache_array.wf(),
+                cache_array.view().len() == cpu_id,
                 0 <= cpu_id <= NUM_CPUS,
-                forall|i: CpuId| #![trigger cache_array.spec_index(i)]
+                forall|i: CpuId| #![trigger cache_array.view()[i as int]]
                     index_valid(NUM_CPUS, i) && i < cpu_id ==> {
-                        &&& cache_array.spec_index(i).inv()
-                        &&& cache_array.spec_index(i).view().linked_list.view() == Seq::<PagePtr>::empty()
-                        &&& cache_array.spec_index(i).view().linked_list.map() == Map::<usize, PagePtr>::empty()
-                        &&& !cache_array.spec_index(i).locked()
+                        &&& cache_array.view()[i as int].inv()
+                        &&& cache_array.view()[i as int].view().linked_list.view() == Seq::<PagePtr>::empty()
+                        &&& cache_array.view()[i as int].view().linked_list.map() == Map::<usize, PagePtr>::empty()
+                        &&& !cache_array.view()[i as int].locked()
                     },
                 forall|i: int| #![trigger cache_array.view().spec_index(i)] 0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)), line_pad: [0usize; 2] };
-            cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
+            cache_array.push(LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let total_free_pages = linked_list.length;
-        let cpu_caches = LockedArray::from_array(cache_array);
+        let cpu_caches = LockedArray::from_array(cache_array.finish());
         let global_pool = LockCell::new_unlocked(GlobalPool { linked_list, line_pad: [0usize; 2] }, (), Ghost(()));
         let quota = LockCell::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth, line_pad: [0usize; 5] }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(total_free_pages), owning_container };
@@ -98,28 +98,28 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        let mut cache_array: Array<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: ArrayBuilder<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = ArrayBuilder::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
-                cache_array.wf(),
+                cache_array.view().len() == cpu_id,
                 0 <= cpu_id <= NUM_CPUS,
-                forall|i: CpuId| #![trigger cache_array.spec_index(i)]
+                forall|i: CpuId| #![trigger cache_array.view()[i as int]]
                     index_valid(NUM_CPUS, i) && i < cpu_id ==> {
-                        &&& cache_array.spec_index(i).inv()
-                        &&& cache_array.spec_index(i).view().linked_list.view() == Seq::<PagePtr>::empty()
-                        &&& cache_array.spec_index(i).view().linked_list.map() == Map::<usize, PagePtr>::empty()
-                        &&& !cache_array.spec_index(i).locked()
+                        &&& cache_array.view()[i as int].inv()
+                        &&& cache_array.view()[i as int].view().linked_list.view() == Seq::<PagePtr>::empty()
+                        &&& cache_array.view()[i as int].view().linked_list.map() == Map::<usize, PagePtr>::empty()
+                        &&& !cache_array.view()[i as int].locked()
                     },
                 forall|i: int| #![trigger cache_array.view().spec_index(i)]
                     0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)), line_pad: [0usize; 2] };
-            cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
+            cache_array.push(LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
-        let cpu_caches = LockedArray::from_array(cache_array);
+        let cpu_caches = LockedArray::from_array(cache_array.finish());
         let global_pool = LockCell::new_unlocked(GlobalPool { linked_list: LinkedList::new(Some(container_depth), Some(owning_container)), line_pad: [0usize; 2] }, (), Ghost(()));
         let quota = LockCell::new_unlocked(AllocatorQuota { value: 0, minor: Ghost(owning_container), container_depth, line_pad: [0usize; 5] }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(0), owning_container };
@@ -541,6 +541,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
 }
 
 const ASSERT_PAGE_ALLOCATOR_FITS_4K: [(); 1] = [(); (core::mem::size_of::<PageAllocator<ALLOCATOR_SIZE_4K>>() <= PAGE_SZ_4K) as usize];
+const _: () = assert!(core::mem::size_of::<PageAllocator<ALLOCATOR_SIZE_2M>>() <= PAGE_SZ_4K && core::mem::size_of::<PageAllocator<ALLOCATOR_SIZE_1G>>() <= PAGE_SZ_4K);
 
 // Layout contract: the allocator starts a 4K page, every lock cell is exactly one cache line, and each starts on a line
 // boundary, so one cpu's cache operations never share a line with another cpu's cache lock or the pool and quota locks.

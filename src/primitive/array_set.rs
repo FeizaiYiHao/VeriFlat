@@ -20,21 +20,7 @@ impl<const N: usize> ArraySet<N> {
             ret.view() == Set::<usize>::empty(),
             ret.closed_view() == Set::<usize>::empty(),
     {
-        let mut ret = Self { data: Array::new(), closed: Array::new(), len: 0, set: Ghost(Set::<usize>::empty()), closed_set: Ghost(Set::<usize>::empty()) };
-        for i in 0..N
-            invariant
-                0 <= i <= N,
-                ret.data.wf(),
-                ret.closed.wf(),
-                ret.len == 0,
-                ret.set.view() == Set::<usize>::empty(),
-                ret.closed_set.view() == Set::<usize>::empty(),
-                forall|j: int| 0 <= j < i ==> ret.data.view().spec_index(j) == false,
-                forall|j: int| 0 <= j < i ==> ret.closed.view().spec_index(j) == false,
-        {
-            ret.data.set(i, false);
-            ret.closed.set(i, false);
-        }
+        let ret = Self { data: Array::new_with_init_value(false), closed: Array::new_with_init_value(false), len: 0, set: Ghost(Set::<usize>::empty()), closed_set: Ghost(Set::<usize>::empty()) };
         ret
     }
 

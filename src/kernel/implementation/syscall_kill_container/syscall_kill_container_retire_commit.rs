@@ -183,7 +183,7 @@ pub(crate) fn kill_container_retire_commit(
         assert(lctx.allocator_global_pool_2m_lock_map().dom() =~= set![o2] && lctx.allocator_quota_2m_lock_map().dom() =~= set![o2]);
     }
     // Their pages join the killer's container's global pools with their quota.
-    let mut pages = ArrayVec::<PageIndex, 5>::new();
+    let mut pages = ArrayVec::<PageIndex, 5>::new_with_init_value(0);
     pages.push(page_ptr2page_index(sched_ptr));
     pages.push(page_ptr2page_index(cpu_set_ptr));
     pages.push(page_ptr2page_index(a4));

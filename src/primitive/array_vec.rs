@@ -9,18 +9,6 @@ pub struct ArrayVec<T, const N: usize> {
 }
 
 impl<T: Copy, const N: usize> ArrayVec<T, N> {
-    pub fn new() -> (ret: Self)
-        requires
-            0 <= N <= usize::MAX, // Verus doesn't know
-        ensures
-            ret.wf(),
-            ret.len() == 0,
-            ret.capacity() == N,
-    {
-        let ret = Self { data: Array::new(), len: 0 };
-        ret
-    }
-
     pub fn new_with_init_value(value: T) -> (ret: Self)
         requires
             0 <= N <= usize::MAX,

@@ -18,8 +18,8 @@ pub trait LockStorage<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool
 
 /// Inline storage: the cells live inside the array value.
 impl<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE> for Array<LockCell<T, ROT, GhostT, HAS_KILL_STATE>, N> {
-    open spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>> { self.seq.view() }
-    open spec fn wf(&self) -> bool { self.seq.view().len() == N }
+    open spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>> { Array::view(self) }
+    open spec fn wf(&self) -> bool { Array::view(self).len() == N }
 }
 
 /// Address of cell `i` of a lock array of `E` cells that starts at `base`.

@@ -173,7 +173,7 @@ pub(crate) fn kill_retire_hold_tables(
         pagetable_pages_wf_root_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
         if let Some(it) = iommu_table { iommu_table_pages_wf_root_page_at(krnl.it_mp, krnl.pg_arr, it); }
     }
-    let mut held: ArrayVec<PageIndex, 5> = ArrayVec::new();
+    let mut held: ArrayVec<PageIndex, 5> = ArrayVec::new_with_init_value(0);
     held.push(page_ptr2page_index(target));
     held.push(page_ptr2page_index(pagetable));
     if let Some(it) = iommu_table { held.push(page_ptr2page_index(it)); }

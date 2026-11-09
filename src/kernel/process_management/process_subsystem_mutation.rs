@@ -957,6 +957,7 @@ pub fn process_subsystem_create_scheduled_thread(
         assert(!lctx.thread_lock_map().dom().contains(pg_ptr)
             && lctx.typed_lock_entry(KernelObjId::Thread(pg_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
+    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     let Tracked(thread_lock_perm) = thrd_mp.retype_4k_and_insert(pg_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)));
     let ghost fresh_lock_id = thrd_mp.lock_id_by_key(pg_ptr);
     proof { assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
@@ -1088,6 +1089,7 @@ pub fn cpu_set_map_insert_new_4k(cpu_set_mp: &mut CpuSetLockedMap, cpu_set_ptr: 
         ret.view().thread_id() == final(lctx).thread_id(),
 {
     proof { assert(lctx.typed_lock_entry(KernelObjId::CpuSet(cpu_set_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+    proof { assert(vstd::layout::size_of::<CpuSetRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<CpuSetRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_CpuSetRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     let lock_perm = cpu_set_mp.retype_4k_and_insert(cpu_set_ptr, cpu_set_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
     proof {
         cpu_set_map_insert_new_4k_eof_cpu_set_perms_wf(*old(cpu_set_mp), *cpu_set_mp, cpu_set_ptr);
@@ -1126,6 +1128,7 @@ pub fn pcid_allocator_map_insert_new_2m(pcid_allc_mp: &mut PcidAllocatorLockedMa
         ret.view().ordering_lock_id() == final(pcid_allc_mp).lock_id_by_key(allc_ptr),
 {
     proof { assert(lctx.typed_lock_entry(KernelObjId::PcidAllocator(allc_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+    proof { assert(vstd::layout::size_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M && vstd::layout::align_of::<PcidAllocatorRwLock>() <= PAGE_SZ_2M) by { broadcast use crate::VERUS_layout_of_PcidAllocatorRwLock; assert(PAGE_SZ_2M == 0x200000) by (compute); }; }
     let lock_perm = pcid_allc_mp.retype_2m_and_insert(allc_ptr, allocator_value, (), Ghost(()), Tracked(page_perm),
         Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allc_ptr)), LockControl::Clear);
     proof {
@@ -1205,6 +1208,7 @@ pub fn endpoint_map_insert_new_4k(ep_mp: &mut EndpointLockedMap, ep_ptr: RwLockE
         ret.view().ordering_lock_id() == final(ep_mp).lock_id_by_key(ep_ptr),
 {
     proof { assert(lctx.typed_lock_entry(KernelObjId::Endpoint(ep_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+    proof { assert(vstd::layout::size_of::<EndpointRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<EndpointRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_EndpointRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     let lock_perm = ep_mp.retype_4k_and_insert(ep_ptr, endpoint_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(ep_ptr)));
     proof {
         endpoint_map_insert_new_4k_eof_endpoint_perms_wf(*old(ep_mp), *ep_mp, ep_ptr);

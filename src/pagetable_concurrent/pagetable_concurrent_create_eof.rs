@@ -131,6 +131,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.wf_l4(),
     {
+        assert(post.higher.cr3 == pre.higher.cr3 && post.higher.l4_table.view().spec_index(post.higher.cr3).value().wf()) by { reveal(WholePageTable::create_entry_l4_eof_transition_framing); };
         assert(post.higher.wf_l4()) by {
             reveal(WholePageTable::create_entry_l4_eof_transition_framing); reveal(PageTableHigher::wf_l4);
             broadcast use WholePageTable::create_entry_l4_eof_implies_wf_l4_at;

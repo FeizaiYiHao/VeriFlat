@@ -367,8 +367,7 @@ impl Thread {
             ret.quota_2m == 0,
             ret.quota_1g == 0,
     {
-        let mut endpoint_descriptors: Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS> = Array::new();
-        endpoint_descriptors.init2none();
+        let endpoint_descriptors: Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS> = Array::new_with_init_value(None);
         proof { assert_seqs_equal!(endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None), i => {}); }
         let ret = Self {
             exited: Ghost(false),

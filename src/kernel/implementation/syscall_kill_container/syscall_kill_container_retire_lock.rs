@@ -310,7 +310,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
     let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
     let a1 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_1g;
     let pcid_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().pcid_allocator;
-    let mut pages = ArrayVec::<PageIndex, 7>::new();
+    let mut pages = ArrayVec::<PageIndex, 7>::new_with_init_value(0);
     pages.push(page_ptr2page_index(sched_ptr));
     pages.push(page_ptr2page_index(cpu_set_ptr));
     pages.push(page_ptr2page_index(a4));

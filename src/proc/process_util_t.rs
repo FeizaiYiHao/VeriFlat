@@ -370,6 +370,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(pg_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
             final(self).prc_mp.typed_lock_map_aligned(final(lctx).process_lock_map(), final(lctx).thread_id()),
     {
+        proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
         let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE, SpinWord>(
             pg_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(pg_ptr)));
         self.prc_mp.insert_with_perm(pg_ptr, Tracked(process_rwlock_perm));

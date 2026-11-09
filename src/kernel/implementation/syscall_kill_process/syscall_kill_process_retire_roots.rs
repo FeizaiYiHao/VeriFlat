@@ -132,8 +132,8 @@ pub(crate) fn kill_retire_hold_roots(
             iommu_table_pages_wf_closure_page_at(krnl.it_mp, krnl.pg_arr, it, it_view.cr3);
         }
     }
-    let mut pages: ArrayVec<PageIndex, 5> = ArrayVec::new();
-    let mut roots: ArrayVec<PageIndex, 5> = ArrayVec::new();
+    let mut pages: ArrayVec<PageIndex, 5> = ArrayVec::new_with_init_value(0);
+    let mut roots: ArrayVec<PageIndex, 5> = ArrayVec::new_with_init_value(0);
     pages.push(page_ptr2page_index(target));
     pages.push(page_ptr2page_index(pagetable));
     pages.push(page_ptr2page_index(cr3));

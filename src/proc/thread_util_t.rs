@@ -14,6 +14,7 @@ use vstd::simple_pptr::*;
 /// The `thread_map` domain growth is done separately by
 /// `LockedMap::insert_with_perm`; the page-state flip and process unstage
 /// stay in verified code.
+/// TCB assumption: the `requires` layout bound makes the written `LockCell<T, ..>` fit the 4K page and its alignment.
 #[verifier::external_body]
 pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
@@ -21,6 +22,8 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
     requires
         !(rodata.container_source() is Dynamic),
         !(rodata.process_source() is Dynamic),
+        vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
+        vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
         page_perm.is_init(),
         page_perm.addr() == pg_ptr,
         value.inv(),
@@ -89,6 +92,7 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
 /// Approved TCB boundary for retyping one owned 2M page; callers use `retype_2m_and_insert`. A dynamic lock is created
 /// write-held under the concrete `LockOwnerId::Some` owner recorded in `control`; every other lock is created with a
 /// clear control word.
+/// TCB assumption: the `requires` layout bound makes the written `LockCell<T, ..>` fit the 2M page and its alignment.
 #[verifier::external_body]
 fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
@@ -99,6 +103,8 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
         (rodata.process_source() is Dynamic) == (control is DynamicProcess),
         !(control is Killed),
         control is DynamicProcess ==> control->DynamicProcess_0 is Some,
+        vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
+        vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
         page_perm.is_init(),
         page_perm.addr() == pg_ptr,
         value.inv(),
@@ -175,6 +181,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             !old(self).dom().contains(pg_ptr),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -225,6 +233,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             control is DynamicProcess ==> control->DynamicProcess_0 is Some,
             old(self).perms_wf(),
             !old(self).dom().contains(pg_ptr),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -275,6 +285,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, NO_KILL_STATE, I>>() <= PAGE_SZ_4K,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, NO_KILL_STATE, I>>() <= PAGE_SZ_4K,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -301,6 +313,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, NO_KILL_STATE, I>>() <= PAGE_SZ_2M,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, NO_KILL_STATE, I>>() <= PAGE_SZ_2M,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -330,6 +344,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -359,6 +375,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             requested is Some,
             old(self).perms_wf(),
             old(self).dom().is_empty(),
+            vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
+            vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_2M,
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             value.inv(),
@@ -423,6 +441,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         ret.3.view().value().view() == thrd_ptr,
 {
     let tracked mut lctx = LocalContext::new_bootstrap(0);
+    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thrd_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thrd_ptr)));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thrd_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
