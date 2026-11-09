@@ -127,7 +127,7 @@ pub open spec fn kill_chain_state(
         &&& chain_perms[chain[i]].lock_id() == p.locking_thread()->Write_lock_id
     }
     &&& scope is Subtree ==> forall|i: int| #![trigger chain[i]] 0 <= i < chain.len() ==> {
-        &&& k.prc_mp.spec_index(scope->Subtree_process).view_ghost().subtree_set.view().contains(chain[i])
+        &&& k.prc_mp.spec_index(chain[i]).view().uppertree_seq.view().contains(scope->Subtree_process)
         &&& i == 0 ==> k.prc_mp.spec_index(chain[i]).view_rodata().view().parent == Some(scope->Subtree_process)
     }
     &&& scope is Container ==> forall|i: int| #![trigger chain[i]] 0 <= i < chain.len() ==> {

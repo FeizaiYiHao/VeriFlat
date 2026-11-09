@@ -59,11 +59,6 @@ pub(crate) fn kill_reclaim_hide_roots(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -144,11 +139,6 @@ pub(crate) fn kill_reclaim_flush(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,
         iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
     ensures
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
@@ -223,11 +213,6 @@ pub(crate) fn kill_reclaim_flush(
             forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
                 old(lctx).process_lock_map().dom().contains(p) ==> krnl.prc_mp.dom().contains(p)
                     && krnl.prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             typed_lock_maps_aligned(krnl, lctx),
             lctx.kernel_view_locking_state() is Acquire,
@@ -438,11 +423,6 @@ pub(crate) fn kill_reclaim_held_leaves(
         entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
     ensures
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
@@ -588,11 +568,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         old(krnl).it_mp.spec_index(iommu_table).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
         old(krnl).it_mp.spec_index(iommu_table).view().did is None,
     ensures
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
@@ -656,11 +631,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
                 old(lctx).process_lock_map().dom().contains(p) ==> krnl.prc_mp.dom().contains(p)
                     && krnl.prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             typed_lock_maps_aligned(krnl, lctx),
             lctx.kernel_view_locking_state() is Acquire,

@@ -56,11 +56,6 @@ pub fn drain_2m_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         },
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
@@ -127,11 +122,6 @@ pub fn drain_2m_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
             },
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
-            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             held_threads_unchanged(old(krnl).thrd_mp, krnl.thrd_mp, old(lctx)),
             held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx)),

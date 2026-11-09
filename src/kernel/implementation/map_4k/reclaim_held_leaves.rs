@@ -72,11 +72,6 @@ pub fn reclaim_held_leaves(
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![thrd_ptr]),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
@@ -136,11 +131,6 @@ pub fn reclaim_held_leaves(
             lctx.kernel_view_locking_state() is Acquire,
             steps.snapshot_k() == *krnl,
             steps.view() == old(steps).view(),
-            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             KERNEL_MEM_END_L4INDEX <= cursor.0 && pei_valid(cursor.0) && pei_valid(cursor.1) && pei_valid(cursor.2) && cursor.3 <= 512,
             e == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable),
             e.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
@@ -248,11 +238,6 @@ fn reclaim_held_leaf(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         reclaim_held_leaves_eol_loop_framing(k0, *final(krnl), &lctx0, pagetable, thrd_ptr, *final(indirect_4k), *final(direct_4k), *final(indirect_2m), *final(direct_2m), *final(indirect_1g),
             *final(direct_1g), ret),
         kind is L1g ==> ret == (next.0, next.1, 511usize, 512usize),

@@ -66,11 +66,6 @@ pub fn reclaim_dangling_thread(
         },
         held_containers_unchanged(old(krnl).ctn_mp, final(steps).snapshot_k().ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(steps).snapshot_k().prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(steps).snapshot_k().prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(steps).snapshot_k().prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(old(krnl).thrd_mp, final(steps).snapshot_k().thrd_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(steps).snapshot_k().cpu_arr, old(lctx)),
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![dangling_ptr]),

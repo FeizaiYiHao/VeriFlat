@@ -39,11 +39,6 @@ pub(crate) fn kill_retire_hold_roots(
         old(krnl).prc_mp.spec_index(target).view_rodata().view().iommu_cr3 == iommu_cr3,
         old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
     ensures
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,

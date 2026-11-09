@@ -47,11 +47,6 @@ fn kill_reclaim_lock_cache_2m(
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ2m, allc_ptr, cpu_id), final(lctx).allocator_cache_2m_lock_map()[(allc_ptr, cpu_id)]),
@@ -311,11 +306,6 @@ fn kill_reclaim_last_held_2m_mapping_scoped(
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            entry_lctx.process_lock_map().dom().contains(p) && entry_lctx.process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(&entry_lctx, final(lctx)),
@@ -472,11 +462,6 @@ pub(crate) fn kill_reclaim_held_2m_page_scoped(
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),

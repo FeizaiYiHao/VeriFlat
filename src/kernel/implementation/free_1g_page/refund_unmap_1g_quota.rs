@@ -57,11 +57,6 @@ fn refund_unmap_1g_quota_level(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, ow
         final(lctx).kernel_view_locking_state() is Acquire,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
@@ -168,11 +163,6 @@ fn refund_unmap_1g_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
         forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
@@ -286,11 +276,6 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         final(lctx).kernel_view_locking_state() is Acquire,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
@@ -395,11 +380,6 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
             forall|d: int| #![trigger indirect[d]] remaining <= d < thread_depth ==> indirect[d] == 0,
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
-            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx)),
             forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
                 ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),

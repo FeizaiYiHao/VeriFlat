@@ -44,11 +44,6 @@ pub fn reclaim_last_lock_4k_cache_with_room(krnl: &mut KernelK, allc_ptr: RwLock
         ret.view().lock_id() == final(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),

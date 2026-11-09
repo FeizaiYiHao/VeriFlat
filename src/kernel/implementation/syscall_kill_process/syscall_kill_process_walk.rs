@@ -32,11 +32,6 @@ pub(crate) fn kill_mark_child(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -95,15 +90,15 @@ pub(crate) fn kill_mark_child(
         };
         assert(!krnl.prc_mp.spec_index(child_ptr).wlocked_by_thread(lctx.thread_id())) by { krnl.prc_mp.typed_lock_map_aligned_locked_at(lctx.process_lock_map(), lctx.thread_id(), child_ptr); };
         if scope is Subtree {
-            assert(krnl.prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().contains(child_ptr)) by {
+            assert(krnl.prc_mp.spec_index(child_ptr).view().uppertree_seq.view().contains(prc_ptr)) by {
                 let uppers = krnl.prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
                 let tree = krnl.ctn_mp.spec_index(target_ro.owning_container).view_ghost().owned_processes.view();
                 let root = krnl.ctn_mp.spec_index(target_ro.owning_container).view().root_process;
                 process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
-                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
-                process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, target); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, prc_ptr);
+                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
+                process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, target); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, target, prc_ptr);
                 assert(uppers.contains(target)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
-                assert(uppers.contains(prc_ptr)) by { process_subtree_set_wf_at(root, tree, krnl.prc_mp, prc_ptr, target); };
+                process_subtree_set_wf_at(root, tree, krnl.prc_mp, prc_ptr, target);
             };
         } else {
             container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr);
@@ -160,11 +155,6 @@ pub(crate) fn kill_first_thread(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -317,11 +307,6 @@ pub(crate) fn kill_finish_marked_victim(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -403,11 +388,6 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -545,11 +525,6 @@ pub(crate) fn kill_release_victim_caller(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -658,11 +633,6 @@ pub(crate) fn kill_unlink_victim(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -773,11 +743,6 @@ pub(crate) fn kill_reclaim_victim(
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
                 && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
-            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
-            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
-                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

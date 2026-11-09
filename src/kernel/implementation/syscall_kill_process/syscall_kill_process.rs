@@ -133,12 +133,11 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             process_children_parent_wf_at(root, tree, krnl.prc_mp, prc_ptr, child_ptr); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
             container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container, child_ptr);
         };
-        assert(krnl.prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().contains(child_ptr)) by {
+        assert(krnl.prc_mp.spec_index(child_ptr).view().uppertree_seq.view().contains(prc_ptr)) by {
             let tree = krnl.ctn_mp.spec_index(process_ro.owning_container).view_ghost().owned_processes.view();
             let root = krnl.ctn_mp.spec_index(process_ro.owning_container).view().root_process;
             process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container);
-            process_root_wf_at(root, tree, krnl.prc_mp, child_ptr); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, prc_ptr);
-            assert(krnl.prc_mp.spec_index(child_ptr).view().uppertree_seq.view().contains(prc_ptr)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
+            process_root_wf_at(root, tree, krnl.prc_mp, child_ptr); process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr);
         };
     }
     let child_res = krnl.try_wlock_process_and_mark_kill(child_ptr, prc_ptr, thrd_ptr, Ghost(killer_info), Tracked(&mut *lctx));
