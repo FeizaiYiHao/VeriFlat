@@ -76,7 +76,7 @@ verus! {
             final(lctx).cpu_id() == entry_lctx.cpu_id(),
             final(krnl).inv(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
-            final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == entry_krnl.thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == entry_krnl.thrd_mp.spec_index(thrd_ptr).view().exited,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { temp_alloc_cache_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k, ..entry_krnl.thrd_mp.spec_index(thrd_ptr).view() }),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == entry_krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == entry_krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container,

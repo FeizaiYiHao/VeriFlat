@@ -27,7 +27,7 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
         pre.pt_mp.dom().contains(r) && r != table ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
-    &&& new_table.view_ghost() == post.pt_lower.view().spec_index(table)
+    &&& new_table.view().lower_backup.view() == post.pt_lower.view().spec_index(table)
     &&& new_table.view().kernel_entries == old_table.view().kernel_entries
     &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
     &&& new_table.view().cr3 == old_table.view().cr3

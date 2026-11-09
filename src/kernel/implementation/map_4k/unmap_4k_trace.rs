@@ -136,7 +136,7 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
         held_threads_unchanged(entry.thrd_mp, krnl.thrd_mp, held),
         held_processes_unchanged(entry.prc_mp, krnl.prc_mp, held),
         krnl.pt_mp.dom().contains(pagetable),
-        krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view() }),
+        krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().table_stale_cpus, ..entry.pt_mp.spec_index(pagetable).view() }),
         typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> {
             &&& krnl.pt_mp.spec_index(pagetable).locking_thread() == entry.pt_mp.spec_index(pagetable).locking_thread()
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(entry.pt_mp, entry.pt_lower.view(), pagetable).mapping_4k()

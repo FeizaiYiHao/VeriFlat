@@ -173,9 +173,9 @@ pub(super) fn release_new_process_child_locks(
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
-    krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
+    krnl.unlock_pagetable_range_existing_windows::<false>(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
     proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr)); }
-    krnl.unlock_pagetable_range_existing_windows(target_pagetable_ptr, source_range, Tracked(&target_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(target_window_perms));
+    krnl.unlock_pagetable_range_existing_windows::<true>(target_pagetable_ptr, source_range, Tracked(&target_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(target_window_perms));
     wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
     krnl.runlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
@@ -234,7 +234,7 @@ pub(super) fn release_new_process_thread_locks_and_attach_endpoint(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state is RUNNING,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         progress_peer_of(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()) is None,
         current_thread_lock_perm.state() is WriteLock && current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread()->Write_lock_id,
@@ -249,7 +249,7 @@ pub(super) fn release_new_process_thread_locks_and_attach_endpoint(
         old(krnl).thrd_mp.spec_index(new_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(new_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(new_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(new_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(new_thrd_ptr).view().exited.view(),
         new_thread_lock_perm.state() is WriteLock && new_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         new_thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(new_thrd_ptr).locking_thread()->Write_lock_id,
         endpoint is Some ==> {
@@ -290,7 +290,7 @@ pub(super) fn release_new_process_thread_locks_and_attach_endpoint(
             },
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(current_thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-        !final(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         final(krnl).thrd_mp.spec_index(new_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(new_thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(new_thrd_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thrd_mp.spec_index(new_thrd_ptr).view().endpoint_descriptors, ..old(krnl).thrd_mp.spec_index(new_thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(new_thrd_ptr).view().endpoint_descriptors.view() == if endpoint is Some {

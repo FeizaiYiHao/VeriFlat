@@ -21,7 +21,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(0) is None,
             old(krnl).ep_mp.dom().contains(ep_ptr),
             {

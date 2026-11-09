@@ -70,7 +70,7 @@ verus! {
                 old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
                 old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
                 old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-                !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+                !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
                 old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
                 old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 1,
                 old(lctx).page_lock_map().dom().is_empty(),

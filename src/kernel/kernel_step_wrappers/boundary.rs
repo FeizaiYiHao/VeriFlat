@@ -666,7 +666,7 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
-        post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
+        post.pt_mp.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(pagetable_ptr).view().lower_backup, ..pre.pt_mp.spec_index(pagetable_ptr).view() }),
         post.pt_mp.spec_index(pagetable_ptr).lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
     ensures
         ({
@@ -750,7 +750,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
         match table {
             Some(p) => {
                 &&& post.pt_mp.unchanged_except(&pre.pt_mp, p)
-                &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
+                &&& post.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(p).view().lower_backup, ..pre.pt_mp.spec_index(p).view() })
                 &&& post.pt_mp.spec_index(p).lock_state_u() == pre.pt_mp.spec_index(p).lock_state_u()
             },
             None => post.pt_mp == pre.pt_mp,

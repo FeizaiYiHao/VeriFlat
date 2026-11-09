@@ -42,12 +42,12 @@ pub(crate) fn kill_container_cpus(
         old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(owner_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().depth < old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
-        old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(owner_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(owner_ptr),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Walk),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         cpu_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         process_perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
@@ -73,11 +73,18 @@ pub(crate) fn kill_container_cpus(
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         final(lctx).process_lock_map().dom() =~= set![prc_ptr],
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
-        !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(owner_ptr) == old(krnl).ctn_mp.spec_index(owner_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         ({
             let (set_ptr, set_perm) = ret;
             let set_perm = set_perm.view();
@@ -97,11 +104,11 @@ pub(crate) fn kill_container_cpus(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
         },
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -114,7 +121,9 @@ pub(crate) fn kill_container_cpus(
     let mut i: usize = 0;
     while i < NUM_CPUS
         invariant
-            krnl.cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+            krnl.cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+            krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+            krnl.cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
@@ -125,9 +134,7 @@ pub(crate) fn kill_container_cpus(
                 &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
                 &&& krnl.ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
                 &&& krnl.ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+                &&& krnl.ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
             },
             0 <= i <= NUM_CPUS,
             0 <= start <= steps.view().len(),
@@ -151,12 +158,10 @@ pub(crate) fn kill_container_cpus(
             krnl.ctn_mp.spec_index(ctn_ptr).being_killed(),
             !krnl.ctn_mp.spec_index(owner_ptr).being_killed(),
             krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view().depth < krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
-            krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(owner_ptr),
-            krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
-            krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
+            krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(owner_ptr),
             krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Cpus),
-            !krnl.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !krnl.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             cpu_perm.lock_id() == krnl.cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             process_perm.lock_id() == krnl.prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
             container_perm.lock_id() == krnl.ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
@@ -172,9 +177,16 @@ pub(crate) fn kill_container_cpus(
             set_perm.thread_id() == lctx.thread_id(),
             set_perm.lock_id() == krnl.cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
             lctx.container_lock_map() == old(lctx).container_lock_map(),
-            krnl.ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-            krnl.ctn_mp.spec_index(owner_ptr) == old(krnl).ctn_mp.spec_index(owner_ptr),
-            krnl.prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+            held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            ({
+                &&& krnl.prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+                &&& krnl.prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+                &&& krnl.prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+                &&& krnl.prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+                &&& krnl.prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+                &&& krnl.prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+                &&& krnl.prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+            }),
             krnl.cpu_set_mp.spec_index(set_ptr).killer_info() == Some(killer_info),
             forall|j: CpuId| #![trigger krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j)] j < i ==> !krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(j),
         decreases NUM_CPUS - i,
@@ -185,12 +197,13 @@ pub(crate) fn kill_container_cpus(
             (set.owned_cpus.contains(i), set.owned_cpus.is_closed(i))
         };
         if member {
+            proof { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, set_ptr); }
             kill_container_move_cpu(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, set_ptr, i, closed,
                 Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(&set_perm), Ghost(start), Ghost(pre), Ghost(ctx));
         }
         i = i + 1;
     }
-    proof { cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); }
+    proof { cpu_set_perms_wf_at(krnl.cpu_set_mp, set_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, set_ptr); }
     assert(krnl.cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view() =~= Set::<CpuId>::empty());
     kill_container_pages_enter(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, owner_ptr, set_ptr, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(&set_perm), Ghost(start), Ghost(pre), Ghost(ctx));
@@ -224,12 +237,12 @@ fn kill_container_cpus_enter(
         old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(owner_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().depth < old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
-        old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(owner_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(owner_ptr),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Walk),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         cpu_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         process_perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
@@ -255,11 +268,18 @@ fn kill_container_cpus_enter(
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         final(lctx).process_lock_map().dom() =~= set![prc_ptr],
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Cpus),
-        !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(owner_ptr) == old(krnl).ctn_mp.spec_index(owner_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         ({
             let (set_ptr, set_perm) = ret;
             let set_perm = set_perm.view();
@@ -278,11 +298,11 @@ fn kill_container_cpus_enter(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
         },
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -339,12 +359,12 @@ fn kill_container_pages_enter(
         old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(owner_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().depth < old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
-        old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(owner_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(owner_ptr),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Cpus),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         cpu_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         process_perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
@@ -375,25 +395,32 @@ fn kill_container_pages_enter(
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         final(lctx).process_lock_map().dom() =~= set![prc_ptr],
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
-        !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         final(lctx).cpu_set_lock_map().dom() =~= set![set_ptr],
         typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write),
         final(krnl).cpu_set_mp.dom().contains(set_ptr),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(owner_ptr) == old(krnl).ctn_mp.spec_index(owner_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         final(krnl).cpu_set_mp.spec_index(set_ptr) == old(krnl).cpu_set_mp.spec_index(set_ptr),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
         },
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
@@ -444,12 +471,12 @@ fn kill_container_move_cpu(
         old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(owner_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(owner_ptr).view_rodata().view().depth < old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
-        old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(owner_ptr),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(owner_ptr),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Cpus),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         cpu_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         process_perm.lock_id() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()->Write_lock_id,
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()->Write_lock_id,
@@ -482,15 +509,22 @@ fn kill_container_move_cpu(
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         final(lctx).process_lock_map().dom() =~= set![prc_ptr],
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Cpus),
-        !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         final(lctx).cpu_set_lock_map().dom() =~= set![set_ptr],
         typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), set_ptr, TypedLockMode::Write),
         final(krnl).cpu_set_mp.dom().contains(set_ptr),
         set_perm.lock_id() == final(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(owner_ptr) == old(krnl).ctn_mp.spec_index(owner_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         final(krnl).cpu_set_mp.spec_index(set_ptr).killer_info() == old(krnl).cpu_set_mp.spec_index(set_ptr).killer_info(),
         final(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view() == old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().remove(cpu_i),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -498,11 +532,11 @@ fn kill_container_move_cpu(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
         },
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),

@@ -25,8 +25,11 @@ pub(crate) open spec fn kill_reclaim_held_4k_page_scoped_eof_transition_framing(
     &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
         pre.pt_mp.dom().contains(r) && r != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
     &&& new_table.locking_thread() == old_table.locking_thread()
+    &&& new_table.locking_thread() is Write
     &&& new_table.being_killed() == old_table.being_killed()
-    &&& new_c.higher == old_c.higher
+    &&& new_c.higher == (PageTableHigher { lower_backup: Ghost(new_c.lower), ..old_c.higher })
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -97,8 +100,11 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
     &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
         pre.pt_mp.dom().contains(r) && r != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
     &&& new_table.locking_thread() == old_table.locking_thread()
+    &&& new_table.locking_thread() is Write
     &&& new_table.being_killed() == old_table.being_killed()
-    &&& new_c.higher == old_c.higher
+    &&& new_c.higher == (PageTableHigher { lower_backup: Ghost(new_c.lower), ..old_c.higher })
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
@@ -261,7 +267,7 @@ pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
             pre.pt_mp.dom().contains(r) && r != table ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
-        &&& new_table.view_ghost() == post.pt_lower.view().spec_index(table)
+        &&& new_table.view().lower_backup.view() == post.pt_lower.view().spec_index(table)
         &&& new_c.page_closure() == old_c.page_closure().remove(pg_ptr)
         &&& new_c.mapping_4k() == old_c.mapping_4k()
         &&& new_c.mapping_2m() == old_c.mapping_2m()

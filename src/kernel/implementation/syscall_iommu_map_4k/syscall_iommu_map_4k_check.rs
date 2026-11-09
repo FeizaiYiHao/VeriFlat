@@ -68,7 +68,7 @@ fn iommu_map_4k_unlock_rejected(
         old(krnl).thrd_mp.dom().contains(thrd_ptr) && !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean() && old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         old(krnl).it_mp.dom().contains(iommu_table_ptr) && old(krnl).it_mp.spec_index(iommu_table_ptr).view().leaves_present(),
@@ -146,7 +146,7 @@ fn iommu_map_4k_unlock_thread_rejected(
         old(krnl).thrd_mp.dom().contains(thrd_ptr) && !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean() && old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write),
@@ -255,7 +255,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr && thread.state == (ThreadState::RUNNING { cpu_id })
             &&& thread.quota_4k >= 3 * range && thread.temp_alloc_clean() && thread.free_quota_pending_clean() && thread.syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view().exited.view()
             &&& old(krnl).ctn_mp.dom().contains(e.container_ptr)
             &&& process.pagetable == ptp && process.iommu_table == Some(e.iommu_table_ptr)
             &&& !final(krnl).prc_mp.spec_index(e.process_ptr).being_killed()
@@ -376,7 +376,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     let user_range = va2index(va).0 >= krnl.dflt_pt.borrow().kernel_l4_end;
     let Tracked(iommu_table_lock_perm) = krnl.wlock_iommu_table(iommu_table_ptr, Tracked(&mut *lctx));
     let Tracked(window_perms) = if user_range {
-        krnl.lock_pagetable_range_existing_windows(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx))
+        krnl.lock_pagetable_range_existing_windows::<false>(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx))
     } else { Tracked(Map::tracked_empty()) };
     proof {
         iova_range.wf_implies_view_index_is_start_plus_offset(); va_range.wf_implies_view_index_is_start_plus_offset();
@@ -413,7 +413,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         assert(lctx.pagetable_lock_map().dom() =~= set![pagetable_ptr] && lctx.iommu_table_lock_map().dom() =~= set![iommu_table_ptr]);
     }
     if !success {
-        if user_range { krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms)); }
+        if user_range { krnl.unlock_pagetable_range_existing_windows::<false>(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms)); }
         proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks); }
         iommu_map_4k_unlock_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr, Tracked(iommu_table_lock_perm),
             Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));

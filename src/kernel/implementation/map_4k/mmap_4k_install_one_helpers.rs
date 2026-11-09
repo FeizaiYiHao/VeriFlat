@@ -118,7 +118,7 @@ verus! {
             held_locks_order_below(old(krnl), &entry_lctx, ALLOCATOR_CACHE_4K_MAJOR),
             entry_lctx.thread_id() == old(lctx).thread_id(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(quota_thrd_ptr)),
-            !old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited.view(),
             transfer_source is None ==> old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_container == ctn_ptr,
             !write_held ==> transfer_source is None,
             ((old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr)
@@ -167,7 +167,12 @@ verus! {
                     ==> final(krnl).thrd_mp.spec_index(peer).view().state is IPC_TRANSIT && final(krnl).thrd_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread
             },
             held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
-            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
@@ -225,14 +230,16 @@ verus! {
                 &&& final(krnl).ctn_mp.dom().contains(source)
                 &&& final(krnl).ctn_mp.spec_index(source).is_init() == old(krnl).ctn_mp.spec_index(source).is_init()
                 &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(source).view_ghost() == old(krnl).ctn_mp.spec_index(source).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
                 &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).is_init() == old(krnl).ctn_mp.spec_index(ctn_ptr).is_init()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })
@@ -247,7 +254,14 @@ verus! {
             held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, &entry_lctx),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, &entry_lctx, set![pagetable_ptr]),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, &entry_lctx),
-            forall|c: CpuId| #![trigger entry_lctx.cpu_lock_map().dom().contains(c)] entry_lctx.cpu_lock_map().dom().contains(c) ==> final(krnl).cpu_arr.spec_index(c).view() == old(krnl).cpu_arr.spec_index(c).view(),
+            forall|c: CpuId| #![trigger entry_lctx.cpu_lock_map().dom().contains(c)] entry_lctx.cpu_lock_map().dom().contains(c) ==> {
+                &&& final(krnl).cpu_arr.spec_index(c).view().view_lock() == old(krnl).cpu_arr.spec_index(c).view().view_lock()
+                &&& final(krnl).cpu_arr.spec_index(c).view().is_init() == old(krnl).cpu_arr.spec_index(c).view().is_init()
+                &&& final(krnl).cpu_arr.spec_index(c).view().view_rodata() == old(krnl).cpu_arr.spec_index(c).view().view_rodata()
+                &&& final(krnl).cpu_arr.spec_index(c).view().view() == old(krnl).cpu_arr.spec_index(c).view().view()
+                &&& final(krnl).cpu_arr.spec_index(c).view().locking_thread() == old(krnl).cpu_arr.spec_index(c).view().locking_thread()
+                &&& final(krnl).cpu_arr.spec_index(c).view().control() == old(krnl).cpu_arr.spec_index(c).view().control()
+            },
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).being_killed(),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view() == (Thread {
                 quota_4k: final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k, temp_alloc_cache_4k: final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().temp_alloc_cache_4k,
@@ -258,8 +272,6 @@ verus! {
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == if progress_thread == quota_thrd_ptr {
                 share_4k_progress_after_directory(mmap_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(), level), level)
             } else { mmap_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(), level) },
-            final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost(),
-            final(krnl).thrd_mp.spec_index(progress_thread).view_ghost() == old(krnl).thrd_mp.spec_index(progress_thread).view_ghost(),
             final(krnl).thrd_mp.dom().contains(progress_thread),
             progress_thread_lock_perm.lock_id() == final(krnl).thrd_mp.spec_index(progress_thread).locking_thread()->Write_lock_id,
             progress_thread != quota_thrd_ptr ==> final(krnl).thrd_mp.spec_index(progress_thread).view() == (Thread {
@@ -534,7 +546,6 @@ verus! {
                 syscall_progress: final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view()
             }),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(), level),
-            final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost(),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().temp_alloc_cache_4k.view().remove(pg_ptr),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k - 1,
             final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, quota_thrd_ptr),
@@ -549,7 +560,9 @@ verus! {
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus,
-            level is L2 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).higher == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher,
+            level is L2 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).higher
+                == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(pagetable_ptr).view().lower_backup, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher }),
+            !write_held ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().table_stale_cpus,
             forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).spec_held_l4(l4i)]
                 #![trigger final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_held_l4(l4i)]
@@ -808,31 +821,42 @@ verus! {
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
-            forall|cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)] old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            forall|cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)] old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> {
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control()
+            },
             forall|ctn_ptr: RwLockContainerPtr|
                 #![trigger old(lctx).container_lock_map().dom().contains(ctn_ptr)]
                 old(lctx).container_lock_map().dom().contains(ctn_ptr) ==> {
                     &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
                     &&& final(krnl).ctn_mp.lock_id_by_key(ctn_ptr) == old(krnl).ctn_mp.lock_id_by_key(ctn_ptr)
-                    &&& final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr)
                 },
+            held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+            held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
             forall|prc_ptr: RwLockProcessPtr|
                 #![trigger old(lctx).process_lock_map().dom().contains(prc_ptr)]
                 old(lctx).process_lock_map().dom().contains(prc_ptr) ==> {
                     &&& final(krnl).prc_mp.dom().contains(prc_ptr)
                     &&& final(krnl).prc_mp.lock_id_by_key(prc_ptr) == old(krnl).prc_mp.lock_id_by_key(prc_ptr)
-                    &&& final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr)
                 },
             forall|thrd_ptr: RwLockThreadPtr|
                 #![trigger old(lctx).thread_lock_map().dom().contains(thrd_ptr)]
                 old(lctx).thread_lock_map().dom().contains(thrd_ptr) ==> {
                     &&& final(krnl).thrd_mp.dom().contains(thrd_ptr)
-                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr) == old(krnl).thrd_mp.spec_index(thrd_ptr)
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view()
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).view_lock() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_lock()
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).is_init() == old(krnl).thrd_mp.spec_index(thrd_ptr).is_init()
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).view_rodata() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_rodata()
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()
+                    &&& thrd_ptr != progress_thread ==> final(krnl).thrd_mp.spec_index(thrd_ptr).control() == old(krnl).thrd_mp.spec_index(thrd_ptr).control()
                 },
             final(krnl).thrd_mp.spec_index(progress_thread).view() == (Thread {
                 syscall_progress: Ghost(share_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view(), level)), ..old(krnl).thrd_mp.spec_index(progress_thread).view()
             }),
-            final(krnl).thrd_mp.spec_index(progress_thread).view_ghost() == old(krnl).thrd_mp.spec_index(progress_thread).view_ghost(),
             final(krnl).thrd_mp.spec_index(progress_thread).locking_thread() == old(krnl).thrd_mp.spec_index(progress_thread).locking_thread(),
             final(krnl).thrd_mp.spec_index(progress_thread).being_killed() == old(krnl).thrd_mp.spec_index(progress_thread).being_killed(),
             forall|pagetable_ptr: RwLockPageTableRoot|
@@ -841,7 +865,12 @@ verus! {
                     &&& final(krnl).pt_mp.dom().contains(pagetable_ptr)
                     &&& final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr)
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) ==> {
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr) == old(krnl).pt_mp.spec_index(pagetable_ptr)
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_lock() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_lock()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() == old(krnl).pt_mp.spec_index(pagetable_ptr).is_init()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).control() == old(krnl).pt_mp.spec_index(pagetable_ptr).control()
                         &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)
                     }
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {
@@ -1053,31 +1082,42 @@ verus! {
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
-            forall|cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)] old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            forall|cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)] old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> {
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control()
+            },
             forall|ctn_ptr: RwLockContainerPtr|
                 #![trigger old(lctx).container_lock_map().dom().contains(ctn_ptr)]
                 old(lctx).container_lock_map().dom().contains(ctn_ptr) ==> {
                     &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
                     &&& final(krnl).ctn_mp.lock_id_by_key(ctn_ptr) == old(krnl).ctn_mp.lock_id_by_key(ctn_ptr)
-                    &&& final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr)
                 },
+            held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+            held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
             forall|prc_ptr: RwLockProcessPtr|
                 #![trigger old(lctx).process_lock_map().dom().contains(prc_ptr)]
                 old(lctx).process_lock_map().dom().contains(prc_ptr) ==> {
                     &&& final(krnl).prc_mp.dom().contains(prc_ptr)
                     &&& final(krnl).prc_mp.lock_id_by_key(prc_ptr) == old(krnl).prc_mp.lock_id_by_key(prc_ptr)
-                    &&& final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr)
                 },
             forall|t: RwLockThreadPtr|
                 #![trigger old(lctx).thread_lock_map().dom().contains(t)]
                 old(lctx).thread_lock_map().dom().contains(t) ==> {
                     &&& final(krnl).thrd_mp.dom().contains(t)
-                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t) == old(krnl).thrd_mp.spec_index(t)
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).view() == old(krnl).thrd_mp.spec_index(t).view()
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).view_lock() == old(krnl).thrd_mp.spec_index(t).view_lock()
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).is_init() == old(krnl).thrd_mp.spec_index(t).is_init()
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).view_rodata() == old(krnl).thrd_mp.spec_index(t).view_rodata()
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).locking_thread() == old(krnl).thrd_mp.spec_index(t).locking_thread()
+                    &&& t != thrd_ptr ==> final(krnl).thrd_mp.spec_index(t).control() == old(krnl).thrd_mp.spec_index(t).control()
                 },
             final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread {
                 syscall_progress: Ghost(mmap_2m_progress_after_directory(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level)), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view()
             }),
-            final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
             forall|pagetable_ptr: RwLockPageTableRoot|
@@ -1086,7 +1126,12 @@ verus! {
                     &&& final(krnl).pt_mp.dom().contains(pagetable_ptr)
                     &&& final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr)
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) ==> {
-                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr) == old(krnl).pt_mp.spec_index(pagetable_ptr)
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_lock() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_lock()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() == old(krnl).pt_mp.spec_index(pagetable_ptr).is_init()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(krnl).pt_mp.spec_index(pagetable_ptr).view_rodata()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()
+                        &&& final(krnl).pt_mp.spec_index(pagetable_ptr).control() == old(krnl).pt_mp.spec_index(pagetable_ptr).control()
                         &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)
                     }
                     &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {

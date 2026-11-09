@@ -4,15 +4,14 @@ use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-/// Approved TCB boundary: initialize the second 4K of an installed container's 2M page as that
-/// container's `CpuOfflineFlags` table. The container `LockCell` fits in the first 4K
-/// (`ASSERT_CONTAINER_LOCK_FITS_4K`); `retype_container_page_tail_and_insert` keeps each table
-/// pointer unique through `insert_with_perm`.
+/// TCB: consume the owned second 4K returned by the container-page retype and initialize its flags table. The tail permission is transferred by value so a second initialization needs another owned region.
 #[verifier::external_body]
-fn retype_container_page_tail_to_offline_flags(container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
+fn retype_container_page_tail_to_offline_flags(ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags,
+    Tracked(tail_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
     requires
-        container_map.dom().contains(ctn_ptr),
         page_ptr_2m_valid(ctn_ptr),
+        tail_perm.is_init(),
+        tail_perm.addr() == cpu_offline_flags_ptr(ctn_ptr),
         flags.inv(),
     ensures
         ret.view().is_init(),
@@ -24,11 +23,14 @@ fn retype_container_page_tail_to_offline_flags(container_map: &ContainerLockedMa
 }
 
 impl UnLockedMap<usize, CpuOfflineFlags> {
-    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags,
+        Tracked(tail_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
             container_map.dom().contains(ctn_ptr),
             page_ptr_2m_valid(ctn_ptr),
+            tail_perm.is_init(),
+            tail_perm.addr() == cpu_offline_flags_ptr(ctn_ptr),
             !old(self).dom().contains(cpu_offline_flags_ptr(ctn_ptr)),
             flags.inv(),
             lctx.kernel_view_locking_state() is Acquire,
@@ -47,7 +49,7 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
                     &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
                 },
     {
-        let Tracked(flags_perm) = retype_container_page_tail_to_offline_flags(container_map, ctn_ptr, flags);
+        let Tracked(flags_perm) = retype_container_page_tail_to_offline_flags(ctn_ptr, flags, Tracked(tail_perm));
         self.insert_with_perm(ctn_ptr + 4096, Tracked(flags_perm));
     }
 

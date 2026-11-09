@@ -23,7 +23,7 @@ pub(crate) open spec fn kill_container_retire_eof_target_empty(pre: KernelK, ctn
     &&& target.view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
     &&& target.view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()
     &&& ro.parent == Some(parent_ptr)
-    &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
+    &&& target.view().uppertree_seq.view().contains(owner_ptr)
     &&& pre.cpu_set_mp.spec_index(ro.cpu_set).view().owned_cpus.view().is_empty()
     &&& pre.allc_4k_mp.spec_index(ro.allocator_ptr_4k).quota.view().value == 0
     &&& pre.allc_2m_mp.spec_index(ro.allocator_ptr_2m).quota.view().value == 0
@@ -40,7 +40,7 @@ pub(crate) broadcast proof fn kill_container_retire_eof_subtree_empty(pre: Kerne
 {
     if pre.ctn_mp.spec_index(ctn_ptr).view_ghost().subtree_set.view().contains(sub) {
         let d = pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth;
-        let uppers = pre.ctn_mp.spec_index(sub).view_ghost().uppertree_seq.view();
+        let uppers = pre.ctn_mp.spec_index(sub).view().uppertree_seq.view();
         assert(pre.ctn_mp.dom().contains(sub) && uppers.len() > d && uppers[d as int] == ctn_ptr) by { reveal(container_subtree_set_wf); };
         container_perms_wf_at(pre.ctn_mp, ctn_ptr); container_perms_wf_at(pre.ctn_mp, sub);
         let x = if uppers.len() == d + 1 { sub } else { uppers[d + 1] };
@@ -50,7 +50,7 @@ pub(crate) broadcast proof fn kill_container_retire_eof_subtree_empty(pre: Kerne
         }
         assert(pre.ctn_mp.dom().contains(x));
         assert(pre.ctn_mp.spec_index(x).view_rodata().view().depth == d + 1);
-        assert(pre.ctn_mp.spec_index(x).view_ghost().uppertree_seq.view()[d as int] == ctn_ptr);
+        assert(pre.ctn_mp.spec_index(x).view().uppertree_seq.view()[d as int] == ctn_ptr);
         container_root_wf_at(pre.rt_ctn, pre.ctn_mp, x);
         assert(pre.ctn_mp.spec_index(x).view_rodata().view().parent == Some(ctn_ptr)) by { reveal(container_uppertree_seq_parent_wf); };
         assert(pre.ctn_mp.spec_index(ctn_ptr).view().children.view().contains(x)) by { reveal(container_children_parent_wf); };

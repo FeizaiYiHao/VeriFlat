@@ -240,14 +240,14 @@ pub proof fn pagetable_window_holders_hold_pagetable_at(
             pt_mp.spec_index(pt_ptr).locked_by_thread(thread_id),
 { reveal(pagetable_window_holders_hold_pagetable); }
 
-/// While a page table is write-locked, its big lock's ghost value equals its L2/L1 part (`pt_lower`).
+/// While a page table is write-locked, its big-lock payload backup equals its L2/L1 part (`pt_lower`).
 pub open spec fn pagetable_lower_backup_wf(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     forall|pt: RwLockPageTableRoot|
         #![trigger pt_mp.spec_index(pt)]
         pt_mp.dom().contains(pt)
             && pt_mp.spec_index(pt).wlocked()
             ==>
-            pt_mp.spec_index(pt).view_ghost() == pt_lower.spec_index(pt)
+            pt_mp.spec_index(pt).view().lower_backup.view() == pt_lower.spec_index(pt)
 }
 
 pub proof fn pagetable_lower_backup_wf_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt_ptr: RwLockPageTableRoot)
@@ -255,7 +255,7 @@ pub proof fn pagetable_lower_backup_wf_at(pt_mp: PageTableLockedMap, pt_lower: P
         pagetable_lower_backup_wf(pt_mp, pt_lower),
         pt_mp.dom().contains(pt_ptr),
         pt_mp.spec_index(pt_ptr).wlocked(),
-    ensures pt_mp.spec_index(pt_ptr).view_ghost() == pt_lower.spec_index(pt_ptr),
+    ensures pt_mp.spec_index(pt_ptr).view().lower_backup.view() == pt_lower.spec_index(pt_ptr),
 {}
 
 /// The 2M windows `thread_id` has locked and its typed window map agree: every map entry names a well-formed window,

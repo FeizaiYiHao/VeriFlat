@@ -258,7 +258,7 @@ impl KernelSteps {
             match table {
                 Some(p) => {
                     &&& krnl.pt_mp.unchanged_except(&old(self).snapshot_k().pt_mp, p)
-                    &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
+                    &&& krnl.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(p).view().lower_backup, ..old(self).snapshot_k().pt_mp.spec_index(p).view() })
                     &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
@@ -368,7 +368,7 @@ impl KernelSteps {
             match table {
                 Some(p) => {
                     &&& krnl.pt_mp.unchanged_except(&old(self).snapshot_k().pt_mp, p)
-                    &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
+                    &&& krnl.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(p).view().lower_backup, ..old(self).snapshot_k().pt_mp.spec_index(p).view() })
                     &&& krnl.pt_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pt_mp.spec_index(p).lock_state_u()
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()

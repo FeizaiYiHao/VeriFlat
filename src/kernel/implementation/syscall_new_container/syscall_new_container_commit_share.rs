@@ -90,7 +90,7 @@ pub(super) fn commit_new_container_share_and_finish(
         old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_rodata().view().parent == Some(parent_ctn_ptr),
         old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_rodata().view().allocator_ptr_4k == child_allocator_4k_ptr,
         old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_rodata().view().scheduler == child_sched_ptr,
-        old(krnl).ctn_mp.spec_index(child_ctn_ptr).view_ghost().uppertree_seq.view() == old(krnl).ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view().push(parent_ctn_ptr),
+        old(krnl).ctn_mp.spec_index(child_ctn_ptr).view().uppertree_seq.view() == old(krnl).ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
         old(krnl).ctn_mp.spec_index(child_ctn_ptr).view().root_process == child_prc_ptr,
         parent_container_lock_perm.view().state() is WriteLock,
         parent_container_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -127,7 +127,7 @@ pub(super) fn commit_new_container_share_and_finish(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_4k.view() == set![thread_pg_ptr],
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_1g.view().is_empty(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
             directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_ctn_ptr), ..record }),

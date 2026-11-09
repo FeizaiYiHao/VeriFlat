@@ -106,7 +106,7 @@ fn new_container_release_entry_locks(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         thread_lock_perm.state() is WriteLock && thread_lock_perm.thread_id() == old(lctx).thread_id() && thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -292,7 +292,7 @@ fn new_container_lock_owners(
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().exited.view()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_4k >= 9 + funding_page_count + 3 * range
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_2m >= 2
@@ -579,7 +579,7 @@ fn new_container_lock_entry(
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().exited.view()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_4k >= 9 + funding_page_count + 3 * e.source_range.len
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_2m >= 2

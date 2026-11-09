@@ -74,7 +74,7 @@ pub(super) fn allocate_new_process_pages(
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state,
-        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_2m.view().is_empty(),

@@ -86,7 +86,7 @@ pub(super) fn iommu_map_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx)
             &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
-            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view().exited.view()
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, e.process_ptr)

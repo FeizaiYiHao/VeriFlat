@@ -17,7 +17,7 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
         forall|ptr: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(ptr)] #![trigger old_k.pt_mp.spec_index(ptr)] old_k.pt_mp.dom().contains(ptr) ==> new_k.pt_mp.spec_index(ptr) == old_k.pt_mp.spec_index(ptr),
         new_k.pt_mp.spec_index(pg_ptr).is_init(),
         new_k.pt_mp.spec_index(pg_ptr).view() == higher,
-        new_k.pt_mp.spec_index(pg_ptr).view_ghost() == lower,
+        new_k.pt_mp.spec_index(pg_ptr).view().lower_backup.view() == lower,
         new_k.pt_mp.spec_index(pg_ptr).write_lock_perm_match(&lock_perm),
         lock_perm.thread_id() == new_lctx.thread_id(),
         new_k.pt_lower.view() == old_k.pt_lower.view().insert(pg_ptr, lower),

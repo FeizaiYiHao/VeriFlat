@@ -12,7 +12,14 @@ pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
     &&& process_tree_fields_wf(prc_mp)
     &&& forall|p: RwLockProcessPtr|
         #![auto]
-        prc_mp.dom().contains(p) ==> prc_mp.spec_index(p).inv()
+        prc_mp.dom().contains(p) ==> {
+            &&& prc_mp.spec_index(p).inv()
+            &&& prc_mp.spec_index(p).view().pci_cleared.view() ==> {
+                &&& prc_mp.spec_index(p).being_killed()
+                &&& prc_mp.spec_index(p).view().owned_threads.view().len() == 0
+                &&& prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().is_empty()
+            }
+        }
 }
 
 pub proof fn process_perms_wf_map(prc_mp: ProcessLockedMap)
@@ -28,13 +35,16 @@ pub proof fn process_perms_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockProces
         prc_mp.view().spec_index(prc_ptr).is_init(),
         prc_mp.view().spec_index(prc_ptr).addr() == prc_ptr,
         prc_mp.spec_index(prc_ptr).inv(),
+        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).being_killed(),
+        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
+        prc_mp.spec_index(prc_ptr).view().pci_cleared.view() ==> prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         prc_mp.spec_index(prc_ptr).is_init(),
         prc_mp.spec_index(prc_ptr).view().inv(),
         prc_mp.spec_index(prc_ptr).view().owned_threads.view().no_duplicates(),
         prc_mp.spec_index(prc_ptr).view().children.view().no_duplicates(),
-        prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().no_duplicates(),
+        prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().no_duplicates(),
         !prc_mp.spec_index(prc_ptr).view().children.view().contains(prc_ptr),
-        prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().len() == prc_mp.spec_index(prc_ptr).view_rodata().view().depth,
+        prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().len() == prc_mp.spec_index(prc_ptr).view_rodata().view().depth,
 { reveal(process_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); }
 
 /// Each process's child list and upper-tree sequence are duplicate-free, it is not its own child, and its depth is the
@@ -44,9 +54,9 @@ pub open spec fn process_tree_fields_wf(prc_mp: ProcessLockedMap) -> bool {
         #![trigger prc_mp.dom().contains(p)]
         prc_mp.dom().contains(p) ==> {
             &&& prc_mp.spec_index(p).view().children.view().no_duplicates()
-            &&& prc_mp.spec_index(p).view_ghost().uppertree_seq.view().no_duplicates()
+            &&& prc_mp.spec_index(p).view().uppertree_seq.view().no_duplicates()
             &&& !prc_mp.spec_index(p).view().children.view().contains(p)
-            &&& prc_mp.spec_index(p).view_ghost().uppertree_seq.view().len() == prc_mp.spec_index(p).view_rodata().view().depth
+            &&& prc_mp.spec_index(p).view().uppertree_seq.view().len() == prc_mp.spec_index(p).view_rodata().view().depth
         }
 }
 
@@ -178,7 +188,7 @@ pub open spec fn process_uppertree_seq_parent_wf(root_process: RwLockProcessPtr,
     forall|p: RwLockProcessPtr|
         #![trigger process_tree_dom.contains(p)]
         process_tree_dom.contains(p) && p != root_process
-            ==> prc_mp.spec_index(p).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(p).view_rodata().view().depth - 1) == prc_mp.spec_index(p).view_rodata().view().parent.unwrap()
+            ==> prc_mp.spec_index(p).view().uppertree_seq.view().spec_index(prc_mp.spec_index(p).view_rodata().view().depth - 1) == prc_mp.spec_index(p).view_rodata().view().parent.unwrap()
 }
 
 /// The upper-tree sequence of non-root member `prc_ptr` ends with its parent.
@@ -187,7 +197,7 @@ pub proof fn process_uppertree_seq_parent_wf_at(root_process: RwLockProcessPtr, 
         process_uppertree_seq_parent_wf(root_process, process_tree_dom, prc_mp),
         process_tree_dom.contains(prc_ptr),
     ensures
-        prc_ptr != root_process ==> prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(prc_ptr).view_rodata().view().depth - 1) == prc_mp.spec_index(prc_ptr).view_rodata().view().parent.unwrap(),
+        prc_ptr != root_process ==> prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().spec_index(prc_mp.spec_index(prc_ptr).view_rodata().view().depth - 1) == prc_mp.spec_index(prc_ptr).view_rodata().view().parent.unwrap(),
 { reveal(process_uppertree_seq_parent_wf); }
 
 /// A subtree member `sub` of member `p` is a member whose upper-tree sequence holds `p` at `p`'s depth.
@@ -197,8 +207,8 @@ pub open spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_
         #![trigger prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub)]
         process_tree_dom.contains(p) && prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub) ==> {
             &&& process_tree_dom.contains(sub)
-            &&& prc_mp.spec_index(sub).view_ghost().uppertree_seq.view().len() > prc_mp.spec_index(p).view_rodata().view().depth
-            &&& prc_mp.spec_index(sub).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(p).view_rodata().view().depth as int) == p
+            &&& prc_mp.spec_index(sub).view().uppertree_seq.view().len() > prc_mp.spec_index(p).view_rodata().view().depth
+            &&& prc_mp.spec_index(sub).view().uppertree_seq.view().spec_index(prc_mp.spec_index(p).view_rodata().view().depth as int) == p
         }
 }
 
@@ -210,8 +220,8 @@ pub proof fn process_subtree_set_wf_at(root_process: RwLockProcessPtr, process_t
     ensures
         prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().contains(sub_prc_ptr) ==> {
             &&& process_tree_dom.contains(sub_prc_ptr)
-            &&& prc_mp.spec_index(sub_prc_ptr).view_ghost().uppertree_seq.view().len() > prc_mp.spec_index(prc_ptr).view_rodata().view().depth
-            &&& prc_mp.spec_index(sub_prc_ptr).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(prc_ptr).view_rodata().view().depth as int) == prc_ptr
+            &&& prc_mp.spec_index(sub_prc_ptr).view().uppertree_seq.view().len() > prc_mp.spec_index(prc_ptr).view_rodata().view().depth
+            &&& prc_mp.spec_index(sub_prc_ptr).view().uppertree_seq.view().spec_index(prc_mp.spec_index(prc_ptr).view_rodata().view().depth as int) == prc_ptr
         },
 { reveal(process_subtree_set_wf); }
 
@@ -219,13 +229,13 @@ pub proof fn process_subtree_set_wf_at(root_process: RwLockProcessPtr, process_t
 #[verifier::opaque]
 pub open spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, prc_mp: ProcessLockedMap) -> bool {
     forall|p: RwLockProcessPtr, u: RwLockProcessPtr|
-        #![trigger prc_mp.spec_index(p).view_ghost().uppertree_seq.view().contains(u)]
-        process_tree_dom.contains(p) && prc_mp.spec_index(p).view_ghost().uppertree_seq.view().contains(u) ==> {
+        #![trigger prc_mp.spec_index(p).view().uppertree_seq.view().contains(u)]
+        process_tree_dom.contains(p) && prc_mp.spec_index(p).view().uppertree_seq.view().contains(u) ==> {
             &&& process_tree_dom.contains(u)
-            &&& prc_mp.spec_index(p).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(u).view_rodata().view().depth as int) == u
-            &&& prc_mp.spec_index(u).view_rodata().view().depth == prc_mp.spec_index(p).view_ghost().uppertree_seq.view().index_of(u)
+            &&& prc_mp.spec_index(p).view().uppertree_seq.view().spec_index(prc_mp.spec_index(u).view_rodata().view().depth as int) == u
+            &&& prc_mp.spec_index(u).view_rodata().view().depth == prc_mp.spec_index(p).view().uppertree_seq.view().index_of(u)
             &&& prc_mp.spec_index(u).view_ghost().subtree_set.view().contains(p)
-            &&& prc_mp.spec_index(u).view_ghost().uppertree_seq.view() =~= prc_mp.spec_index(p).view_ghost().uppertree_seq.view().subrange(0, prc_mp.spec_index(u).view_rodata().view().depth as int)
+            &&& prc_mp.spec_index(u).view().uppertree_seq.view() =~= prc_mp.spec_index(p).view().uppertree_seq.view().subrange(0, prc_mp.spec_index(u).view_rodata().view().depth as int)
         }
 }
 
@@ -235,12 +245,12 @@ pub proof fn process_uppertree_seq_wf_at(root_process: RwLockProcessPtr, process
         process_uppertree_seq_wf(root_process, process_tree_dom, prc_mp),
         process_tree_dom.contains(prc_ptr),
     ensures
-        prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(upper_prc_ptr) ==> {
+        prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().contains(upper_prc_ptr) ==> {
             &&& process_tree_dom.contains(upper_prc_ptr)
-            &&& prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().spec_index(prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth as int) == upper_prc_ptr
-            &&& prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth == prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().index_of(upper_prc_ptr)
+            &&& prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().spec_index(prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth as int) == upper_prc_ptr
+            &&& prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth == prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().index_of(upper_prc_ptr)
             &&& prc_mp.spec_index(upper_prc_ptr).view_ghost().subtree_set.view().contains(prc_ptr)
-            &&& prc_mp.spec_index(upper_prc_ptr).view_ghost().uppertree_seq.view() =~= prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().subrange(0, prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth as int)
+            &&& prc_mp.spec_index(upper_prc_ptr).view().uppertree_seq.view() =~= prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().subrange(0, prc_mp.spec_index(upper_prc_ptr).view_rodata().view().depth as int)
         },
 { reveal(process_uppertree_seq_wf); }
 
@@ -249,16 +259,16 @@ pub proof fn process_uppertree_seq_wf_implies_ancestors_in_dom(root_process: RwL
     requires
         process_uppertree_seq_wf(root_process, process_tree_dom, prc_mp),
         process_tree_dom.contains(prc_ptr),
-    ensures forall|u: RwLockProcessPtr| #[trigger] prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(u) ==> process_tree_dom.contains(u),
+    ensures forall|u: RwLockProcessPtr| #[trigger] prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().contains(u) ==> process_tree_dom.contains(u),
 { reveal(process_uppertree_seq_wf); }
 
 /// Member `sub` is in the subtree of member `p` iff `p` is in `sub`'s upper-tree sequence.
 #[verifier::opaque]
 pub open spec fn process_subtree_uppertree_agree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, prc_mp: ProcessLockedMap) -> bool {
     forall|p: RwLockProcessPtr, sub: RwLockProcessPtr|
-        #![trigger prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub), prc_mp.spec_index(sub).view_ghost().uppertree_seq.view().contains(p)]
+        #![trigger prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub), prc_mp.spec_index(sub).view().uppertree_seq.view().contains(p)]
         process_tree_dom.contains(p) && process_tree_dom.contains(sub)
-            ==> prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub) == prc_mp.spec_index(sub).view_ghost().uppertree_seq.view().contains(p)
+            ==> prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(sub) == prc_mp.spec_index(sub).view().uppertree_seq.view().contains(p)
 }
 
 /// The process tree rooted at `root_process` with members `process_tree_dom` is well formed.
@@ -289,7 +299,7 @@ pub open spec fn process_add_child_ensures(
     &&& new_prc_mp.spec_index(child_ptr).view_rodata().view().depth == old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth + 1
     &&& new_prc_mp.spec_index(child_ptr).view().children.view() == Seq::<RwLockProcessPtr>::empty()
     &&& !new_prc_mp.spec_index(child_ptr).view().parent_linkedlist_node.is_init()
-    &&& new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view() == old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr)
+    &&& new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view() == old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr)
     &&& new_prc_mp.spec_index(child_ptr).view_ghost().subtree_set.view() == Set::<RwLockProcessPtr>::empty()
     &&& forall|p: RwLockProcessPtr|
         #![trigger process_tree_dom.contains(p)]
@@ -300,16 +310,16 @@ pub open spec fn process_add_child_ensures(
             &&& new_prc_mp.spec_index(p).view().parent_linkedlist_node == old_prc_mp.spec_index(p).view().parent_linkedlist_node
         }
     &&& forall|p: RwLockProcessPtr|
-        #![trigger old_prc_mp.spec_index(p).view_ghost().uppertree_seq]
-        #![trigger new_prc_mp.spec_index(p).view_ghost().uppertree_seq]
-        process_tree_dom.contains(p) ==> new_prc_mp.spec_index(p).view_ghost().uppertree_seq == old_prc_mp.spec_index(p).view_ghost().uppertree_seq
+        #![trigger old_prc_mp.spec_index(p).view().uppertree_seq]
+        #![trigger new_prc_mp.spec_index(p).view().uppertree_seq]
+        process_tree_dom.contains(p) ==> new_prc_mp.spec_index(p).view().uppertree_seq == old_prc_mp.spec_index(p).view().uppertree_seq
     &&& forall|p: RwLockProcessPtr|
-        #![trigger new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p)]
-        new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p)
+        #![trigger new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set().contains(p)]
+        new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set().contains(p)
             ==> new_prc_mp.spec_index(p).view_ghost().subtree_set.view() == old_prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(child_ptr)
     &&& forall|p: RwLockProcessPtr|
         #![trigger process_tree_dom.contains(p)]
-        process_tree_dom.contains(p) && !new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p)
+        process_tree_dom.contains(p) && !new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set().contains(p)
             ==> new_prc_mp.spec_index(p).view_ghost().subtree_set == old_prc_mp.spec_index(p).view_ghost().subtree_set
     &&& new_prc_mp.spec_index(parent_ptr).view_rodata() == old_prc_mp.spec_index(parent_ptr).view_rodata()
     &&& new_prc_mp.spec_index(parent_ptr).view().parent_linkedlist_node == old_prc_mp.spec_index(parent_ptr).view().parent_linkedlist_node
@@ -327,8 +337,8 @@ pub proof fn process_add_child_preserves_tree_wf(root_process: RwLockProcessPtr,
         process_tree_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-    let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+    let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+    let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
     let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
     assert(parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()) by { reveal(process_perms_wf); };
     assert(!parent_uppers.contains(parent_ptr)) by { reveal(process_uppertree_seq_wf); };
@@ -350,8 +360,8 @@ proof fn process_add_child_eof_process_uppertree_seq_wf(root_process: RwLockProc
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -364,7 +374,7 @@ proof fn process_add_child_eof_process_uppertree_seq_wf(root_process: RwLockProc
         process_uppertree_seq_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
 }
 
@@ -373,8 +383,8 @@ proof fn process_add_child_eof_process_root_wf(root_process: RwLockProcessPtr, p
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -387,7 +397,7 @@ proof fn process_add_child_eof_process_root_wf(root_process: RwLockProcessPtr, p
         process_root_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_root_wf);
 }
 
@@ -396,8 +406,8 @@ proof fn process_add_child_eof_process_children_parent_wf(root_process: RwLockPr
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -410,7 +420,7 @@ proof fn process_add_child_eof_process_children_parent_wf(root_process: RwLockPr
         process_children_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_root_wf); reveal(process_children_parent_wf); seq_push_implies_contains::<RwLockProcessPtr>();
 }
 
@@ -419,8 +429,8 @@ proof fn process_add_child_eof_process_linkedlist_wf(root_process: RwLockProcess
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -433,7 +443,7 @@ proof fn process_add_child_eof_process_linkedlist_wf(root_process: RwLockProcess
         process_linkedlist_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_implies_contains::<RwLockProcessPtr>();
 }
 
@@ -442,8 +452,8 @@ proof fn process_add_child_eof_process_children_depth_wf(root_process: RwLockPro
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -456,7 +466,7 @@ proof fn process_add_child_eof_process_children_depth_wf(root_process: RwLockPro
         process_uppertree_seq_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_uppertree_seq_parent_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
 }
 
@@ -465,8 +475,8 @@ proof fn process_add_child_eof_process_subtree_set_wf(root_process: RwLockProces
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -479,7 +489,7 @@ proof fn process_add_child_eof_process_subtree_set_wf(root_process: RwLockProces
         process_subtree_set_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
 }
 
@@ -488,8 +498,8 @@ proof fn process_add_child_eof_process_subtree_set_exclusive(root_process: RwLoc
     requires
         process_add_child_ensures(root_process, process_tree_dom, old_prc_mp, new_prc_mp, parent_ptr, child_ptr),
         ({
-            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            let child_uppers = new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let parent_uppers = old_prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
+            let child_uppers = new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view();
             let parent_depth = old_prc_mp.spec_index(parent_ptr).view_rodata().view().depth;
             &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
             &&& !parent_uppers.contains(parent_ptr)
@@ -502,7 +512,7 @@ proof fn process_add_child_eof_process_subtree_set_exclusive(root_process: RwLoc
         process_subtree_uppertree_agree_wf(root_process, process_tree_dom.insert(child_ptr), new_prc_mp),
 {
     hide(Seq::no_duplicates);
-    new_prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+    new_prc_mp.spec_index(child_ptr).view().uppertree_seq.view().to_set_ensures();
     reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_uppertree_agree_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
 }
 
@@ -526,8 +536,8 @@ pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked prc_mp: &mu
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view() == old(prc_mp).spec_index(p).view(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_rodata()]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_rodata() == old(prc_mp).spec_index(p).view_rodata(),
-        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().uppertree_seq]
-            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().uppertree_seq == old(prc_mp).spec_index(p).view_ghost().uppertree_seq,
+        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view().uppertree_seq]
+            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view().uppertree_seq == old(prc_mp).spec_index(p).view().uppertree_seq,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().owned_pci_functions]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().owned_pci_functions == old(prc_mp).spec_index(p).view_ghost().owned_pci_functions,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).locking_thread()]
@@ -543,7 +553,7 @@ pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked prc_mp: &mu
     if ancestors.len() > 0 {
         let p0 = ancestors.spec_index(0);
         assert(ancestors.to_set().contains(p0)) by { ancestors.to_set_ensures(); };
-        prc_mp.update_ghost(p0, ProcessGhost { uppertree_seq: prc_mp.spec_index(p0).view_ghost().uppertree_seq,
+        prc_mp.update_ghost(p0, ProcessGhost {
             subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().insert(child_ptr)), owned_pci_functions: prc_mp.spec_index(p0).view_ghost().owned_pci_functions });
         assert(prc_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(ancestors.drop_first().to_set().subset_of(prc_mp.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
@@ -576,8 +586,8 @@ pub proof fn process_remove_child_from_ancestor_subtree_sets(tracked prc_mp: &mu
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view() == old(prc_mp).spec_index(p).view(),
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_rodata()]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_rodata() == old(prc_mp).spec_index(p).view_rodata(),
-        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().uppertree_seq]
-            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().uppertree_seq == old(prc_mp).spec_index(p).view_ghost().uppertree_seq,
+        forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view().uppertree_seq]
+            old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view().uppertree_seq == old(prc_mp).spec_index(p).view().uppertree_seq,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).view_ghost().owned_pci_functions]
             old(prc_mp).dom().contains(p) ==> final(prc_mp).spec_index(p).view_ghost().owned_pci_functions == old(prc_mp).spec_index(p).view_ghost().owned_pci_functions,
         forall|p: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(p).locking_thread()]
@@ -593,7 +603,7 @@ pub proof fn process_remove_child_from_ancestor_subtree_sets(tracked prc_mp: &mu
     if ancestors.len() > 0 {
         let p0 = ancestors.spec_index(0);
         assert(ancestors.to_set().contains(p0)) by { ancestors.to_set_ensures(); };
-        prc_mp.update_ghost(p0, ProcessGhost { uppertree_seq: prc_mp.spec_index(p0).view_ghost().uppertree_seq,
+        prc_mp.update_ghost(p0, ProcessGhost {
             subtree_set: Ghost(prc_mp.spec_index(p0).view_ghost().subtree_set.view().remove(child_ptr)), owned_pci_functions: prc_mp.spec_index(p0).view_ghost().owned_pci_functions });
         assert(prc_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(ancestors.drop_first().to_set().subset_of(prc_mp.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
@@ -615,7 +625,7 @@ pub proof fn process_no_change_to_tree_fields_imply_wf_forall()
                 process_tree_dom.contains(p)
                     ==> new_prc_mp.spec_index(p).view().children == old_prc_mp.spec_index(p).view().children
                     && new_prc_mp.spec_index(p).view().parent_linkedlist_node == old_prc_mp.spec_index(p).view().parent_linkedlist_node
-                    && new_prc_mp.spec_index(p).view_ghost().uppertree_seq == old_prc_mp.spec_index(p).view_ghost().uppertree_seq
+                    && new_prc_mp.spec_index(p).view().uppertree_seq == old_prc_mp.spec_index(p).view().uppertree_seq
                     && new_prc_mp.spec_index(p).view_ghost().subtree_set == old_prc_mp.spec_index(p).view_ghost().subtree_set
                     && new_prc_mp.spec_index(p).view_rodata() == old_prc_mp.spec_index(p).view_rodata())
             ==> process_tree_wf(root_process, process_tree_dom, new_prc_mp),
@@ -633,7 +643,7 @@ pub proof fn per_container_process_tree_wf_preserved_for_tree_fields_eq(ctn_mp: 
             old_prc_mp.dom().contains(p)
                 ==> new_prc_mp.spec_index(p).view().children == old_prc_mp.spec_index(p).view().children
                 && new_prc_mp.spec_index(p).view().parent_linkedlist_node == old_prc_mp.spec_index(p).view().parent_linkedlist_node
-                && new_prc_mp.spec_index(p).view_ghost().uppertree_seq == old_prc_mp.spec_index(p).view_ghost().uppertree_seq
+                && new_prc_mp.spec_index(p).view().uppertree_seq == old_prc_mp.spec_index(p).view().uppertree_seq
                 && new_prc_mp.spec_index(p).view_ghost().subtree_set == old_prc_mp.spec_index(p).view_ghost().subtree_set
                 && new_prc_mp.spec_index(p).view_rodata() == old_prc_mp.spec_index(p).view_rodata(),
     ensures

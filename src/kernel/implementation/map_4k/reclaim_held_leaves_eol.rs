@@ -26,7 +26,6 @@ pub(super) open spec fn reclaim_held_leaves_eol_loop_framing(pre: KernelK, cur: 
     &&& cur.thrd_mp.dom().contains(thrd_ptr)
     &&& cur.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread()
     &&& cur.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed()
-    &&& cur.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost()
     &&& thrd == (Thread {
         direct_free_quota_pending_4k: thrd.direct_free_quota_pending_4k, indirect_free_quota_pending_4k: thrd.indirect_free_quota_pending_4k,
         direct_free_quota_pending_2m: thrd.direct_free_quota_pending_2m, indirect_free_quota_pending_2m: thrd.indirect_free_quota_pending_2m,
@@ -43,7 +42,7 @@ pub(super) open spec fn reclaim_held_leaves_eol_loop_framing(pre: KernelK, cur: 
     &&& cur.pt_mp.dom().contains(pagetable)
     &&& cur.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& cur.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& c.higher == (PageTableHigher { l3_tables: c.higher.l3_tables, mapping_1g: c.higher.mapping_1g, ..e.higher })
+    &&& c.higher == (PageTableHigher { lower_backup: c.higher.lower_backup, l3_tables: c.higher.l3_tables, mapping_1g: c.higher.mapping_1g, ..e.higher })
     &&& c.mapping_1g().submap_of(e.mapping_1g()) && c.mapping_4k() == e.mapping_4k() && c.mapping_2m() == e.mapping_2m() && c.page_closure() == e.page_closure()
     &&& c.lower.l2_perms.dom() == e.lower.l2_perms.dom() && c.lower.pagetable_window_locks == e.lower.pagetable_window_locks && c.lower.window_stale_cpus == e.lower.window_stale_cpus
     &&& c.lower.hidden_l1_tables_in_locked_windows()
@@ -97,7 +96,8 @@ pub(super) proof fn reclaim_held_leaves_eol_iteration_pre(pre: KernelK, cur: Ker
         forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_1g[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         cur.pt_mp.dom().contains(pagetable),
         cur.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        cur.pt_mp.spec_index(pagetable).view() == (PageTableHigher { l3_tables: cur.pt_mp.spec_index(pagetable).view().l3_tables, mapping_1g: cur.pt_mp.spec_index(pagetable).view().mapping_1g, ..pre.pt_mp.spec_index(pagetable).view() }),
+        cur.pt_mp.spec_index(pagetable).view()
+            == (PageTableHigher { lower_backup: cur.pt_mp.spec_index(pagetable).view().lower_backup, l3_tables: cur.pt_mp.spec_index(pagetable).view().l3_tables, mapping_1g: cur.pt_mp.spec_index(pagetable).view().mapping_1g, ..pre.pt_mp.spec_index(pagetable).view() }),
         whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         forall|l4i: L4Index| #![trigger whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
@@ -148,7 +148,6 @@ pub(super) proof fn reclaim_held_leaves_eol_step_4k(pre: KernelK, mid: KernelK, 
         call.thrd_mp.dom().contains(thrd_ptr),
         call.thrd_mp.spec_index(thrd_ptr).locking_thread() == mid.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         call.thrd_mp.spec_index(thrd_ptr).being_killed() == mid.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        call.thrd_mp.spec_index(thrd_ptr).view_ghost() == mid.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_4k == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
@@ -159,7 +158,11 @@ pub(super) proof fn reclaim_held_leaves_eol_step_4k(pre: KernelK, mid: KernelK, 
         ({
             let old_c = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(call.pt_mp, call.pt_lower.view(), pagetable);
-            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == (PageTableHigher { lower_backup: Ghost(new_c.lower), ..old_c.higher }) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -224,7 +227,6 @@ pub(super) proof fn reclaim_held_leaves_eol_step_2m(pre: KernelK, mid: KernelK, 
         call.thrd_mp.dom().contains(thrd_ptr),
         call.thrd_mp.spec_index(thrd_ptr).locking_thread() == mid.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         call.thrd_mp.spec_index(thrd_ptr).being_killed() == mid.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        call.thrd_mp.spec_index(thrd_ptr).view_ghost() == mid.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_2m: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m,
             indirect_free_quota_pending_2m: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_2m == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
@@ -235,7 +237,11 @@ pub(super) proof fn reclaim_held_leaves_eol_step_2m(pre: KernelK, mid: KernelK, 
         ({
             let old_c = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(call.pt_mp, call.pt_lower.view(), pagetable);
-            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == (PageTableHigher { lower_backup: Ghost(new_c.lower), ..old_c.higher }) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
+            &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_1g_l3(i4, i3)]
+                old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_1g_l3(i4, i3) == old_c.spec_held_1g_l3(i4, i3)
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -298,7 +304,6 @@ pub(super) proof fn reclaim_held_leaves_eol_step_1g(pre: KernelK, mid: KernelK, 
         call.thrd_mp.dom().contains(thrd_ptr),
         call.thrd_mp.spec_index(thrd_ptr).locking_thread() == mid.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         call.thrd_mp.spec_index(thrd_ptr).being_killed() == mid.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        call.thrd_mp.spec_index(thrd_ptr).view_ghost() == mid.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         call.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: call.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct_1g == call.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
@@ -310,7 +315,7 @@ pub(super) proof fn reclaim_held_leaves_eol_step_1g(pre: KernelK, mid: KernelK, 
             let old_c = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(call.pt_mp, call.pt_lower.view(), pagetable);
             &&& new_c.lower == old_c.lower
-            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+            &&& new_c.higher == (PageTableHigher { lower_backup: new_c.higher.lower_backup, l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
             &&& new_c.page_closure() == old_c.page_closure()
             &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
@@ -357,7 +362,6 @@ pub(super) proof fn reclaim_held_leaves_eol_exit(pre: KernelK, cur: KernelK, pre
         held_iommu_tables_unchanged(pre.it_mp, cur.it_mp, pre_lctx),
         held_cpus_unchanged(pre.cpu_arr, cur.cpu_arr, pre_lctx),
         cur.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        cur.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         cur.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
             direct_free_quota_pending_4k: cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k,
             direct_free_quota_pending_2m: cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_2m, indirect_free_quota_pending_2m: cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m,
@@ -368,7 +372,7 @@ pub(super) proof fn reclaim_held_leaves_eol_exit(pre: KernelK, cur: KernelK, pre
         ({
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable);
-            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+            &&& new_c.higher == (PageTableHigher { lower_backup: new_c.higher.lower_backup, l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g().submap_of(old_c.mapping_1g()) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& new_c.lower.hidden_l1_tables_in_locked_windows()

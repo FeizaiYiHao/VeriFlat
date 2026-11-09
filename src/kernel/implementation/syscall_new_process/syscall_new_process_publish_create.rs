@@ -98,9 +98,9 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom().insert(ret.0),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)] old(krnl).prc_mp.dom().contains(p) ==> {
             &&& final(krnl).prc_mp.spec_index(p).view_rodata() == old(krnl).prc_mp.spec_index(p).view_rodata()
-            &&& final(krnl).prc_mp.spec_index(p).view_ghost().uppertree_seq == old(krnl).prc_mp.spec_index(p).view_ghost().uppertree_seq
+            &&& final(krnl).prc_mp.spec_index(p).view().uppertree_seq == old(krnl).prc_mp.spec_index(p).view().uppertree_seq
             &&& final(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions == old(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions
-            &&& final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr).contains(p) {
+            &&& final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr).contains(p) {
                 old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(ret.0)
             } else { old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() }
             &&& final(krnl).prc_mp.spec_index(p).view() == (Process { children: final(krnl).prc_mp.spec_index(p).view().children, ..old(krnl).prc_mp.spec_index(p).view() })
@@ -125,7 +125,7 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pcid == pcid,
         final(krnl).prc_mp.spec_index(ret.0).view().children.view() == Seq::<RwLockProcessPtr>::empty(),
         final(krnl).prc_mp.spec_index(ret.0).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
-        final(krnl).prc_mp.spec_index(ret.0).view_ghost().uppertree_seq.view() == old(krnl).prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr),
+        final(krnl).prc_mp.spec_index(ret.0).view().uppertree_seq.view() == old(krnl).prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr),
         final(krnl).prc_mp.spec_index(ret.0).view_ghost().subtree_set.view().is_empty(),
         final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, current_thrd_ptr),
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view() == (Thread {
@@ -189,7 +189,7 @@ pub(super) fn create_and_release_staged_process(
     let tracked l4_page_lock_perm = l4_page_lock_perm.get();
     proof {
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
-            let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+            let uppers = krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
             assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
             assert(uppers.len() <= NUM_PAGES) by {
                 let c = krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container;

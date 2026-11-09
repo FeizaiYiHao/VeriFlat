@@ -43,12 +43,18 @@ pub open spec fn killed_thread_reclaim_partial_trace(
 pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry: &KernelK, cpu_id: CpuId, processes: Set<RwLockProcessPtr>, containers: Set<RwLockContainerPtr>)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        krnl.cpu_arr.spec_index(cpu_id).view() == entry.cpu_arr.spec_index(cpu_id).view(),
+        krnl.cpu_arr.spec_index(cpu_id).view().view() == entry.cpu_arr.spec_index(cpu_id).view().view(),
+        krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == entry.cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == entry.cpu_arr.spec_index(cpu_id).view().being_killed(),
         krnl.cpu_op.view().view()[cpu_id as int] == entry.cpu_op.view().view()[cpu_id as int],
         entry.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         krnl.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
-        krnl.thrd_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0)
-            == entry.thrd_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
+        ({
+            let current_thread = entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            &&& krnl.thrd_mp.spec_index(current_thread).view() == entry.thrd_mp.spec_index(current_thread).view()
+            &&& krnl.thrd_mp.spec_index(current_thread).locking_thread() == entry.thrd_mp.spec_index(current_thread).locking_thread()
+            &&& krnl.thrd_mp.spec_index(current_thread).being_killed() == entry.thrd_mp.spec_index(current_thread).being_killed()
+        }),
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {
             &&& krnl.prc_mp.dom().contains(p)
             &&& entry.prc_mp.dom().contains(p)
@@ -60,7 +66,7 @@ pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry:
             &&& krnl.ctn_mp.dom().contains(c)
             &&& entry.ctn_mp.dom().contains(c)
             &&& krnl.ctn_mp.spec_index(c).locking_thread() == entry.ctn_mp.spec_index(c).locking_thread()
-            &&& krnl.ctn_mp.spec_index(c).view_ghost().uppertree_seq == entry.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& krnl.ctn_mp.spec_index(c).view().uppertree_seq == entry.ctn_mp.spec_index(c).view().uppertree_seq
         },
     ensures
         ({

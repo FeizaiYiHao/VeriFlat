@@ -62,7 +62,7 @@ pub(super) fn mmap_2m_fill_enter(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
@@ -137,7 +137,7 @@ pub(super) fn mmap_2m_fill_enter(
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
         process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
     }
-    let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
+    let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows::<true>(pagetable_ptr, cover, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
     let ghost locked_lctx = *lctx;
     proof {

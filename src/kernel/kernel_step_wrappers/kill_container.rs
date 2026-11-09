@@ -28,7 +28,7 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
         iommu ==> post.pt_mp == pre.pt_mp && post.it_mp.unchanged_except(&pre.it_mp, table) && post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread(),
         pre.ctn_mp.dom().contains(owner),
         pre.ctn_mp.dom().contains(origin),
-        owner == origin || pre.ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner),
+        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
         pre.allc_4k_mp.dom().contains(allc_ptr),
         post.allc_4k_mp.dom() == pre.allc_4k_mp.dom(),
@@ -82,7 +82,7 @@ pub proof fn kernel_zombie_root_process_retired_implies_u_step(
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p),
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
         forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != ctn_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c),
-        post.ctn_mp.spec_index(ctn_ptr).view() == (Container { zombie: false, ..pre.ctn_mp.spec_index(ctn_ptr).view() }),
+        post.ctn_mp.spec_index(ctn_ptr).view() == (Container { zombie: false, root_process_removed: Ghost(true), ..pre.ctn_mp.spec_index(ctn_ptr).view() }),
         post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
         post.ctn_mp.spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(prc_ptr)), ..pre.ctn_mp.spec_index(ctn_ptr).view_ghost() }),

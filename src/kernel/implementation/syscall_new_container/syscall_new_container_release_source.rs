@@ -81,7 +81,7 @@ pub(super) fn new_container_release_source_table(
 {
     proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     if windows_held {
-        krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, source_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
+        krnl.unlock_pagetable_range_existing_windows::<false>(pagetable_ptr, source_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
     }
     proof {
         let entry = base.pt_mp.spec_index(pagetable_ptr);

@@ -129,6 +129,44 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
+/// TCB: consume one owned 2M container page, initialize its first-4K lock object, and transfer the untouched second 4K as owned raw bytes. `ASSERT_CONTAINER_LOCK_FITS_4K` proves these returned regions do not overlap.
+#[verifier::external_body]
+pub fn retype_container_page_perm_to_rwlock(
+    ctn_ptr: RwLockContainerPtr, value: Container, rodata: ReadOnlyNode<ContainerRO>, Ghost(ghost): Ghost<ContainerGhost>,
+    Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>,
+) -> (ret: (Tracked<LockObjPerm<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>,
+    Tracked<LockPerm>, Tracked<PagePerm4k>))
+    requires
+        page_ptr_2m_valid(ctn_ptr),
+        page_perm.is_init(),
+        page_perm.addr() == ctn_ptr,
+        value.inv(),
+        old(lctx).typed_lock_entry(KernelObjId::Container(ctn_ptr)) is None,
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        ret.0.view().addr() == ctn_ptr,
+        ret.0.view().is_init(),
+        ret.0.view().value().is_init(),
+        ret.0.view().value().view() == value,
+        ret.0.view().value().view_rodata() == rodata,
+        ret.0.view().value().view_ghost() == ghost,
+        ret.0.view().value().control() == LockControl::DynamicProcess(LockOwnerId::Some(0)),
+        ret.0.view().value().locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
+        ret.1.view().state() is WriteLock,
+        ret.1.view().thread_id() == final(lctx).thread_id(),
+        ret.1.view().ordering_lock_id() == dynamic_container_lock_id(ctn_ptr, rodata.view().depth, LockOwnerId::Some(0)),
+        ret.2.view().addr() == cpu_offline_flags_ptr(ctn_ptr),
+        ret.2.view().is_init(),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+        typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(ctn_ptr), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
+{
+    unsafe { (ctn_ptr as *mut LockCell<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>).write(
+        LockCell::new_wlocked_for_retype(value, rodata, Ghost(LockControl::DynamicProcess(LockOwnerId::Some(0))), LockOwnerId::Some(0))); }
+    (Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new())
+}
+
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>
     LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub fn retype_4k_and_insert(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
@@ -352,6 +390,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         page_perm.is_init(),
         page_perm.addr() == thrd_ptr,
         thread_value.inv(),
+        !thread_value.exited.view(),
         thread_value.state is RUNNING,
         thread_value.scheduler_linkedlist_node.is_init(),
         thread_value.proc_linkedlist_node.is_init(),
@@ -372,7 +411,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         final(thread_map).spec_index(thrd_ptr).is_init(),
         final(thread_map).spec_index(thrd_ptr).inv(),
         !final(thread_map).spec_index(thrd_ptr).being_killed(),
-        !final(thread_map).spec_index(thrd_ptr).view_ghost().exited,
+        !final(thread_map).spec_index(thrd_ptr).view().exited.view(),
         final(thread_map).spec_index(thrd_ptr).locking_thread() is None,
         ret.0 == final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr(),
         ret.1.view().is_init(),
@@ -384,7 +423,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         ret.3.view().value().view() == thrd_ptr,
 {
     let tracked mut lctx = LocalContext::new_bootstrap(0);
-    let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thrd_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thrd_ptr)));
+    let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thrd_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thrd_ptr)));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thrd_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&lctx), Tracked(&lock_perm));

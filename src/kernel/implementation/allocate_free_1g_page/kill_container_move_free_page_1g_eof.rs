@@ -275,7 +275,7 @@ pub(super) proof fn kill_container_move_free_page_1g_eof(
         pre.ctn_mp.dom().contains(dst),
         pre.ctn_mp.spec_index(src).view_rodata().view().allocator_ptr_1g == src_allocator,
         pre.ctn_mp.spec_index(dst).view_rodata().view().allocator_ptr_1g == dst_allocator,
-        pre.ctn_mp.spec_index(src).view_ghost().uppertree_seq.view().contains(dst),
+        pre.ctn_mp.spec_index(src).view().uppertree_seq.view().contains(dst),
         pre.allc_1g_mp.dom().contains(src_allocator),
         pre.allc_1g_mp.dom().contains(dst_allocator),
         pre.allc_1g_mp.spec_index(src_allocator).owning_container == src,

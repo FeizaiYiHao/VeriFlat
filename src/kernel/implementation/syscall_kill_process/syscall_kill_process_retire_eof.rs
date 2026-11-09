@@ -32,7 +32,7 @@ pub(crate) proof fn kill_retire_eof(
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.dom().contains(parent_ptr),
         parent_ptr != target,
-        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
         pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
@@ -64,7 +64,9 @@ pub(crate) proof fn kill_retire_eof(
             ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
         forall|u: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(u).locking_thread()]
             pre.thrd_mp.dom().contains(u) && pre.thrd_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thrd_mp.spec_index(u).being_killed(),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        !post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
 {
     kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
     kill_retire_eof_memory(pre, post, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr);

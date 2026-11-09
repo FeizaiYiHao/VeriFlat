@@ -96,6 +96,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, Gho
             self.typed_lock_map_aligned(held_locks, thread_id),
         ensures
             self.dom().contains(key) && self.spec_index(key).locked_by_thread(thread_id) ==> held_locks.dom().contains(key),
+            self.dom().contains(key) && self.spec_index(key).wlocked_by_thread(thread_id) ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
     { reveal(LockedMap::typed_lock_map_aligned); }
 
     pub proof fn typed_lock_map_aligned_write_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)

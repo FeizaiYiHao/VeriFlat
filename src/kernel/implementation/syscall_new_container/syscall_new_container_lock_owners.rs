@@ -179,7 +179,7 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().exited.view()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_4k >= 9 + funding_page_count + 3 * range
             &&& final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().quota_2m >= 2
@@ -337,7 +337,7 @@ pub(super) fn new_container_lock_source_windows(
         proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), root); }
         return (false, false, Tracked(empty_perms));
     }
-    let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(root, range, Tracked(big), Tracked(&mut *lctx));
+    let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(root, range, Tracked(big), Tracked(&mut *lctx));
     let ready = share_mapping_4k_source_precheck(krnl, range, root, Tracked(&*lctx), Tracked(big));
     (true, ready, Tracked(window_perms))
 }

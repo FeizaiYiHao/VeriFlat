@@ -54,7 +54,7 @@ proof fn move_pool_page_to_cache_eof_kill_retire_wf(pre: KernelK, post: KernelK,
     reveal(move_pool_page_to_cache_eof_transition_framing);
     let owner = pre.allc_4k_mp.spec_index(allocator).owning_container;
     assert(pre.ctn_mp.dom().contains(owner) && pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator) by { reveal(container_allocator_wf); };
-    if pre.ctn_mp.spec_index(owner).view_ghost().retire_ready {
+    if pre.ctn_mp.spec_index(owner).view().retire_ready.view() {
         container_kill_retire_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner); lemma_container_allocator_quota_eq_total_free_without_users(pre, owner);
         allocator_perms_wf_at(pre.allc_4k_mp, allocator); lemma_cache_len_fold_nonneg(pre.allc_4k_mp.spec_index(allocator).cpu_caches.view());
         pre.allc_4k_mp.spec_index(allocator).global_pool.view().wf_implies_view_len_eq_len();

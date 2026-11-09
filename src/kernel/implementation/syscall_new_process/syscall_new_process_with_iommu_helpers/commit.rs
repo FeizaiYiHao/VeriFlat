@@ -89,7 +89,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 6 + 3 * source_range.len,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.wf(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.spec_index(ep_idx) == Some(ep_ptr),

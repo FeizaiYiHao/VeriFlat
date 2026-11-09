@@ -44,7 +44,7 @@ pub fn retype_process_rwlock_to_4k_page_perm(
 /// TCB: retire the write-held, killed, childless container object at `ctn_ptr` together with the offline
 /// request table in its second 4K and reclaim its 2M page as raw memory.
 ///
-/// This is the inverse of `retype_page_perm_2m_to_rwlock` plus `retype_container_page_tail_to_offline_flags`. The
+/// This is the inverse of `retype_container_page_perm_to_rwlock` plus `retype_container_page_tail_to_offline_flags`. The
 /// container and its table have already left their maps, the caller exclusively holds the container lock and every
 /// per-cpu lock of the table in the release phase, and its parent's child list returned the in-page parent node, so
 /// no other thread can reach or wait on these locks. The held locks disappear from `lctx` with the objects.
@@ -306,10 +306,11 @@ impl KernelK {
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             process_value.inv(),
+        !process_value.pci_cleared.view(),
             process_value.children.view().no_duplicates(),
             !process_value.children.view().contains(pg_ptr),
-            process_ghost.uppertree_seq.view().no_duplicates(),
-            process_ghost.uppertree_seq.view().len() == rodata.view().depth,
+            process_value.uppertree_seq.view().no_duplicates(),
+            process_value.uppertree_seq.view().len() == rodata.view().depth,
             old(self).prc_mp.typed_lock_map_aligned(old(lctx).process_lock_map(), old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
@@ -390,6 +391,7 @@ impl KernelK {
             old(self).prc_mp.dom().contains(prc_ptr),
             old(self).prc_mp.spec_index(prc_ptr).is_init(),
             old(self).prc_mp.spec_index(prc_ptr).being_killed(),
+            old(self).prc_mp.spec_index(prc_ptr).view_rodata().view().parent is None ==> typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(self).prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container, TypedLockMode::Write),
             old(self).prc_mp.spec_index(prc_ptr).view().children.view().len() == 0,
             old(self).prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
             parent_node_perm.is_init(),

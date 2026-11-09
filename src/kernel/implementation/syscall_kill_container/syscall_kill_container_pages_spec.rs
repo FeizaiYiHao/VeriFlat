@@ -36,7 +36,8 @@ pub open spec fn kill_container_pages_killer_state(
         ==> k.ctn_mp.dom().contains(c) && (c != owner_ptr ==> k.ctn_mp.spec_index(c).being_killed())
     &&& owner_ptr != ctn_ptr
     &&& target.being_killed()
-    &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
+    &&& target.view().uppertree_seq.view().contains(owner_ptr)
+    &&& target.view().root_process_removed.view()
     &&& target.view_ghost().owned_processes.view() == Set::<RwLockProcessPtr>::empty()
     &&& target.view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
     &&& target.view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()

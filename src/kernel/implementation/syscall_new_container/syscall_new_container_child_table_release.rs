@@ -157,9 +157,9 @@ pub(super) fn release_new_container_child_table_locks(
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
     hide(typed_lock_maps_aligned);
-    krnl.unlock_pagetable_range_existing_windows(child_pagetable_ptr, source_range, Tracked(&child_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(child_window_perms));
+    krnl.unlock_pagetable_range_existing_windows::<true>(child_pagetable_ptr, source_range, Tracked(&child_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(child_window_perms));
     proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)); }
-    krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
+    krnl.unlock_pagetable_range_existing_windows::<false>(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
     krnl.wunlock_process(child_prc_ptr, Tracked(&mut *lctx), Tracked(child_process_lock_perm));
     krnl.runlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
     krnl.wunlock_pagetable(child_pagetable_ptr, Tracked(&mut *lctx), Tracked(child_pagetable_lock_perm));

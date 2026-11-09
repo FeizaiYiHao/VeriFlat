@@ -62,9 +62,9 @@ impl KernelK {
             final(self).pt_mp.spec_index(pagetable_ptr).wlocked_by(final(lctx)),
             final(self).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
             final(self).pt_mp.spec_index(pagetable_ptr).inv(),
-            final(self).pt_mp.spec_index(pagetable_ptr).view() == old(self).pt_mp.spec_index(pagetable_ptr).view(),
+            final(self).pt_mp.spec_index(pagetable_ptr).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup, ..old(self).pt_mp.spec_index(pagetable_ptr).view() }),
             final(self).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(self).pt_mp.spec_index(pagetable_ptr).view_rodata(),
-            final(self).pt_mp.spec_index(pagetable_ptr).view_ghost() == final(self).pt_lower.view().spec_index(pagetable_ptr),
+            final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup.view() == final(self).pt_lower.view().spec_index(pagetable_ptr),
             final(self).pt_mp.spec_index(pagetable_ptr).being_killed() == old(self).pt_mp.spec_index(pagetable_ptr).being_killed(),
             final(self).pt_mp.spec_index(pagetable_ptr).killer_info() == old(self).pt_mp.spec_index(pagetable_ptr).killer_info(),
             ret.view().state() is WriteLock,
@@ -85,11 +85,19 @@ impl KernelK {
                 }
             };
         }
-        let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
+        let Tracked(ret) = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            self.pt_mp.update_ghost(pagetable_ptr, self.pt_lower.view().spec_index(pagetable_ptr));
+            assert(self.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+        }
+        {
+            let higher = self.pt_mp.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&ret));
+            higher.lower_backup = Ghost(self.pt_lower.view().spec_index(pagetable_ptr));
+        }
+        proof {
+            pagetable_lock_state_eof(*old(self), *self, pagetable_ptr);
+            wlock_pagetable_eof_l2_entries_unlocked(*old(self), *self, pagetable_ptr);
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
+                reveal(pagetable_window_typed_lock_map_aligned);
                 pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -98,10 +106,8 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            pagetable_lock_state_eof(*old(self), *self, pagetable_ptr);
-            wlock_pagetable_eof_l2_entries_unlocked(*old(self), *self, pagetable_ptr);
         }
-        ret
+        Tracked(ret)
     }
 
     pub fn wlock_pagetable_pair(&mut self, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>))
@@ -129,10 +135,10 @@ impl KernelK {
         ensures
             old(self).pt_mp.spec_index(source_pagetable).locking_thread() is None,
             old(self).pt_mp.spec_index(target_pagetable).locking_thread() is None,
-            final(self).pt_mp.spec_index(source_pagetable).view() == old(self).pt_mp.spec_index(source_pagetable).view(),
-            final(self).pt_mp.spec_index(target_pagetable).view() == old(self).pt_mp.spec_index(target_pagetable).view(),
-            final(self).pt_mp.spec_index(source_pagetable).view_ghost() == final(self).pt_lower.view().spec_index(source_pagetable),
-            final(self).pt_mp.spec_index(target_pagetable).view_ghost() == final(self).pt_lower.view().spec_index(target_pagetable),
+            final(self).pt_mp.spec_index(source_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(source_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(source_pagetable).view() }),
+            final(self).pt_mp.spec_index(target_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(target_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(target_pagetable).view() }),
+            final(self).pt_mp.spec_index(source_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(source_pagetable),
+            final(self).pt_mp.spec_index(target_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(target_pagetable),
             forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != source_pagetable && p != target_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), source_pagetable)),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable)),
@@ -465,9 +471,9 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), read_pagetable).hidden_leaves_in_locked_windows(),
             !old(self).pt_mp.spec_index(write_pagetable).locked(),
             final(self).pt_mp.spec_index(write_pagetable).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
-            final(self).pt_mp.spec_index(write_pagetable).view() == old(self).pt_mp.spec_index(write_pagetable).view(),
+            final(self).pt_mp.spec_index(write_pagetable).view() == (PageTableHigher { lower_backup: final(self).pt_mp.spec_index(write_pagetable).view().lower_backup, ..old(self).pt_mp.spec_index(write_pagetable).view() }),
             final(self).pt_mp.spec_index(write_pagetable).view_rodata() == old(self).pt_mp.spec_index(write_pagetable).view_rodata(),
-            final(self).pt_mp.spec_index(write_pagetable).view_ghost() == final(self).pt_lower.view().spec_index(write_pagetable),
+            final(self).pt_mp.spec_index(write_pagetable).view().lower_backup.view() == final(self).pt_lower.view().spec_index(write_pagetable),
             pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, write_pagetable, whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable).leaves_present(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), write_pagetable).lower.hidden_l1_tables_in_locked_windows(),

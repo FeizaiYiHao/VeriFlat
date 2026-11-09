@@ -53,7 +53,7 @@ pub open spec fn kill_reclaim_state(
     &&& target.view().iommu_table == iommu_table
     &&& target.view().children.view().len() == 0
     &&& target.view().owned_threads.view().len() == 0
-    &&& target.view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty()
+    &&& target.view().pci_cleared.view()
     &&& k.pt_mp.dom().contains(pagetable)
     &&& k.pt_mp.spec_index(pagetable).view().proc_ptr == chain[chain.len() - 1]
     &&& pagetable_perm.state() is WriteLock
@@ -97,7 +97,7 @@ pub(crate) open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post:
         &&& post.it_mp.unchanged_except(&pre.it_mp, t)
         &&& post.it_mp.spec_index(t).locking_thread() == table.locking_thread()
         &&& post.it_mp.spec_index(t).being_killed() == table.being_killed()
-        &&& post.it_mp.spec_index(t).view() == (PageTable { did: None, ..table.view() })
+        &&& post.it_mp.spec_index(t).view() == (IommuTable { did: None, ..table.view() })
         &&& post.it_mp.spec_index(t).view().page_closure() == table.view().page_closure()
         &&& post.it_mp.spec_index(t).view().mapping_4k() == table.view().mapping_4k()
         &&& post.it_mp.spec_index(t).view().mapping_2m() == table.view().mapping_2m()

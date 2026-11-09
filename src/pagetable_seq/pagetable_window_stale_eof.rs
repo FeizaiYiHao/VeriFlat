@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal;
 verus! {
 use crate::*;
 
@@ -72,18 +73,23 @@ pub open spec fn window_stale_cpus_after(update: WindowStaleUpdate, table: Whole
 }
 
 /// S of `KernelK::replace_window_stale_cpus`: only the stale-CPU map of page table `root` moved, with a write-held table's
-/// ghost slot following; its big-lock payload, the rest of its window half, so its held 4K and 2M leaves, and every other table stay.
+/// payload backup following; its other big-lock fields, the rest of its window half, so its held 4K and 2M leaves, and every other table stay.
 #[verifier::opaque]
-pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot) -> bool {
+pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool) -> bool {
     let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root);
     let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, root)
-    &&& update_ghost_ensures(pre.pt_mp.spec_index(root), post.pt_mp.spec_index(root),
-        if pre.pt_mp.spec_index(root).wlocked() { post.pt_lower.view().spec_index(root) } else { pre.pt_mp.spec_index(root).view_ghost() })
+    &&& {
+        &&& post.pt_mp.spec_index(root).is_init() == pre.pt_mp.spec_index(root).is_init()
+        &&& post.pt_mp.spec_index(root).view_rodata() == pre.pt_mp.spec_index(root).view_rodata()
+        &&& post.pt_mp.spec_index(root).locking_thread() == pre.pt_mp.spec_index(root).locking_thread()
+        &&& post.pt_mp.spec_index(root).control() == pre.pt_mp.spec_index(root).control()
+        &&& post.pt_mp.spec_index(root).view() == (PageTableHigher { lower_backup: Ghost(if root_write_held { post.pt_lower.view().spec_index(root) } else { pre.pt_mp.spec_index(root).view().lower_backup.view() }), ..pre.pt_mp.spec_index(root).view() })
+    }
     &&& post.pt_lower.view() =~= pre.pt_lower.view().insert(root, post.pt_lower.view().spec_index(root))
     &&& post.pt_lower.view().dom() =~= pre.pt_lower.view().dom()
-    &&& after.higher == before.higher
+    &&& after.higher == (PageTableHigher { lower_backup: after.higher.lower_backup, ..before.higher })
     &&& after.lower == (PageTableLower { window_stale_cpus: after.lower.window_stale_cpus, ..before.lower })
     &&& after.mapping_4k() == before.mapping_4k()
     &&& after.mapping_2m() == before.mapping_2m()
@@ -97,8 +103,8 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
         #![trigger after.window_locked_by_thread(l4, l3, l2, t)]
         #![trigger before.window_locked_by_thread(l4, l3, l2, t)]
         after.window_locked_by_thread(l4, l3, l2, t) == before.window_locked_by_thread(l4, l3, l2, t)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
-    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index, l1: L1Index| #![trigger after.spec_held_4k_l1(l4, l3, l2, l1)] #![trigger before.spec_held_4k_l1(l4, l3, l2, l1)] after.spec_held_4k_l1(l4, l3, l2, l1) == before.spec_held_4k_l1(l4, l3, l2, l1)
+    &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] #![trigger before.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
@@ -109,10 +115,11 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
 /// brings the invariant for the new map.
 pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, update: WindowStaleUpdate, root_write_held: bool, thread_id: LockThreadId)
     requires
+        root_write_held == pre.pt_mp.spec_index(root).wlocked_by_thread(thread_id),
         pre.inv(),
         pre.pt_mp.dom().contains(root),
         post.pt_mp.perms_wf(),
-        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == window_stale_cpus_after(update, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), root_write_held, thread_id),
         root_write_held ==> pre.pt_mp.spec_index(root).locking_thread() is Write,
         update is Set ==> root_write_held || ({
@@ -154,7 +161,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
 {
     window_stale_cpus_update_eof_tlb_wf_new_map(pre, post, root, update, root_write_held, thread_id);
     window_stale_cpus_update_eof_structure_cache_wf_new_map(pre, post, root, update, root_write_held, thread_id);
-    window_stale_cpus_update_eof_page_tables(pre, post, root);
+    window_stale_cpus_update_eof_page_tables(pre, post, root, root_write_held);
     reveal(window_stale_cpus_update_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -173,6 +180,40 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(KernelK { pt_lower: post.pt_lower, ..pre }, post);
+    assert(pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view())) by {
+        reveal(pagetable_lower_backup_wf);
+        if !root_write_held && pre.pt_mp.spec_index(root).wlocked() {
+            let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root);
+            let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), root);
+            pagetable_lower_backup_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
+            broadcast use spec_va_2m_valid_index_roundtrip;
+            assert(!(update is Set)) by {
+                if update is Set {
+                    let p = before.window_l2_page(spec_v2l4index(update->Set_window.va), spec_v2l3index(update->Set_window.va));
+                    let i = spec_v2l2index(update->Set_window.va);
+                    before.tables_reachable_wf_l2_at(p);
+                    before.wf_window_locks_l2_entry_at(p, i);
+                    let rev = before.higher.l2_rev_map.view().spec_index(p);
+                    let w = WindowVa { va: spec_index2va((rev.0, rev.1, i, 0)) };
+                    before.wf_window_locks_va_at(w);
+                    before.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(rev.0, rev.1);
+                    pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), root, rev.0, rev.1, i, thread_id);
+                }
+            };
+            assert_maps_equal!(after.lower.window_stale_cpus, before.lower.window_stale_cpus, key => {
+                if before.lower.l2_perms.dom().contains(key.0) && pei_valid(key.1) && before.lower.l2_owner(key.0, key.1) is Write
+                    && before.lower.l2_owner(key.0, key.1)->Write_thread_id == thread_id {
+                    before.tables_reachable_wf_l2_at(key.0);
+                    before.wf_window_locks_l2_entry_at(key.0, key.1);
+                    let rev = before.higher.l2_rev_map.view().spec_index(key.0);
+                    let w = WindowVa { va: spec_index2va((rev.0, rev.1, key.1, 0)) };
+                    before.wf_window_locks_va_at(w);
+                    before.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(rev.0, rev.1);
+                    pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), root, rev.0, rev.1, key.1, thread_id);
+                }
+            });
+        }
+    };
     assert(post.memory_management_inv()) by {
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
@@ -208,11 +249,16 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
 proof fn window_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
     requires
         pre.wf(),
-        post.higher == pre.higher,
+        post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher }),
         post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
     ensures
         post.wf(),
 {
+    assert(post.higher.inv()) by {
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
+        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
+        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
+    };
     assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
@@ -250,7 +296,7 @@ proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(root),
-        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == window_stale_cpus_after(update, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), root_write_held, thread_id),
         root_write_held ==> pre.pt_mp.spec_index(root).locking_thread() is Write,
         update is Set ==> root_write_held || ({
@@ -309,7 +355,7 @@ proof fn window_stale_cpus_update_eof_structure_cache_wf_new_map(pre: KernelK, p
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(root),
-        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == window_stale_cpus_after(update, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), root_write_held, thread_id),
         update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
             ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
@@ -336,11 +382,11 @@ proof fn window_stale_cpus_update_eof_structure_cache_wf_new_map(pre: KernelK, p
 
 /// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_window_stale_cpus`: no leaf, held
 /// entry or table page moved.
-proof fn window_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
+proof fn window_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool)
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(root),
-        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),

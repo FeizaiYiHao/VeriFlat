@@ -16,7 +16,7 @@ use super::pagetable_util_t_eof::*;
 /// object.
 #[verifier::external_body]
 pub fn retype_pagetable_rwlock_to_4k_page_perms(
-    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
+    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<LockObjPerm<PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -50,7 +50,7 @@ pub fn retype_pagetable_rwlock_to_4k_page_perms(
 /// conditions as `retype_pagetable_rwlock_to_4k_page_perms`.
 #[verifier::external_body]
 pub fn retype_iommu_table_rwlock_to_4k_page_perms(
-    iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_perm): Tracked<LockObjPerm<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
+    iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_perm): Tracked<LockObjPerm<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -83,6 +83,7 @@ impl KernelK {
     pub fn retype_page_to_pagetable_and_insert(&mut self, pg_ptr: PagePtr, higher: PageTableHigher<PT_TYPE>, Tracked(lower): Tracked<PageTableLower<PT_TYPE>>,
         Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
+            higher.lower_backup.view() == lower,
             old(self).pt_mp.perms_wf(),
             !old(self).pt_mp.dom().contains(pg_ptr),
             page_perm.is_init(),
@@ -114,7 +115,7 @@ impl KernelK {
             final(self).pt_lower.view() == old(self).pt_lower.view().insert(pg_ptr, lower),
             final(self).pt_mp.spec_index(pg_ptr).is_init(),
             final(self).pt_mp.spec_index(pg_ptr).view() == higher,
-            final(self).pt_mp.spec_index(pg_ptr).view_ghost() == lower,
+            final(self).pt_mp.spec_index(pg_ptr).view().lower_backup.view() == lower,
             forall|r: RwLockPageTableRoot|
                 #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), r)]
                 old(self).pt_mp.dom().contains(r) ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), r) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), r),
@@ -147,7 +148,7 @@ impl KernelK {
         ret
     }
 
-    pub fn retype_page_to_iommu_table_and_insert(&mut self, pg_ptr: PagePtr, iommu_table_value: PageTable<IOMMU_TYPE>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+    pub fn retype_page_to_iommu_table_and_insert(&mut self, pg_ptr: PagePtr, iommu_table_value: IommuTable, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).it_mp.perms_wf(),
             !old(self).it_mp.dom().contains(pg_ptr),
@@ -203,7 +204,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuTable(pg_ptr), TypedHeldLock { lock_id: final(self).it_mp.lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
             final(self).it_mp.typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
     {
-        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, SpinWord>(
+        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE, SpinWord>(
             pg_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(pg_ptr)));
         self.it_mp.insert_with_perm(pg_ptr, Tracked(iommu_table_rwlock_perm));
         proof { assert(self.it_mp.typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
@@ -313,9 +314,13 @@ impl KernelK {
 
     /// Apply `update` to the stale-CPU map of page table `root`. A `Set` names a window this thread holds unless it
     /// write-holds the table; `RemoveCpu` and `ClearEmpty` touch only the records this thread may change. The TLB and
-    /// paging-structure invariants hold for the new map. A write-held table's ghost slot follows the window half.
-    pub fn replace_window_stale_cpus(&mut self, root: RwLockPageTableRoot, Ghost(update): Ghost<WindowStaleUpdate>, Tracked(lctx): Tracked<&LocalContext>)
+    /// paging-structure invariants hold for the new map. A write-held table's protected payload backup follows the window half.
+    pub fn replace_window_stale_cpus<const WRITE: bool>(&mut self, root: RwLockPageTableRoot, Ghost(update): Ghost<WindowStaleUpdate>,
+        Tracked(lctx): Tracked<&LocalContext>, Tracked(table_perm): Tracked<Option<&LockPerm>>)
         requires
+            WRITE == typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write),
+            WRITE ==> table_perm is Some && table_perm.unwrap().state() is WriteLock && table_perm.unwrap().thread_id() == lctx.thread_id(),
+            WRITE ==> old(self).pt_mp.spec_index(root).write_lock_perm_match(table_perm.unwrap()),
             old(self).inv(),
             old(self).pt_mp.dom().contains(root),
             typed_lock_maps_aligned(old(self), lctx),
@@ -356,6 +361,7 @@ impl KernelK {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
         ensures
+            !WRITE ==> final(self).pt_mp.spec_index(root).view() == old(self).pt_mp.spec_index(root).view(),
             final(self).inv(),
             typed_lock_maps_aligned(final(self), lctx),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -364,8 +370,13 @@ impl KernelK {
             *final(self) == (KernelK { pt_mp: final(self).pt_mp, pt_lower: final(self).pt_lower, ..*old(self) }),
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, root),
             forall|k: RwLockPageTableRoot| #![trigger final(self).pt_mp.lock_id_by_key(k)] old(self).pt_mp.dom().contains(k) ==> final(self).pt_mp.lock_id_by_key(k) == old(self).pt_mp.lock_id_by_key(k),
-            update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
-                if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
+            {
+                &&& final(self).pt_mp.spec_index(root).is_init() == old(self).pt_mp.spec_index(root).is_init()
+                &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
+                &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
+                &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
+                &&& final(self).pt_mp.spec_index(root).view() == (PageTableHigher { lower_backup: Ghost(if WRITE { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+            },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }),
@@ -382,21 +393,28 @@ impl KernelK {
             },
     {
         proof { window_stale_cpus_update_eof_held_windows(*old(self), root, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id()); }
+        let ghost new_map = window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id());
         proof {
             pagetable_perms_wf_map(old(self).pt_mp);
+            pagetable_perms_wf_at(old(self).pt_mp, root);
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
-            let ghost new_map = window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id());
             let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
             lower.window_stale_cpus = new_map;
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
-            if old(self).pt_mp.spec_index(root).wlocked() { self.pt_mp.update_ghost(root, self.pt_lower.view().spec_index(root)); }
+        }
+        if WRITE {
+            let tracked write_perm = table_perm.tracked_unwrap();
+            let higher = self.pt_mp.borrow_mut_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(write_perm));
+            higher.lower_backup = Ghost(self.pt_lower.view().spec_index(root));
+        }
+        proof {
             assert(self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower { window_stale_cpus: new_map, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }));
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
             assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
                 && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
-            assert(window_stale_cpus_update_eof_transition_framing(*old(self), *self, root)) by { reveal(window_stale_cpus_update_eof_transition_framing); };
+            assert(window_stale_cpus_update_eof_transition_framing(*old(self), *self, root, WRITE)) by { reveal(window_stale_cpus_update_eof_transition_framing); };
             assert(typed_lock_maps_aligned(self, lctx)) by {
                 reveal(window_stale_cpus_update_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
@@ -409,6 +427,10 @@ impl KernelK {
             if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write) {
                 old(self).pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
             }
+            assert(WRITE == old(self).pt_mp.spec_index(root).wlocked_by_thread(lctx.thread_id())) by {
+                old(self).pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), root);
+                if WRITE { old(self).pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), root); }
+            };
             window_stale_cpus_update_eof(*old(self), *self, root, update, typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id());
         }
     }

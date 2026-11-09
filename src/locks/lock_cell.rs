@@ -190,6 +190,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS
     pub open spec fn being_killed(&self) -> bool {
         if HAS_KILL_STATE { self.killer_info_from_control() is Some } else { false }
     }
+    pub closed spec fn view_lock(&self) -> I { self.lock }
     pub closed spec fn is_init(&self) -> bool { self.is_init.view() }
 
     pub closed spec fn view(&self) -> T

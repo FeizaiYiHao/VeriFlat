@@ -8,7 +8,7 @@ pub open spec fn lock_window_eof_transition_framing(pre: WholePageTable<PT_TYPE>
     lock_token: LockToken) -> bool
 {
     let p = pre.window_l2_page(l4i, l3i);
-    &&& post.higher == pre.higher
+    &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
     &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
     &&& forall|q: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(q)] q != p ==> post.lower.l2_perms.spec_index(q) == pre.lower.l2_perms.spec_index(q)
     &&& post.lower.l2_perms.spec_index(p).addr() == pre.lower.l2_perms.spec_index(p).addr()
@@ -30,7 +30,7 @@ pub open spec fn lock_window_eof_transition_framing(pre: WholePageTable<PT_TYPE>
 /// `pagetable_window_locks`; every other L2 page, entry and lower field is untouched.
 pub open spec fn unlock_window_eof_transition_framing(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
     let p = pre.window_l2_page(l4i, l3i);
-    &&& post.higher == pre.higher
+    &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
     &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
     &&& forall|q: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(q)] q != p ==> post.lower.l2_perms.spec_index(q) == pre.lower.l2_perms.spec_index(q)
     &&& post.lower.l2_perms.spec_index(p).addr() == pre.lower.l2_perms.spec_index(p).addr()
@@ -48,7 +48,7 @@ pub open spec fn unlock_window_eof_transition_framing(pre: WholePageTable<PT_TYP
 }
 
 /// EOF closure of `lock_window`: re-establishes `WholePageTable::wf` from its per-leaf `lock_window_eof_*` closures.
-pub(super) proof fn lock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+pub proof fn lock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -60,6 +60,11 @@ pub(super) proof fn lock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholePag
     ensures
         post.wf(),
 {
+    assert(post.higher.inv()) by {
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
+        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
+        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
+    };
     lock_window_eof_wf_l3(pre, post, l4i, l3i, l2i, thread_id, lock_token);
     lock_window_eof_wf_l2(pre, post, l4i, l3i, l2i, thread_id, lock_token);
     lock_window_eof_wf_l1(pre, post, l4i, l3i, l2i, thread_id, lock_token);
@@ -99,7 +104,7 @@ proof fn lock_window_eof_window_locks(pre: WholePageTable<PT_TYPE>, post: WholeP
 }
 
 /// EOF closure of `unlock_window`: re-establishes `WholePageTable::wf` from its per-leaf `unlock_window_eof_*` closures.
-pub(super) proof fn unlock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+pub proof fn unlock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -110,6 +115,11 @@ pub(super) proof fn unlock_window_eof(pre: WholePageTable<PT_TYPE>, post: WholeP
     ensures
         post.wf(),
 {
+    assert(post.higher.inv()) by {
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
+        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
+        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
+    };
     unlock_window_eof_wf_l3(pre, post, l4i, l3i, l2i);
     unlock_window_eof_wf_l2(pre, post, l4i, l3i, l2i);
     unlock_window_eof_wf_l1(pre, post, l4i, l3i, l2i);
@@ -344,7 +354,7 @@ pub(super) proof fn unlock_window_eof_hidden_l1_tables_in_locked_windows(pre: Wh
 {}
 
 /// EOF closure of `lock_window` for the held chain: only the window's lock owner moved.
-pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+pub proof fn lock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -353,6 +363,8 @@ pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, pos
         pre.window_exists(l4i, l3i),
         lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
     ensures
+        forall|l4j: L4Index, l3j: L3Index| #![trigger post.spec_held_1g_l3(l4j, l3j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) ==> post.spec_held_1g_l3(l4j, l3j) == pre.spec_held_1g_l3(l4j, l3j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
             pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
@@ -365,7 +377,7 @@ pub(super) proof fn lock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, pos
 }
 
 /// EOF closure of `unlock_window` for the held chain: only the window's lock owner moved.
-pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+pub proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),
@@ -374,6 +386,8 @@ pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, p
         pre.window_exists(l4i, l3i),
         unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
     ensures
+        forall|l4j: L4Index, l3j: L3Index| #![trigger post.spec_held_1g_l3(l4j, l3j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) ==> post.spec_held_1g_l3(l4j, l3j) == pre.spec_held_1g_l3(l4j, l3j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_held_l2(l4j, l3j, l2j)]
             pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) ==> post.spec_held_l2(l4j, l3j, l2j) == pre.spec_held_l2(l4j, l3j, l2j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_held_4k_l1(l4j, l3j, l2j, l1j)]
@@ -386,11 +400,15 @@ pub(super) proof fn unlock_window_eof_held_chain(pre: WholePageTable<PT_TYPE>, p
 }
 
 /// EOF closure of `lock_window` for the resolved leaves: no L2 entry or L1 page moved.
-pub(super) proof fn lock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
+pub proof fn lock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
     lock_token: LockToken)
     requires
         lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
     ensures
+        forall|l4j: L4Index| #![trigger post.spec_resolve_mapping_l4(l4j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) ==> post.spec_resolve_mapping_l4(l4j) == pre.spec_resolve_mapping_l4(l4j),
+        forall|l4j: L4Index, l3j: L3Index| #![trigger post.spec_resolve_mapping_l3(l4j, l3j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) ==> post.spec_resolve_mapping_l3(l4j, l3j) == pre.spec_resolve_mapping_l3(l4j, l3j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j)]
             post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j)]
@@ -398,10 +416,14 @@ pub(super) proof fn lock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, 
 {}
 
 /// EOF closure of `unlock_window` for the resolved leaves: no L2 entry or L1 page moved.
-pub(super) proof fn unlock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+pub proof fn unlock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
     ensures
+        forall|l4j: L4Index| #![trigger post.spec_resolve_mapping_l4(l4j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) ==> post.spec_resolve_mapping_l4(l4j) == pre.spec_resolve_mapping_l4(l4j),
+        forall|l4j: L4Index, l3j: L3Index| #![trigger post.spec_resolve_mapping_l3(l4j, l3j)]
+            pre.kernel_l4_end() <= l4j && pei_valid(l4j) && pei_valid(l3j) ==> post.spec_resolve_mapping_l3(l4j, l3j) == pre.spec_resolve_mapping_l3(l4j, l3j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j)]
             post.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j) == pre.spec_resolve_mapping_4k_l1(l4j, l3j, l2j, l1j),
         forall|l4j: L4Index, l3j: L3Index, l2j: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4j, l3j, l2j)]
@@ -409,7 +431,7 @@ pub(super) proof fn unlock_window_eof_resolve_chain(pre: WholePageTable<PT_TYPE>
 {}
 
 /// EOF closure of `lock_window` for the window holders and views: only window `(l4i, l3i, l2i)` changed holder.
-pub(super) proof fn lock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
+pub proof fn lock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
     lock_token: LockToken)
     requires
         pre.wf(),
@@ -430,7 +452,7 @@ pub(super) proof fn lock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, p
 }
 
 /// EOF closure of `unlock_window` for the window holders and views: only window `(l4i, l3i, l2i)` lost its holder.
-pub(super) proof fn unlock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+pub proof fn unlock_window_eof_window_views(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),
         pre.kernel_l4_end() <= l4i && pei_valid(l4i),

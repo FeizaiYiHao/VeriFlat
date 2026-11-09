@@ -85,7 +85,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.temp_alloc_clean() && thread.free_quota_pending_clean() && thread.syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view().exited.view()
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
@@ -324,10 +324,34 @@ pub(super) fn thread_exit_enter_with_caller(
             &&& typed_lock_map_contains_mode(final(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(final(lctx).process_lock_map(), prc_ptr, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view()
+            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view()
+            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()
+            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info()
             &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view()
-            &&& final(krnl).ctn_mp.dom().contains(ctn_ptr) && final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr)
-            &&& final(krnl).prc_mp.dom().contains(prc_ptr) && final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr)
+            &&& final(krnl).ctn_mp.dom().contains(ctn_ptr) && {
+                let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+                let pre_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+                &&& post_container.view_lock() == pre_container.view_lock()
+                &&& post_container.is_init() == pre_container.is_init()
+                &&& post_container.view() == pre_container.view()
+                &&& post_container.view_rodata() == pre_container.view_rodata()
+                &&& post_container.locking_thread() == pre_container.locking_thread()
+                &&& post_container.control() == pre_container.control()
+                &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+                &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+            }
+            &&& final(krnl).prc_mp.dom().contains(prc_ptr) && ({
+                let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
+                let pre_process = old(krnl).prc_mp.spec_index(prc_ptr);
+                &&& post_process.view_lock() == pre_process.view_lock()
+                &&& post_process.is_init() == pre_process.is_init()
+                &&& post_process.view() == pre_process.view()
+                &&& post_process.view_rodata() == pre_process.view_rodata()
+                &&& post_process.locking_thread() == pre_process.locking_thread()
+                &&& post_process.control() == pre_process.control()
+                &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+            })
             &&& final(krnl).thrd_mp.dom().contains(thrd_ptr) && final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()
             &&& !final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == prc_ptr && thread.owning_container == ctn_ptr

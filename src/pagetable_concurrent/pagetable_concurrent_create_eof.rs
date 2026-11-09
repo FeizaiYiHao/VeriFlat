@@ -73,6 +73,52 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.higher.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
     }
 
+    pub(super) broadcast proof fn create_entry_l4_eof_implies_wf_l4_at(pre: Self, post: Self,
+        target_l4i: L4Index, page_map_ptr: PageMapPtr, i: L4Index)
+        requires
+            pre.higher.wf_l4(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+            pre.kernel_l4_end() <= i && pei_valid(i),
+        ensures
+            #![trigger Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr), post.higher.l4_entry(i).perm.present]
+            post.higher.l4_entry(i).perm.present || post.higher.l4_entry(i).perm.kernel_present ==> {
+                &&& !post.higher.l4_entry(i).perm.ps
+                &&& post.higher.l3_tables.view().dom().contains(post.higher.l4_entry(i).addr)
+            },
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        if i != target_l4i { pre.higher.wf_l4_at(i); }
+    }
+
+    pub(super) broadcast proof fn create_entry_l4_eof_implies_disjoint_l4_at(pre: Self, post: Self,
+        target_l4i: L4Index, page_map_ptr: PageMapPtr, i: L4Index, j: L4Index)
+        requires
+            pre.higher.wf_l4(),
+            pre.higher.disjoint_l4(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+            i != j,
+            pre.kernel_l4_end() <= i && pei_valid(i),
+            pre.kernel_l4_end() <= j && pei_valid(j),
+        ensures
+            #![trigger Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr), post.higher.l4_entry(i), post.higher.l4_entry(j)]
+            (post.higher.l4_entry(i).perm.present || post.higher.l4_entry(i).perm.kernel_present)
+                && (post.higher.l4_entry(j).perm.present || post.higher.l4_entry(j).perm.kernel_present)
+                ==> post.higher.l4_entry(i).addr != post.higher.l4_entry(j).addr,
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        if i == target_l4i { pre.higher.wf_l4_at(j); }
+        else if j == target_l4i { pre.higher.wf_l4_at(i); }
+        else { reveal(PageTableHigher::disjoint_l4); }
+    }
+
     /// EOF closure of `create_entry_l4`: `wf_l4`.
     proof fn create_entry_l4_eof_wf_l4(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
@@ -85,8 +131,10 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.wf_l4(),
     {
-        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        reveal(PageTableHigher::wf_l4);
+        assert(post.higher.wf_l4()) by {
+            reveal(WholePageTable::create_entry_l4_eof_transition_framing); reveal(PageTableHigher::wf_l4);
+            broadcast use WholePageTable::create_entry_l4_eof_implies_wf_l4_at;
+        };
     }
 
     /// EOF closure of `create_entry_l4`: `disjoint_l4`; the new L3 page lies outside the old closure.
@@ -101,10 +149,10 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.disjoint_l4(),
     {
-        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        assert(!pre.higher.l3_tables.view().dom().contains(page_map_ptr));
-        reveal(PageTableHigher::disjoint_l4);
-        reveal(PageTableHigher::wf_l4);
+        assert(post.higher.disjoint_l4()) by {
+            reveal(WholePageTable::create_entry_l4_eof_transition_framing); reveal(PageTableHigher::disjoint_l4);
+            broadcast use WholePageTable::create_entry_l4_eof_implies_disjoint_l4_at;
+        };
     }
 
     /// EOF closure of `create_entry_l4`: the table-shape leaves of the window half.
@@ -254,7 +302,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// field is unchanged.
     #[verifier::opaque]
     pub open spec fn create_entry_l3_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId) -> bool {
-        &&& post.higher == (PageTableHigher { l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
+        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, pagetable_window_locks: post.lower.pagetable_window_locks, ..pre.lower })
         &&& post.higher.l3_tables.view().dom() == pre.higher.l3_tables.view().dom()
         &&& forall|p: PageMapPtr| #![trigger post.higher.l3_tables.view().spec_index(p)]
@@ -442,7 +490,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.tables_reachable_wf(),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::disjoint_l4); };
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::disjoint_l4); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at; };
     }
 
     /// EOF closure of `create_entry_l3`: the window-map half of `wf_window_locks`. Proved apart from the L2-slot half:
@@ -551,7 +599,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn create_entry_l2_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         page_map_ptr: PageMapPtr) -> bool {
-        &&& post.higher == pre.higher
+        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l1_rev_map: post.lower.l1_rev_map, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != target_l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -617,6 +665,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
+        reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
+        reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
         reveal(WholePageTable::create_entry_l2_eof_transition_framing);
     }
 

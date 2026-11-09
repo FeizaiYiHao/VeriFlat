@@ -35,6 +35,7 @@ pub(crate) fn kill_retire_target(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         scope is Subtree || 1 < chain.len(),
     ensures
@@ -49,20 +50,23 @@ pub(crate) fn kill_retire_target(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
-        scope is Subtree ==> final(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().remove(target),
+        final(krnl).prc_mp.spec_index(parent).view().children.view() == old(krnl).prc_mp.spec_index(parent).view().children.view().remove_value(target),
+        forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
+            old(lctx).process_lock_map().dom().contains(p) && p != parent && p != target ==> final(krnl).prc_mp.dom().contains(p)
+                && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& c != scope->Container_container ==> final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view() == old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view().remove(target),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
 {
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
@@ -72,8 +76,10 @@ pub(crate) fn kill_retire_target(
     };
     let (_, Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm)) = kill_retire_hold_tables(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr,
         thrd_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Ghost(scope));
+    proof { process_perms_wf_at(krnl.prc_mp, target); }
     kill_retire_structure_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(&page_perms), Tracked(&pt_perm), Tracked(&it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+    proof { process_perms_wf_at(krnl.prc_mp, target); }
     kill_retire_process(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&mut *chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx))
 }
@@ -98,8 +104,18 @@ pub(crate) fn kill_retire_hold_tables(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pagetable == pagetable,
         old(krnl).prc_mp.spec_index(target).view().iommu_table == iommu_table,
+        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
     ensures
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
+        final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+        forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
+            old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
+                && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -111,7 +127,15 @@ pub(crate) fn kill_retire_hold_tables(
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
-        final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
+        ({
+            &&& final(krnl).prc_mp.spec_index(target).view_lock() == old(krnl).prc_mp.spec_index(target).view_lock()
+            &&& final(krnl).prc_mp.spec_index(target).is_init() == old(krnl).prc_mp.spec_index(target).is_init()
+            &&& final(krnl).prc_mp.spec_index(target).view() == old(krnl).prc_mp.spec_index(target).view()
+            &&& final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(target).control() == old(krnl).prc_mp.spec_index(target).control()
+            &&& final(krnl).prc_mp.spec_index(target).view().uppertree_seq == old(krnl).prc_mp.spec_index(target).view().uppertree_seq
+        }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
         ({
             let pt = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
@@ -126,22 +150,28 @@ pub(crate) fn kill_retire_hold_tables(
         ret.0.view().no_duplicates(),
         ret.0.view().to_set() == kill_retire_held_pages(*final(krnl), target),
         forall|k: int| #![trigger ret.0.view()[k]] 0 <= k < ret.0.view().len() ==> index_valid(NUM_PAGES, ret.0.view()[k]),
-        final(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set,
-        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container) == old(krnl).ctn_mp.spec_index(scope->Container_container),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
@@ -212,6 +242,7 @@ pub(crate) fn kill_retire_process(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         scope is Subtree || 1 < chain.len(),
     ensures
@@ -226,20 +257,23 @@ pub(crate) fn kill_retire_process(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
-        scope is Subtree ==> final(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().remove(target),
+        final(krnl).prc_mp.spec_index(parent).view().children.view() == old(krnl).prc_mp.spec_index(parent).view().children.view().remove_value(target),
+        forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
+            old(lctx).process_lock_map().dom().contains(p) && p != parent && p != target ==> final(krnl).prc_mp.dom().contains(p)
+                && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& c != scope->Container_container ==> final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view() == old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view().remove(target),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
 {
     hide(Seq::no_duplicates);
     proof {
@@ -247,7 +281,7 @@ pub(crate) fn kill_retire_process(
         process_perms_wf_at(krnl.prc_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
         if scope is Subtree {
-            assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(prc_ptr)) by {
+            assert(krnl.prc_mp.spec_index(target).view().uppertree_seq.view().contains(prc_ptr)) by {
                 let owner = krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container;
                 let tree = krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
                 let root = krnl.ctn_mp.spec_index(owner).view().root_process;
@@ -278,6 +312,7 @@ pub(crate) fn kill_retire_process(
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let Tracked(cache_lock_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allc_ptr, cpu_id, pages.len(), Ghost(pages.view()[0]));
+    proof { process_perms_wf_at(krnl.prc_mp, target); }
     let ghost base = steps.snapshot_k();
     let ghost base_lctx = *lctx;
     proof {
@@ -330,7 +365,7 @@ pub(crate) fn kill_retire_end_step(
         base.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, KillStage::Retire),
         scope matches KillScope::Container { container } ==> base.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(base_lctx.container_lock_map(), container, TypedLockMode::Write),
         scope is Subtree ==> ctn_ptr == base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-        scope matches KillScope::Container { container } ==> ctn_ptr == container && base.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        scope matches KillScope::Container { container } ==> ctn_ptr == container && base.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(base.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         base.prc_mp.dom().contains(target),
         base.prc_mp.spec_index(target).being_killed(),
         base.prc_mp.spec_index(target).view().zombie,
@@ -338,7 +373,7 @@ pub(crate) fn kill_retire_end_step(
         base.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         base.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         base.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
-        base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        base.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr),
         base.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         base.ctn_mp.dom().contains(ctn_ptr),
         base.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == allc_ptr,
@@ -349,7 +384,7 @@ pub(crate) fn kill_retire_end_step(
             let old_p = base.prc_mp.spec_index(p);
             let new_p = old(krnl).prc_mp.spec_index(p);
             &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-            &&& new_p.view_ghost() == if base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(p) {
+            &&& new_p.view_ghost() == if base.prc_mp.spec_index(target).view().uppertree_seq.view().contains(p) {
                 ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(target)), ..old_p.view_ghost() }
             } else { old_p.view_ghost() }
             &&& new_p.view_rodata() == old_p.view_rodata()
@@ -375,6 +410,15 @@ pub(crate) fn kill_retire_end_step(
         forall|t: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(t)] old(krnl).it_mp.dom().contains(t) ==> old(krnl).it_mp.spec_index(t) == base.it_mp.spec_index(t),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
+        forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
+            old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
+                && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
+        final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -387,11 +431,12 @@ pub(crate) fn kill_retire_end_step(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: Ghost(kill_scope_progress(scope, parent_ptr, KillStage::Walk)), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
 {
@@ -433,6 +478,7 @@ pub(crate) fn kill_retire_commit(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         old(krnl).prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
@@ -518,6 +564,7 @@ pub(crate) fn kill_retire_commit(
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
             old(lctx).thread_lock_map().dom().contains(held_thread) ==> !old(krnl).thrd_mp.spec_index(held_thread).being_killed(),
     ensures
+        !final(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -545,12 +592,12 @@ pub(crate) fn kill_retire_commit(
             pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom().remove(target),
         final(krnl).allc_4k_mp.dom().contains(allc_ptr),
-        base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        base.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)] final(krnl).prc_mp.dom().contains(p) ==> {
             let old_p = base.prc_mp.spec_index(p);
             let new_p = final(krnl).prc_mp.spec_index(p);
             &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-            &&& new_p.view_ghost() == if base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(p) {
+            &&& new_p.view_ghost() == if base.prc_mp.spec_index(target).view().uppertree_seq.view().contains(p) {
                 ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(target)), ..old_p.view_ghost() }
             } else { old_p.view_ghost() }
             &&& new_p.view_rodata() == old_p.view_rodata()
@@ -605,7 +652,7 @@ pub(crate) fn kill_retire_commit(
     let ghost mid = *krnl;
     proof {
         assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr)) by { reveal(kill_retire_eof_transition_framing); };
-        assert(mid.inv()) by { reveal(LockedMap::typed_lock_map_aligned); kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, ctn_ptr, allc_ptr); };
+        assert(mid.inv() && !mid.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(LockedMap::typed_lock_map_aligned); kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, ctn_ptr, allc_ptr); };
     }
     krnl.wunlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
     krnl.wunlock_allocator_cache_4k(allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
@@ -652,9 +699,9 @@ pub(crate) fn kill_retire_unlink_process(
             let old_p = old(krnl).prc_mp.spec_index(p);
             let new_p = final(krnl).prc_mp.spec_index(p);
             &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-            &&& new_p.view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(p) {
+            &&& new_p.view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(target).view().uppertree_seq.view().contains(p) {
                 old_p.view_ghost().subtree_set.view().remove(target) } else { old_p.view_ghost().subtree_set.view() }
-            &&& new_p.view_ghost().uppertree_seq == old_p.view_ghost().uppertree_seq
+            &&& new_p.view().uppertree_seq == old_p.view().uppertree_seq
             &&& new_p.view_ghost().owned_pci_functions == old_p.view_ghost().owned_pci_functions
             &&& new_p.view_rodata() == old_p.view_rodata()
             &&& new_p.is_init() == old_p.is_init()
@@ -670,7 +717,7 @@ pub(crate) fn kill_retire_unlink_process(
             let new_children = final(krnl).prc_mp.spec_index(parent_ptr).view().children;
             &&& old_children.map().dom().contains(node_addr)
             &&& old_children.map().spec_index(node_addr) == target
-            &&& old(krnl).prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)
+            &&& old(krnl).prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr)
             &&& new_children.view() == old_children.view().remove_value(target)
             &&& new_children.map() == old_children.map().remove(node_addr)
             &&& new_children.dom() == old_children.dom().remove(node_addr)
@@ -692,15 +739,15 @@ pub(crate) fn kill_retire_unlink_process(
         let tree = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
         process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr); };
-        assert(root != target) by { process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target); };
-        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom()) && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by {
-            krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_implies_ancestors_in_dom(root, tree, krnl.prc_mp, target);
+        assert(root != target && tree.contains(root)) by { process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target); };
+        assert(krnl.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom()) && krnl.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr)) by {
+            krnl.prc_mp.spec_index(target).view().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_implies_ancestors_in_dom(root, tree, krnl.prc_mp, target);
             container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr, target); process_root_wf_at(root, tree, krnl.prc_mp, target); process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, target);
         };
         assert(krnl.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
             && krnl.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target) by { process_linkedlist_wf_at(root, tree, krnl.prc_mp, target); };
     }
-    let ghost uppers = krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view();
+    let ghost uppers = krnl.prc_mp.spec_index(target).view().uppertree_seq.view();
     let Tracked(node_perm) = process_map_unlink_child(&mut krnl.prc_mp, parent_ptr, target, Ghost(uppers), Tracked(&*lctx), Tracked(parent_perm), Tracked(&target_perm));
     proof { container_map_remove_owned_process(&mut krnl.ctn_mp, ctn_ptr, target, lctx.container_lock_map(), lctx.thread_id()); }
     krnl.remove_process_and_reclaim_4k_page_perm(target, Tracked(node_perm), Tracked(target_perm), Tracked(&mut *lctx))

@@ -12,7 +12,7 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -39,14 +39,19 @@ pub(super) proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, thr
         post == (KernelK { thrd_mp: post.thrd_mp, ..pre }),
         post.thrd_mp.perms_wf(),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
-        update_ghost_ensures(pre.thrd_mp.spec_index(thrd_ptr), post.thrd_mp.spec_index(thrd_ptr), ThreadGhost { exited: true, ..pre.thrd_mp.spec_index(thrd_ptr).view_ghost() }),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { exited: Ghost(true), ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).is_init() == pre.thrd_mp.spec_index(thrd_ptr).is_init(),
+        post.thrd_mp.spec_index(thrd_ptr).view_rodata() == pre.thrd_mp.spec_index(thrd_ptr).view_rodata(),
+        post.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        post.thrd_mp.spec_index(thrd_ptr).control() == pre.thrd_mp.spec_index(thrd_ptr).control(),
     ensures post.inv(),
 {
     assert(thread_perms_wf(post.thrd_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
-    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thrd_mp, post.thrd_mp, thrd_ptr); };
+    assert(thread_invariant_fields_unchanged(pre.thrd_mp, post.thrd_mp)) by { reveal(thread_invariant_fields_unchanged); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {
@@ -70,7 +75,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
         !pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -126,7 +131,7 @@ proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: Ker
         &&& post.it_mp.lock_id_by_key(iommu_table) == pre.it_mp.lock_id_by_key(iommu_table)
         &&& post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread()
         &&& post.it_mp.spec_index(iommu_table).being_killed() == pre.it_mp.spec_index(iommu_table).being_killed()
-        &&& post.it_mp.spec_index(iommu_table).view() == (PageTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() })
+        &&& post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() })
         &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k()
         &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m()
         &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g()

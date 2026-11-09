@@ -67,7 +67,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     let pagetable_index = page_ptr2page_index(pagetable_page);
     let l4_index = page_ptr2page_index(l4_page);
     let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
-    let child_uppers = pre.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view().push(parent_ctn_ptr);
+    let child_uppers = pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr);
     let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
     let funding_indices = funding_pages.map_values(|pg_ptr: PagePtr| page_ptr2page_index(pg_ptr)).to_set();
     let unpublished = |index: PageIndex| index != container_head && index != pcid_allocator_head && index != allocator_4k_index && index != allocator_2m_index && index != allocator_1g_index
@@ -159,13 +159,13 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints
-            &&& post.ctn_mp.spec_index(ptr).view_ghost().retire_ready == pre.ctn_mp.spec_index(ptr).view_ghost().retire_ready
+            &&& post.ctn_mp.spec_index(ptr).view().retire_ready.view() == pre.ctn_mp.spec_index(ptr).view().retire_ready.view()
             &&& ptr != parent_ctn_ptr ==> post.ctn_mp.spec_index(ptr).view() == pre.ctn_mp.spec_index(ptr).view()
         }
     &&& forall|ptr: RwLockContainerPtr|
-        #![trigger post.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq]
-        #![trigger pre.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq]
-        pre.ctn_mp.dom().contains(ptr) ==> post.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq
+        #![trigger post.ctn_mp.spec_index(ptr).view().uppertree_seq]
+        #![trigger pre.ctn_mp.spec_index(ptr).view().uppertree_seq]
+        pre.ctn_mp.dom().contains(ptr) ==> post.ctn_mp.spec_index(ptr).view().uppertree_seq == pre.ctn_mp.spec_index(ptr).view().uppertree_seq
     &&& forall|ptr: RwLockContainerPtr|
         #![trigger child_uppers.contains(ptr)]
         child_uppers.contains(ptr) ==> post.ctn_mp.spec_index(ptr).view_ghost().subtree_set.view() == pre.ctn_mp.spec_index(ptr).view_ghost().subtree_set.view().insert(container_page)
@@ -191,7 +191,8 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_page).control() == LockControl::DynamicProcess(LockOwnerId::Some(0))
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page]
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().is_empty()
-    &&& !post.ctn_mp.spec_index(container_page).view_ghost().retire_ready
+    &&& !post.ctn_mp.spec_index(container_page).view().retire_ready.view()
+    &&& !post.ctn_mp.spec_index(container_page).view().root_process_removed.view()
     &&& post.ctn_mp.spec_index(container_page).view().owned_pages.view() == moved_pages
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().parent == Some(parent_ctn_ptr)
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().depth == pre.ctn_mp.spec_index(parent_ctn_ptr).view_rodata().view().depth + 1
@@ -203,7 +204,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().allocator_ptr_1g == allocator_1g_page
     &&& post.ctn_mp.spec_index(container_page).view().children.view().len() == 0
     &&& !post.ctn_mp.spec_index(container_page).view().parent_linkedlist_node.is_init()
-    &&& post.ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view() == child_uppers
+    &&& post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == child_uppers
     &&& post.ctn_mp.spec_index(container_page).view_ghost().subtree_set.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view().is_empty()
@@ -213,6 +214,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.prc_mp.spec_index(process_page).being_killed()
     &&& !post.prc_mp.spec_index(process_page).view().zombie
     &&& post.prc_mp.spec_index(process_page).view().state.view() is Creating
+    &&& post.prc_mp.spec_index(process_page).view().pci_cleared.view() == false
     &&& post.prc_mp.spec_index(process_page).view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view().pagetable == pagetable_page
     &&& post.prc_mp.spec_index(process_page).view().iommu_table is None
@@ -232,7 +234,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().iommu_cr3 is None
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().iommu_table_ptr is None
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().pcid == root_pcid
-    &&& post.prc_mp.spec_index(process_page).view_ghost().uppertree_seq.view().len() == 0
+    &&& post.prc_mp.spec_index(process_page).view().uppertree_seq.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view_ghost().subtree_set.view().is_empty()
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
     &&& forall|ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(ptr)] pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
@@ -244,7 +246,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable_page).view().table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
-    &&& post.pt_mp.spec_index(pagetable_page).view_ghost() == post.pt_lower.view().spec_index(pagetable_page)
+    &&& post.pt_mp.spec_index(pagetable_page).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_page)
     &&& forall|pt_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr)]
         pre.pt_mp.dom().contains(pt_ptr) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt_ptr)
@@ -407,8 +409,8 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty(),
         post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
         post.prc_mp.spec_index(process_page).view().iommu_table is None,
-        post.ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view().push(parent_ctn_ptr),
-        post.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq,
+        post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
+        post.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq,
         post.ctn_mp.spec_index(parent_ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(parent_ctn_ptr).view_rodata(),
         post.ctn_mp.spec_index(container_page).view_rodata().view().cpu_set == cpu_set_page,
         post.thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_4k.view() == set![thread_page],

@@ -135,7 +135,7 @@ fn new_process_lock_entry(
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().quota_4k >= (if with_iommu { 6int } else { 4int }) + 3 * x.source_range.len
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().exited.view()
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().free_quota_pending_clean()
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), x.current_thread_ptr, TypedLockMode::Write)
             &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).being_killed()

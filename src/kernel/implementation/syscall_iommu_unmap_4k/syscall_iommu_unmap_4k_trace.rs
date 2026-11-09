@@ -147,9 +147,15 @@ pub(super) proof fn iommu_unmap_4k_trace_exit_step(before: Seq<KernelStep>, trac
 /// recording the first iova from a `Success` entry state is the enter step.
 pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
-    iova: VAddr, range: usize,
+    iova: VAddr, range: usize, resumed: &KernelK,
 )
     requires
+        container_process_wf(resumed.ctn_mp, resumed.prc_mp),
+        process_thread_wf(resumed.prc_mp, resumed.thrd_mp),
+        resumed.thrd_mp.dom().contains(thrd_ptr),
+        !thread_is_dangling(resumed.thrd_mp.spec_index(thrd_ptr)),
+        resumed.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        resumed.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         process_iommu_table_wf(pre.prc_mp, pre.it_mp),
         thread_cpu_wf(pre.thrd_mp, pre.cpu_arr),
         index_valid(NUM_CPUS, cpu_id),
@@ -201,9 +207,11 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
         post.it_mp.spec_index(iommu_table_ptr).lock_state_u() == (LockStateU::WriteLocked { writer: cpu_id }),
     ensures
+        !resumed.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         iommu_unmap_4k_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, spec_va_range_4k(iova, range)),
         iommu_unmap_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, spec_va_range_4k(iova, range)),
 {
+    assert(!resumed.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()) by { process_thread_wf_thread_at(resumed.prc_mp, resumed.thrd_mp, thrd_ptr); container_process_wf_process_at(resumed.ctn_mp, resumed.prc_mp, prc_ptr); };
     reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step);
     thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id);
     kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table_ptr);

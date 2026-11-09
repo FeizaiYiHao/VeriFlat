@@ -56,7 +56,7 @@ pub(super) fn finish_new_thread_commit(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewThread { regs: *initial_regs, endpoint_index: None }),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_2m.view().len() == 0,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_1g.view().len() == 0,

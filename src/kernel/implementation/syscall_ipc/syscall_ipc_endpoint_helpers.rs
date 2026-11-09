@@ -40,7 +40,7 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcEndpoint {
             peer: peer_thrd_ptr, caller_sends: receiver_thrd_ptr == peer_thrd_ptr,
             payload_index: if receiver_thrd_ptr == peer_thrd_ptr { source_ep_idx } else { target_ep_idx },
@@ -57,7 +57,7 @@ pub(super) fn ipc_endpoint_copy_and_finish_transit(
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver_thrd_ptr == peer_thrd_ptr { target_ep_idx } else { source_ep_idx } }),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),

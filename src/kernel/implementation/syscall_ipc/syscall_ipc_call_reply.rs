@@ -96,14 +96,14 @@ verus! {
             old(krnl).thrd_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(callee_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(callee_ptr).view().exited.view(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
             old(krnl).thrd_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thrd_mp.spec_index(callee_ptr).view().owning_container,
             old(krnl).thrd_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(caller_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(caller_ptr).view().exited.view(),
             old(krnl).ep_mp.spec_index(ep_ptr).view().queue.len() == 0 || old(krnl).ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -289,7 +289,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(callee_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(callee_ptr).view().exited.view(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().state is DANGLING,
             old(krnl).thrd_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
@@ -497,14 +497,14 @@ verus! {
             old(krnl).thrd_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(callee_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(callee_ptr).view().exited.view(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().state.is_reply_waiting(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thrd_mp.spec_index(callee_ptr).view().owning_container,
             old(krnl).thrd_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(caller_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(caller_ptr).view().exited.view(),
             old(krnl).ep_mp.spec_index(ep_ptr).view().queue.len() == 0 || old(krnl).ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -651,7 +651,7 @@ verus! {
                 &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == prc_ptr && thread.owning_container == cpu.owning_container
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(ep_idx) == Some(ep_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
-                &&& !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited
+                &&& !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view()
                 &&& thread.caller is Some
                 &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
                 &&& !endpoint.queue.view().contains(current_thrd_ptr)

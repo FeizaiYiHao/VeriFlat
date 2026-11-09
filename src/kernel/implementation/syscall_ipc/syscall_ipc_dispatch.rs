@@ -91,7 +91,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
             waiting_state is RECEIVING_CALL ==> (old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().caller is Some) == expect_caller,
             old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(lctx).page_lock_map().dom().is_empty(),
@@ -218,7 +218,7 @@ verus! {
                 &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == cpu.owning_container
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(ep_idx) == Some(e.endpoint_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
-                &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view_ghost().exited
+                &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().exited.view()
                 &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
                 &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view()
                 &&& !endpoint.queue.view().contains(e.current_thread_ptr)
@@ -467,7 +467,7 @@ verus! {
                 &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == cpu.owning_container
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(ep_idx) == Some(e.endpoint_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
-                &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view_ghost().exited
+                &&& !final(krnl).thrd_mp.spec_index(e.current_thread_ptr).view().exited.view()
                 &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
                 &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
                 &&& !endpoint.queue.view().contains(e.current_thread_ptr)
@@ -805,7 +805,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
@@ -846,7 +846,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
             (old(krnl).ep_mp.spec_index(ep_ptr).view().queue_state is SEND) != waiting_is_send,
             match payload {
                 IPCPayLoad::Empty => true,
@@ -1080,7 +1080,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),

@@ -37,7 +37,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -146,7 +146,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -233,7 +233,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -325,7 +325,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -418,7 +418,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -465,7 +465,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -518,7 +518,7 @@ impl KernelK {
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(self).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thrd_ptr), TypedHeldLock { lock_id: final(self).thrd_mp.lock_id_by_key(thrd_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -608,7 +608,7 @@ impl KernelK {
             old(self).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             old(self).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
             old(self).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-            !old(self).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !old(self).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             typed_lock_maps_aligned(old(self), old(lctx)),
             // No dangling thread taken over for reclamation is held: its chain end could be released here.
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)]

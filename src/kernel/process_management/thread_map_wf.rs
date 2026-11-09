@@ -88,8 +88,8 @@ pub open spec fn thread_syscall_progress_only_when_wlocked(thrd_mp: ThreadLocked
 #[verifier::opaque]
 pub open spec fn thread_exited_only_when_wlocked(thrd_mp: ThreadLockedMap) -> bool {
     forall|t: RwLockThreadPtr|
-        #![trigger thrd_mp.spec_index(t).view_ghost()]
-        thrd_mp.dom().contains(t) && thrd_mp.spec_index(t).view_ghost().exited
+        #![trigger thrd_mp.spec_index(t).view()]
+        thrd_mp.dom().contains(t) && thrd_mp.spec_index(t).view().exited.view()
             ==> thrd_mp.spec_index(t).locking_thread() is Write
 }
 
@@ -98,7 +98,7 @@ pub proof fn thread_exited_only_when_wlocked_at(thrd_mp: ThreadLockedMap, thrd_p
     requires
         thread_perms_wf(thrd_mp),
         thrd_mp.dom().contains(thrd_ptr),
-    ensures thrd_mp.spec_index(thrd_ptr).view_ghost().exited ==> thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+    ensures thrd_mp.spec_index(thrd_ptr).view().exited.view() ==> thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
 { reveal(thread_perms_wf); reveal(thread_exited_only_when_wlocked); }
 
 /// Killed thread `thrd_ptr` is write-held.

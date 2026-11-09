@@ -107,7 +107,7 @@ pub(super) fn unmap_2m_range(
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap2m { range: *range, unmapped: range.len, flushed: true }),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
@@ -197,7 +197,7 @@ pub(super) fn unmap_2m_range(
             krnl.cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
             krnl.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
             krnl.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-            krnl.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            krnl.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             old(krnl).thrd_mp.spec_index(thrd_ptr).inv(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
@@ -341,7 +341,7 @@ pub(super) fn unmap_2m_range(
             krnl.cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
             krnl.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
             krnl.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-            krnl.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            krnl.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             old(krnl).thrd_mp.spec_index(thrd_ptr).inv(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
@@ -517,7 +517,7 @@ fn flush_unmap_2m_range_tlbs(
         flush_pagetable_tlbs_va_range(krnl, pagetable, cr3, pcid, range.start, range.len, true, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
         proof { unmap_2m_tlb_va_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
     } else {
-        flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
+        flush_pagetable_tlbs::<false>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, pagetable_perm);
         proof { unmap_2m_tlb_flush_range_steps_from_k(&*steps, before, start, &entry, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, *range); }
     }
 }

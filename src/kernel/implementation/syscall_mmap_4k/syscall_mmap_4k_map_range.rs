@@ -36,7 +36,7 @@ pub(super) fn mmap_4k_map_leaf_range(
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
@@ -87,13 +87,18 @@ pub(super) fn mmap_4k_map_leaf_range(
         old(steps).view().len() + range.len <= final(steps).view().len() <= old(steps).view().len() + 2 * range.len,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
-        final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         !final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(thrd_ptr).view().state,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
@@ -141,7 +146,12 @@ pub(super) fn mmap_4k_map_leaf_range(
             lctx.scheduler_lock_map().dom().is_empty(),
             lctx.cpu_set_lock_map().dom().is_empty(),
             entry == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr),
-            krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            krnl.cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+            krnl.cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+            krnl.cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+            krnl.cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+            krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+            krnl.cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
             !krnl.cpu_arr.spec_index(cpu_id).view().being_killed(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
@@ -157,8 +167,8 @@ pub(super) fn mmap_4k_map_leaf_range(
             krnl.thrd_mp.dom().contains(thrd_ptr),
             !krnl.thrd_mp.spec_index(thrd_ptr).being_killed(),
             !thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr)),
-            krnl.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
-            !krnl.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            krnl.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
+            !krnl.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
             krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
             krnl.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
@@ -281,7 +291,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
         old(krnl).thrd_mp.dom().contains(thrd_ptr),
         !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
@@ -368,7 +378,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
     let ghost exit_lctx = *lctx;
     proof { mmap_4k_trace_range_steps(&*steps, entered, cpu_id, *va_range, enter_phase); }
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    krnl.unlock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
+    krnl.unlock_pagetable_range_windows::<false>(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
     krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));

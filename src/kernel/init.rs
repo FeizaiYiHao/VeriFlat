@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 use vstd::simple_pptr::*;
 
 mod boot_eof_pages;
@@ -277,6 +278,8 @@ pub fn adopt_boot_dom0_pagetable(
         boot_page_map_perms_wf(l4_tables),
         boot_page_map_perms_wf(l3_tables),
         boot_page_map_perms_wf(l2_tables),
+        forall|p: PageMapPtr, i: usize| #![trigger l2_tables.spec_index(p).value().ar.view().spec_index(i as int)]
+            l2_tables.dom().contains(p) && pei_valid(i) ==> (l2_tables.spec_index(p).value().ar.view().spec_index(i as int) & L2_ENTRY_LOCK_MASK) == 0,
         boot_page_map_perms_wf(l1_tables),
         l4_tables.dom().disjoint(l3_tables.dom()),
         l4_tables.dom().disjoint(l2_tables.dom()),
@@ -313,7 +316,7 @@ pub fn adopt_boot_dom0_pagetable(
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()), lower_backup: Ghost(PageTableLower::spec_empty()),
     };
     (higher, Tracked::assume_new())
 }
@@ -726,6 +729,9 @@ pub open spec fn boot_kernel_state(
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4]
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().proc_ptr == layout.root_process
     // Root container.
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().uppertree_seq.view() == Seq::<RwLockContainerPtr>::empty()
+    &&& !krnl.ctn_mp.spec_index(layout.root_container).view().retire_ready.view()
+    &&& !krnl.ctn_mp.spec_index(layout.root_container).view().root_process_removed.view()
     &&& krnl.ctn_mp.perms_wf()
     &&& krnl.ctn_mp.dom() =~= set![layout.root_container]
     &&& krnl.ctn_mp.spec_index(layout.root_container).is_init()
@@ -744,9 +750,8 @@ pub open spec fn boot_kernel_state(
         parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
         allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
     })
-    &&& krnl.ctn_mp.spec_index(layout.root_container).view_ghost() == (ContainerGhost {
-        uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)), retire_ready: false,
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view_ghost() == (ContainerGhost { subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
+        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
     })
     // Scheduler.
     &&& krnl.sched_mp.perms_wf()
@@ -811,6 +816,8 @@ pub open spec fn boot_kernel_state(
     &&& krnl.prc_mp.spec_index(layout.root_process).locking_thread() is None
     &&& krnl.prc_mp.spec_index(layout.root_process).view().inv()
     &&& !krnl.prc_mp.spec_index(layout.root_process).view().zombie
+    &&& !krnl.prc_mp.spec_index(layout.root_process).view().pci_cleared.view()
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().uppertree_seq.view() == Seq::<RwLockProcessPtr>::empty()
     &&& krnl.prc_mp.spec_index(layout.root_process).view().state.view() is Running
     &&& krnl.prc_mp.spec_index(layout.root_process).view().pcid == 1
     &&& krnl.prc_mp.spec_index(layout.root_process).view().pagetable == layout.cpu_pagetable
@@ -827,7 +834,7 @@ pub open spec fn boot_kernel_state(
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0, pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3,
         iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
     })
-    &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
+    &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
     // Root thread.
     &&& krnl.thrd_mp.perms_wf()
     &&& krnl.thrd_mp.dom() =~= set![layout.root_thread]
@@ -860,7 +867,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
-    &&& !krnl.thrd_mp.spec_index(layout.root_thread).view_ghost().exited
+    &&& !krnl.thrd_mp.spec_index(layout.root_thread).view().exited.view()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().quota_4k == 0
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().quota_2m == 0
@@ -988,6 +995,8 @@ pub fn finish_init_from_boot(
         boot_page_map_perms_wf(cpu_l4_tables),
         boot_page_map_perms_wf(cpu_l3_tables),
         boot_page_map_perms_wf(cpu_l2_tables),
+        forall|p: PageMapPtr, i: usize| #![trigger cpu_l2_tables.spec_index(p).value().ar.view().spec_index(i as int)]
+            cpu_l2_tables.dom().contains(p) && pei_valid(i) ==> (cpu_l2_tables.spec_index(p).value().ar.view().spec_index(i as int) & L2_ENTRY_LOCK_MASK) == 0,
         boot_page_map_perms_wf(cpu_l1_tables),
         cpu_l4_tables.dom().disjoint(cpu_l3_tables.dom()),
         cpu_l4_tables.dom().disjoint(cpu_l2_tables.dom()),
@@ -1050,7 +1059,15 @@ pub fn finish_init_from_boot(
         Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
     let (iommu_l4, Tracked(iommu_l4_perm)) = page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
-    let iommu_table = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
+    assert(iommu_l4_perm.value().iommu_wf()) by {
+        assert(iommu_word_valid(0usize)) by (compute);
+        assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user
+            && !spec_usize2page_entry(0usize).perm.write) by (compute);
+        assert_seqs_equal!(iommu_l4_perm.value().spec_seq.view() == Seq::new(512, |i: int| spec_usize2page_entry(0usize)), i => {
+            iommu_l4_perm.value().wf_at(i as usize);
+        });
+    };
+    let iommu_table = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
     let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint);
     let mut thrd_mp = ThreadLockedMap::new_empty();
     let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_page_perm));
@@ -1087,15 +1104,14 @@ pub fn finish_init_from_boot(
         pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3, iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table),
         pcid: 1,
     }, Ghost(layout.root_process));
-    let process_ghost = ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions };
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions };
     let container_rodata = ReadOnlyNode::new(ContainerRO {
         parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
         allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
     }, Ghost(layout.root_container));
     let ghost root_threads = Set::<RwLockThreadPtr>::empty().insert(layout.root_thread);
-    let container_ghost = ContainerGhost {
-        uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)), retire_ready: false,
+    let container_ghost = ContainerGhost { subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
+        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
     };
 
     let mut pt_mp = PageTableLockedMap::new_empty();
@@ -1110,10 +1126,13 @@ pub fn finish_init_from_boot(
     let mut allc_2m_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_2M>::new_empty();
     let mut allc_1g_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_1G>::new_empty();
 
-    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(cpu_pagetable_lower), Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
+    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
-    ctn_mp.retype_2m_as_unlocked_singleton(layout.root_container, container, container_rodata, Ghost(container_ghost), Tracked(container_page_perm),
-        0, Ghost(KernelObjId::Container(layout.root_container)), LockOwnerId::Some(0));
+    let tracked mut root_retype_lctx = LocalContext::new_bootstrap(0);
+    proof { assert(ctn_mp.typed_lock_map_aligned(root_retype_lctx.container_lock_map(), root_retype_lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+    let (root_container_lock_perm, Tracked(container_tail_perm)) = container_map_insert_new_2m(
+        &mut ctn_mp, layout.root_container, container, container_rodata, container_ghost, Tracked(container_page_perm), Tracked(&mut root_retype_lctx));
+    ctn_mp.dynamic_wunlock(layout.root_container, Tracked(&mut root_retype_lctx), root_container_lock_perm, Ghost(KernelObjId::Container(layout.root_container)));
     let tracked boot_lctx = LocalContext::new_bootstrap(0);
     sched_mp.retype_page_to_scheduler_and_insert(layout.scheduler, scheduler, Tracked(scheduler_page_perm), Tracked(&boot_lctx));
     pcid_allc_mp.retype_2m_as_unlocked_singleton(layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)));
@@ -1125,7 +1144,7 @@ pub fn finish_init_from_boot(
     allc_1g_mp.retype_page_to_allocator_and_insert(layout.allocator_1g, allocator_1g, Tracked(allocator_1g_page_perm), Tracked(&boot_lctx));
     let mut cpu_offline_mp = CpuOfflineFlagsUnLockedMap::new_empty();
     let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(0usize), Ghost(cpu_offline_flags_ptr(layout.root_container)));
-    cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags, Tracked(&boot_lctx));
+    cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags, Tracked(container_tail_perm), Tracked(&boot_lctx));
 
     let tracked mut pt_lower = Map::<RwLockPageTableRoot, PageTableLower<PT_TYPE>>::tracked_empty();
     proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }

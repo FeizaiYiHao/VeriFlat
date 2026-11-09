@@ -33,27 +33,27 @@ pub(super) fn unmap_1g_hide_leaf(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap1g { range, unmapped, flushed: false }),
     ensures
-        final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(ret.0@) }),
+        final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(ret.0.view()) }),
         final(steps).snapshot_k() == *final(krnl),
-        ret.0@.inv(),
-        ret.0@ == (KernelK { pt_mp: ret.0@.pt_mp, thrd_mp: ret.0@.thrd_mp, ..*old(krnl) }),
-        ret.0@.pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
-        ret.0@.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
-        ret.0@.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        ret.0@.pt_mp.spec_index(pagetable).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr,
-        ret.0@.pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
-        ret.0@.pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
-        ret.0@.pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        ret.0@.pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
-        ret.0@.thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
-        ret.0@.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
-        ret.0@.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        ret.0@.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
-        ret.0@.thrd_mp.spec_index(thrd_ptr).view()
+        ret.0.view().inv(),
+        ret.0.view() == (KernelK { pt_mp: ret.0.view().pt_mp, thrd_mp: ret.0.view().thrd_mp, ..*old(krnl) }),
+        ret.0.view().pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
+        ret.0.view().pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
+        ret.0.view().pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
+        ret.0.view().pt_mp.spec_index(pagetable).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr,
+        ret.0.view().pt_mp.spec_index(pagetable).view().cr3 == old(krnl).pt_mp.spec_index(pagetable).view().cr3,
+        ret.0.view().pt_mp.spec_index(pagetable).view().pcid == old(krnl).pt_mp.spec_index(pagetable).view().pcid,
+        ret.0.view().pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
+        ret.0.view().pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        ret.0.view().thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
+        ret.0.view().thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        ret.0.view().thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
+        ret.0.view().thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
+        ret.0.view().thrd_mp.spec_index(thrd_ptr).view()
             == (Thread { syscall_progress: Ghost(Some(SyscallProgress::Unmap1g { range, unmapped: (unmapped + 1) as usize, flushed: false })), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
-            let new_c = whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable);
+            let new_c = whole_pagetable(ret.0.view().pt_mp, ret.0.view().pt_lower.view(), pagetable);
             &&& new_c.lower == old_c.lower
             &&& new_c.mapping_1g() == old_c.mapping_1g().insert(va, MapEntry { present: false, ..old_c.mapping_1g().spec_index(va) })
             &&& forall|i4: L4Index| #![trigger new_c.spec_resolve_mapping_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
@@ -63,8 +63,8 @@ pub(super) fn unmap_1g_hide_leaf(
             &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
                 old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
         }),
-        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(ret.0@.pt_mp, ret.0@.pt_lower.view(), pagetable),
-        kernel_step_boundary_framing(ret.0@, *final(krnl), ret.1@),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(ret.0.view().pt_mp, ret.0.view().pt_lower.view(), pagetable),
+        kernel_step_boundary_framing(ret.0.view(), *final(krnl), ret.1@),
         typed_lock_maps_unchanged(old(lctx), &ret.1@),
         ret.1@.cpu_id() == old(lctx).cpu_id() && ret.1@.thread_id() == old(lctx).thread_id(),
         final(krnl).inv(),

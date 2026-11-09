@@ -72,7 +72,7 @@ pub(super) fn cpu_offline_check_continue(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -370,7 +370,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()

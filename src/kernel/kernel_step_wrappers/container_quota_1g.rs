@@ -45,7 +45,7 @@ impl KernelK {
             delta > 0,
             kernel_container_quota_1g_changed(&old(steps).snapshot_k(), old(self), ctn_ptr, delta),
             old(steps).snapshot_k().ctn_mp.dom().contains(origin),
-            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(ctn_ptr),
+            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(ctn_ptr),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -60,6 +60,11 @@ impl KernelK {
             }), ..old(steps).snapshot_u() }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -91,6 +96,9 @@ impl KernelK {
         };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
+        old(self).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id());
+        reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_subtree_uppertree_agree_wf); reveal(process_subtree_set_wf);
+        broadcast use vstd::seq::Seq::lemma_index_contains;
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }

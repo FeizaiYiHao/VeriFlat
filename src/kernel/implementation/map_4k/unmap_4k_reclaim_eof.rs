@@ -380,7 +380,8 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread(),
         post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed() == pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().being_killed(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus,
-        post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view(),
+        post.pt_mp.spec_index(pagetable).view()
+            == (PageTableHigher { lower_backup: Ghost(if pre.pt_mp.spec_index(pagetable).wlocked() { post.pt_lower.view().spec_index(pagetable) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup.view() }), ..pre.pt_mp.spec_index(pagetable).view() }),
         new_counter == old_counter + 1,
         post.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_4k_at_depth(depth) == new_counter,
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),

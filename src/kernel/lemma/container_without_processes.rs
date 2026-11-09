@@ -56,7 +56,7 @@ proof fn container_indirect_thread_child_at(k: KernelK, c_ptr: RwLockContainerPt
     container_thread_wf_indirect_thread_at(k.ctn_mp, k.thrd_mp, c_ptr, t_ptr);
     container_thread_wf_uppertree_at(k.ctn_mp, k.thrd_mp, t_ptr);
     let owner = k.thrd_mp.spec_index(t_ptr).view().owning_container;
-    let uppers = k.ctn_mp.spec_index(owner).view_ghost().uppertree_seq.view();
+    let uppers = k.ctn_mp.spec_index(owner).view().uppertree_seq.view();
     let depth = k.ctn_mp.spec_index(c_ptr).view_rodata().view().depth;
     container_uppertree_seq_wf_at(k.rt_ctn, k.ctn_mp, owner, c_ptr);
     container_perms_wf_at(k.ctn_mp, owner);
@@ -67,7 +67,7 @@ proof fn container_indirect_thread_child_at(k: KernelK, c_ptr: RwLockContainerPt
         container_perms_wf_at(k.ctn_mp, child);
     }
     assert(k.ctn_mp.dom().contains(child) && k.ctn_mp.spec_index(child).view_rodata().view().depth == depth + 1
-        && k.ctn_mp.spec_index(child).view_ghost().uppertree_seq.view()[depth as int] == c_ptr);
+        && k.ctn_mp.spec_index(child).view().uppertree_seq.view()[depth as int] == c_ptr);
     container_root_wf_at(k.rt_ctn, k.ctn_mp, child);
     container_uppertree_seq_parent_wf_at(k.rt_ctn, k.ctn_mp, child);
     container_linkedlist_wf_at(k.rt_ctn, k.ctn_mp, child);

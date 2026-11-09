@@ -324,7 +324,6 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                 &&& post_ctn.spec_index(c).view() == pre_ctn.spec_index(c).view()
                 &&& post_ctn.spec_index(c).view_rodata() == pre_ctn.spec_index(c).view_rodata()
                 &&& post_ctn.spec_index(c).view_ghost() == ContainerGhost {
-                        uppertree_seq: pre_ctn.spec_index(c).view_ghost().uppertree_seq,
                         subtree_set: pre_ctn.spec_index(c).view_ghost().subtree_set,
                         owned_processes: pre_ctn.spec_index(c).view_ghost().owned_processes,
                         owned_threads: if c == dc {
@@ -332,12 +331,12 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                         } else {
                             pre_ctn.spec_index(c).view_ghost().owned_threads
                         },
-                        owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
+                        owned_indirect_threads: if pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set().contains(c) {
                             Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().insert(new_t))
                         } else {
                             pre_ctn.spec_index(c).view_ghost().owned_indirect_threads
                         },
-                        owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
+                        owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                     }
             },
         pre_prc.dom().subset_of(post_prc.dom()),
@@ -352,7 +351,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
         pre_thr.dom().subset_of(post_thr.dom()),
         post_thr.dom().contains(new_t),
         post_thr.spec_index(new_t).inv(),
-        post_thr.spec_index(new_t).view().upper_container_seq == pre_ctn.spec_index(dc).view_ghost().uppertree_seq,
+        post_thr.spec_index(new_t).view().upper_container_seq == pre_ctn.spec_index(dc).view().uppertree_seq,
         forall|t: RwLockThreadPtr|
             #![trigger post_thr.spec_index(t).view()]
             pre_thr.dom().contains(t) ==> {
@@ -412,7 +411,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                 &&& thread_indirect_pending_1g_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_1g_fold_sum_at_depth(pre_indirect, pre_thr, depth)
             },
 {
-    let uppers = pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set();
+    let uppers = pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set();
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
@@ -472,7 +471,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                 &&& post_thr.spec_index(new_t).view().indirect_free_quota_pending_4k.view().spec_index(depth) == 0
                 &&& post_thr.spec_index(new_t).view().indirect_free_quota_pending_2m.view().spec_index(depth) == 0
                 &&& post_thr.spec_index(new_t).view().indirect_free_quota_pending_1g.view().spec_index(depth) == 0
-            }) by { pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
+            }) by { pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
             lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
             lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
             lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
@@ -506,14 +505,13 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
             #![trigger post_ctn.spec_index(c)]
             pre_ctn.dom().contains(c) ==> {
                 &&& post_ctn.spec_index(c).view_rodata() == pre_ctn.spec_index(c).view_rodata()
-                &&& post_ctn.spec_index(c).view_ghost() == ContainerGhost {
-                    uppertree_seq: pre_ctn.spec_index(c).view_ghost().uppertree_seq, subtree_set: pre_ctn.spec_index(c).view_ghost().subtree_set,
+                &&& post_ctn.spec_index(c).view_ghost() == ContainerGhost { subtree_set: pre_ctn.spec_index(c).view_ghost().subtree_set,
                     owned_processes: pre_ctn.spec_index(c).view_ghost().owned_processes,
                     owned_threads: if c == dc { Ghost(pre_ctn.spec_index(c).view_ghost().owned_threads.view().remove(old_t)) } else { pre_ctn.spec_index(c).view_ghost().owned_threads },
-                    owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
+                    owned_indirect_threads: if pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
-                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                 }
             },
         post_prc.dom() == pre_prc.dom(),
@@ -580,7 +578,7 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
                 &&& thread_indirect_pending_1g_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_1g_fold_sum_at_depth(pre_indirect, pre_thr, depth)
             },
 {
-    let uppers = pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set();
+    let uppers = pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set();
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
@@ -641,13 +639,13 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
                 &&& 0 <= depth < pre_thr.spec_index(old_t).view().indirect_free_quota_pending_2m.view().len()
                 &&& 0 <= depth < pre_thr.spec_index(old_t).view().indirect_free_quota_pending_1g.view().len()
                 &&& pre_indirect.contains(old_t)
-            }) by { pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
+            }) by { pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
             assert(pre_indirect.remove(old_t).insert(old_t) =~= pre_indirect);
             lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
             lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
             lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
         } else {
-            assert(!pre_indirect.contains(old_t)) by { pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set_ensures(); };
+            assert(!pre_indirect.contains(old_t)) by { pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set_ensures(); };
             lemma_thread_indirect_pending_4k_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_2m_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_1g_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
@@ -677,14 +675,13 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
             #![trigger post_ctn.spec_index(c)]
             pre_ctn.dom().contains(c) ==> {
                 &&& post_ctn.spec_index(c).view_rodata() == pre_ctn.spec_index(c).view_rodata()
-                &&& post_ctn.spec_index(c).view_ghost() == ContainerGhost {
-                    uppertree_seq: pre_ctn.spec_index(c).view_ghost().uppertree_seq, subtree_set: pre_ctn.spec_index(c).view_ghost().subtree_set,
+                &&& post_ctn.spec_index(c).view_ghost() == ContainerGhost { subtree_set: pre_ctn.spec_index(c).view_ghost().subtree_set,
                     owned_processes: pre_ctn.spec_index(c).view_ghost().owned_processes,
                     owned_threads: if c == dc { Ghost(pre_ctn.spec_index(c).view_ghost().owned_threads.view().remove(old_t)) } else { pre_ctn.spec_index(c).view_ghost().owned_threads },
-                    owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
+                    owned_indirect_threads: if pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
-                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                 }
             },
         post_thr.dom() == pre_thr.dom().remove(old_t),
@@ -734,7 +731,7 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
                 &&& thread_indirect_pending_1g_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_1g_fold_sum_at_depth(pre_indirect, pre_thr, depth)
             },
 {
-    let uppers = pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set();
+    let uppers = pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set();
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
@@ -781,12 +778,12 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
                 &&& 0 <= depth < pre_thr.spec_index(old_t).view().indirect_free_quota_pending_2m.view().len()
                 &&& 0 <= depth < pre_thr.spec_index(old_t).view().indirect_free_quota_pending_1g.view().len()
                 &&& pre_indirect.contains(old_t)
-            }) by { pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
+            }) by { pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set_ensures(); reveal(container_uppertree_seq_wf); };
             lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
             lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
             lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(post_indirect, post_thr, pre_thr, old_t, depth);
         } else {
-            assert(!pre_indirect.contains(old_t)) by { pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set_ensures(); };
+            assert(!pre_indirect.contains(old_t)) by { pre_ctn.spec_index(dc).view().uppertree_seq.view().to_set_ensures(); };
             lemma_thread_indirect_pending_4k_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_2m_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_1g_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);

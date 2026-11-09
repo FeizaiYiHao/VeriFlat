@@ -37,7 +37,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
             current_thread_lock_perm.state() is WriteLock,
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -49,7 +49,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thrd_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
             peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -217,7 +217,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
             current_thread_lock_perm.state() is WriteLock,
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -229,7 +229,7 @@ verus! {
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
             old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
-            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thrd_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
             peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -350,6 +350,7 @@ verus! {
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),
             current_thrd_ptr != peer_thrd_ptr,
             sender_proc != receiver_proc,
+            receiver_proc == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc || receiver_proc == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc,
             old(krnl).prc_mp.dom().contains(sender_proc),
             old(krnl).prc_mp.dom().contains(receiver_proc),
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -515,6 +516,11 @@ verus! {
                     krnl.irt.borrow_mut(Tracked(&*lctx), Tracked(&irt_lock_perm)).set_owner(bus as usize, dev as usize, fun as usize, receiver_proc);
                     proof { assert(iommu_root_table_typed_lock_map_aligned(krnl.irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
                 },
+            }
+            proof {
+                process_perms_wf_at(old(krnl).prc_mp, receiver_proc);
+                process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
+                process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, peer_thrd_ptr);
             }
             proof { process_map_move_pci_function(&mut krnl.prc_mp, sender_proc, receiver_proc, bdf, lctx.process_lock_map(), lctx.thread_id()); }
         }

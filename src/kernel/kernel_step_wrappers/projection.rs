@@ -468,7 +468,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         post.prc_mp.spec_index(process).being_killed() == pre.prc_mp.spec_index(process).being_killed(),
         post.pt_mp.dom() == pre.pt_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> {
-            &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
+            &&& post.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(p).view().lower_backup, ..pre.pt_mp.spec_index(p).view() })
             &&& p != pagetable ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
         },
         lock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
@@ -483,7 +483,7 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         pre.prc_mp.spec_index(process).view().iommu_table is Some && !lock ==> post.it_mp.spec_index(pre.prc_mp.spec_index(process).view().iommu_table->Some_0).locking_thread() is None,
         pre.thrd_mp.dom().contains(thread),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
-        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, ..pre.thrd_mp.spec_index(thread).view() }),
+        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, exited: post.thrd_mp.spec_index(thread).view().exited, ..pre.thrd_mp.spec_index(thread).view() }),
         post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),
         post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
     ensures
@@ -630,11 +630,11 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.ctn_mp.dom() == before.ctn_mp.dom().insert(child),
         forall|c: RwLockContainerPtr| #![trigger after.ctn_mp.spec_index(c)] before.ctn_mp.dom().contains(c) ==> {
             &&& after.ctn_mp.spec_index(c).view_rodata() == before.ctn_mp.spec_index(c).view_rodata()
-            &&& after.ctn_mp.spec_index(c).view_ghost().uppertree_seq == before.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& after.ctn_mp.spec_index(c).view().uppertree_seq == before.ctn_mp.spec_index(c).view().uppertree_seq
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_threads == before.ctn_mp.spec_index(c).view_ghost().owned_threads
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_processes == before.ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_endpoints == before.ctn_mp.spec_index(c).view_ghost().owned_endpoints
-            &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent).contains(c) {
+            &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view().uppertree_seq.view().push(parent).contains(c) {
                 before.ctn_mp.spec_index(c).view_ghost().subtree_set.view().insert(child)
             } else { before.ctn_mp.spec_index(c).view_ghost().subtree_set.view() }
             &&& after.ctn_mp.spec_index(c).view() == (Container { children: after.ctn_mp.spec_index(c).view().children,
@@ -659,7 +659,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         !after.ctn_mp.spec_index(child).being_killed(),
         !after.ctn_mp.spec_index(child).view().zombie,
         after.ctn_mp.spec_index(child).view().children.view().len() == 0,
-        after.ctn_mp.spec_index(child).view_ghost().uppertree_seq.view() == before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent),
+        after.ctn_mp.spec_index(child).view().uppertree_seq.view() == before.ctn_mp.spec_index(parent).view().uppertree_seq.view().push(parent),
         after.ctn_mp.spec_index(child).view_ghost().subtree_set.view().is_empty(),
         after.ctn_mp.spec_index(child).view().root_process == process,
         after.ctn_mp.spec_index(child).view_ghost().owned_processes.view() == set![process],
@@ -704,7 +704,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.prc_mp.spec_index(process).view_rodata().view().pcid == 1usize,
         after.prc_mp.spec_index(process).view().children.view().len() == 0,
         after.prc_mp.spec_index(process).view().owned_threads.view().len() == 0,
-        after.prc_mp.spec_index(process).view_ghost().uppertree_seq.view().len() == 0,
+        after.prc_mp.spec_index(process).view().uppertree_seq.view().len() == 0,
         after.prc_mp.spec_index(process).view_ghost().subtree_set.view().is_empty(),
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
@@ -809,7 +809,7 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         after.prc_mp.spec_index(process).view_rodata().view().depth == 0,
         after.prc_mp.spec_index(process).view().children.view().len() == 0,
         after.prc_mp.spec_index(process).view().owned_threads.view().len() == 0,
-        after.prc_mp.spec_index(process).view_ghost().uppertree_seq.view().len() == 0,
+        after.prc_mp.spec_index(process).view().uppertree_seq.view().len() == 0,
         after.prc_mp.spec_index(process).view_ghost().subtree_set.view().is_empty(),
         before.pt_mp.dom().subset_of(after.pt_mp.dom()),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
@@ -867,11 +867,11 @@ proof fn kernel_container_root_published_implies_u_container_map(
         after.ctn_mp.dom() == before.ctn_mp.dom().insert(child),
         forall|c: RwLockContainerPtr| #![trigger after.ctn_mp.spec_index(c)] before.ctn_mp.dom().contains(c) ==> {
             &&& after.ctn_mp.spec_index(c).view_rodata() == before.ctn_mp.spec_index(c).view_rodata()
-            &&& after.ctn_mp.spec_index(c).view_ghost().uppertree_seq == before.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& after.ctn_mp.spec_index(c).view().uppertree_seq == before.ctn_mp.spec_index(c).view().uppertree_seq
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_threads == before.ctn_mp.spec_index(c).view_ghost().owned_threads
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_processes == before.ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_endpoints == before.ctn_mp.spec_index(c).view_ghost().owned_endpoints
-            &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent).contains(c) {
+            &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view().uppertree_seq.view().push(parent).contains(c) {
                 before.ctn_mp.spec_index(c).view_ghost().subtree_set.view().insert(child)
             } else { before.ctn_mp.spec_index(c).view_ghost().subtree_set.view() }
             &&& after.ctn_mp.spec_index(c).view() == (Container { children: after.ctn_mp.spec_index(c).view().children,
@@ -894,7 +894,7 @@ proof fn kernel_container_root_published_implies_u_container_map(
         !after.ctn_mp.spec_index(child).being_killed(),
         !after.ctn_mp.spec_index(child).view().zombie,
         after.ctn_mp.spec_index(child).view().children.view().len() == 0,
-        after.ctn_mp.spec_index(child).view_ghost().uppertree_seq.view() == before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent),
+        after.ctn_mp.spec_index(child).view().uppertree_seq.view() == before.ctn_mp.spec_index(parent).view().uppertree_seq.view().push(parent),
         after.ctn_mp.spec_index(child).view_ghost().subtree_set.view().is_empty(),
         after.ctn_mp.spec_index(child).view().root_process == process,
         after.ctn_mp.spec_index(child).view_ghost().owned_processes.view() == set![process],

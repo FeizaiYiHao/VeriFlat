@@ -14,7 +14,7 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
 ) -> bool {
     let pg_idx = page_ptr2page_index(thrd_ptr);
     let thread = pre.thrd_mp.spec_index(thrd_ptr).view();
-    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     let pre_process = pre.prc_mp.spec_index(prc_ptr);
     let post_process = post.prc_mp.spec_index(prc_ptr);
     let zombie = post_process.view().owned_threads.view().len() == 0;

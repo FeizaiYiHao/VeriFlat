@@ -32,7 +32,7 @@ pub fn wake_waiting_reply_caller(
         old(krnl).thrd_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(caller_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(caller_ptr).view().exited.view(),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), caller_ptr, TypedLockMode::Write),
         caller_lock_perm.state() is WriteLock,
         caller_lock_perm.thread_id() == old(lctx).thread_id(),

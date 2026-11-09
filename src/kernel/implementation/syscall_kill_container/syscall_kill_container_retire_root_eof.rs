@@ -85,6 +85,7 @@ pub(crate) proof fn kill_container_retire_root_eof(
         pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view().root_process == target,
+        pre.ctn_mp.spec_index(ctn_ptr).being_killed(),
         pre.ctn_mp.spec_index(ctn_ptr).locking_thread() is Write,
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().allocator_ptr_4k == allc_ptr,
         pre.allc_4k_mp.dom().contains(allc_ptr),
@@ -114,6 +115,7 @@ pub(crate) proof fn kill_container_retire_root_eof(
         post.inv(),
         post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
 {
+    kill_container_retire_root_eof_tree(pre, post, cpu_id, target, ctn_ptr, allc_ptr);
     assert(container_perms_wf(post.ctn_mp)) by { reveal(kill_retire_eof_transition_framing); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(kill_retire_eof_transition_framing); reveal(process_perms_wf); };
     kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allc_ptr, cpu_id);
@@ -122,6 +124,5 @@ pub(crate) proof fn kill_container_retire_root_eof(
     kill_retire_eof_process_relations(pre, post, lctx, cpu_id, target, None, ctn_ptr, allc_ptr);
     kill_retire_eof_iommu(pre, post, cpu_id, target, None, ctn_ptr, allc_ptr);
     kill_retire_eof_tlb(pre, post, cpu_id, target, None, ctn_ptr, allc_ptr);
-    kill_container_retire_root_eof_tree(pre, post, cpu_id, target, ctn_ptr, allc_ptr);
 }
 } // verus!

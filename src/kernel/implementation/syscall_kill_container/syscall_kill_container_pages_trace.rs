@@ -24,7 +24,7 @@ pub(crate) proof fn kill_container_pages_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
         krnl.ctn_mp.spec_index(ctn_ptr).being_killed(),
-        krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         ({
             let u = kernel_k_to_kernel_u(*krnl);

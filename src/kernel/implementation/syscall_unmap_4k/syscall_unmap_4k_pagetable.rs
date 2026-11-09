@@ -69,7 +69,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thrd_mp: old(krnl).thrd_mp, ..old(steps).snapshot_k() }),
@@ -147,14 +147,14 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     let l4_ok = pt.kernel_l4_end <= indices.0;
     proof { assert(va_range == spec_va_range_4k(va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
     if l4_ok {
-        let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
+        let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
         if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
             proof { va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
             unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, prc_ptr, thrd_ptr, pagetable, cr3, pcid, Ghost(entry_lctx),
                 Tracked(cpu_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));
             return RetValueType::Success;
         }
-        krnl.unlock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
+        krnl.unlock_pagetable_range_existing_windows::<false>(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
         proof {
             assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks);
         }
@@ -222,7 +222,7 @@ fn unmap_4k_unlock_all_rejected(
         !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable),

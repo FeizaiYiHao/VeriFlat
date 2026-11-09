@@ -282,7 +282,6 @@ pub fn mmap_1g_reclaim_table_page(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
         assert(whole_pagetable(helper_pre.pt_mp, helper_pre.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable));
-        assert(helper_pre.pt_mp.spec_index(pagetable) == old(krnl).pt_mp.spec_index(pagetable));
         reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
         kernel_page_freed_to_owner_quota_implies_u_step(&steps.snapshot_k(), &*krnl, false, pagetable, owner, allc_ptr, owner);
         assert(steps.snapshot_k() == mid);

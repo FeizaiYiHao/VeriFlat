@@ -31,8 +31,8 @@ pub proof fn kernel_container_retired_implies_u_step(pre: &KernelK, post: &Kerne
             &&& new_c.view().root_process == old_c.view().root_process
             &&& new_c.view().children.view() == if c == parent_ptr { old_c.view().children.view().remove_value(ctn_ptr) } else { old_c.view().children.view() }
             &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
-            &&& new_c.view_ghost().uppertree_seq == old_c.view_ghost().uppertree_seq
-            &&& new_c.view_ghost().subtree_set.view() == if target.view_ghost().uppertree_seq.view().contains(c) {
+            &&& new_c.view().uppertree_seq == old_c.view().uppertree_seq
+            &&& new_c.view_ghost().subtree_set.view() == if target.view().uppertree_seq.view().contains(c) {
                 old_c.view_ghost().subtree_set.view().remove(ctn_ptr)
             } else { old_c.view_ghost().subtree_set.view() }
             &&& new_c.view_ghost().owned_processes == old_c.view_ghost().owned_processes

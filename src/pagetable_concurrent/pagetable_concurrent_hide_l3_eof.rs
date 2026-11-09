@@ -6,7 +6,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// Operation-state summary of `hide_l3_entry`: entry `target_l3i` of the L3 page `target_l3_p` is a placeholder for the same L2 page and the 512 windows under it leave the window lock map; every other field is unchanged.
     #[verifier::opaque]
     pub open spec fn hide_l3_entry_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr) -> bool {
-        &&& post.higher == (PageTableHigher { l3_tables: post.higher.l3_tables, ..pre.higher })
+        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, l3_tables: post.higher.l3_tables, ..pre.higher })
         &&& post.lower == (PageTableLower { pagetable_window_locks: post.lower.pagetable_window_locks, ..pre.lower })
         &&& post.higher.l3_tables.view().dom() == pre.higher.l3_tables.view().dom()
         &&& forall|p: PageMapPtr| #![trigger post.higher.l3_tables.view().spec_index(p)]

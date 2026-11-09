@@ -90,7 +90,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         final(krnl).ctn_mp.dom().contains(target_container),
-        final(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq,
+        final(krnl).ctn_mp.spec_index(target_container).view().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view().uppertree_seq,
         ret == share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, source_range.view().spec_index(i as int)),
 {
     let source_va = source_range.index(i);
@@ -165,7 +165,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         assert({
             &&& krnl.ctn_mp.dom().contains(target_container)
-            &&& krnl.ctn_mp.spec_index(target_container).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq
+            &&& krnl.ctn_mp.spec_index(target_container).view().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view().uppertree_seq
         }) by { assert(boundary_lctx.thread_lock_map().dom().contains(target_thread)); container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, target_thread); };
         assert({
             &&& krnl.prc_mp.dom().contains(target_process)

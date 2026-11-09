@@ -5,17 +5,66 @@ verus! {
 /// Every page table keeps its payload, so with an unchanged window half every whole table is unchanged.
 pub open spec fn pagetable_invariant_fields_unchanged(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     &&& pre.dom() =~= post.dom()
-    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger pre.spec_index(pt_ptr).view()] #![trigger post.spec_index(pt_ptr).view()] pre.dom().contains(pt_ptr) ==> post.spec_index(pt_ptr).view() == pre.spec_index(pt_ptr).view()
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger pre.spec_index(pt_ptr).view()] #![trigger post.spec_index(pt_ptr).view()] pre.dom().contains(pt_ptr) ==> post.spec_index(pt_ptr).view()
+        == (PageTableHigher { lower_backup: post.spec_index(pt_ptr).view().lower_backup, ..pre.spec_index(pt_ptr).view() })
     &&& forall|pt_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(pre, pt_lower, pt_ptr)]
         #![trigger whole_pagetable(post, pt_lower, pt_ptr)]
-        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr) == whole_pagetable(pre, pt_lower, pt_ptr)
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr) == (WholePageTable { higher: post.spec_index(pt_ptr).view(), ..whole_pagetable(pre, pt_lower, pt_ptr) })
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger whole_pagetable(pre, pt_lower, pt_ptr).page_closure()] #![trigger whole_pagetable(post, pt_lower, pt_ptr).page_closure()]
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr).page_closure() == whole_pagetable(pre, pt_lower, pt_ptr).page_closure()
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger whole_pagetable(pre, pt_lower, pt_ptr).mapping_4k()] #![trigger whole_pagetable(post, pt_lower, pt_ptr).mapping_4k()]
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr).mapping_4k() == whole_pagetable(pre, pt_lower, pt_ptr).mapping_4k()
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger whole_pagetable(pre, pt_lower, pt_ptr).mapping_2m()] #![trigger whole_pagetable(post, pt_lower, pt_ptr).mapping_2m()]
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr).mapping_2m() == whole_pagetable(pre, pt_lower, pt_ptr).mapping_2m()
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger whole_pagetable(pre, pt_lower, pt_ptr).mapping_1g()] #![trigger whole_pagetable(post, pt_lower, pt_ptr).mapping_1g()]
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr).mapping_1g() == whole_pagetable(pre, pt_lower, pt_ptr).mapping_1g()
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_held_2m_l2(l4i, l3i, l2i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_resolve_mapping_l4(l4i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_resolve_mapping_l4(l4i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_resolve_mapping_l4(l4i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_resolve_mapping_l4(l4i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_resolve_mapping_l3(l4i, l3i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_resolve_mapping_l3(l4i, l3i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_resolve_mapping_l3(l4i, l3i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_resolve_mapping_l3(l4i, l3i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_held_l4(l4i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_held_l4(l4i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_held_l4(l4i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_held_l4(l4i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).spec_held_l3(l4i, l3i)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).spec_held_l3(l4i, l3i)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).spec_held_l3(l4i, l3i) == whole_pagetable(pre, pt_lower, pt_ptr).spec_held_l3(l4i, l3i)
+    &&& forall|pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        pre.dom().contains(pt_ptr) && whole_pagetable(pre, pt_lower, pt_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+            ==> whole_pagetable(post, pt_lower, pt_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre, pt_lower, pt_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
 }
 
 pub proof fn pagetable_lock_op_preserves_invariant_fields(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, changed: RwLockPageTableRoot)
     requires
         post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view() == pre.spec_index(changed).view(),
+        post.spec_index(changed).view() == (PageTableHigher { lower_backup: post.spec_index(changed).view().lower_backup, ..pre.spec_index(changed).view() }),
     ensures
         pagetable_invariant_fields_unchanged(pre, post, pt_lower),
 {

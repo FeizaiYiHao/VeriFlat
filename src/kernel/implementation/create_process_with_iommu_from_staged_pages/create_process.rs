@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 use crate::*;
 use super::*;
 
@@ -123,6 +124,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).ctn_mp.spec_index(ctn_ptr).control() == old(krnl).ctn_mp.spec_index(ctn_ptr).control(),
         final(krnl).thrd_mp.dom() == old(krnl).thrd_mp.dom(),
         final(krnl).thrd_mp.spec_index(staging_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(staging_thrd_ptr).view() == (Thread {
             quota_4k: (old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().quota_4k - 5) as usize,
             temp_alloc_cache_4k: Ghost(Set::empty()), ..old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view()
@@ -222,8 +224,8 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
         assert(krnl.it_mp.perms_wf()) by { iommu_table_perms_wf_map(krnl.it_mp); };
         assert(krnl.prc_mp.perms_wf() && krnl.prc_mp.view().spec_index(parent_ptr).is_init() && krnl.prc_mp.view().spec_index(parent_ptr).addr() == parent_ptr && krnl.prc_mp.spec_index(parent_ptr).inv()
-            && krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().no_duplicates() && krnl.prc_mp.spec_index(parent_ptr).view().children.view().no_duplicates()
-            && krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by {
+            && krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().no_duplicates() && krnl.prc_mp.spec_index(parent_ptr).view().children.view().no_duplicates()
+            && krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by {
             process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, parent_ptr);
         };
         assert(krnl.ctn_mp.perms_wf() && krnl.ctn_mp.view().spec_index(ctn_ptr).is_init() && krnl.ctn_mp.view().spec_index(ctn_ptr).addr() == ctn_ptr && krnl.ctn_mp.spec_index(ctn_ptr).inv()) by {
@@ -248,7 +250,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(krnl.dflt_pt.view().wf()) by { krnl.default_pagetable_wf_implies_view_inv(); };
         assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end) && krnl.dflt_pt.view().kernel_entries.view().len() == krnl.dflt_pt.view().kernel_l4_end) by { krnl.dflt_pt.view().kernel_entries_wf_len_at(); };
     }
-    let ghost parent_ancestors = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+    let ghost parent_ancestors = krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
     let ghost ancestors = parent_ancestors.push(parent_ptr);
     let ghost parent_children = krnl.prc_mp.spec_index(parent_ptr).view().children.view();
     proof {
@@ -282,7 +284,15 @@ pub fn create_process_with_iommu_from_staged_pages(
     );
     let ghost iommu_l4_page_locks = pagetable_page_locks.insert(iommu_l4_pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(iommu_l4_pg_idx), mode: TypedLockMode::Write });
     let (iommu_l4_ptr, Tracked(iommu_l4_perm)) = page_perm_to_page_map(iommu_l4_pg_ptr, Tracked(iommu_l4_page_perm));
-    let iommu_table_value = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4_ptr, Tracked(iommu_l4_perm), 0, process_pg_ptr);
+    assert(iommu_l4_perm.value().iommu_wf()) by {
+        assert(iommu_word_valid(0usize)) by (compute);
+        assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user
+            && !spec_usize2page_entry(0usize).perm.write) by (compute);
+        assert_seqs_equal!(iommu_l4_perm.value().spec_seq.view() == Seq::new(512, |i: int| spec_usize2page_entry(0usize)), i => {
+            iommu_l4_perm.value().wf_at(i as usize);
+        });
+    };
+    let iommu_table_value = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4_ptr, Tracked(iommu_l4_perm), 0, process_pg_ptr);
 
     let Tracked(iommu_table_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, iommu_table_pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: IOMMU_TYPE } },
@@ -299,11 +309,13 @@ pub fn create_process_with_iommu_from_staged_pages(
         owning_container: ctn_ptr, container_depth: krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
         pagetable: pagetable_pg_ptr, cr3, iommu_cr3: Some(iommu_l4_pg_ptr), iommu_table_ptr: Some(iommu_table_pg_ptr), pcid,
     }, Ghost(process_pg_ptr));
-    let process_ghost = ProcessGhost { uppertree_seq: Ghost(ancestors), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
+    process_value.uppertree_seq = Ghost(ancestors);
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, process_pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsProcess }, Ghost(iommu_table_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_pg_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
 
     process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_pg_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
+    proof { container_perms_wf_at(old(krnl).ctn_mp, ctn_ptr); container_process_wf_process_at(old(krnl).ctn_mp, old(krnl).prc_mp, parent_ptr); }
     proof { container_map_add_owned_process(&mut krnl.ctn_mp, ctn_ptr, process_pg_ptr, lctx.container_lock_map(), lctx.thread_id()); }
     pcid_allocator_map_alloc(&mut krnl.pcid_allc_mp, pcid_allc_ptr, process_pg_ptr, pcid, Tracked(&*lctx), Tracked(pcid_allocator_lock_perm));
     thread_map_consume_staged_4k(&mut krnl.thrd_mp, staging_thrd_ptr, process_pg_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));

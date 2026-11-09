@@ -49,7 +49,7 @@ pub(super) fn finish_new_endpoint_commit(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewEndpoint { slot: ep_idx }),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(ep_idx) is None,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view().len() == 0,

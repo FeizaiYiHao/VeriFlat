@@ -66,7 +66,10 @@ proof fn create_process_with_iommu_from_staged_pages_eof_subsystems_inv(
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_write_locked); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); };
     create_process_with_iommu_from_staged_pages_eof_process_perms_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
-    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(container_perms_wf(post.ctn_mp)) by {
+        container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr); container_perms_wf_at(pre.ctn_mp, ctn_ptr);
+        reveal(container_perms_wf); reveal(container_tree_fields_wf);
+    };
     create_process_with_iommu_from_staged_pages_eof_thread_perms_wf(pre, post, staging_thrd_ptr);
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
@@ -118,7 +121,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_process_perms_wf(
         assert(process_tree_fields_wf(pre.prc_mp)) by { reveal(process_perms_wf); };
         reveal(container_process_wf);
         assert(!pre.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_pg_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_children_parent_wf); };
-        assert(!pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
+        assert(!pre.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().contains(parent_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
         process_perms_wf_at(pre.prc_mp, parent_ptr); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
     };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };

@@ -21,11 +21,11 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
             let before = pre.prc_mp.spec_index(p);
             let after = post.prc_mp.spec_index(p);
             let pci = before.view_ghost().owned_pci_functions.view();
-            &&& after.view() == before.view()
+            &&& after.view() == if p == target { Process { pci_cleared: Ghost(true), ..before.view() } } else { before.view() }
             &&& after.view_rodata() == before.view_rodata()
             &&& after.locking_thread() == before.locking_thread()
             &&& after.being_killed() == before.being_killed()
-            &&& after.view_ghost().uppertree_seq == before.view_ghost().uppertree_seq
+            &&& after.view().uppertree_seq == before.view().uppertree_seq
             &&& after.view_ghost().subtree_set == before.view_ghost().subtree_set
             &&& after.view_ghost().owned_pci_functions.view() == if p == target { Set::empty() } else if p == owner { pci.union(pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view()) } else { pci }
         },
@@ -39,7 +39,7 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
             &&& pre.it_mp.spec_index(t).view().did == did
             &&& post.it_mp.unchanged_except(&pre.it_mp, t)
             &&& post.it_mp.spec_index(t).locking_thread() == pre.it_mp.spec_index(t).locking_thread()
-            &&& post.it_mp.spec_index(t).view() == (PageTable { did: None, ..pre.it_mp.spec_index(t).view() })
+            &&& post.it_mp.spec_index(t).view() == (IommuTable { did: None, ..pre.it_mp.spec_index(t).view() })
         },
         did matches Some(d) ==> post.iommu_tlb.view() == pre.iommu_tlb.view().insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
         did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view(),

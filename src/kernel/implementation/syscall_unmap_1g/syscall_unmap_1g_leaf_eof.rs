@@ -20,7 +20,7 @@ pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, 
     &&& post.pt_mp.lock_id_by_key(pagetable) == pre.pt_mp.lock_id_by_key(pagetable)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& post.pt_mp.spec_index(pagetable).view_ghost() == pre.pt_mp.spec_index(pagetable).view_ghost()
+    &&& post.pt_mp.spec_index(pagetable).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable).view().lower_backup.view()
     &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
     &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
     &&& new_h.l4_table == old_h.l4_table && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map

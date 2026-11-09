@@ -9,8 +9,12 @@ pub(crate) open spec fn kill_container_pages_eof_transition_framing(pre: KernelK
     &&& post == (KernelK { ctn_mp: post.ctn_mp, ..pre })
     &&& post.ctn_mp.perms_wf()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr)
-    &&& update_ghost_ensures(pre.ctn_mp.spec_index(ctn_ptr), post.ctn_mp.spec_index(ctn_ptr),
-        ContainerGhost { retire_ready: true, ..pre.ctn_mp.spec_index(ctn_ptr).view_ghost() })
+    &&& post.ctn_mp.spec_index(ctn_ptr).view() == (Container { retire_ready: Ghost(true), ..pre.ctn_mp.spec_index(ctn_ptr).view() })
+    &&& post.ctn_mp.spec_index(ctn_ptr).is_init() == pre.ctn_mp.spec_index(ctn_ptr).is_init()
+    &&& post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata()
+    &&& post.ctn_mp.spec_index(ctn_ptr).view_ghost() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost()
+    &&& post.ctn_mp.spec_index(ctn_ptr).locking_thread() == pre.ctn_mp.spec_index(ctn_ptr).locking_thread()
+    &&& post.ctn_mp.spec_index(ctn_ptr).control() == pre.ctn_mp.spec_index(ctn_ptr).control()
 }
 
 /// The memory invariants hold after the killer sets `retire_ready` on the empty, drained container `ctn_ptr`.

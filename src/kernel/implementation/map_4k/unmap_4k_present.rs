@@ -47,7 +47,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
+        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(pagetable).view().lower_backup, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k()
             == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().insert(va, MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va) }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
@@ -67,8 +67,8 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
         assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
     }
-    let Tracked(window_perm) = krnl.lock_pagetable_window(pagetable, indices.0, indices.1, indices.2, pagetable_perm, Tracked(&mut *lctx));
-    krnl.replace_window_stale_cpus(pagetable, Ghost(WindowStaleUpdate::Set { window: window_va, cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx));
+    let Tracked(window_perm) = krnl.lock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, pagetable_perm, Tracked(&mut *lctx));
+    krnl.replace_window_stale_cpus::<true>(pagetable, Ghost(WindowStaleUpdate::Set { window: window_va, cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx), Tracked(Some(pagetable_perm.get())));
     let ghost locked = *krnl;
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -80,7 +80,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         assert(clear_4k_mapping_present_eof_transition_framing(locked, *krnl, pagetable, va)) by { reveal(clear_4k_mapping_present_eof_transition_framing); };
         clear_4k_mapping_present_eof(locked, *krnl, pagetable, va);
     }
-    krnl.unlock_pagetable_window(pagetable, indices.0, indices.1, indices.2, pagetable_perm, Tracked(&mut *lctx), Tracked(window_perm));
+    krnl.unlock_pagetable_window::<true>(pagetable, indices.0, indices.1, indices.2, pagetable_perm, Tracked(&mut *lctx), Tracked(window_perm));
     proof {
         assert(lctx.pagetable_window_lock_map() =~= old(lctx).pagetable_window_lock_map()) by {
             map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, window_va), TypedHeldLock { lock_id: window_lock_id_of(pagetable, window_va), mode: TypedLockMode::Write });
@@ -158,7 +158,7 @@ pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockP
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
         spec_va_4k_index_roundtrip_at(window_of(va).va, indices.0, indices.1, indices.2, 0usize);
     }
-    krnl.replace_window_stale_cpus(pagetable, Ghost(WindowStaleUpdate::Set { window: window_of(va), cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx));
+    krnl.replace_window_stale_cpus::<false>(pagetable, Ghost(WindowStaleUpdate::Set { window: window_of(va), cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx), Tracked(None));
     let ghost locked = *krnl;
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

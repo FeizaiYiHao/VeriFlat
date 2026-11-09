@@ -26,7 +26,7 @@ pub fn kill_container_move_free_page_4k(
         old(krnl).ctn_mp.dom().contains(dst),
         old(krnl).ctn_mp.spec_index(src).view_rodata().view().allocator_ptr_4k == src_allocator,
         old(krnl).ctn_mp.spec_index(dst).view_rodata().view().allocator_ptr_4k == dst_allocator,
-        old(krnl).ctn_mp.spec_index(src).view_ghost().uppertree_seq.view().contains(dst),
+        old(krnl).ctn_mp.spec_index(src).view().uppertree_seq.view().contains(dst),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_processes.view() =~= Set::<RwLockProcessPtr>::empty(),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),

@@ -158,6 +158,7 @@ pub(super) proof fn thread_map_set_endpoint_descriptor_eof_thread_perms_wf(pre: 
 pub(super) proof fn process_map_add_owned_thread_eof_process_perms_wf(pre: ProcessLockedMap, post: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
     requires
         process_perms_wf(pre),
+        !pre.spec_index(prc_ptr).view().pci_cleared.view(),
         post.perms_wf(),
         post.unchanged_except(&pre, prc_ptr),
         post.spec_index(prc_ptr).inv(),
@@ -179,11 +180,14 @@ pub(super) proof fn process_map_link_new_child_eof_process_perms_wf(pre: Process
         post.spec_index(child_ptr).inv(),
         post.spec_index(child_ptr).view() == (Process { parent_linkedlist_node: post.spec_index(child_ptr).view().parent_linkedlist_node, ..pre.spec_index(child_ptr).view() }),
         post.spec_index(child_ptr).view_rodata() == pre.spec_index(child_ptr).view_rodata(),
+        post.spec_index(child_ptr).killer_info() == pre.spec_index(child_ptr).killer_info(),
         post.spec_index(child_ptr).view_ghost() == pre.spec_index(child_ptr).view_ghost(),
         post.spec_index(parent_ptr).inv(),
+        post.spec_index(parent_ptr).view() == (Process { children: post.spec_index(parent_ptr).view().children, ..pre.spec_index(parent_ptr).view() }),
         post.spec_index(parent_ptr).view().children.view() == pre.spec_index(parent_ptr).view().children.view().push(child_ptr),
         !pre.spec_index(parent_ptr).view().children.view().contains(child_ptr),
         post.spec_index(parent_ptr).view_rodata() == pre.spec_index(parent_ptr).view_rodata(),
+        post.spec_index(parent_ptr).killer_info() == pre.spec_index(parent_ptr).killer_info(),
         post.spec_index(parent_ptr).view_ghost() == pre.spec_index(parent_ptr).view_ghost(),
     ensures process_perms_wf(post),
 { reveal(process_perms_wf); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); }
@@ -194,9 +198,11 @@ pub(super) proof fn process_map_unlink_child_eof_process_perms_wf(pre: ProcessLo
         post.perms_wf(),
         post.unchanged_except(&pre, parent_ptr),
         post.spec_index(parent_ptr).inv(),
+        post.spec_index(parent_ptr).view() == (Process { children: post.spec_index(parent_ptr).view().children, ..pre.spec_index(parent_ptr).view() }),
         post.spec_index(parent_ptr).view().children.view() == pre.spec_index(parent_ptr).view().children.view().remove_value(child_ptr),
         post.spec_index(parent_ptr).view().children.view().no_duplicates(),
         post.spec_index(parent_ptr).view_rodata() == pre.spec_index(parent_ptr).view_rodata(),
+        post.spec_index(parent_ptr).killer_info() == pre.spec_index(parent_ptr).killer_info(),
         post.spec_index(parent_ptr).view_ghost() == pre.spec_index(parent_ptr).view_ghost(),
     ensures process_perms_wf(post),
 { reveal(process_perms_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>(); }
@@ -292,8 +298,11 @@ pub(super) proof fn container_map_unlink_child_eof_container_perms_wf(pre: Conta
             pre.dom().contains(c) ==> {
                 &&& post.spec_index(c).is_init() == pre.spec_index(c).is_init()
                 &&& post.spec_index(c).view_rodata() == pre.spec_index(c).view_rodata()
-                &&& post.spec_index(c).view_ghost().uppertree_seq == pre.spec_index(c).view_ghost().uppertree_seq
+                &&& post.spec_index(c).view().uppertree_seq == pre.spec_index(c).view().uppertree_seq
                 &&& post.spec_index(c).locking_thread() == pre.spec_index(c).locking_thread()
+                &&& post.spec_index(c).killer_info() == pre.spec_index(c).killer_info()
+                &&& post.spec_index(c).view().root_process_removed == pre.spec_index(c).view().root_process_removed
+                &&& post.spec_index(c).view_ghost().owned_processes == pre.spec_index(c).view_ghost().owned_processes
                 &&& c != parent_ptr ==> post.spec_index(c).view() == pre.spec_index(c).view()
             },
         post.spec_index(parent_ptr).inv(),

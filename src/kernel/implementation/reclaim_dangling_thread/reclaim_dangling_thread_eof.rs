@@ -220,7 +220,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
         thread_cpu_wf(post.thrd_mp, post.cpu_arr),
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
-    let uppers = pre.ctn_mp.spec_index(pre.thrd_mp.spec_index(dangling_ptr).view().owning_container).view_ghost().uppertree_seq.view();
+    let uppers = pre.ctn_mp.spec_index(pre.thrd_mp.spec_index(dangling_ptr).view().owning_container).view().uppertree_seq.view();
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -290,7 +290,7 @@ pub(super) proof fn reclaim_dangling_thread_eof(
         let ctn_ptr = pre.thrd_mp.spec_index(dangling_ptr).view().owning_container;
         reveal(reclaim_dangling_thread_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
         page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, page_ptr2page_index(dangling_ptr));
-        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, dangling_ptr); pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, dangling_ptr); pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures();
         reveal(container_kill_retire_wf); reveal(container_allocator_wf); reveal(container_uppertree_seq_wf);
     };
     reclaim_dangling_thread_eof_thread_relations(pre, post, cpu_id, dangling_ptr, owner, allc_ptr, cache_node_addr);
@@ -349,7 +349,8 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
             &&& post.ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == start.ctn_mp.spec_index(c).being_killed()
             &&& post.ctn_mp.spec_index(c).killer_info() == start.ctn_mp.spec_index(c).killer_info()
-            &&& post.ctn_mp.spec_index(c).view_ghost().uppertree_seq == start.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& post.ctn_mp.spec_index(c).view().uppertree_seq == start.ctn_mp.spec_index(c).view().uppertree_seq
+            &&& post.ctn_mp.spec_index(c).view().retire_ready.view() == start.ctn_mp.spec_index(c).view().retire_ready.view()
             &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == start.ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == start.ctn_mp.spec_index(c).view_ghost().owned_processes
         },

@@ -26,9 +26,9 @@ pub(super) open spec fn share_one_mapping_4k_eof_transition_framing(
         pre.pt_mp.dom().contains(p) && p != target_pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(target_pagetable).locking_thread() == pre.pt_mp.spec_index(target_pagetable).locking_thread()
     &&& post.pt_mp.spec_index(target_pagetable).being_killed() == pre.pt_mp.spec_index(target_pagetable).being_killed()
-    &&& post.pt_mp.spec_index(target_pagetable).view() == pre.pt_mp.spec_index(target_pagetable).view()
-    &&& post.pt_mp.spec_index(target_pagetable).view_ghost()
-        == if pre.pt_mp.spec_index(target_pagetable).wlocked() { post.pt_lower.view().spec_index(target_pagetable) } else { pre.pt_mp.spec_index(target_pagetable).view_ghost() }
+    &&& post.pt_mp.spec_index(target_pagetable).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(target_pagetable).view().lower_backup, ..pre.pt_mp.spec_index(target_pagetable).view() })
+    &&& post.pt_mp.spec_index(target_pagetable).view().lower_backup.view()
+        == if pre.pt_mp.spec_index(target_pagetable).wlocked() { post.pt_lower.view().spec_index(target_pagetable) } else { pre.pt_mp.spec_index(target_pagetable).view().lower_backup.view() }
     &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va))
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.mapping_1g() == old_pt.mapping_1g()
@@ -89,7 +89,7 @@ pub(super) proof fn share_one_mapping_4k_eof(
         pre.thrd_mp.dom().contains(target_thread),
         !thread_is_dangling(pre.thrd_mp.spec_index(target_thread)),
         (pre.thrd_mp.spec_index(target_thread).view().owning_proc == target_process && pre.thrd_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable
-            && !pre.thrd_mp.spec_index(target_thread).view_ghost().exited)
+            && !pre.thrd_mp.spec_index(target_thread).view().exited.view())
             || (!pre.prc_mp.spec_index(target_process).view().zombie && !(pre.prc_mp.spec_index(target_process).view().state.view() is TablesEmptied)),
         pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
@@ -101,9 +101,34 @@ pub(super) proof fn share_one_mapping_4k_eof(
         page_array_wf(post.pg_arr),
         hugepage_2m_wf(post.pg_arr),
         hugepage_1g_wf(post.pg_arr),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        (forall|l4i: L4Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some)
+            ==> forall|l4i: L4Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
 {
     reveal(share_one_mapping_4k_eof_transition_framing);
+    assert((forall|l4i: L4Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some)
+            ==> forall|l4i: L4Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), target_pagetable); };
+    assert((forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some) by { pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, post.pt_lower.view(), target_pagetable); };
     let pg_ptr = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).addr;
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
@@ -184,6 +209,18 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     let new_target = whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable);
     let source_process = pre.pt_mp.spec_index(source_pagetable).view().proc_ptr;
     let expected = share_mapping_4k_target_map_with_shared_prefix(old_source.mapping_4k(), old_target.mapping_4k(), source_range, target_range, i);
+    &&& (forall|l4i: L4Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some)
+            ==> forall|l4i: L4Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some
+    &&& (forall|l4i: L4Index, l3i: L3Index| #![trigger pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+            pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                ==> pre.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some
     &&& forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, pre_steps.view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, post_steps.view())
     &&& post_steps.view().len() == pre_steps.view().len() + i
     &&& forall|j: int| #![trigger post_steps.view()[j]] 0 <= j < pre_steps.view().len() ==> post_steps.view()[j] == pre_steps.view()[j]
@@ -208,8 +245,6 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     &&& post.thrd_mp.spec_index(quota_thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(quota_thread).view().syscall_progress, ..pre.thrd_mp.spec_index(quota_thread).view() })
     &&& progress_thread != source_thread ==> post.thrd_mp.spec_index(source_thread).view() == pre.thrd_mp.spec_index(source_thread).view()
     &&& progress_thread != quota_thread ==> post.thrd_mp.spec_index(quota_thread).view() == pre.thrd_mp.spec_index(quota_thread).view()
-    &&& post.thrd_mp.spec_index(source_thread).view_ghost() == pre.thrd_mp.spec_index(source_thread).view_ghost()
-    &&& post.thrd_mp.spec_index(quota_thread).view_ghost() == pre.thrd_mp.spec_index(quota_thread).view_ghost()
     &&& post.thrd_mp.lock_id_by_key(quota_thread) == pre.thrd_mp.lock_id_by_key(quota_thread)
     &&& source_write_held ==> new_source == old_source
     &&& !source_write_held ==> {
@@ -236,6 +271,7 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
             ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.l2_entry_hides_l1(whole_pagetable(post.pt_mp, post.pt_lower.view(), p).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
     &&& forall|w: WindowVa, v: VAddr|
         #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, w)), whole_pagetable(post.pt_mp, post.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)]
+        #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, w)), whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)]
         pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
             &&& new_source.mapping_4k().dom().contains(v) == old_source.mapping_4k().dom().contains(v)
             &&& old_source.mapping_4k().dom().contains(v) ==> new_source.mapping_4k().spec_index(v) == old_source.mapping_4k().spec_index(v)
@@ -277,6 +313,18 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
     source_write_held: bool, target_write_held: bool, source_va: VAddr, target_va: VAddr,
 )
     requires
+        (forall|l4i: L4Index| #![trigger mid.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+            mid.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && mid.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                ==> mid.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some)
+            ==> forall|l4i: L4Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l4(l4i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l4(l4i) is Some,
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger mid.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+            mid.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && mid.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                ==> mid.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i)]
+                post.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && post.pt_mp.spec_index(target_pagetable).view().spec_held_l3(l4i, l3i) is Some
+                    ==> post.pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
         share_mapping_4k_build_and_share_eol_loop_framing(pre, mid, pre_lctx, pre_steps, mid_steps, i as nat, source_range, target_range, source_thread, quota_thread,
             progress_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, source_write_held, target_write_held),
         source_range.wf(),
@@ -290,7 +338,7 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         mid_lctx.thread_id() == pre_lctx.thread_id(),
         progress_thread == source_thread || progress_thread == quota_thread,
         mid.pt_mp.spec_index(source_pagetable).view() == pre.pt_mp.spec_index(source_pagetable).view(),
-        mid.pt_mp.spec_index(target_pagetable).view() == pre.pt_mp.spec_index(target_pagetable).view(),
+        mid.pt_mp.spec_index(target_pagetable).view() == (PageTableHigher { lower_backup: mid.pt_mp.spec_index(target_pagetable).view().lower_backup, ..pre.pt_mp.spec_index(target_pagetable).view() }),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).present,
         whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va),
@@ -317,8 +365,6 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         held_cpus_unchanged(mid.cpu_arr, post.cpu_arr, mid_lctx),
         post.thrd_mp.lock_id_by_key(quota_thread) == mid.thrd_mp.lock_id_by_key(quota_thread),
         post.thrd_mp.spec_index(progress_thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(progress_thread).view().syscall_progress, ..mid.thrd_mp.spec_index(progress_thread).view() }),
-        post.thrd_mp.spec_index(quota_thread).view_ghost() == mid.thrd_mp.spec_index(quota_thread).view_ghost(),
-        post.thrd_mp.spec_index(source_thread).view_ghost() == mid.thrd_mp.spec_index(source_thread).view_ghost(),
         progress_thread != quota_thread ==> post.thrd_mp.spec_index(quota_thread).view() == mid.thrd_mp.spec_index(quota_thread).view(),
         progress_thread != source_thread ==> post.thrd_mp.spec_index(source_thread).view() == mid.thrd_mp.spec_index(source_thread).view(),
         post.ctn_mp.spec_index(target_container).view_rodata() == mid.ctn_mp.spec_index(target_container).view_rodata(),
@@ -389,7 +435,9 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
     if target_write_held {
         assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat)) by {
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat)
+            && (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).leaves_present()
+                ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).leaves_present())) by {
             assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k
                 =~= whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)));
             reveal(share_mapping_4k_target_map_with_shared_prefix);

@@ -103,7 +103,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             let a_ro = a.view_rodata().view();
             let b_ro = b.view_rodata().view();
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -767,7 +767,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
                 &&& b.view_rodata().view().depth == a.view_rodata().view().depth
                 &&& b.view_rodata().view().pcid == a.view_rodata().view().pcid
                 &&& b.view_rodata().view().owning_container == a.view_rodata().view().owning_container
-                &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+                &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
                 &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
                 &&& b.being_killed() == a.being_killed()
                 &&& b.view().owned_threads.view() == a.view().owned_threads.view()
@@ -798,7 +798,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             let a_ro = a.view_rodata().view();
             let b_ro = b.view_rodata().view();
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie

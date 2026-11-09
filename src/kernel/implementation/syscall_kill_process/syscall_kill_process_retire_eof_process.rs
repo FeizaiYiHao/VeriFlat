@@ -26,7 +26,7 @@ pub(crate) proof fn kill_retire_eof_container_relations(
             let parent_ptr = parent->Some_0;
             &&& pre.prc_mp.dom().contains(parent_ptr)
             &&& parent_ptr != target
-            &&& pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)
+            &&& pre.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr)
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target
         },
@@ -81,7 +81,7 @@ pub(crate) proof fn kill_retire_eof_process_relations(
             let parent_ptr = parent->Some_0;
             &&& pre.prc_mp.dom().contains(parent_ptr)
             &&& parent_ptr != target
-            &&& pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)
+            &&& pre.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr)
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
             &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target
         },

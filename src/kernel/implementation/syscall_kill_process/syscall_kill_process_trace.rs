@@ -66,7 +66,7 @@ pub(crate) proof fn kill_step_pre_from_k(
         scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
         scope is Subtree ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         scope matches KillScope::Container { container } ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == container
-            && krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+            && krnl.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         kill_process_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kill_killer(kernel_k_to_kernel_u(*krnl), cpu_id) == thrd_ptr,
@@ -1150,7 +1150,7 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
         scope matches KillScope::Container { container } ==> entry.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
         scope is Subtree ==> entry.prc_mp.spec_index(target).view_rodata().view().owning_container == entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         scope matches KillScope::Container { container } ==> entry.prc_mp.spec_index(target).view_rodata().view().owning_container == container
-            && entry.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+            && entry.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
             &&& steps[before.len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })
             &&& process_pagetable_wf(hidden[k].1.prc_mp, hidden[k].1.pt_mp)
@@ -1166,8 +1166,6 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
     else {
         hidden_root_steps_implies_kill_trace(steps, before, start, pre, cpu_id, ctx, entry, lctx, prc_ptr, thrd_ptr, target, scope, pagetable, iommu_table, hidden, count - 1);
         let h = hidden[count - 1];
-        assert(h.1.cpu_arr.spec_index(cpu_id).view() == entry.cpu_arr.spec_index(cpu_id).view() && h.1.thrd_mp.spec_index(thrd_ptr) == entry.thrd_mp.spec_index(thrd_ptr) && h.1.prc_mp.dom().contains(target) && h.1.prc_mp.spec_index(target) == entry.prc_mp.spec_index(target));
-        if let KillScope::Container { container } = scope { assert(h.1.ctn_mp.dom().contains(container) && h.1.ctn_mp.spec_index(container) == entry.ctn_mp.spec_index(container)); }
         if let Some(t) = iommu_table { h.1.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
         kill_step_pre_from_k(&h.1, &lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Reclaim { flushed: false }, scope);
         kill_reclaim_pre_from_k(&h.1, &lctx, cpu_id, thrd_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table);
@@ -1248,7 +1246,7 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
         scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
         scope is Subtree ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         scope matches KillScope::Container { container } ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == container
-            && krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+            && krnl.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
     kill_step_pre_from_k(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, target, stage, scope); kill_refund_pre_from_k(krnl, target, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container);
@@ -1280,7 +1278,7 @@ pub(crate) proof fn kill_scoped_credit_2m_step_from_k(
         post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
         pre.ctn_mp.dom().contains(owner),
         pre.ctn_mp.dom().contains(origin),
-        owner == origin || pre.ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner),
+        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr,
         pre.allc_2m_mp.dom().contains(allc_ptr),
         post.allc_2m_mp.dom() == pre.allc_2m_mp.dom(),
@@ -1327,7 +1325,7 @@ pub(crate) proof fn kill_scoped_credit_1g_step_from_k(
         post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
         pre.ctn_mp.dom().contains(owner),
         pre.ctn_mp.dom().contains(origin),
-        owner == origin || pre.ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner),
+        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr,
         pre.allc_1g_mp.dom().contains(allc_ptr),
         post.allc_1g_mp.dom() == pre.allc_1g_mp.dom(),

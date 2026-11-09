@@ -15,7 +15,7 @@ pub(super) proof fn wlock_thread_eof(pre: KernelK, post: KernelK, thrd_ptr: RwLo
     ensures
         post.inv(),
         ret is Some ==> post.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean() && post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean() && post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        ret is Some ==> !post.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        ret is Some ==> !post.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
 {
     assert(thread_perms_wf(post.thrd_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
@@ -33,7 +33,7 @@ pub(super) proof fn wlock_thread_eof(pre: KernelK, post: KernelK, thrd_ptr: RwLo
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     if ret is Some {
         assert(post.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean() && post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean() && post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            && !post.thrd_mp.spec_index(thrd_ptr).view_ghost().exited) by {
+            && !post.thrd_mp.spec_index(thrd_ptr).view().exited.view()) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
     }
@@ -102,7 +102,7 @@ pub(super) proof fn wunlock_thread_eof(pre: KernelK, post: KernelK, thrd_ptr: Rw
         pre.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         pre.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         post == (KernelK { thrd_mp: post.thrd_mp, ..pre }),
         post.thrd_mp.perms_wf(),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),

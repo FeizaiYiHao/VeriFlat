@@ -45,7 +45,7 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
             let owner = old(steps).snapshot_k().ep_mp.spec_index(payload_ep_ptr).view().owning_container;
             let container = old(steps).snapshot_k().thrd_mp.spec_index(receiver_thrd_ptr).view().owning_container;
             &&& old(steps).snapshot_k().ctn_mp.dom().contains(container)
-            &&& result == if owner == container || old(steps).snapshot_k().ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) {
+            &&& result == if owner == container || old(steps).snapshot_k().ctn_mp.spec_index(container).view().uppertree_seq.view().contains(owner) {
                 RetValueType::Success
             } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
         },
@@ -94,7 +94,7 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
         old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed() == false,
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
@@ -113,7 +113,7 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
         old(krnl).thrd_mp.dom().contains(peer_thrd_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thrd_ptr, TypedLockMode::Write),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).being_killed() == false,
-        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: wake_cpu }),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),

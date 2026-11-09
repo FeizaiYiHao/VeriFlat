@@ -94,11 +94,20 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata().view().depth))
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view() == old(krnl).ctn_mp.spec_index(e.container_ptr).view()
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost()
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(e.container_ptr).view().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(e.container_ptr).view().retire_ready.view()
             &&& final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(e.container_ptr).being_killed()
             &&& e.container_lock_perm.view().state() is WriteLock
             &&& e.container_lock_perm.view().thread_id() == final(lctx).thread_id()
-            &&& wlock_ensures(old(krnl).prc_mp.spec_index(e.process_ptr), final(krnl).prc_mp.spec_index(e.process_ptr), old(krnl).prc_mp.lock_id_by_key(e.process_ptr), final(lctx), e.process_lock_perm.view())
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.process_lock_perm.view().lock_id() })
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).view() == old(krnl).prc_mp.spec_index(e.process_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata() == old(krnl).prc_mp.spec_index(e.process_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(e.process_ptr).view().uppertree_seq
+            &&& final(krnl).prc_mp.spec_index(e.process_ptr).control() == old(krnl).prc_mp.spec_index(e.process_ptr).control()
+            &&& !old(krnl).prc_mp.spec_index(e.process_ptr).locked()
+            &&& e.process_lock_perm.view().state() is WriteLock
+            &&& e.process_lock_perm.view().thread_id() == final(lctx).thread_id()
+            &&& e.process_lock_perm.view().ordering_lock_id() == old(krnl).prc_mp.lock_id_by_key(e.process_ptr)
             &&& wlock_ensures(old(krnl).it_mp.spec_index(iommu_table), table, old(krnl).it_mp.lock_id_by_key(iommu_table), final(lctx), iommu_table_perm)
             &&& thread.locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.thread_lock_perm.view().lock_id() })
             &&& e.thread_lock_perm.view().state() is WriteLock
@@ -107,7 +116,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
             &&& thread.view().free_quota_pending_clean()
             &&& thread.view().temp_alloc_clean()
-            &&& !thread.view_ghost().exited
+            &&& !thread.view().exited.view()
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& !final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() && !final(krnl).ctn_mp.spec_index(e.container_ptr).view().zombie
             &&& !final(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost().owned_processes.view().is_empty()
@@ -173,7 +182,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         let before = steps.view();
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        iommu_unmap_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, iova, range);
+        iommu_unmap_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, iova, range, &*krnl);
         iommu_unmap_4k_trace_enter_step(before, steps.view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, spec_va_range_4k(iova, range));
     }
     Ok((Unmap4kLocked {

@@ -28,8 +28,8 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
     &&& new_pt.locking_thread() == old_pt.locking_thread()
     &&& new_pt.being_killed() == old_pt.being_killed()
-    &&& old_pt.locking_thread() is Write ==> new_pt.view_ghost() == post.pt_lower.view().spec_index(pagetable_ptr)
-    &&& !(old_pt.locking_thread() is Write) ==> new_pt.view_ghost() == old_pt.view_ghost()
+    &&& old_pt.locking_thread() is Write ==> new_pt.view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_ptr)
+    &&& !(old_pt.locking_thread() is Write) ==> new_pt.view().lower_backup.view() == old_pt.view().lower_backup.view()
     &&& !(old_pt.locking_thread() is Write) ==> new_pt.view() == old_pt.view()
     &&& new_c.page_closure() == old_c.page_closure().insert(pg_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
@@ -280,11 +280,14 @@ broadcast proof fn install_staged_4k_page_table_page_eof_structure_cache_at(
         },
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    structure_cache_wf_at(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush, cpu_id, pcid);
-    if post.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable_ptr {
-        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
-        broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
-            WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq;
+    if index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && !post.cpu_tlb.structure_cache((cpu_id, pcid)).is_empty()
+        && (!post.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || post.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid) {
+        structure_cache_wf_at(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush, cpu_id, pcid);
+        if post.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable_ptr {
+            pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
+            broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq,
+                WholePageTable::spec_resolve_mapping_l2_some_implies_spec_held_l2_eq;
+        }
     }
 }
 

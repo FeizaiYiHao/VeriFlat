@@ -18,7 +18,7 @@ pub(super) open spec fn remove_held_1g_mapping_without_free_eof_transition_frami
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& post.pt_mp.spec_index(pagetable).view_ghost() == pre.pt_mp.spec_index(pagetable).view_ghost()
+    &&& post.pt_mp.spec_index(pagetable).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable).view().lower_backup.view()
     &&& new_c.lower == old_c.lower
     &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g().remove(va)

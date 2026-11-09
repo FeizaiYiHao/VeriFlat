@@ -94,7 +94,7 @@ pub(super) fn allocate_new_container_pages(
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().proc_pagetable_ptr,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state,
-        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_2m == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_2m,

@@ -13,7 +13,7 @@ pub open spec fn container_thread_wf(ctn_mp: ContainerLockedMap, thrd_mp: Thread
             &&& thrd_mp.dom().contains(t)
             &&& thrd_mp.spec_index(t).view().owning_container == c
             &&& thrd_mp.spec_index(t).view().container_depth == ctn_mp.spec_index(c).view_rodata().view().depth
-            &&& thrd_mp.spec_index(t).view().upper_container_seq == ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& thrd_mp.spec_index(t).view().upper_container_seq == ctn_mp.spec_index(c).view().uppertree_seq
         }
     // Thread -> container.
     &&& forall|t: RwLockThreadPtr|
@@ -52,7 +52,7 @@ pub proof fn container_thread_wf_owned_thread_at(ctn_mp: ContainerLockedMap, thr
             &&& thrd_mp.dom().contains(thrd_ptr)
             &&& thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr
             &&& thrd_mp.spec_index(thrd_ptr).view().container_depth == ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth
-            &&& thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq
+            &&& thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
         },
 { reveal(container_thread_wf); }
 
@@ -88,7 +88,7 @@ pub proof fn container_thread_wf_uppertree_at(ctn_mp: ContainerLockedMap, thrd_m
         ({
             let ctn_ptr = thrd_mp.spec_index(thrd_ptr).view().owning_container;
             &&& ctn_mp.dom().contains(ctn_ptr)
-            &&& ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq == thrd_mp.spec_index(thrd_ptr).view().upper_container_seq
+            &&& ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == thrd_mp.spec_index(thrd_ptr).view().upper_container_seq
         }),
 { reveal(container_thread_wf); }
 }

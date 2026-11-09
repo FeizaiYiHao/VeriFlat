@@ -6,10 +6,11 @@ use crate::*;
 pub(super) proof fn retype_page_to_process_and_insert_eof(pre: ProcessLockedMap, post: ProcessLockedMap, pg_ptr: RwLockProcessPtr, process_value: Process, rodata: ReadOnlyNode<ProcessRO>, process_ghost: ProcessGhost)
     requires
         process_value.inv(),
+        !process_value.pci_cleared.view(),
         process_value.children.view().no_duplicates(),
         !process_value.children.view().contains(pg_ptr),
-        process_ghost.uppertree_seq.view().no_duplicates(),
-        process_ghost.uppertree_seq.view().len() == rodata.view().depth,
+        process_value.uppertree_seq.view().no_duplicates(),
+        process_value.uppertree_seq.view().len() == rodata.view().depth,
         post.perms_wf(),
         post.dom() =~= pre.dom().insert(pg_ptr),
         forall|ptr: RwLockProcessPtr|

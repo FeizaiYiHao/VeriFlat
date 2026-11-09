@@ -44,7 +44,7 @@ pub proof fn kernel_container_user_projection_at(krnl: &KernelK, ptr: RwLockCont
             kernel_k_user_projection(*krnl).container_map[ptr] == (ContainerU {
                 lock_state: krnl.ctn_mp.spec_index(ptr).lock_state_u(),
                 lock_process_owner: krnl.ctn_mp.spec_index(ptr).lock_process_owner_u(), zombie: c.zombie,
-                children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
+                children: c.children.view(), uppertree_seq: c.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                 root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                 owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                 parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
@@ -84,7 +84,7 @@ pub proof fn kernel_process_user_projection_at(krnl: &KernelK, ptr: RwLockProces
                     _ => None,
                 },
                 pcid: p_ro.pcid, owning_container: p_ro.owning_container, owned_pci_functions: p_ghost.owned_pci_functions.view(), quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
-                parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth, uppertree_seq: p_ghost.uppertree_seq.view(),
+                parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth, uppertree_seq: p.uppertree_seq.view(),
                 subtree_set: p_ghost.subtree_set.view(), owned_threads: p.owned_threads.view(), killed: krnl.prc_mp.spec_index(ptr).being_killed(),
             })
         }),

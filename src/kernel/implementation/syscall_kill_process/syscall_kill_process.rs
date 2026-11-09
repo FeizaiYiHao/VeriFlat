@@ -138,7 +138,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             let root = krnl.ctn_mp.spec_index(process_ro.owning_container).view().root_process;
             process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container);
             process_root_wf_at(root, tree, krnl.prc_mp, child_ptr); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, prc_ptr);
-            assert(krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(prc_ptr)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
+            assert(krnl.prc_mp.spec_index(child_ptr).view().uppertree_seq.view().contains(prc_ptr)) by { process_uppertree_seq_parent_wf_at(root, tree, krnl.prc_mp, child_ptr); };
         };
     }
     let child_res = krnl.try_wlock_process_and_mark_kill(child_ptr, prc_ptr, thrd_ptr, Ghost(killer_info), Tracked(&mut *lctx));
@@ -233,10 +233,12 @@ pub(crate) fn kill_walk_and_finish(
             killer_info.process == prc_ptr,
             walking == (0 < chain.len()),
             walking ==> target == chain[chain.len() - 1],
+            chain.len() <= usize::MAX as nat + 1,
         decreases
-            krnl.prc_mp.spec_index(prc_ptr).view_ghost().subtree_set.view().len(), usize::MAX - chain.len(),
+            kill_process_walk_rank(krnl.prc_mp, chain, walking),
             if walking { krnl.prc_mp.spec_index(target).view().owned_threads.view().len() } else { 0 },
     {
+        let ghost digits = kill_process_walk_digits(krnl.prc_mp, chain);
         proof {
             process_perms_wf_map(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, target);
@@ -252,14 +254,38 @@ pub(crate) fn kill_walk_and_finish(
                 Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
             proof { chain = chain.push(next); }
             target = next;
+            assert(kill_process_walk_rank(krnl.prc_mp, chain, true) < 1 + seq_to_nat(
+                digits, usize::MAX as nat + 1, usize::MAX as nat + 2)) by {
+                seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_process_walk_digits(krnl.prc_mp, chain),
+                    usize::MAX as nat + 1, usize::MAX as nat + 2, digits.len());
+            };
         } else if has_threads {
             kill_first_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(killer_info), Ghost(chain), Tracked(&chain_perms),
                 Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+            proof { vstd::assert_seqs_equal!(kill_process_walk_digits(krnl.prc_mp, chain), digits); }
         } else {
+            let ghost parent_ptr = if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] };
+            let ghost parent_children = krnl.prc_mp.spec_index(parent_ptr).view().children.view();
+            assert(parent_children.len() <= usize::MAX && parent_children.remove_value(target).len() + 1 == parent_children.len()) by {
+                process_perms_wf_at(krnl.prc_mp, parent_ptr);
+                krnl.prc_mp.spec_index(parent_ptr).view().children.wf_implies_view_len_eq_len();
+                let ctn = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
+                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn);
+                process_children_parent_wf_parent_at(krnl.ctn_mp.spec_index(ctn).view().root_process, krnl.ctn_mp.spec_index(ctn).view_ghost().owned_processes.view(), krnl.prc_mp, target);
+                parent_children.index_of_first_ensures(target);
+            };
             let parent = kill_reclaim_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&mut chain_perms),
                 Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
             proof { chain = chain.drop_last(); }
             if parent == prc_ptr { walking = false; } else { target = parent; }
+            assert(kill_process_walk_rank(krnl.prc_mp, chain, walking) < 1 + seq_to_nat(
+                digits, usize::MAX as nat + 1, usize::MAX as nat + 2)) by {
+                if walking {
+                    seq_first_difference_smaller_implies_seq_to_nat_smaller(digits, kill_process_walk_digits(krnl.prc_mp, chain),
+                        usize::MAX as nat + 1, usize::MAX as nat + 2, (chain.len() - 1) as nat);
+                }
+            };
         }
     }
     proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }

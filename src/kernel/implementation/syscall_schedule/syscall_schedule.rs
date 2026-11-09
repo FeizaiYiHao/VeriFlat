@@ -157,7 +157,7 @@ fn schedule_switch_to_queue_head(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -179,7 +179,7 @@ fn schedule_switch_to_queue_head(
         old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(next_thread).view().exited.view(),
         old(krnl).thrd_mp.spec_index(next_thread).view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), next_thread, TypedLockMode::Write),
         next_lock_perm.view().state() is WriteLock,

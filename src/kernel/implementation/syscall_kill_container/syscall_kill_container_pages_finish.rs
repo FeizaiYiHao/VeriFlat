@@ -17,6 +17,8 @@ use super::syscall_kill_container_pages_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_pages_trace::*;
 #[cfg(verus_keep_ghost)]
+use super::syscall_kill_container_retire_trace::kill_container_retire_pre_from_k;
+#[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_pages_eof::kill_container_pages_eof_retire_ready;
 
 verus! {
@@ -45,7 +47,7 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         kill_container_pages_allocator_locks(*old(krnl), *old(lctx), ctn_ptr, owner_ptr, a4, o4, a2, o2, a1, o1, caches_4k, caches_2m, pools_4k, pools_2m, quotas_4k, quotas_2m,
             pools_1g, quotas_1g),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Pages),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view().children.view().len() == 0,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         old(krnl).allc_4k_mp.spec_index(a4).global_pool.view().view().len() == 0,
@@ -74,16 +76,24 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost().retire_ready,
-        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+        final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
-        final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        ({
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).is_init() == old(krnl).prc_mp.spec_index(prc_ptr).is_init()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view() == old(krnl).prc_mp.spec_index(prc_ptr).view()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == old(krnl).prc_mp.spec_index(prc_ptr).view_rodata()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == old(krnl).prc_mp.spec_index(prc_ptr).locking_thread()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).control() == old(krnl).prc_mp.spec_index(prc_ptr).control()
+            &&& final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == old(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq
+        }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
@@ -100,9 +110,13 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
     }
     let ghost drained = *krnl;
     proof {
-        let target_ghost = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost();
-        kernel_container_quotas_zero_projection(&drained, ctn_ptr); container_perms_wf_map(krnl.ctn_mp);
-        krnl.ctn_mp.update_ghost(ctn_ptr, ContainerGhost { retire_ready: true, ..target_ghost });
+        kernel_container_quotas_zero_projection(&drained, ctn_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+    }
+    {
+        let container = krnl.ctn_mp.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_perm));
+        container.retire_ready = Ghost(true);
+    }
+    proof {
         kill_container_pages_eof_retire_ready(drained, *krnl, ctn_ptr);
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&drained, &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -132,6 +146,9 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
+        container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().is_empty() && krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view().is_empty()) by { container_without_children_and_processes_owns_no_threads(*krnl, ctn_ptr); };
+        kill_container_retire_pre_from_k(&*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
     }
 }
 } // verus!

@@ -25,7 +25,7 @@ pub(super) fn unmap_iommu_4k_mapped_page_ptr(
         krnl.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == ret.1,
 {
     let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), iommu_table_perm);
-    assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
+    assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { it.wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3); };
     let l4 = it.get_entry_l4(indices.0).unwrap();
     let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
     let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();

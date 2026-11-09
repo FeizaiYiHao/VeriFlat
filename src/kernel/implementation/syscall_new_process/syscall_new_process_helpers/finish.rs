@@ -76,7 +76,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state is RUNNING,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range: r, shared, origin, .. })
             && r == *source_range && shared == source_range.len && origin == Share4kOrigin::NewProcess(NewProcessProgress {
                 range: *source_range, regs: *initial_regs, endpoint_index: if endpoint is Some { Some(ep_idx) } else { None }, with_iommu: iommu_table is Some, child: Some(child_ptr),

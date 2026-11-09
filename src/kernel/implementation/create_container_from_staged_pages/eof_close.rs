@@ -71,7 +71,7 @@ pub(super) proof fn publish_staged_container_root_eof_subsystems_inv(
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
         container_perms_wf_at(pre.ctn_mp, parent_ctn_ptr); reveal(container_tree_fields_wf);
         assert(!pre.ctn_mp.spec_index(parent_ctn_ptr).view().children.view().contains(container_page)) by { reveal(container_children_parent_wf); };
-        assert(!pre.ctn_mp.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view().contains(parent_ctn_ptr)) by { reveal(container_uppertree_seq_wf); };
+        assert(!pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().contains(parent_ctn_ptr)) by { reveal(container_uppertree_seq_wf); };
     };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };

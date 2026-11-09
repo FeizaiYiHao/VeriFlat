@@ -17,7 +17,7 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: 
         typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container, TypedLockMode::Write),
         krnl.ctn_mp.dom().contains(ctn_ptr),
         krnl.ctn_mp.spec_index(ctn_ptr).being_killed(),
-        krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
         krnl.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,

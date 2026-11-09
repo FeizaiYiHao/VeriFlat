@@ -6,6 +6,12 @@ use core::mem::offset_of;
 /// Each container occupies one 2 MiB page.
 #[repr(C)]
 pub struct Container {
+    /// The ancestor containers, indexed by depth from the root container.
+    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
+    /// Set by a killer once the marked container is ready to retire; K-only, never projected.
+    pub retire_ready: Ghost<bool>,
+    /// The marked container has removed its root process; K-only, never projected.
+    pub root_process_removed: Ghost<bool>,
     // Set when the root process becomes zombie; independent of the lock's kill state.
     pub zombie: bool,
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
@@ -29,8 +35,6 @@ pub struct ContainerRO {
 
 /// Lock-free ghost state associated with a container's `LockCell`.
 pub struct ContainerGhost {
-    /// The ancestor containers, indexed by depth from the root container.
-    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
     /// The descendant containers.
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
     /// The processes of this container.
@@ -41,8 +45,6 @@ pub struct ContainerGhost {
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
     /// The endpoints of this container.
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
-    /// Set by a killer once the marked container is ready to retire; K-only, never projected.
-    pub retire_ready: bool,
 }
 
 pub ghost struct ContainerU {
@@ -81,6 +83,9 @@ impl Container {
     pub fn new_boot_root(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
         ensures
             ret.inv(),
+            ret.uppertree_seq.view() == Seq::<RwLockContainerPtr>::empty(),
+            !ret.retire_ready.view(),
+            !ret.root_process_removed.view(),
             !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
@@ -96,6 +101,9 @@ impl Container {
     pub fn new_staged(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
+            ret.uppertree_seq.view() == Seq::<RwLockContainerPtr>::empty(),
+            !ret.retire_ready.view(),
+            !ret.root_process_removed.view(),
             !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
@@ -103,8 +111,8 @@ impl Container {
             ret.root_process == root_process,
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
-        Self { zombie: false, parent_linkedlist_node: ExternalNode::new(ctn_ptr), children: LinkedList::new(Some(depth), Some(ctn_ptr)), root_process,
-            owned_pages: Ghost(Set::empty()) }
+        Self { uppertree_seq: Ghost(Seq::empty()), retire_ready: Ghost(false), root_process_removed: Ghost(false), zombie: false, parent_linkedlist_node: ExternalNode::new(ctn_ptr),
+            children: LinkedList::new(Some(depth), Some(ctn_ptr)), root_process, owned_pages: Ghost(Set::empty()) }
     }
 
     /// The child list is well formed.

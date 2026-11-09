@@ -42,6 +42,7 @@ pub open spec fn kill_walk_state(
     &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) <==> (t == thrd_ptr || Some(t) == victim)
     &&& k.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
     &&& kill_chain_state(k, lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
+    &&& chain.len() > 0 && (stage is Reclaim || stage is Quota || stage is Zombie || stage is Retire) ==> k.prc_mp.spec_index(chain[chain.len() - 1]).view().pci_cleared.view()
 }
 
 /// The killer `thrd_ptr` of process `prc_ptr`, running on `cpu_id`, works at `stage` on `chain`, the marked
@@ -81,14 +82,14 @@ pub open spec fn kill_chain_state(
     &&& thread.view().owning_proc == prc_ptr
     &&& thread.view().temp_alloc_clean()
     &&& thread.view().syscall_progress.view() == kill_scope_progress(scope, if chain.len() == 0 { prc_ptr } else { chain[chain.len() - 1] }, stage)
-    &&& !thread.view_ghost().exited
+    &&& !thread.view().exited.view()
     &&& match scope {
         KillScope::Subtree { process: root } => root == prc_ptr && lctx.container_lock_map().dom().is_empty() && process.view_rodata().view().owning_container == cpu.owning_container,
         KillScope::Container { container } => {
             &&& k.ctn_mp.dom().contains(container)
             &&& k.ctn_mp.spec_index(container).being_killed()
             &&& container != cpu.owning_container
-            &&& k.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(cpu.owning_container)
+            &&& k.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(cpu.owning_container)
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), cpu.owning_container, TypedLockMode::Write)
             &&& forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) ==> {

@@ -39,9 +39,9 @@ pub(crate) fn kill_container_retire_commit(
             let target = old(krnl).ctn_mp.spec_index(ctn_ptr);
             let ro = target.view_rodata().view();
             &&& owner_ptr != ctn_ptr
-            &&& target.view_ghost().retire_ready
+            &&& target.view().retire_ready.view()
             &&& ro.parent == Some(parent_ptr)
-            &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
+            &&& target.view().uppertree_seq.view().contains(owner_ptr)
             &&& old(krnl).cpu_set_mp.spec_index(ro.cpu_set).being_killed()
             &&& old(krnl).cpu_set_mp.spec_index(ro.cpu_set).view().owned_cpus.view().is_empty()
             &&& forall|i: CpuId| #![trigger old(krnl).sched_mp.spec_index(ro.scheduler).shards.spec_index(i)]
@@ -94,10 +94,12 @@ pub(crate) fn kill_container_retire_commit(
             &&& new_c.control() == old_c.control()
             &&& new_c.view().zombie == old_c.view().zombie
             &&& new_c.view().root_process == old_c.view().root_process
+            &&& new_c.view().root_process_removed == old_c.view().root_process_removed
             &&& new_c.view().children.view() == if c == parent_ptr { old_c.view().children.view().remove_value(ctn_ptr) } else { old_c.view().children.view() }
             &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
-            &&& new_c.view_ghost().uppertree_seq == old_c.view_ghost().uppertree_seq
-            &&& new_c.view_ghost().subtree_set.view() == if target.view_ghost().uppertree_seq.view().contains(c) {
+            &&& new_c.view().uppertree_seq == old_c.view().uppertree_seq
+            &&& new_c.view().retire_ready.view() == old_c.view().retire_ready.view()
+            &&& new_c.view_ghost().subtree_set.view() == if target.view().uppertree_seq.view().contains(c) {
                 old_c.view_ghost().subtree_set.view().remove(ctn_ptr)
             } else { old_c.view_ghost().subtree_set.view() }
             &&& new_c.view_ghost().owned_processes == old_c.view_ghost().owned_processes
@@ -233,7 +235,7 @@ fn kill_container_retire_detach(
             &&& target.view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
             &&& target.view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()
             &&& ro.parent == Some(parent_ptr)
-            &&& target.view_ghost().uppertree_seq.view().contains(owner_ptr)
+            &&& target.view().uppertree_seq.view().contains(owner_ptr)
             &&& old(krnl).cpu_set_mp.spec_index(ro.cpu_set).being_killed()
             &&& old(krnl).allc_4k_mp.spec_index(ro.allocator_ptr_4k).quota.view().value == 0
             &&& old(krnl).allc_2m_mp.spec_index(ro.allocator_ptr_2m).quota.view().value == 0
@@ -315,7 +317,7 @@ fn kill_container_retire_detach(
                 &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
                 &&& new_c.view_ghost() == (ContainerGhost { subtree_set: new_c.view_ghost().subtree_set, ..old_c.view_ghost() })
                 &&& new_c.view_ghost().subtree_set.view()
-                    == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
+                    == if target.view().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
             }
             &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().children.view() == old(krnl).ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(ctn_ptr)
             &&& final(krnl).ctn_mp.spec_index(parent_ptr).view().children.map() == old(krnl).ctn_mp.spec_index(parent_ptr).view().children.map().remove(target.view().parent_linkedlist_node.addr())
@@ -347,7 +349,7 @@ fn kill_container_retire_detach(
     let ghost entry = *krnl;
     let ghost ro = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view();
     let ghost owner_ro = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view();
-    let ghost ancestors = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let ghost ancestors = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     proof {
         container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
         container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr, owner_ptr); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);

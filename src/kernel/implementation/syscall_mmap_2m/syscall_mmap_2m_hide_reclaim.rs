@@ -131,9 +131,13 @@ pub(super) fn mmap_2m_hide_linked_l1_range(
         final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
         final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
-        forall|c: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(c)] old(lctx).cpu_lock_map().dom().contains(c) ==> final(krnl).cpu_arr.spec_index(c).view() == old(krnl).cpu_arr.spec_index(c).view(),
+        forall|c: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(c)] old(lctx).cpu_lock_map().dom().contains(c) ==> final(krnl).cpu_arr.spec_index(c).view().view() == old(krnl).cpu_arr.spec_index(c).view().view()
+            && final(krnl).cpu_arr.spec_index(c).view().locking_thread() == old(krnl).cpu_arr.spec_index(c).view().locking_thread()
+            && final(krnl).cpu_arr.spec_index(c).view().being_killed() == old(krnl).cpu_arr.spec_index(c).view().being_killed(),
         forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t)
-            ==> (old(krnl).thrd_mp.dom().contains(t) ==> final(krnl).thrd_mp.dom().contains(t)) && final(krnl).thrd_mp.spec_index(t) == old(krnl).thrd_mp.spec_index(t),
+            ==> (old(krnl).thrd_mp.dom().contains(t) ==> final(krnl).thrd_mp.dom().contains(t)) && final(krnl).thrd_mp.spec_index(t).view() == old(krnl).thrd_mp.spec_index(t).view()
+                && final(krnl).thrd_mp.spec_index(t).locking_thread() == old(krnl).thrd_mp.spec_index(t).locking_thread()
+            && final(krnl).thrd_mp.spec_index(t).being_killed() == old(krnl).thrd_mp.spec_index(t).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
@@ -180,9 +184,13 @@ pub(super) fn mmap_2m_hide_linked_l1_range(
             krnl.cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             krnl.cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
-            forall|c: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(c)] old(lctx).cpu_lock_map().dom().contains(c) ==> krnl.cpu_arr.spec_index(c).view() == old(krnl).cpu_arr.spec_index(c).view(),
+            forall|c: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(c)] old(lctx).cpu_lock_map().dom().contains(c) ==> krnl.cpu_arr.spec_index(c).view().view() == old(krnl).cpu_arr.spec_index(c).view().view()
+                && krnl.cpu_arr.spec_index(c).view().locking_thread() == old(krnl).cpu_arr.spec_index(c).view().locking_thread()
+                && krnl.cpu_arr.spec_index(c).view().being_killed() == old(krnl).cpu_arr.spec_index(c).view().being_killed(),
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t)
-                ==> (old(krnl).thrd_mp.dom().contains(t) ==> krnl.thrd_mp.dom().contains(t)) && krnl.thrd_mp.spec_index(t) == old(krnl).thrd_mp.spec_index(t),
+                ==> (old(krnl).thrd_mp.dom().contains(t) ==> krnl.thrd_mp.dom().contains(t)) && krnl.thrd_mp.spec_index(t).view() == old(krnl).thrd_mp.spec_index(t).view()
+                    && krnl.thrd_mp.spec_index(t).locking_thread() == old(krnl).thrd_mp.spec_index(t).locking_thread()
+                && krnl.thrd_mp.spec_index(t).being_killed() == old(krnl).thrd_mp.spec_index(t).being_killed(),
             krnl.pt_mp.dom().contains(pagetable_ptr),
             krnl.pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
@@ -361,7 +369,7 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: true }),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -402,7 +410,7 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr);
     }
     let ghost flush_lctx = *lctx;
-    flush_pagetable_tlbs(krnl, pagetable_ptr, cr3, pcid, cpu_id, thrd_ptr, false, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
+    flush_pagetable_tlbs::<false>(krnl, pagetable_ptr, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
     proof {
         process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, thrd_ptr); process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, prc_ptr);
         mmap_2m_tlb_flush_range_steps_from_k(&*steps, old(steps).view(), start, old(krnl), &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable_ptr, *va_range, phase);
@@ -452,7 +460,7 @@ pub(super) fn mmap_2m_flush_and_reclaim_hidden_l1_range(
             flushed_post.thrd_mp.dom().contains(thrd_ptr),
             flushed_post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: flushed_post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
             flushed_post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap2m { range: *va_range, mapped: 0, directory: Mmap2mDirectory::None, phase, flushed: true }),
-            flushed_post.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            flushed_post.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             flushed_post.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
             flushed_post.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),

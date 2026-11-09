@@ -5,9 +5,10 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
+/// The write-maintained lower-half backup lives inside the protected higher payload; the separate ghost slot is empty.
+pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
 pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
-pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
+pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>;
 pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE, TokenCells<Page, (), (), NUM_PAGES, NO_KILL_STATE>>;
 pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE, TokenCells<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>>;
 pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>;
@@ -233,15 +234,15 @@ impl KernelK{
     /// new one." Between sections, the rest of the world may run
     /// arbitrary atomic sections. `kernel_step_boundary_framing` states what
     /// survives them:
-    ///   - all our held objects (those recorded in the LocalContext set) keep
-    ///     their state across the boundary — `view`, `view_ghost`,
-    ///     `view_rodata`, `locking_thread`,
-    ///     `being_killed` are preserved per held lock instance, except that a
-    ///     read-held page table or cpu set keeps only its payload, this
-    ///     thread's read hold, and its kill mark;
+    ///   - held-object preservation follows the lock interface: lock-protected payloads (`view`), immutable data,
+    ///     protected lock state and tokens remain unchanged. Separate `view_ghost` metadata is lock-free writable
+    ///     through its interface and may change, constrained by post-state invariants and typed lock alignment;
+    ///     Erased metadata stored inside `view` is protected with that payload: a page table's `lower_backup` stays
+    ///     fixed while its big lock is held and agrees with authoritative `pt_lower` while write-held.
+    ///     A read-held page table or cpu set keeps this thread's read hold and reader token while other readers may
+    ///     come and go;
     ///   - each held 2M window keeps its L2 entry, lock owner, linked L1 page,
-    ///     and leaves; nothing is said about the window half of a page table
-    ///     beyond its held windows;
+    ///     and leaves; under a big Read hold, other windows may change while the payload backup stays stale;
     ///   - while the local cpu is inside a kernel step (this thread holds it),
     ///     its hardware cr3/pcid word stays unchanged; its running state stays
     ///     put or drops to Idle (a killer's running-to-idle IPI, a wake IPI);
@@ -316,9 +317,14 @@ pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx:
     &&& post.inv()
     &&& forall|cpu_id: CpuId, pcid: Pcid|
         #![trigger lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
-        lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) ==> post.pcid_needflush.spec_index(cpu_id, pcid) == pre.pcid_needflush.spec_index(cpu_id, pcid)
-    // Direct typed-map framing for owner objects.
-    &&& forall|cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(cpu_id)] lctx.cpu_lock_map().dom().contains(cpu_id) ==> post.cpu_arr.spec_index(cpu_id).view() == pre.cpu_arr.spec_index(cpu_id).view()
+        lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) ==> {
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).view_lock() == pre.pcid_needflush.spec_index(cpu_id, pcid).view_lock()
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).is_init() == pre.pcid_needflush.spec_index(cpu_id, pcid).is_init()
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).view() == pre.pcid_needflush.spec_index(cpu_id, pcid).view()
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).view_rodata() == pre.pcid_needflush.spec_index(cpu_id, pcid).view_rodata()
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == pre.pcid_needflush.spec_index(cpu_id, pcid).locking_thread()
+            &&& post.pcid_needflush.spec_index(cpu_id, pcid).control() == pre.pcid_needflush.spec_index(cpu_id, pcid).control()
+        }
     // A held remote cpu that runs a thread may still trap, return to user mode, or divert to its idle loop once
     // marked; every other held cpu keeps its running state.
     &&& forall|cpu_id: CpuId|
@@ -336,35 +342,24 @@ pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx:
         lctx.container_lock_map().dom().contains(ctn_ptr) ==> {
             &&& post.ctn_mp.dom().contains(ctn_ptr)
             &&& post.ctn_mp.lock_id_by_key(ctn_ptr) == pre.ctn_mp.lock_id_by_key(ctn_ptr)
-            &&& post.ctn_mp.spec_index(ctn_ptr) == pre.ctn_mp.spec_index(ctn_ptr)
         }
     &&& forall|prc_ptr: RwLockProcessPtr|
         #![trigger lctx.process_lock_map().dom().contains(prc_ptr)]
         lctx.process_lock_map().dom().contains(prc_ptr) ==> {
             &&& post.prc_mp.dom().contains(prc_ptr)
             &&& post.prc_mp.lock_id_by_key(prc_ptr) == pre.prc_mp.lock_id_by_key(prc_ptr)
-            &&& post.prc_mp.spec_index(prc_ptr) == pre.prc_mp.spec_index(prc_ptr)
         }
     &&& forall|thrd_ptr: RwLockThreadPtr|
         #![trigger lctx.thread_lock_map().dom().contains(thrd_ptr)]
         lctx.thread_lock_map().dom().contains(thrd_ptr) ==> {
             &&& post.thrd_mp.dom().contains(thrd_ptr)
             &&& post.thrd_mp.lock_id_by_key(thrd_ptr) == pre.thrd_mp.lock_id_by_key(thrd_ptr)
-            &&& post.thrd_mp.spec_index(thrd_ptr) == pre.thrd_mp.spec_index(thrd_ptr)
         }
     &&& forall|pagetable_ptr: RwLockPageTableRoot|
         #![trigger lctx.pagetable_lock_map().dom().contains(pagetable_ptr)]
         lctx.pagetable_lock_map().dom().contains(pagetable_ptr) ==> {
             &&& post.pt_mp.dom().contains(pagetable_ptr)
             &&& post.pt_mp.lock_id_by_key(pagetable_ptr) == pre.pt_mp.lock_id_by_key(pagetable_ptr)
-            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
-                ==> post.pt_mp.spec_index(pagetable_ptr) == pre.pt_mp.spec_index(pagetable_ptr)
-            &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {
-                &&& post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view()
-                &&& post.pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(lctx.thread_id())
-                &&& post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed()
-                &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
-            }
         }
     // Deliberately omitted: root-container equality across interleaving, and rodata of objects that are neither held
     // nor owners of held objects, whose pointers may be freed and reused. The default page table is read-only and is
@@ -372,8 +367,7 @@ pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx:
     &&& typed_lock_maps_aligned(&post, &lctx)
     &&& post.dflt_pt == pre.dflt_pt
     &&& held_owner_rodata_unchanged(pre, post, lctx)
-    // The krnl lock state is the anchor: every object held before interleaving is still present and bit-for-bit
-    // unchanged afterwards.
+    // Held objects remain present; their relations preserve the protected state while allowing lock-free changes.
     &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, &lctx)
     &&& held_processes_unchanged(pre.prc_mp, post.prc_mp, &lctx)
     &&& held_threads_unchanged(pre.thrd_mp, post.thrd_mp, &lctx)

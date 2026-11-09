@@ -27,7 +27,7 @@ pub(super) fn thread_exit_reclaim_flush(
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     cr3: PageTableRoot, pcid: Pcid, Ghost(entry_k): Ghost<KernelK>,
     Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
-    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
+    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -96,12 +96,33 @@ pub(super) fn thread_exit_reclaim_flush(
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
-        old(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr),
         old(krnl).prc_mp.dom().contains(prc_ptr),
-        old(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         entry_k.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -159,15 +180,35 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         final(krnl).prc_mp.dom().contains(prc_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
         iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -187,7 +228,7 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost entry_flush_k = *krnl;
     let ghost entry_flush_lctx = *lctx;
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, true, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
+    flush_pagetable_tlbs::<true>(krnl, pagetable, cr3, pcid, cpu_id, thrd_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(pagetable_lock_perm));
     proof {
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_flush_step_pre_from_k(&entry_flush_k, &entry_flush_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, pcid);
@@ -222,7 +263,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     Ghost(ctn_ptr): Ghost<RwLockContainerPtr>, Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
     Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>, Ghost(entry_k): Ghost<KernelK>,
     Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
-    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
+    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>, Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>,
     Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
 )
@@ -291,12 +332,33 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
-        old(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr),
         old(krnl).prc_mp.dom().contains(prc_ptr),
-        old(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         entry_k.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -356,15 +418,35 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         final(krnl).prc_mp.dom().contains(prc_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
         iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0) == locked_it,
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -401,7 +483,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect_4k, &mut direct_4k, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof { thread_exit_trace_from_refund(&*steps, refund_4k_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr); }
-    let ghost refunded_4k_k = *krnl;
     let ghost refund_2m_before = steps.view();
     refund_unmap_2m_quota(krnl, thrd_ptr, &mut indirect_2m, &mut direct_2m, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
@@ -416,8 +497,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_2m.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_1g_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
-        assert(krnl.pt_mp.spec_index(pagetable) == refunded_4k_k.pt_mp.spec_index(pagetable) && krnl.prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr)
-            && krnl.ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable));
     }
 }
@@ -431,7 +510,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     Ghost(prc_ptr): Ghost<RwLockProcessPtr>, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>,
     Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>, Ghost(pt_entry): Ghost<TypedHeldLock>,
     Ghost(emptied_pt): Ghost<WholePageTable<PT_TYPE>>, iommu_table: RwLockPageTableRoot, Ghost(table_lctx): Ghost<LocalContext>, Ghost(it_entry): Ghost<TypedHeldLock>,
-    Ghost(locked_it): Ghost<LockCell<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>,
+    Ghost(locked_it): Ghost<LockCell<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE>>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(process_lock_perm): Tracked<&LockPerm>,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>,
     Ghost(pre): Ghost<KernelU>,
 )
@@ -501,12 +580,33 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
-        old(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr),
         old(krnl).prc_mp.dom().contains(prc_ptr),
-        old(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         entry_k.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -557,9 +657,30 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         final(krnl).prc_mp.dom().contains(prc_ptr),
-        final(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
@@ -570,7 +691,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
             #![trigger final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !final(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -650,12 +770,33 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             pcid_valid(pcid),
             pcid != KERNEL_DEFAULT_PCID,
             krnl.ctn_mp.dom().contains(ctn_ptr),
-            krnl.ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+            ({
+                let post_container = krnl.ctn_mp.spec_index(ctn_ptr);
+                let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+                &&& post_container.view_lock() == pre_container.view_lock()
+                &&& post_container.is_init() == pre_container.is_init()
+                &&& post_container.view() == pre_container.view()
+                &&& post_container.view_rodata() == pre_container.view_rodata()
+                &&& post_container.locking_thread() == pre_container.locking_thread()
+                &&& post_container.control() == pre_container.control()
+                &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+                &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+            }),
             entry_k.ctn_mp.dom().contains(ctn_ptr),
             entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
             entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr),
             krnl.prc_mp.dom().contains(prc_ptr),
-            krnl.prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+            ({
+                let post_process = krnl.prc_mp.spec_index(prc_ptr);
+                let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+                &&& post_process.view_lock() == pre_process.view_lock()
+                &&& post_process.is_init() == pre_process.is_init()
+                &&& post_process.view() == pre_process.view()
+                &&& post_process.view_rodata() == pre_process.view_rodata()
+                &&& post_process.locking_thread() == pre_process.locking_thread()
+                &&& post_process.control() == pre_process.control()
+                &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+            }),
             entry_k.prc_mp.dom().contains(prc_ptr),
             entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
             entry_k.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -679,7 +820,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             entry_k.thrd_mp.spec_index(thrd_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH,
             krnl.pt_mp.dom().contains(pagetable),
             krnl.it_mp.dom().contains(iommu_table),
-            krnl.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
             krnl.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k,
                 syscall_progress: krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view()
@@ -742,16 +882,12 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).next_mapped_4k_from(cursor);
     }
     proof { assert(krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); broadcast use iova_4k_valid_index_roundtrip; }; }
-    let ghost reclaimed_it = krnl.it_mp.spec_index(iommu_table);
-    let ghost reclaimed_k = *krnl;
     let ghost refund_before = steps.view();
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_at(old(krnl).thrd_mp, thrd_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thrd_ptr, prc_ptr, ctn_ptr);
-        assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_k.pt_mp.spec_index(pagetable) && krnl.it_mp.spec_index(iommu_table) == reclaimed_it && krnl.prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr)
-            && krnl.ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
     }
 }
 
@@ -829,12 +965,33 @@ pub(super) fn thread_exit_reclaim_return_quota(
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
-        old(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         entry_k.ctn_mp.dom().contains(ctn_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr),
         entry_k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr),
         old(krnl).prc_mp.dom().contains(prc_ptr),
-        old(krnl).prc_mp.spec_index(prc_ptr) == entry_k.prc_mp.spec_index(prc_ptr),
+        ({
+            let post_process = old(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = entry_k.prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         entry_k.prc_mp.dom().contains(prc_ptr),
         entry_k.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         entry_k.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
@@ -907,15 +1064,26 @@ pub(super) fn thread_exit_reclaim_return_quota(
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).ctn_mp.dom().contains(ctn_ptr),
-        final(krnl).ctn_mp.spec_index(ctn_ptr) == entry_k.ctn_mp.spec_index(ctn_ptr),
+        {
+            let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = entry_k.ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
         final(krnl).prc_mp.dom().contains(prc_ptr),
         final(krnl).prc_mp.spec_index(prc_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), quota_4k: 0, quota_2m: 0, quota_1g: 0, ..entry_k.prc_mp.spec_index(prc_ptr).view() }),
         final(krnl).prc_mp.spec_index(prc_ptr).view_rodata() == entry_k.prc_mp.spec_index(prc_ptr).view_rodata(),
-        final(krnl).prc_mp.spec_index(prc_ptr).view_ghost() == entry_k.prc_mp.spec_index(prc_ptr).view_ghost(),
+        final(krnl).prc_mp.spec_index(prc_ptr).view().uppertree_seq == entry_k.prc_mp.spec_index(prc_ptr).view().uppertree_seq,
         final(krnl).prc_mp.spec_index(prc_ptr).locking_thread() == entry_k.prc_mp.spec_index(prc_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(prc_ptr).being_killed() == entry_k.prc_mp.spec_index(prc_ptr).being_killed(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { quota_4k: 0, quota_2m: 0, quota_1g: 0, syscall_progress: Ghost(Some(SyscallProgress::ThreadExitZombie)), ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { quota_4k: 0, quota_2m: 0, quota_1g: 0, syscall_progress: Ghost(Some(SyscallProgress::ThreadExitZombie)), exited: Ghost(true), ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == entry_k.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == entry_k.thrd_mp.spec_index(thrd_ptr).being_killed(),
 {
@@ -928,10 +1096,13 @@ pub(super) fn thread_exit_reclaim_return_quota(
             };
         }
     }
+    proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); }
     thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, Ghost(iommu_table), PageSize::SZ4k,
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+    proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); }
     thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, Ghost(iommu_table), PageSize::SZ2m,
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+    proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); }
     thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, Ghost(iommu_table), PageSize::SZ1g,
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
     thread_exit_reclaim_release_tables(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, iommu_table, Ghost(entry_lctx),

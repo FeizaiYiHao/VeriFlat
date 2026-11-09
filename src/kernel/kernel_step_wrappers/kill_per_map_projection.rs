@@ -125,14 +125,14 @@ pub proof fn kernel_zombie_process_retired_implies_u_process_map(pre: &KernelK, 
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().zombie,
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().parent == Some(parent_ptr),
-        pre.prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().contains(parent_ptr),
         *post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom().remove(prc_ptr),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {
             let old_p = pre.prc_mp.spec_index(p);
             let new_p = post.prc_mp.spec_index(p);
             &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-            &&& new_p.view_ghost() == if pre.prc_mp.spec_index(prc_ptr).view_ghost().uppertree_seq.view().contains(p) {
+            &&& new_p.view_ghost() == if pre.prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().contains(p) {
                 ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(prc_ptr)), ..old_p.view_ghost() }
             } else { old_p.view_ghost() }
             &&& new_p.view_rodata() == old_p.view_rodata()

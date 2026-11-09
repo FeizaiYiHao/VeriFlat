@@ -1069,7 +1069,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
                     &&& b.view_rodata().view().depth == a.view_rodata().view().depth
                     &&& b.view_rodata().view().pcid == a.view_rodata().view().pcid
                     &&& b.view_rodata().view().owning_container == a.view_rodata().view().owning_container
-                    &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+                    &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
                     &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
                     &&& b.being_killed() == a.being_killed()
                     &&& b.view().owned_threads.view() == a.view().owned_threads.view()
@@ -1142,7 +1142,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
                 &&& b.view_rodata().view().depth == a.view_rodata().view().depth
                 &&& b.view_rodata().view().pcid == a.view_rodata().view().pcid
                 &&& b.view_rodata().view().owning_container == a.view_rodata().view().owning_container
-                &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+                &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
                 &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
                 &&& b.being_killed() == a.being_killed()
                 &&& b.view().owned_threads.view() == a.view().owned_threads.view()

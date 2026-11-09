@@ -298,7 +298,7 @@ pub(super) proof fn ipc_endpoint_finish_step_pre_from_k(
             &&& krnl.thrd_mp.spec_index(if receiver == peer_ptr { thrd_ptr } else { peer_ptr }).view().endpoint_descriptors.view()[source_index as int] == Some(payload_ptr)
             &&& krnl.ep_mp.dom().contains(payload_ptr)
             &&& krnl.ep_mp.spec_index(payload_ptr).locking_thread() is None
-            &&& result == if owner == container || krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) { RetValueType::Success } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
+            &&& result == if owner == container || krnl.ctn_mp.spec_index(container).view().uppertree_seq.view().contains(owner) { RetValueType::Success } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
             &&& wake_cpu == if peer.view().owning_container == thread.view().owning_container { cpu_id } else { peer.view().last_cpu }
         }),
     ensures

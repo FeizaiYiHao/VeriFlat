@@ -26,7 +26,7 @@ pub(super) open spec fn map_owned_1g_page_eof_transition_framing(pre: KernelK, p
     &&& post.pt_mp.lock_id_by_key(pagetable_ptr) == pre.pt_mp.lock_id_by_key(pagetable_ptr)
     &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread()
     &&& post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed()
-    &&& post.pt_mp.spec_index(pagetable_ptr).view_ghost() == pre.pt_mp.spec_index(pagetable_ptr).view_ghost()
+    &&& post.pt_mp.spec_index(pagetable_ptr).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable_ptr).view().lower_backup.view()
     &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
     &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
     &&& new_h.l4_table == old_h.l4_table && new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
@@ -94,7 +94,7 @@ proof fn map_owned_1g_page_eof_subsystems_inv(pre: KernelK, post: KernelK, pg_pt
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -138,7 +138,7 @@ proof fn map_owned_1g_page_eof_page_mappings_4k(pre: KernelK, post: KernelK, pg_
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -176,7 +176,7 @@ proof fn map_owned_1g_page_eof_page_mappings_2m(pre: KernelK, post: KernelK, pg_
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -214,7 +214,7 @@ proof fn map_owned_1g_page_eof_page_mappings_1g(pre: KernelK, post: KernelK, pg_
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -252,7 +252,7 @@ proof fn map_owned_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -339,7 +339,7 @@ proof fn map_owned_1g_page_eof_process_management_inv(pre: KernelK, post: Kernel
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -385,7 +385,7 @@ proof fn map_owned_1g_page_eof_tlb_caches(pre: KernelK, post: KernelK, pg_ptr: P
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
@@ -429,7 +429,7 @@ pub(super) proof fn map_owned_1g_page_eof(pre: KernelK, post: KernelK, pg_ptr: P
         va_1g_valid(va),
         pre.thrd_mp.dom().contains(thrd_ptr),
         !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned1g { thread_ptr: thrd_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,

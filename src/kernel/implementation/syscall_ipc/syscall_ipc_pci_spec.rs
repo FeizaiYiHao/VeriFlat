@@ -104,7 +104,7 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& after.view_rodata() == before.view_rodata()
         &&& after.locking_thread() == before.locking_thread()
         &&& after.killer_info() == before.killer_info()
-        &&& after.view_ghost().uppertree_seq == before.view_ghost().uppertree_seq
+        &&& after.view().uppertree_seq == before.view().uppertree_seq
         &&& after.view_ghost().subtree_set == before.view_ghost().subtree_set
         &&& after.view_ghost().owned_pci_functions.view() == if transferred && key == sender_proc { pci.remove(bdf) } else if transferred && key == receiver_proc { pci.insert(bdf) } else { pci }
     }

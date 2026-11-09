@@ -68,7 +68,7 @@ pub(super) fn commit_new_endpoint(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 1,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.spec_index(ep_idx) is None,
@@ -100,6 +100,7 @@ pub(super) fn commit_new_endpoint(
     enter_new_endpoint_commit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, ep_idx, Tracked(&thread_lock_perm));
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     let (pg_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thrd_ptr, ctn_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm));
+    proof { assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().contains(prc_ptr)) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); }; }
     finish_new_endpoint_commit(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, ep_idx, pg_ptr, Tracked(page_lock_perm),
         container_lock_perm, process_lock_perm, Tracked(thread_lock_perm), cpu_lock_perm, Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())),

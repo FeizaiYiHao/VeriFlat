@@ -42,13 +42,13 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
         }
     };
     assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thrd_ptr)
-        && krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq
+        && krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq
         && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth) by { reveal(container_thread_wf); };
     assert(krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().len() == thread_depth
         && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
-        assert(krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().len() > depth
-            && krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
+        assert(krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().len() > depth
+            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
     }
 }
 
@@ -86,13 +86,13 @@ proof fn prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(
     assert(krnl.prc_mp.dom().contains(thread_proc) && krnl.prc_mp.spec_index(thread_proc).view_rodata().view().owning_container == thread_owner) by { reveal(process_thread_wf); };
     assert(krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container == thread_owner) by { if krnl.prc_mp.spec_index(thread_proc).view().iommu_table == Some(iommu_table) { assert(proc_ptr == thread_proc) by { reveal(process_iommu_table_wf); }; } };
     assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thrd_ptr)
-        && krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq
+        && krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq
         && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth) by { reveal(container_thread_wf); };
     assert(krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq.view().len() == thread_depth
         && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
-        assert(krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().len() > depth
-            && krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
+        assert(krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().len() > depth
+            && krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
     }
 }
 
@@ -181,12 +181,16 @@ pub fn reclaim_last_4k_mapping(
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![thrd_ptr]),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         *final(direct) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
@@ -203,7 +207,8 @@ pub fn reclaim_last_4k_mapping(
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         write_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
         final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
+        final(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: final(krnl).pt_mp.spec_index(pagetable).view().lower_backup, ..old(krnl).pt_mp.spec_index(pagetable).view() }),
+        !write_held ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
             let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
@@ -342,6 +347,11 @@ pub fn reclaim_last_iommu_4k_mapping(
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![thrd_ptr]),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
             ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
@@ -349,7 +359,6 @@ pub fn reclaim_last_iommu_4k_mapping(
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         *final(direct) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),

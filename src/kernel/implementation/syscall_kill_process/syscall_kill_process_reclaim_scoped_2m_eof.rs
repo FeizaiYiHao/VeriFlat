@@ -195,7 +195,10 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
         reveal(container_process_page_pagetable_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, proc_ptr); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
     };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(allocator_global_pool_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
+        reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf);
+        reveal(allocator_free_page_ptrs_wf); reveal(allocator_perms_wf);
+    };
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
         seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();

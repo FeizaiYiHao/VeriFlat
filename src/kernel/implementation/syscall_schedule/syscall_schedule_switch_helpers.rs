@@ -133,7 +133,7 @@ pub(super) fn schedule_switch_commit(
         old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(next_thread).view().exited.view(),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), next_thread, TypedLockMode::Write),
         next_lock_perm.state() is WriteLock,
         next_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -149,7 +149,7 @@ pub(super) fn schedule_switch_commit(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& !old(krnl).sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(thrd_ptr)
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
@@ -177,7 +177,7 @@ pub(super) fn schedule_switch_commit(
         final(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
         final(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         final(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !final(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(next_thread).view().exited.view(),
         current_thread is Some ==> {
             let thrd_ptr = current_thread.unwrap();
             let queue_before = old(krnl).sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -187,7 +187,7 @@ pub(super) fn schedule_switch_commit(
             &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& current_thread_lock_perm.unwrap().view().lock_id() == final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },

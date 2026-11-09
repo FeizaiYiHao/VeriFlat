@@ -13,6 +13,7 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr,
 )
     requires
+        krnl.inv(),
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -25,12 +26,14 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container != ctn_ptr,
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == kill_container_progress(ctn_ptr, ContainerKillStage::Retire),
         krnl.ctn_mp.spec_index(ctn_ptr).being_killed(),
-        krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         krnl.ctn_mp.spec_index(ctn_ptr).view().children.view().len() == 0,
         krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
+    ensures
         krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent is Some,
         krnl.ctn_mp.dom().contains(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent->Some_0),
-    ensures
+        krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty(),
+        krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty(),
         ({
             let u = kernel_k_to_kernel_u(*krnl);
             let target = u.container_map[ctn_ptr];
@@ -48,6 +51,9 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
     krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), owner); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
+    container_without_children_and_processes_owns_no_threads(*krnl, ctn_ptr);
+    assert(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent is Some
+        && krnl.ctn_mp.dom().contains(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent->Some_0)) by { container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); reveal(container_children_parent_wf); };
     kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_u_domains_projection(krnl);
     reveal(kill_container_step_pre);
 }

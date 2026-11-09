@@ -120,15 +120,46 @@ pub(super) fn thread_exit_enter_record_progress(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).snapshot_k() == *final(krnl),
         thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(pre), cpu_id),
-        final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
-        final(krnl).ctn_mp.dom().contains(ctn_ptr) && final(krnl).ctn_mp.spec_index(ctn_ptr) == old(krnl).ctn_mp.spec_index(ctn_ptr),
-        final(krnl).prc_mp.dom().contains(prc_ptr) && final(krnl).prc_mp.spec_index(prc_ptr) == old(krnl).prc_mp.spec_index(prc_ptr),
+        final(krnl).ctn_mp.dom().contains(ctn_ptr) && {
+            let post_container = final(krnl).ctn_mp.spec_index(ctn_ptr);
+            let pre_container = old(krnl).ctn_mp.spec_index(ctn_ptr);
+            &&& post_container.view_lock() == pre_container.view_lock()
+            &&& post_container.is_init() == pre_container.is_init()
+            &&& post_container.view() == pre_container.view()
+            &&& post_container.view_rodata() == pre_container.view_rodata()
+            &&& post_container.locking_thread() == pre_container.locking_thread()
+            &&& post_container.control() == pre_container.control()
+            &&& post_container.view().uppertree_seq == pre_container.view().uppertree_seq
+            &&& post_container.view().retire_ready.view() == pre_container.view().retire_ready.view()
+        },
+        final(krnl).prc_mp.dom().contains(prc_ptr) && ({
+            let post_process = final(krnl).prc_mp.spec_index(prc_ptr);
+            let pre_process = old(krnl).prc_mp.spec_index(prc_ptr);
+            &&& post_process.view_lock() == pre_process.view_lock()
+            &&& post_process.is_init() == pre_process.is_init()
+            &&& post_process.view() == pre_process.view()
+            &&& post_process.view_rodata() == pre_process.view_rodata()
+            &&& post_process.locking_thread() == pre_process.locking_thread()
+            &&& post_process.control() == pre_process.control()
+            &&& post_process.view().uppertree_seq == pre_process.view().uppertree_seq
+        }),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: Ghost(Some(SyscallProgress::ThreadExit { next: 0 })), ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        caller is Some && dangling ==> final(krnl).thrd_mp.dom().contains(caller->Some_0) && final(krnl).thrd_mp.spec_index(caller->Some_0) == old(krnl).thrd_mp.spec_index(caller->Some_0),
+        caller is Some && dangling ==> {
+            let post_caller = final(krnl).thrd_mp.spec_index(caller->Some_0);
+            let pre_caller = old(krnl).thrd_mp.spec_index(caller->Some_0);
+            &&& final(krnl).thrd_mp.dom().contains(caller->Some_0)
+            &&& post_caller.view() == pre_caller.view()
+            &&& post_caller.locking_thread() == pre_caller.locking_thread()
+            &&& post_caller.being_killed() == pre_caller.being_killed()
+        },
 {
     let ghost woken_k = *krnl;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: 0 })), Tracked(&*lctx), Tracked(thread_lock_perm));

@@ -108,7 +108,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(next_thread).view().exited.view(),
         current_thread is Some ==> {
             let thrd_ptr = current_thread.unwrap();
             &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed()
@@ -116,7 +116,7 @@ pub(super) fn schedule_switch_unlock_and_record(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
         },
         cpu_id == old(lctx).cpu_id(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),

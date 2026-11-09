@@ -54,7 +54,7 @@ pub open spec fn kill_container_walk_state(
     &&& thread.view().temp_alloc_clean()
     &&& thread.view().free_quota_pending_clean()
     &&& thread.view().syscall_progress.view() == kill_container_progress(if chain.len() == 0 { owner_ptr } else { chain[chain.len() - 1] }, ContainerKillStage::Walk)
-    &&& !thread.view_ghost().exited
+    &&& !thread.view().exited.view()
     &&& killer_info.process == prc_ptr
     &&& k.ctn_mp.dom().contains(owner_ptr)
     &&& !owner.being_killed()
@@ -75,9 +75,9 @@ pub open spec fn kill_container_walk_state(
         &&& c.killer_info() == Some(killer_info)
         &&& typed_lock_map_contains_mode(lctx.container_lock_map(), chain[i], TypedLockMode::Write)
         &&& c.view_rodata().view().depth == base + i
-        &&& c.view_ghost().uppertree_seq.view().contains(owner_ptr)
+        &&& c.view().uppertree_seq.view().contains(owner_ptr)
         &&& i == 0 ==> c.view_rodata().view().parent == Some(owner_ptr)
-        &&& i < chain.len() - 1 ==> !c.view_ghost().owned_processes.view().is_empty()
+        &&& i < chain.len() - 1 ==> !c.view().root_process_removed.view()
         &&& chain_perms.dom().contains(chain[i])
         &&& chain_perms[chain[i]].state() is WriteLock
         &&& chain_perms[chain[i]].thread_id() == lctx.thread_id()

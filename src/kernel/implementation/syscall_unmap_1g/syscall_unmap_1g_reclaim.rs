@@ -51,7 +51,7 @@ pub(super) fn unmap_1g_reclaim_range(
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus.view() == Set::<CpuId>::empty(),
-        old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..hv }),
+        old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: old(krnl).pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..hv }),
         forall|l4i: L4Index| #![trigger hv.spec_held_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_held_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
         forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_held_l3(l4i, l3i)]
             hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_held_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
@@ -89,7 +89,7 @@ pub(super) fn unmap_1g_reclaim_range(
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         final(krnl).pt_mp.dom().contains(pagetable),
@@ -171,7 +171,7 @@ pub(super) fn unmap_1g_reclaim_range(
                 direct_free_quota_pending_1g: krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
                 indirect_free_quota_pending_1g: krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view()
             }),
-            krnl.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            krnl.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             krnl.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
             krnl.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
             direct == krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
@@ -180,11 +180,11 @@ pub(super) fn unmap_1g_reclaim_range(
             krnl.pt_mp.dom().contains(pagetable),
             krnl.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher {
+            krnl.pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: krnl.pt_mp.spec_index(pagetable).view().lower_backup,
                 l3_tables: krnl.pt_mp.spec_index(pagetable).view().l3_tables, mapping_1g: krnl.pt_mp.spec_index(pagetable).view().mapping_1g, ..old(krnl).pt_mp.spec_index(pagetable).view()
             }),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower == entry.lower,
-            old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..hv }),
+            old(krnl).pt_mp.spec_index(pagetable).view() == (PageTableHigher { lower_backup: old(krnl).pt_mp.spec_index(pagetable).view().lower_backup, table_stale_cpus: old(krnl).pt_mp.spec_index(pagetable).view().table_stale_cpus, ..hv }),
             forall|l4i: L4Index| #![trigger hv.spec_held_l4(l4i)] hv.kernel_l4_end <= l4i && pei_valid(l4i) && hv.spec_held_l4(l4i) is Some ==> hv.spec_resolve_mapping_l4(l4i) is Some,
             forall|l4i: L4Index, l3i: L3Index| #![trigger hv.spec_held_l3(l4i, l3i)]
                 hv.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && hv.spec_held_l3(l4i, l3i) is Some ==> hv.spec_resolve_mapping_l3(l4i, l3i) is Some,
@@ -278,12 +278,17 @@ fn unmap_1g_reclaim_leaf(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
-        final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         *final(direct) == final(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
@@ -296,7 +301,7 @@ fn unmap_1g_reclaim_leaf(
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
             &&& new_c.lower == old_c.lower
-            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+            &&& new_c.higher == (PageTableHigher { lower_backup: new_c.higher.lower_backup, l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g() == old_c.mapping_1g().remove(va)
             &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)]
                 old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)

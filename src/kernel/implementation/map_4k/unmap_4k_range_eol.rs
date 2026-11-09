@@ -26,7 +26,6 @@ pub(super) open spec fn unmap_4k_range_eol_loop_framing(pre: KernelK, cur: Kerne
     &&& cur.thrd_mp.dom().contains(thrd_ptr)
     &&& cur.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread()
     &&& cur.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed()
-    &&& cur.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost()
     &&& thrd == (Thread {
         direct_free_quota_pending_4k: thrd.direct_free_quota_pending_4k, indirect_free_quota_pending_4k: thrd.indirect_free_quota_pending_4k, syscall_progress: thrd.syscall_progress,
         ..pre.thrd_mp.spec_index(thrd_ptr).view()
@@ -130,7 +129,6 @@ pub(super) proof fn unmap_4k_range_eol_step(pre: KernelK, mid: KernelK, post: Ke
         post.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == mid.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == mid.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        post.thrd_mp.spec_index(thrd_ptr).view_ghost() == mid.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k, ..mid.thrd_mp.spec_index(thrd_ptr).view() }),
         direct == post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
@@ -181,7 +179,6 @@ pub(super) proof fn unmap_4k_range_eol_exit(pre: KernelK, cur: KernelK, pre_lctx
         cur.thrd_mp.dom().contains(thrd_ptr),
         cur.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         cur.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
-        cur.thrd_mp.spec_index(thrd_ptr).view_ghost() == pre.thrd_mp.spec_index(thrd_ptr).view_ghost(),
         cur.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
             direct_free_quota_pending_4k: cur.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k,
             syscall_progress: cur.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view()

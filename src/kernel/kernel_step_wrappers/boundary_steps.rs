@@ -22,6 +22,11 @@ impl KernelK {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -38,12 +43,15 @@ impl KernelK {
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
                 let owner = old(self).thrd_mp.spec_index(t).view().owning_container;
                 &&& old(self).ctn_mp.dom().contains(owner)
-                &&& final(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq == old(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq
+                &&& final(self).ctn_mp.spec_index(owner).view().uppertree_seq == old(self).ctn_mp.spec_index(owner).view().uppertree_seq
             },
     {
         use_type_invariant(&*steps);
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
+        old(self).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id());
+        reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_subtree_uppertree_agree_wf); reveal(process_subtree_set_wf);
+        broadcast use vstd::seq::Seq::lemma_index_contains;
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
         old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id());
@@ -134,7 +142,7 @@ impl KernelK {
             delta > 0,
             kernel_container_quota_4k_changed(&old(steps).snapshot_k(), old(self), ctn_ptr, delta),
             old(steps).snapshot_k().ctn_mp.dom().contains(origin),
-            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(ctn_ptr),
+            ctn_ptr == origin || old(steps).snapshot_k().ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(ctn_ptr),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -149,6 +157,11 @@ impl KernelK {
             }), ..old(steps).snapshot_u() }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -180,6 +193,9 @@ impl KernelK {
         };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
+        old(self).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id());
+        reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_subtree_uppertree_agree_wf); reveal(process_subtree_set_wf);
+        broadcast use vstd::seq::Seq::lemma_index_contains;
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
@@ -228,6 +244,11 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -246,6 +267,9 @@ impl KernelK {
         use_type_invariant(&*steps);
         steps.end_kernel_step_thread_syscall_progress_changed(&*self, &*lctx, thrd_ptr);
         self.kernel_step_boundary_raw(lctx, steps);
+        old(self).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id());
+        reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_subtree_uppertree_agree_wf); reveal(process_subtree_set_wf);
+        broadcast use vstd::seq::Seq::lemma_index_contains;
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }
@@ -260,6 +284,11 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> final(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(self).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -269,7 +298,12 @@ impl KernelK {
                 old(lctx).thread_lock_map().dom().contains(thrd_ptr) ==> {
                     &&& final(self).thrd_mp.dom().contains(thrd_ptr)
                     &&& final(self).thrd_mp.lock_id_by_key(thrd_ptr) == old(self).thrd_mp.lock_id_by_key(thrd_ptr)
-                    &&& final(self).thrd_mp.spec_index(thrd_ptr) == old(self).thrd_mp.spec_index(thrd_ptr)
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).view_lock() == old(self).thrd_mp.spec_index(thrd_ptr).view_lock()
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).is_init() == old(self).thrd_mp.spec_index(thrd_ptr).is_init()
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).view_rodata() == old(self).thrd_mp.spec_index(thrd_ptr).view_rodata()
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).view() == old(self).thrd_mp.spec_index(thrd_ptr).view()
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(self).thrd_mp.spec_index(thrd_ptr).locking_thread()
+                    &&& final(self).thrd_mp.spec_index(thrd_ptr).control() == old(self).thrd_mp.spec_index(thrd_ptr).control()
                 },
             forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
                 ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
@@ -286,6 +320,9 @@ impl KernelK {
         use_type_invariant(&*steps);
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
+        old(self).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id());
+        reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_subtree_uppertree_agree_wf); reveal(process_subtree_set_wf);
+        broadcast use vstd::seq::Seq::lemma_index_contains;
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
     }

@@ -23,7 +23,7 @@ pub fn kill_container_move_free_page_2m(
         old(krnl).ctn_mp.dom().contains(dst),
         old(krnl).ctn_mp.spec_index(src).view_rodata().view().allocator_ptr_2m == src_allocator,
         old(krnl).ctn_mp.spec_index(dst).view_rodata().view().allocator_ptr_2m == dst_allocator,
-        old(krnl).ctn_mp.spec_index(src).view_ghost().uppertree_seq.view().contains(dst),
+        old(krnl).ctn_mp.spec_index(src).view().uppertree_seq.view().contains(dst),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_processes.view() =~= Set::<RwLockProcessPtr>::empty(),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
         old(krnl).ctn_mp.spec_index(src).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),

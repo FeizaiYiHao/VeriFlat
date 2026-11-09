@@ -109,7 +109,7 @@ pub proof fn container_thread_wf_preserved_for_container_thread_link_eq(old_cont
             new_container_map.dom().contains(c_ptr) ==> {
                 &&& new_container_map.spec_index(c_ptr).view_ghost().owned_threads == old_container_map.spec_index(c_ptr).view_ghost().owned_threads
                 &&& new_container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads == old_container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads
-                &&& new_container_map.spec_index(c_ptr).view_ghost().uppertree_seq == old_container_map.spec_index(c_ptr).view_ghost().uppertree_seq
+                &&& new_container_map.spec_index(c_ptr).view().uppertree_seq == old_container_map.spec_index(c_ptr).view().uppertree_seq
                 &&& new_container_map.spec_index(c_ptr).view_rodata().view().depth == old_container_map.spec_index(c_ptr).view_rodata().view().depth
             },
         forall|t_ptr: RwLockThreadPtr|
@@ -168,7 +168,7 @@ pub proof fn process_emptied_threads_wf_preserved_for_state_owned_threads_exited
                 &&& new_process_map.spec_index(p_ptr).view().state == old_process_map.spec_index(p_ptr).view().state
                 &&& new_process_map.spec_index(p_ptr).view().owned_threads == old_process_map.spec_index(p_ptr).view().owned_threads
             },
-        forall|t_ptr: RwLockThreadPtr| #![trigger new_thread_map.spec_index(t_ptr)] new_thread_map.dom().contains(t_ptr) ==> new_thread_map.spec_index(t_ptr).view_ghost().exited == old_thread_map.spec_index(t_ptr).view_ghost().exited,
+        forall|t_ptr: RwLockThreadPtr| #![trigger new_thread_map.spec_index(t_ptr)] new_thread_map.dom().contains(t_ptr) ==> new_thread_map.spec_index(t_ptr).view().exited.view() == old_thread_map.spec_index(t_ptr).view().exited.view(),
     ensures
         process_emptied_threads_wf(new_process_map, new_thread_map),
 { reveal(process_emptied_threads_wf); }

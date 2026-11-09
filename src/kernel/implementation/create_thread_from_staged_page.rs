@@ -51,6 +51,7 @@ pub fn create_thread_from_staged_page_merged(
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
+        final(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited,
         ret.0 == pg_ptr,
         ret.0 != staging_thrd_ptr,
         ret.1.view().state() is WriteLock,
@@ -64,7 +65,7 @@ pub fn create_thread_from_staged_page_merged(
         final(krnl).thrd_mp.spec_index(pg_ptr).view().free_quota_pending_clean(),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().temp_alloc_clean(),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().syscall_progress.view() is None,
-        !final(krnl).thrd_mp.spec_index(pg_ptr).view_ghost().exited,
+        !final(krnl).thrd_mp.spec_index(pg_ptr).view().exited.view(),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().state == (ThreadState::SCHEDULED { cpu_id }),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().trap_frame.is_some(),
         *final(krnl).thrd_mp.spec_index(pg_ptr).view().trap_frame.get_some_0() == *initial_regs,
@@ -148,7 +149,7 @@ pub fn create_thread_from_staged_page_merged(
             old(krnl).ctn_mp.dom().contains(c) ==> {
                 &&& final(krnl).ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
                 &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == ctn_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(pg_ptr) }
@@ -160,7 +161,7 @@ pub fn create_thread_from_staged_page_merged(
             old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes,
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c).locking_thread()] old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread(),
 {
-    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     proof {
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
         container_perms_wf_map(krnl.ctn_mp);

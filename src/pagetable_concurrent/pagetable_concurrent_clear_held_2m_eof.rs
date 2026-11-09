@@ -8,7 +8,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn clear_held_2m_leaf_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index) -> bool {
         let l2_p = pre.spec_held_l3(target_l4i, target_l3i)->0.addr;
-        &&& post.higher == pre.higher
+        &&& post.higher == (PageTableHigher { lower_backup: post.higher.lower_backup, ..pre.higher })
         &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, ..pre.lower })
         &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
         &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
@@ -41,6 +41,13 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::clear_held_2m_leaf_eof_frame(pre, post, target_l4i, target_l3i, target_l2i);
         Self::clear_held_2m_leaf_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i);
         Self::clear_held_2m_leaf_eof_mappings(pre, post, target_l4i, target_l3i, target_l2i);
+        assert(post.higher.inv()) by {
+            reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing);
+            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4);
+            reveal(PageTableHigher::disjoint_l3); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only);
+            reveal(PageTableHigher::rwx_upper_level_entries); reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf);
+            reveal(PageTableHigher::kernel_entries_wf);
+        };
     }
 
     /// EOF closure of `clear_held_2m_leaf`: the leaves that read no walk, and the unchanged page closure.
@@ -64,6 +71,11 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.hidden_l1_tables_in_locked_windows() ==> post.lower.hidden_l1_tables_in_locked_windows(),
     {
         reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing);
+        assert(post.higher.inv()) by {
+            reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::wf_l3); reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::disjoint_l3);
+            reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::user_only); reveal(PageTableHigher::rwx_upper_level_entries);
+            reveal(PageTableHigher::table_pages_wf); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableHigher::kernel_entries_wf);
+        };
         assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
         assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
         assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };

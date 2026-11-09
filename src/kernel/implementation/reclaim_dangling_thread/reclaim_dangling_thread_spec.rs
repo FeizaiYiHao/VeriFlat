@@ -20,7 +20,7 @@ pub open spec fn reclaim_dangling_thread_eof_transition_framing(
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
     let ctn_ptr = dangling.owning_container;
-    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     &&& post == (KernelK { ctn_mp: post.ctn_mp, thrd_mp: post.thrd_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]

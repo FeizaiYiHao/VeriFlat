@@ -88,7 +88,7 @@ pub(in super::super) fn commit_new_process(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 4 + 3 * source_range.len,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
         !old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),

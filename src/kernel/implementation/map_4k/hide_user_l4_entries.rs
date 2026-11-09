@@ -33,6 +33,11 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
         final(krnl).inv(),
         held_containers_unchanged(hidden.view().ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(hidden.view().prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger hidden.view().prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == hidden.view().prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(hidden.view().thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_endpoints_unchanged(hidden.view().ep_mp, final(krnl).ep_mp, old(lctx)),
         held_cpu_sets_unchanged(hidden.view().cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
@@ -44,7 +49,12 @@ fn hide_user_l4_entry_and_end_step(krnl: &mut KernelK, pagetable: RwLockPageTabl
             ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == hidden.view().cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.lock_id_by_key(pagetable) == hidden.view().pt_mp.lock_id_by_key(pagetable),
-        final(krnl).pt_mp.spec_index(pagetable) == hidden.view().pt_mp.spec_index(pagetable),
+        final(krnl).pt_mp.spec_index(pagetable).view() == hidden.view().pt_mp.spec_index(pagetable).view(),
+        final(krnl).pt_mp.spec_index(pagetable).view_lock() == hidden.view().pt_mp.spec_index(pagetable).view_lock(),
+        final(krnl).pt_mp.spec_index(pagetable).is_init() == hidden.view().pt_mp.spec_index(pagetable).is_init(),
+        final(krnl).pt_mp.spec_index(pagetable).view_rodata() == hidden.view().pt_mp.spec_index(pagetable).view_rodata(),
+        final(krnl).pt_mp.spec_index(pagetable).locking_thread() == hidden.view().pt_mp.spec_index(pagetable).locking_thread(),
+        final(krnl).pt_mp.spec_index(pagetable).control() == hidden.view().pt_mp.spec_index(pagetable).control(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable) == whole_pagetable(hidden.view().pt_mp, hidden.view().pt_lower.view(), pagetable),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -123,6 +133,11 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         forall|k: int, m: int| #![trigger hidden.view()[k], hidden.view()[m]] 0 <= k < m < hidden.view().len() ==> hidden.view()[k].0 < hidden.view()[m].0,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
@@ -219,6 +234,11 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             forall|k: int, m: int| #![trigger hidden[k], hidden[m]] 0 <= k < m < hidden.len() ==> hidden[k].0 < hidden[m].0,
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
+            forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+                #![trigger krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+                old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                    ==> krnl.prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
             held_threads_unchanged(old(krnl).thrd_mp, krnl.thrd_mp, old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
             held_cpu_sets_unchanged(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(lctx)),

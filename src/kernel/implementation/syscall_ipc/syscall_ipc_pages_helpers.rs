@@ -18,7 +18,7 @@ pub(super) proof fn ipc_share_pages_source_owners_in_target_uppertree(
         krnl.thrd_mp.spec_index(source_thread).view().owning_container == source_container,
         krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr == krnl.thrd_mp.spec_index(source_thread).view().owning_proc,
         krnl.ctn_mp.dom().contains(target_container),
-        source_container == target_container || krnl.ctn_mp.spec_index(target_container).view_ghost().uppertree_seq.view().contains(source_container),
+        source_container == target_container || krnl.ctn_mp.spec_index(target_container).view().uppertree_seq.view().contains(source_container),
         share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
     ensures
         share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),

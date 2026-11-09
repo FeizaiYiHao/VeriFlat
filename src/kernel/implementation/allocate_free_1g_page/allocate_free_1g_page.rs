@@ -45,7 +45,7 @@ verus! {
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == old(krnl).thrd_mp.spec_index(thrd_ptr).view().upper_container_seq,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(thrd_ptr).view().state,
-            final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+            final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress == old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { temp_alloc_cache_1g: final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().blocking_endpoint_ptr == old(krnl).thrd_mp.spec_index(thrd_ptr).view().blocking_endpoint_ptr,

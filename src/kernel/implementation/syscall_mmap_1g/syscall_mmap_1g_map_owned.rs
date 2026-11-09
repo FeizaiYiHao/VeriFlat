@@ -24,7 +24,7 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
             va_1g_valid(va),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
-            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
             old(krnl).pt_mp.dom().contains(pagetable_ptr),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va),

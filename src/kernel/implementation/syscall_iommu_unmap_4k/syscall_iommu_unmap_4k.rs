@@ -84,6 +84,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     krnl.wunlock_iommu_table(iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_perm));
     krnl.wunlock_thread(thrd_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_perm));
+    proof { assert(!krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, prc_ptr); }; }
     krnl.wunlock_container(ctn_ptr, Tracked(&mut *lctx), Tracked(container_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {

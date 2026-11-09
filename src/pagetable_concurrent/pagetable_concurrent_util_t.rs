@@ -11,6 +11,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
     pg_ptr: PagePtr, higher_value: PageTableHigher<PT_TYPE>, Tracked(lower_value): Tracked<PageTableLower<PT_TYPE>>, Tracked(page_perm): Tracked<PagePerm4k>,
     Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
     requires
+        higher_value.lower_backup.view() == lower_value,
         old(pt_mp).perms_wf(),
         !old(pt_mp).dom().contains(pg_ptr),
         page_perm.is_init(),
@@ -36,7 +37,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         forall|ptr: RwLockPageTableRoot| #![trigger old(pt_mp).lock_id_by_key(ptr)] #![trigger final(pt_mp).lock_id_by_key(ptr)] old(pt_mp).dom().contains(ptr) ==> final(pt_mp).lock_id_by_key(ptr) == old(pt_mp).lock_id_by_key(ptr),
         final(pt_mp).spec_index(pg_ptr).is_init(),
         final(pt_mp).spec_index(pg_ptr).view() == higher_value,
-        final(pt_mp).spec_index(pg_ptr).view_ghost() == lower_value,
+        final(pt_mp).spec_index(pg_ptr).view().lower_backup.view() == lower_value,
         !final(pt_mp).spec_index(pg_ptr).being_killed(),
         *final(pt_lower) == old(pt_lower).insert(pg_ptr, lower_value),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pg_ptr, TypedLockMode::Write),
@@ -48,8 +49,8 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pg_ptr), TypedHeldLock { lock_id: final(pt_mp).lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
         final(pt_mp).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
 {
-    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
-        pg_ptr, higher_value, (), Ghost(lower_value), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pg_ptr)));
+    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
+        pg_ptr, higher_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pg_ptr)));
     pt_mp.insert_with_perm(pg_ptr, Tracked(pagetable_rwlock_perm));
     proof {
         pt_lower.tracked_insert(pg_ptr, lower_value);
@@ -85,4 +86,4 @@ impl PageTableHigher<PT_TYPE> {
 } // verus!
 
 // Layout contract: the page-table big lock, per-cpu reader slots included, fits the 4K page it is retyped from.
-const _: () = assert!(core::mem::size_of::<LockCell<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);
+const _: () = assert!(core::mem::size_of::<LockCell<PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);

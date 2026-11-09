@@ -86,7 +86,7 @@ pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, 
     requires
         pre.thrd_mp.dom().contains(thread),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
-        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, ..pre.thrd_mp.spec_index(thread).view() }),
+        post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, exited: post.thrd_mp.spec_index(thread).view().exited, ..pre.thrd_mp.spec_index(thread).view() }),
         post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),
         post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
     ensures
@@ -121,7 +121,7 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
         post.pt_mp.dom() == pre.pt_mp.dom(),
         post.pt_lower == pre.pt_lower,
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> {
-            &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
+            &&& post.pt_mp.spec_index(p).view() == (PageTableHigher { lower_backup: post.pt_mp.spec_index(p).view().lower_backup, ..pre.pt_mp.spec_index(p).view() })
             &&& p != pagetable ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
         },
         lock ==> post.pt_mp.spec_index(pagetable).wlocked_by_thread(cpu_id),

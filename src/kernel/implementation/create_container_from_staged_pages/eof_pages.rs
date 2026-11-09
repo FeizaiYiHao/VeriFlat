@@ -1031,9 +1031,8 @@ pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_2
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq, whole_pagetable_is_empty_implies_no_held_2m; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
-        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).cr3() == l4_page);
     };
 }
 

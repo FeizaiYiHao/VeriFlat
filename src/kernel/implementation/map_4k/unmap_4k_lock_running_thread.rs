@@ -110,7 +110,7 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
-            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view().exited.view()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
@@ -293,7 +293,7 @@ pub fn unmap_4k_lock_current_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& final(krnl).thrd_mp.dom().contains(e.thread_ptr) && !final(krnl).thrd_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
-            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(e.thread_ptr).view().exited.view()
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)

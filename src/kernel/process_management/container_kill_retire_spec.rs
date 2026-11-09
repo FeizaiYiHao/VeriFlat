@@ -10,8 +10,8 @@ pub open spec fn container_kill_retire_wf(
     allc_1g_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>,
 ) -> bool {
     forall|c: RwLockContainerPtr|
-        #![trigger ctn_mp.spec_index(c).view_ghost().retire_ready]
-        ctn_mp.dom().contains(c) && ctn_mp.spec_index(c).view_ghost().retire_ready ==> {
+        #![trigger ctn_mp.spec_index(c).view().retire_ready.view()]
+        ctn_mp.dom().contains(c) && ctn_mp.spec_index(c).view().retire_ready.view() ==> {
             let container = ctn_mp.spec_index(c);
             let ro = container.view_rodata().view();
             &&& container.being_killed()
@@ -46,7 +46,7 @@ pub proof fn container_kill_retire_wf_at(
     requires
         container_kill_retire_wf(ctn_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp),
         ctn_mp.dom().contains(ctn_ptr),
-        ctn_mp.spec_index(ctn_ptr).view_ghost().retire_ready,
+        ctn_mp.spec_index(ctn_ptr).view().retire_ready.view(),
     ensures
         ({
             let container = ctn_mp.spec_index(ctn_ptr);
@@ -86,7 +86,7 @@ pub proof fn container_owns_thread_implies_not_retire_ready(
         ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)
             || ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view().contains(thrd_ptr),
     ensures
-        !ctn_mp.spec_index(ctn_ptr).view_ghost().retire_ready,
+        !ctn_mp.spec_index(ctn_ptr).view().retire_ready.view(),
 { reveal(container_kill_retire_wf); }
 
 /// The container `ctn_ptr` that owns no thread has no thread queued on shard `cpu_id` of its scheduler.

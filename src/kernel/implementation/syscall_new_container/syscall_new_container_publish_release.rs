@@ -143,7 +143,7 @@ pub(super) fn release_new_container_publish_staging(
         ret.4.view().thrd_mp.spec_index(current_thrd_ptr).view() == (Thread { syscall_progress: Ghost(progress), ..old(krnl).thrd_mp.spec_index(current_thrd_ptr).view() }),
         ret.4.view().thrd_mp.spec_index(current_thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).locking_thread(),
         ret.4.view().thrd_mp.spec_index(current_thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
-        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
+        ret.4.view().thrd_mp.spec_index(current_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited,
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.4.view()),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, pcid_allc_mp: final(krnl).pcid_allc_mp, ..ret.4.view() }),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))) == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))),

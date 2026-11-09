@@ -36,7 +36,7 @@ verus! {
             old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
             old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
             !(old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
-            !old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited.view(),
             old(krnl).thrd_mp.dom().contains(quota_thrd_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), quota_thrd_ptr, TypedLockMode::Write),
             old(krnl).thrd_mp.spec_index(quota_thrd_ptr).being_killed() == false,
@@ -150,7 +150,12 @@ verus! {
                 &&& progress_thread == quota_thrd_ptr || final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is None
             },
             held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
-            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
@@ -213,14 +218,16 @@ verus! {
                 &&& final(krnl).ctn_mp.dom().contains(source)
                 &&& final(krnl).ctn_mp.spec_index(source).is_init() == old(krnl).ctn_mp.spec_index(source).is_init()
                 &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(source).view_ghost() == old(krnl).ctn_mp.spec_index(source).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(source).view().uppertree_seq == old(krnl).ctn_mp.spec_index(source).view().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(source).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(source).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
                 &&& final(krnl).ctn_mp.dom().contains(ctn_ptr)
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).is_init() == old(krnl).ctn_mp.spec_index(ctn_ptr).is_init()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(ctn_ptr).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq == old(krnl).ctn_mp.spec_index(ctn_ptr).view().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().retire_ready.view()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(ctn_ptr).locking_thread()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).being_killed() == old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed()
                 &&& final(krnl).ctn_mp.spec_index(ctn_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(ctn_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(ctn_ptr).view() })
@@ -251,11 +258,10 @@ verus! {
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().endpoint_descriptors.view() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().endpoint_descriptors.view(),
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().proc_pagetable_ptr,
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state,
+            final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited,
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == if progress_thread == quota_thrd_ptr {
                 share_4k_progress_after_directory(mmap_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(), level), level)
             } else { mmap_4k_progress_after_directory(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(), level) },
-            final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view_ghost(),
-            final(krnl).thrd_mp.spec_index(progress_thread).view_ghost() == old(krnl).thrd_mp.spec_index(progress_thread).view_ghost(),
             final(krnl).thrd_mp.dom().contains(progress_thread),
             progress_thread_lock_perm.lock_id() == final(krnl).thrd_mp.spec_index(progress_thread).locking_thread()->Write_lock_id,
             progress_thread != quota_thrd_ptr ==> final(krnl).thrd_mp.spec_index(progress_thread).view() == (Thread {
@@ -490,7 +496,7 @@ verus! {
             old(krnl).prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
             !(old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(old(krnl).prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
-            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write),
             old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
@@ -540,7 +546,12 @@ verus! {
             mmap_2m_directory_step_pre(final(steps).view().last().old_u, cpu_id),
             mmap_2m_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
             held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
-            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+            final(krnl).cpu_arr.spec_index(cpu_id).view().control() == old(krnl).cpu_arr.spec_index(cpu_id).view().control(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
@@ -616,8 +627,8 @@ verus! {
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(thrd_ptr).view().state,
+            final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_2m_progress_after_directory(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
-            final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().blocking_endpoint_ptr == old(krnl).thrd_mp.spec_index(thrd_ptr).view().blocking_endpoint_ptr,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().ipc_payload == old(krnl).thrd_mp.spec_index(thrd_ptr).view().ipc_payload,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().error_code == old(krnl).thrd_mp.spec_index(thrd_ptr).view().error_code,

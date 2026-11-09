@@ -18,7 +18,7 @@ pub open spec fn process_invariant_fields_except_quota_unchanged(pre: ProcessLoc
             &&& post.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.spec_index(p_ptr).view_ghost().owned_pci_functions
             &&& post.spec_index(p_ptr).view().parent_linkedlist_node == pre.spec_index(p_ptr).view().parent_linkedlist_node
             &&& post.spec_index(p_ptr).view().children == pre.spec_index(p_ptr).view().children
-            &&& post.spec_index(p_ptr).view_ghost().uppertree_seq == pre.spec_index(p_ptr).view_ghost().uppertree_seq
+            &&& post.spec_index(p_ptr).view().uppertree_seq == pre.spec_index(p_ptr).view().uppertree_seq
             &&& post.spec_index(p_ptr).view_ghost().subtree_set == pre.spec_index(p_ptr).view_ghost().subtree_set
             &&& post.spec_index(p_ptr).view().owned_threads == pre.spec_index(p_ptr).view().owned_threads
         }

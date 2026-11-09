@@ -139,6 +139,8 @@ pub open spec fn progress_peer_of(progress: Option<SyscallProgress>) -> Option<R
 }
 
 pub struct Thread {
+    /// Set once by the exit of its process's last thread, after the process's tables were released; never cleared.
+    pub exited: Ghost<bool>,
     pub state: ThreadState,
     /// The upstream caller currently served by this thread, if any.
     pub caller: Option<RwLockThreadPtr>,
@@ -201,8 +203,6 @@ pub struct Thread {
 pub ghost struct ThreadGhost {
     /// For a dangling thread, the live thread of its container at the end of its call chain that owes the chain a reply.
     pub chain_end: Option<RwLockThreadPtr>,
-    /// Set once by the exit of its process's last thread, after the process's tables were released; never cleared.
-    pub exited: bool,
 }
 
 pub type ThreadRwLock = LockCell<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
@@ -238,6 +238,7 @@ impl Thread {
     pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, ep_ptr: RwLockEndpointPtr) -> (ret: Self)
         ensures
             ret.inv(),
+            !ret.exited.view(),
             ret.state == (ThreadState::RUNNING { cpu_id: 0 }),
             ret.last_cpu == 0,
             ret.current_lock_major() == THREAD_LOCK_MAJOR,
@@ -272,6 +273,7 @@ impl Thread {
     }
 
     pub open spec fn non_ipc_fields_unchanged(&self, other: &Self) -> bool {
+        &&& self.exited == other.exited
         &&& self.owning_container == other.owning_container
         &&& self.call_depth == other.call_depth
         &&& self.syscall_progress == other.syscall_progress
@@ -334,6 +336,7 @@ impl Thread {
             upper_container_seq.view().len() == container_depth,
         ensures
             ret.inv(),
+            !ret.exited.view(),
             ret.state == (ThreadState::RUNNING { cpu_id: 0 }),
             ret.last_cpu == 0,
             ret.current_lock_major() == THREAD_LOCK_MAJOR,
@@ -368,6 +371,7 @@ impl Thread {
         endpoint_descriptors.init2none();
         proof { assert_seqs_equal!(endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None), i => {}); }
         let ret = Self {
+            exited: Ghost(false),
             state: ThreadState::RUNNING { cpu_id: 0 }, caller: None, callee: None, call_depth: Ghost(0), owning_container, container_depth,
             scheduler_linkedlist_node: ExternalNode::new(0), last_cpu: 0, owning_proc, process_depth, proc_pagetable_ptr,
             proc_linkedlist_node: ExternalNode::new(0), quota_4k: 0, quota_2m: 0, quota_1g: 0, temp_alloc_cache_4k: Ghost(Set::empty()),

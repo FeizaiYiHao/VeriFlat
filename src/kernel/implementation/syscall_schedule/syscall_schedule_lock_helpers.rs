@@ -68,7 +68,7 @@ pub(super) fn schedule_continue(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -261,7 +261,7 @@ pub(super) fn schedule_lock_current_and_shard(
                 &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
                 &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
                 &&& final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-                &&& !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+                &&& !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
                 &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
                 &&& perm.state() is WriteLock
                 &&& perm.thread_id() == final(lctx).thread_id()
@@ -429,7 +429,7 @@ pub(super) fn schedule_lock_queue_head(
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean()
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(next_thread).view().exited.view()
             &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(next_thread), TypedHeldLock { lock_id: final(krnl).thrd_mp.lock_id_by_key(next_thread), mode: TypedLockMode::Write })
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), next_thread, TypedLockMode::Write)
             &&& next_perm.view().state() is WriteLock

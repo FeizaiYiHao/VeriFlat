@@ -65,3 +65,5 @@ pub use kernel::implementation::locker_unlocker::container_nonlock_fields_and_qu
 verus! {
 global size_of usize == 8;
 }
+
+pub use kernel::implementation::mmap_4k_lock_current_thread::mmap_4k_lock_current_thread;

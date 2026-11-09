@@ -24,11 +24,12 @@ pub(crate) proof fn kill_retire_eof_tree(
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.dom().contains(parent_ptr),
         parent_ptr != target,
-        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
         pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
         pre.ctn_mp.dom().contains(ctn_ptr),
     ensures
+        !post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
@@ -61,11 +62,11 @@ pub(crate) proof fn kill_retire_eof_process_tree_wf(
             post.prc_mp.dom().contains(p_ptr) ==> {
                 &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
                 &&& post.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node == pre.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node
-                &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
+                &&& post.prc_mp.spec_index(p_ptr).view().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view().uppertree_seq
                 &&& p_ptr != parent_ptr ==> post.prc_mp.spec_index(p_ptr).view().children == pre.prc_mp.spec_index(p_ptr).view().children
-                &&& pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view().remove(target)
-                &&& !pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& !pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set
             },
         post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target),
@@ -95,9 +96,9 @@ proof fn kill_retire_eof_target_descendant_uppers(pre: KernelK, root_process: Rw
         process_tree_dom.contains(target),
     ensures
         forall|p_ptr: RwLockProcessPtr|
-            #![trigger pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target)]
-            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target) ==> {
-                let uppers = pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view();
+            #![trigger pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target)]
+            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target) ==> {
+                let uppers = pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view();
                 let child_depth = pre.prc_mp.spec_index(target).view_rodata().view().depth;
                 let succ_ptr = uppers.spec_index(child_depth + 1);
                 &&& child_depth < uppers.len() && uppers.spec_index(child_depth as int) == target
@@ -117,13 +118,13 @@ proof fn kill_retire_eof_target_descendant_successor(pre: KernelK, root_process:
         process_tree_dom.contains(target),
     ensures
         forall|p_ptr: RwLockProcessPtr|
-            #![trigger pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target)]
-            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target) ==> {
-                let uppers = pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view();
+            #![trigger pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target)]
+            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target) ==> {
+                let uppers = pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view();
                 let child_depth = pre.prc_mp.spec_index(target).view_rodata().view().depth;
                 let succ_ptr = uppers.spec_index(child_depth + 1);
                 &&& child_depth + 1 < uppers.len() ==> process_tree_dom.contains(succ_ptr) && pre.prc_mp.spec_index(succ_ptr).view_rodata().view().depth == uppers.index_of(succ_ptr)
-                &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(succ_ptr).view_ghost().uppertree_seq.view() =~= uppers.subrange(0, pre.prc_mp.spec_index(succ_ptr).view_rodata().view().depth as int)
+                &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(succ_ptr).view().uppertree_seq.view() =~= uppers.subrange(0, pre.prc_mp.spec_index(succ_ptr).view_rodata().view().depth as int)
             },
 {
     kill_retire_eof_target_descendant_uppers(pre, root_process, process_tree_dom, target);
@@ -140,14 +141,14 @@ proof fn kill_retire_eof_target_descendant_root(pre: KernelK, root_process: RwLo
         process_tree_dom.contains(target),
     ensures
         forall|p_ptr: RwLockProcessPtr|
-            #![trigger pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target)]
-            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target) ==> {
-                let uppers = pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view();
+            #![trigger pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target)]
+            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target) ==> {
+                let uppers = pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view();
                 let child_depth = pre.prc_mp.spec_index(target).view_rodata().view().depth;
                 let succ_ptr = uppers.spec_index(child_depth + 1);
                 &&& p_ptr != root_process
                 &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(succ_ptr).view_rodata().view().depth as int == child_depth + 1 && succ_ptr != root_process
-                &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(succ_ptr).view_ghost().uppertree_seq.view().spec_index(child_depth as int) == target
+                &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(succ_ptr).view().uppertree_seq.view().spec_index(child_depth as int) == target
             },
 {
     kill_retire_eof_target_descendant_uppers(pre, root_process, process_tree_dom, target);
@@ -165,9 +166,9 @@ proof fn kill_retire_eof_target_descendant_child(pre: KernelK, root_process: RwL
         process_tree_dom.contains(target),
     ensures
         forall|p_ptr: RwLockProcessPtr|
-            #![trigger pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target)]
-            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(target) ==> {
-                let uppers = pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view();
+            #![trigger pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target)]
+            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(target) ==> {
+                let uppers = pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view();
                 let child_depth = pre.prc_mp.spec_index(target).view_rodata().view().depth;
                 let succ_ptr = uppers.spec_index(child_depth + 1);
                 &&& child_depth + 1 < uppers.len() ==> pre.prc_mp.spec_index(target).view().children.view().contains(succ_ptr)
@@ -190,8 +191,8 @@ proof fn kill_retire_eof_target_no_descendant(pre: KernelK, root_process: RwLock
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
     ensures
         forall|p_ptr: RwLockProcessPtr, u_ptr: RwLockProcessPtr|
-            #![trigger pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(u_ptr)]
-            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(u_ptr) ==> u_ptr != target,
+            #![trigger pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(u_ptr)]
+            process_tree_dom.contains(p_ptr) && p_ptr != target && pre.prc_mp.spec_index(p_ptr).view().uppertree_seq.view().contains(u_ptr) ==> u_ptr != target,
 {
     kill_retire_eof_target_descendant_uppers(pre, root_process, process_tree_dom, target);
     kill_retire_eof_target_descendant_successor(pre, root_process, process_tree_dom, target);
@@ -216,11 +217,11 @@ pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
             post.prc_mp.dom().contains(p_ptr) ==> {
                 &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
                 &&& post.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node == pre.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node
-                &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
+                &&& post.prc_mp.spec_index(p_ptr).view().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view().uppertree_seq
                 &&& p_ptr != parent_ptr ==> post.prc_mp.spec_index(p_ptr).view().children == pre.prc_mp.spec_index(p_ptr).view().children
-                &&& pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view().remove(target)
-                &&& !pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& !pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set
             },
         post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target),
@@ -267,11 +268,11 @@ pub(crate) proof fn kill_retire_eof_per_container_process_tree_wf(
             post.prc_mp.dom().contains(p_ptr) ==> {
                 &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
                 &&& post.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node == pre.prc_mp.spec_index(p_ptr).view().parent_linkedlist_node
-                &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
+                &&& post.prc_mp.spec_index(p_ptr).view().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view().uppertree_seq
                 &&& p_ptr != parent_ptr ==> post.prc_mp.spec_index(p_ptr).view().children == pre.prc_mp.spec_index(p_ptr).view().children
-                &&& pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view().remove(target)
-                &&& !pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                &&& !pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)
                     ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set
             },
         post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target),
@@ -301,8 +302,8 @@ proof fn kill_retire_eof_target_uppers_in_tree(pre: KernelK, root_process: RwLoc
         process_tree_wf(root_process, process_tree_dom, pre.prc_mp),
         process_tree_dom.contains(target),
     ensures
-        forall|p_ptr: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)]
-            pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().contains(p_ptr) ==> process_tree_dom.contains(p_ptr),
+        forall|p_ptr: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr)]
+            pre.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().contains(p_ptr) ==> process_tree_dom.contains(p_ptr),
 {
     reveal(process_uppertree_seq_wf);
 }
@@ -330,6 +331,7 @@ pub(crate) proof fn kill_retire_eof_container_process_wf(
         post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata(),
         post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(target),
     ensures
+        !post.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty(),
         container_process_wf(post.ctn_mp, post.prc_mp),
 {
     let root_process = pre.ctn_mp.spec_index(ctn_ptr).view().root_process;

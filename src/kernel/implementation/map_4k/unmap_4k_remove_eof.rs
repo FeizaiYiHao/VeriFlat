@@ -20,7 +20,7 @@ pub(super) open spec fn remove_4k_mapping_without_free_eof_transition_framing(pr
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& new_pt.locking_thread() == old_pt.locking_thread()
     &&& new_pt.being_killed() == old_pt.being_killed()
-    &&& new_pt.view() == old_pt.view()
+    &&& new_pt.view() == (PageTableHigher { lower_backup: Ghost(if old_pt.wlocked() { new_c.lower } else { old_pt.view().lower_backup.view() }), ..old_pt.view() })
     &&& new_c.mapping_4k() == old_c.mapping_4k().remove(va)
     &&& new_c.mapping_2m() == old_c.mapping_2m()
     &&& new_c.mapping_1g() == old_c.mapping_1g()

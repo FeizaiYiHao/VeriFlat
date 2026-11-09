@@ -59,7 +59,7 @@ pub(super) fn mmap_1g_hide_l3_entry(
         ret.0@.thrd_mp.unchanged_except(&old(krnl).thrd_mp, thrd_ptr),
         ret.0@.thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         ret.0@.thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
-        ret.0@.thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
+        ret.0@.thrd_mp.spec_index(thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited,
         ret.0@.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
             syscall_progress: Ghost(Some(SyscallProgress::Mmap1g {
                 range: progress->Mmap1g_range, mapped: progress->Mmap1g_mapped, directory: progress->Mmap1g_directory, hidden: true, flushed: progress->Mmap1g_flushed,

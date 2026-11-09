@@ -282,7 +282,7 @@ pub broadcast proof fn kernel_container_lock_state_projection_at(krnl: &KernelK,
     ensures
         kernel_k_to_kernel_u(*krnl).container_map.dom().contains(ptr),
         (#[trigger] kernel_k_to_kernel_u(*krnl).container_map[ptr]).lock_state == krnl.ctn_mp.spec_index(ptr).lock_state_u(),
-        kernel_k_to_kernel_u(*krnl).container_map[ptr].uppertree_seq == krnl.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq.view(),
+        kernel_k_to_kernel_u(*krnl).container_map[ptr].uppertree_seq == krnl.ctn_mp.spec_index(ptr).view().uppertree_seq.view(),
 { kernel_container_projection_at(krnl, ptr); }
 
 /// K states agreeing on the lock modes, kill marks, and owning containers of `processes` and on the lock modes and upper
@@ -300,7 +300,7 @@ pub proof fn kernel_process_container_lock_states_projection_eq(a: &KernelK, b: 
             &&& a.ctn_mp.dom().contains(c)
             &&& b.ctn_mp.dom().contains(c)
             &&& a.ctn_mp.spec_index(c).locking_thread() == b.ctn_mp.spec_index(c).locking_thread()
-            &&& a.ctn_mp.spec_index(c).view_ghost().uppertree_seq == b.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& a.ctn_mp.spec_index(c).view().uppertree_seq == b.ctn_mp.spec_index(c).view().uppertree_seq
         },
     ensures
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {

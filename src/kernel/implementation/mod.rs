@@ -74,3 +74,4 @@ pub mod free_2m_page;
 pub mod free_1g_page;
 #[cfg(not(feature = "split-crates"))]
 pub mod reclaim_dangling_thread;
+pub mod mmap_4k_lock_current_thread;

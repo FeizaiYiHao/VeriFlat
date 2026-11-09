@@ -109,7 +109,7 @@ pub fn clear_2m_mapping_present_in_window(
     }
     let ghost prc_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc;
     let l2_ptr = clear_2m_mapping_l2_ptr(krnl, pagetable, (indices.0, indices.1, indices.2), Tracked(&*lctx), pagetable_perm);
-    krnl.replace_window_stale_cpus(pagetable, Ghost(WindowStaleUpdate::Set { window: window_of(va), cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx));
+    krnl.replace_window_stale_cpus::<false>(pagetable, Ghost(WindowStaleUpdate::Set { window: window_of(va), cpus: Set::range(0usize, NUM_CPUS) }), Tracked(&*lctx), Tracked(None));
     let ghost locked = *krnl;
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

@@ -506,6 +506,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         pre.prc_mp.dom().contains(sender_proc),
         pre.prc_mp.dom().contains(receiver_proc),
         sender_proc != receiver_proc,
+        receiver_proc == pre.thrd_mp.spec_index(current_thrd_ptr).view().owning_proc || receiver_proc == pre.thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc,
         !pre.prc_mp.spec_index(sender_proc).view().zombie,
         !pre.prc_mp.spec_index(receiver_proc).view().zombie,
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
@@ -567,6 +568,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
             &&& endpoint_perms_wf(post.ep_mp)
             &&& scheduler_perms_wf(post.sched_mp)
         }) by {
+            process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, current_thrd_ptr); process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, peer_thrd_ptr);
             reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf);
             reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };

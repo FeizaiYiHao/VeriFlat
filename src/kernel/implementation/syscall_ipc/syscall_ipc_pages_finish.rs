@@ -41,7 +41,7 @@ pub(super) fn ipc_finish_pages_transit(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         ({
             let progress = old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view();
             &&& progress is Some
@@ -68,7 +68,7 @@ pub(super) fn ipc_finish_pages_transit(
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().exited.view(),
         peer_thread_lock_perm.view().state() is WriteLock,
         peer_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.view().lock_id() == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).locking_thread()->Write_lock_id,

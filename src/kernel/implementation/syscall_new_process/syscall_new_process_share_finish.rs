@@ -102,7 +102,7 @@ pub(super) fn share_and_finish_new_process(
         old(krnl).thrd_mp.dom().contains(current_thrd_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
         !old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == parent_ptr,
         parent_ptr != child_ptr,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,

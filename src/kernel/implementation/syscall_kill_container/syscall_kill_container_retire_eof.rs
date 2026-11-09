@@ -38,7 +38,7 @@ pub(crate) open spec fn kill_container_retire_eof_transition_framing(
         &&& new_c.view().owned_pages.view() == if c == owner_ptr { old_c.view().owned_pages.view().union(target.view().owned_pages.view()) } else { old_c.view().owned_pages.view() }
         &&& new_c.view_ghost() == (ContainerGhost { subtree_set: new_c.view_ghost().subtree_set, ..old_c.view_ghost() })
         &&& new_c.view_ghost().subtree_set.view()
-            == if target.view_ghost().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
+            == if target.view().uppertree_seq.view().contains(c) { old_c.view_ghost().subtree_set.view().remove(ctn_ptr) } else { old_c.view_ghost().subtree_set.view() }
     }
     &&& post.ctn_mp.spec_index(parent_ptr).view().children.view() == pre.ctn_mp.spec_index(parent_ptr).view().children.view().remove_value(ctn_ptr)
     &&& post.ctn_mp.spec_index(parent_ptr).view().children.map() == pre.ctn_mp.spec_index(parent_ptr).view().children.map().remove(target.view().parent_linkedlist_node.addr())

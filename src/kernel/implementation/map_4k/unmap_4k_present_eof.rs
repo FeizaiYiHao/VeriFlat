@@ -15,7 +15,18 @@ pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: Ker
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view()
+    &&& post.pt_mp.spec_index(pagetable).view()
+        == (PageTableHigher { lower_backup: Ghost(if pre.pt_mp.spec_index(pagetable).wlocked() { post.pt_lower.view().spec_index(pagetable) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup.view() }), ..pre.pt_mp.spec_index(pagetable).view() })
+    &&& forall|i4: L4Index| #![trigger new_c.higher.spec_held_l4(i4)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.higher.spec_held_l4(i4) == old_c.higher.spec_held_l4(i4)
+    &&& forall|i4: L4Index| #![trigger new_c.higher.spec_resolve_mapping_l4(i4)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) ==> new_c.higher.spec_resolve_mapping_l4(i4) == old_c.higher.spec_resolve_mapping_l4(i4)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.higher.spec_held_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.higher.spec_held_l3(i4, i3) == old_c.higher.spec_held_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.higher.spec_resolve_mapping_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.higher.spec_resolve_mapping_l3(i4, i3) == old_c.higher.spec_resolve_mapping_l3(i4, i3)
+    &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.higher.spec_held_1g_l3(i4, i3)]
+        old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.higher.spec_held_1g_l3(i4, i3) == old_c.higher.spec_held_1g_l3(i4, i3)
     &&& new_c.mapping_4k() == old_c.mapping_4k().insert(va, MapEntry { present: false, ..old_c.mapping_4k().spec_index(va) })
     &&& new_c.mapping_2m() == old_c.mapping_2m()
     &&& new_c.mapping_1g() == old_c.mapping_1g()

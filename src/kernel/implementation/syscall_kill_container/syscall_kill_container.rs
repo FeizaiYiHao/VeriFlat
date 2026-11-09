@@ -160,11 +160,11 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
             &&& child_ptr != krnl.rt_ctn
             &&& child.view_rodata().view().parent == Some(ctn_ptr)
             &&& child.view_rodata().view().depth == container_ro.depth + 1
-            &&& child.view_ghost().uppertree_seq.view().contains(ctn_ptr)
+            &&& child.view().uppertree_seq.view().contains(ctn_ptr)
         }) by {
             container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr);
             container_perms_wf_at(krnl.ctn_mp, child_ptr); container_uppertree_seq_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr);
-            assert(krnl.ctn_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view()[container_ro.depth as int] == ctn_ptr);
+            assert(krnl.ctn_mp.spec_index(child_ptr).view().uppertree_seq.view()[container_ro.depth as int] == ctn_ptr);
         };
     }
     let child_res = krnl.try_wlock_container_and_mark_kill(child_ptr, Ghost(killer_info), Tracked(&mut *lctx));
@@ -182,6 +182,7 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         return RetValueType::ErrorContainerKilled;
     }
     let Tracked(child_perm) = child_res.unwrap();
+    proof { container_perms_wf_at(locked_k.ctn_mp, child_ptr); }
     let ghost marked_k = *krnl;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_container_progress(child_ptr, ContainerKillStage::Walk)), Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;

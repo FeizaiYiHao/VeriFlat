@@ -29,6 +29,8 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub kernel_entries: Ghost<Seq<PageEntry>>,
     pub proc_ptr: RwLockProcessPtr,
     pub table_stale_cpus: Ghost<Set<CpuId>>,
+    /// Snapshot of the window half maintained only while the big lock is write-held.
+    pub lower_backup: Ghost<PageTableLower<TABLE_TYPE>>,
 }
 
 /// Window half: L2 pages (each entry a 2M-window spin lock that also owns the L1 page it links), the L1 reverse

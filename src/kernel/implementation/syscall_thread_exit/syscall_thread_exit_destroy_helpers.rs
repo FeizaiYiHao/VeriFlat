@@ -189,7 +189,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
 {
     hide(Set::is_empty);
     let pg_idx = page_ptr2page_index(thrd_ptr);
-    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     let ghost proc_node_addr = krnl.thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr();
     proof {
         thread_perms_wf_map(krnl.thrd_mp);

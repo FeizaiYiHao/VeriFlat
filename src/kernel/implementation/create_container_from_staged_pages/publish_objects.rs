@@ -70,7 +70,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         pagetable_perms_wf(old(krnl).pt_mp) ==> pagetable_perms_wf(final(krnl).pt_mp),
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(child_pagetable_ptr, final(krnl).pt_lower.view().spec_index(child_pagetable_ptr)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).wf(),
-        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view_ghost() == final(krnl).pt_lower.view().spec_index(child_pagetable_ptr),
+        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().lower_backup.view() == final(krnl).pt_lower.view().spec_index(child_pagetable_ptr),
         forall|r: RwLockPageTableRoot|
             #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), r)]
             old(krnl).pt_mp.dom().contains(r) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), r) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), r),
@@ -122,6 +122,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_prc_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         !final(krnl).prc_mp.spec_index(child_prc_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(child_prc_ptr).view().zombie,
+        !final(krnl).prc_mp.spec_index(child_prc_ptr).view().pci_cleared.view(),
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().quota_4k == process_quota_4k,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().quota_2m == 0,
@@ -129,7 +130,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().owned_threads.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().parent_linkedlist_node.is_init(),
-        final(krnl).prc_mp.spec_index(child_prc_ptr).view_ghost().uppertree_seq.view().len() == 0,
+        final(krnl).prc_mp.spec_index(child_prc_ptr).view().uppertree_seq.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view_ghost().subtree_set.view().is_empty(),
         final(krnl).pt_mp.dom() =~= old(krnl).pt_mp.dom().insert(child_pagetable_ptr),
         forall|ptr: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(ptr)] old(krnl).pt_mp.dom().contains(ptr) ==> final(krnl).pt_mp.spec_index(ptr) == old(krnl).pt_mp.spec_index(ptr),
@@ -203,7 +204,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         },
         Ghost(child_prc_ptr),
     );
-    let process_ghost = ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
+    let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_prc_ptr, Allocated4KPageState::AsProcess, Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let ghost process_page_locks = pagetable_page_locks.insert(process_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(process_index), mode: TypedLockMode::Write });
     let Tracked(child_process_lock_perm) =
@@ -730,9 +731,10 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
         };
     }
     let child_pcid_allocator_lock_perm = pcid_allocator_map_insert_new_2m(&mut krnl.pcid_allc_mp, child_pcid_allc_ptr, pcid_allocator_value, Tracked(pcid_allocator_perm), Tracked(&mut *lctx));
-    let child_container_lock_perm = container_map_insert_new_2m(&mut krnl.ctn_mp, child_ctn_ptr, container_value, container_rodata, container_ghost, Tracked(container_perm), Tracked(&mut *lctx));
+    let (child_container_lock_perm, Tracked(container_tail_perm)) = container_map_insert_new_2m(
+        &mut krnl.ctn_mp, child_ctn_ptr, container_value, container_rodata, container_ghost, Tracked(container_perm), Tracked(&mut *lctx));
     let flags_value = CpuOfflineFlags::new_empty(Ghost(child_ctn_ptr), Ghost(container_rodata.view().depth), Ghost(cpu_offline_flags_ptr(child_ctn_ptr)));
-    krnl.cpu_offline_mp.retype_container_page_tail_and_insert(&krnl.ctn_mp, child_ctn_ptr, flags_value, Tracked(&*lctx));
+    krnl.cpu_offline_mp.retype_container_page_tail_and_insert(&krnl.ctn_mp, child_ctn_ptr, flags_value, Tracked(container_tail_perm), Tracked(&*lctx));
     proof {
         assert(krnl.cpu_offline_mp.typed_flag_lock_map_aligned(lctx.cpu_offline_flag_lock_map(), lctx.thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         let container_head = page_ptr2page_index(child_ctn_ptr);
@@ -785,14 +787,14 @@ pub(super) fn link_new_container_into_tree(
         old(containers).spec_index(child_ctn_ptr).view_rodata().view().allocator_ptr_4k == child_allocator_4k_ptr,
         old(containers).spec_index(child_ctn_ptr).view_rodata().view().allocator_ptr_2m == child_allocator_2m_ptr,
         old(containers).spec_index(child_ctn_ptr).view_rodata().view().allocator_ptr_1g == child_allocator_1g_ptr,
-        old(containers).spec_index(child_ctn_ptr).view_ghost().uppertree_seq.view() == child_uppers,
+        old(containers).spec_index(child_ctn_ptr).view().uppertree_seq.view() == child_uppers,
         old(containers).spec_index(child_ctn_ptr).view_ghost().subtree_set.view() == Set::<RwLockContainerPtr>::empty(),
         old(containers).spec_index(child_ctn_ptr).view().owned_pages.view() == moved_pages,
         old(containers).spec_index(child_ctn_ptr).view().root_process == child_prc_ptr,
         !old(containers).spec_index(child_ctn_ptr).view().zombie,
         old(containers).spec_index(child_ctn_ptr).view_ghost().owned_processes.view() == set![child_prc_ptr],
         child_depth == base_containers.spec_index(parent_ctn_ptr).view_rodata().view().depth + 1,
-        child_uppers == base_containers.spec_index(parent_ctn_ptr).view_ghost().uppertree_seq.view().push(parent_ctn_ptr),
+        child_uppers == base_containers.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
         child_uppers.no_duplicates(),
         child_uppers.to_set().subset_of(base_containers.dom()),
         !child_uppers.to_set().contains(child_ctn_ptr),
@@ -817,9 +819,9 @@ pub(super) fn link_new_container_into_tree(
         !final(containers).spec_index(child_ctn_ptr).view().parent_linkedlist_node.is_init(),
         final(containers).spec_index(child_ctn_ptr).view_ghost().subtree_set.view() == Set::<RwLockContainerPtr>::empty(),
         forall|ptr: RwLockContainerPtr|
-            #![trigger final(containers).spec_index(ptr).view_ghost().uppertree_seq]
-            #![trigger base_containers.spec_index(ptr).view_ghost().uppertree_seq]
-            base_containers.dom().contains(ptr) ==> final(containers).spec_index(ptr).view_ghost().uppertree_seq == base_containers.spec_index(ptr).view_ghost().uppertree_seq,
+            #![trigger final(containers).spec_index(ptr).view().uppertree_seq]
+            #![trigger base_containers.spec_index(ptr).view().uppertree_seq]
+            base_containers.dom().contains(ptr) ==> final(containers).spec_index(ptr).view().uppertree_seq == base_containers.spec_index(ptr).view().uppertree_seq,
         forall|ptr: RwLockContainerPtr|
             #![trigger child_uppers.contains(ptr)]
             child_uppers.contains(ptr) ==> final(containers).spec_index(ptr).view_ghost().subtree_set.view() == base_containers.spec_index(ptr).view_ghost().subtree_set.view().insert(child_ctn_ptr),
@@ -855,11 +857,12 @@ pub(super) fn link_new_container_into_tree(
         final(containers).spec_index(child_ctn_ptr).view().root_process == child_prc_ptr,
         !final(containers).spec_index(child_ctn_ptr).view().zombie,
         final(containers).spec_index(child_ctn_ptr).view_ghost().owned_processes.view() == set![child_prc_ptr],
-        final(containers).spec_index(child_ctn_ptr).view_ghost().uppertree_seq == old(containers).spec_index(child_ctn_ptr).view_ghost().uppertree_seq,
+        final(containers).spec_index(child_ctn_ptr).view().uppertree_seq == old(containers).spec_index(child_ctn_ptr).view().uppertree_seq,
         final(containers).spec_index(child_ctn_ptr).view_ghost().owned_endpoints == old(containers).spec_index(child_ctn_ptr).view_ghost().owned_endpoints,
         final(containers).spec_index(child_ctn_ptr).view_ghost().owned_threads == old(containers).spec_index(child_ctn_ptr).view_ghost().owned_threads,
         final(containers).spec_index(child_ctn_ptr).view_ghost().owned_indirect_threads == old(containers).spec_index(child_ctn_ptr).view_ghost().owned_indirect_threads,
-        final(containers).spec_index(child_ctn_ptr).view_ghost().retire_ready == old(containers).spec_index(child_ctn_ptr).view_ghost().retire_ready,
+        final(containers).spec_index(child_ctn_ptr).view().retire_ready.view() == old(containers).spec_index(child_ctn_ptr).view().retire_ready.view(),
+        final(containers).spec_index(child_ctn_ptr).view().root_process_removed == old(containers).spec_index(child_ctn_ptr).view().root_process_removed,
         final(containers).spec_index(child_ctn_ptr).control() == old(containers).spec_index(child_ctn_ptr).control(),
         parent_container_lock_perm.lock_id() == final(containers).spec_index(parent_ctn_ptr).locking_thread()->Write_lock_id,
         child_container_lock_perm.lock_id() == final(containers).spec_index(child_ctn_ptr).locking_thread()->Write_lock_id,
@@ -875,7 +878,8 @@ pub(super) fn link_new_container_into_tree(
                 &&& final(containers).spec_index(ctn_ptr).view_ghost().owned_processes == base_containers.spec_index(ctn_ptr).view_ghost().owned_processes
                 &&& final(containers).spec_index(ctn_ptr).view_ghost().owned_indirect_threads == base_containers.spec_index(ctn_ptr).view_ghost().owned_indirect_threads
                 &&& final(containers).spec_index(ctn_ptr).view_ghost().owned_endpoints == base_containers.spec_index(ctn_ptr).view_ghost().owned_endpoints
-                &&& final(containers).spec_index(ctn_ptr).view_ghost().retire_ready == base_containers.spec_index(ctn_ptr).view_ghost().retire_ready
+                &&& final(containers).spec_index(ctn_ptr).view().retire_ready.view() == base_containers.spec_index(ctn_ptr).view().retire_ready.view()
+                &&& final(containers).spec_index(ctn_ptr).view().root_process_removed == base_containers.spec_index(ctn_ptr).view().root_process_removed
                 &&& ctn_ptr != parent_ctn_ptr ==> final(containers).spec_index(ctn_ptr).view() == base_containers.spec_index(ctn_ptr).view()
             },
 {

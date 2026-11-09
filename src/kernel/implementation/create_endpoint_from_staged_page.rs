@@ -45,6 +45,7 @@ pub fn create_endpoint_from_staged_page(
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
+        final(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(staging_thrd_ptr).view().exited,
         ret.view().state() is WriteLock,
         ret.view().thread_id() == final(lctx).thread_id(),
         ret.view().lock_id() == final(krnl).ep_mp.spec_index(pg_ptr).locking_thread()->Write_lock_id,

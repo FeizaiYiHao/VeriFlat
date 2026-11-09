@@ -84,7 +84,7 @@ pub open spec fn kernel_process_nonlock_fields_unchanged(pre: ProcessLockedMap, 
             &&& post.spec_index(p).view_rodata().view().depth == pre.spec_index(p).view_rodata().view().depth
             &&& post.spec_index(p).view_rodata().view().pcid == pre.spec_index(p).view_rodata().view().pcid
             &&& post.spec_index(p).view_rodata().view().owning_container == pre.spec_index(p).view_rodata().view().owning_container
-            &&& post.spec_index(p).view_ghost().uppertree_seq.view() == pre.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.spec_index(p).view().uppertree_seq.view() == pre.spec_index(p).view().uppertree_seq.view()
             &&& post.spec_index(p).view_ghost().subtree_set.view() == pre.spec_index(p).view_ghost().subtree_set.view()
             &&& post.spec_index(p).being_killed() == pre.spec_index(p).being_killed()
             &&& post.spec_index(p).view().owned_threads.view() == pre.spec_index(p).view().owned_threads.view()
@@ -136,7 +136,7 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
             let a_ro = a.view_rodata().view();
             let b_ro = b.view_rodata().view();
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -254,7 +254,7 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
             &&& PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
                 == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
-            &&& post.ctn_mp.spec_index(c).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& post.ctn_mp.spec_index(c).view().uppertree_seq == pre.ctn_mp.spec_index(c).view().uppertree_seq
             &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == pre.ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == pre.ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints
@@ -309,7 +309,7 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == if p == prc_ptr { pre.prc_mp.spec_index(p).view().owned_threads.view().push(new_thrd_ptr) } else { pre.prc_mp.spec_index(p).view().owned_threads.view() }
@@ -421,7 +421,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             let b_ro = b.view_rodata().view();
             &&& b.locking_thread() == a.locking_thread()
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -497,7 +497,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -567,7 +567,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             let b_ro = b.view_rodata().view();
             &&& b.locking_thread() == a.locking_thread()
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -643,7 +643,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -712,7 +712,7 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
             let b_ro = b.view_rodata().view();
             &&& b.locking_thread() == a.locking_thread()
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -788,7 +788,7 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -864,7 +864,7 @@ pub open spec fn kernel_process2thread_quota_4k_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -940,7 +940,7 @@ pub open spec fn kernel_process2thread_quota_2m_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -1015,7 +1015,7 @@ pub open spec fn kernel_process2thread_quota_1g_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
             &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
-            &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
+            &&& post.prc_mp.spec_index(p).view().uppertree_seq.view() == pre.prc_mp.spec_index(p).view().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
             &&& post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
@@ -1285,7 +1285,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
             let a_ro = a.view_rodata().view();
             let b_ro = b.view_rodata().view();
             &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view().uppertree_seq.view() == a.view().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
             &&& b.view().zombie == a.view().zombie
@@ -1488,7 +1488,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
             let quota = pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int;
             &&& b.view() == if c == ctn_ptr { Container { zombie: a.view().zombie || (zombie && a.view().root_process == prc_ptr), ..a.view() } } else { a.view() }
             &&& b.view_rodata() == a.view_rodata()
-            &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
+            &&& b.view().uppertree_seq == a.view().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
             &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints
@@ -1574,7 +1574,7 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
             let b = post.ctn_mp.spec_index(c);
             &&& b.view() == a.view()
             &&& b.view_rodata() == a.view_rodata()
-            &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
+            &&& b.view().uppertree_seq == a.view().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
             &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints

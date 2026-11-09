@@ -79,7 +79,7 @@ pub(super) fn reclaim_dangling_thread_commit(
 {
     let ghost entry = *krnl;
     let ghost ctn_ptr = krnl.thrd_mp.spec_index(dangling_ptr).view().owning_container;
-    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let ghost uppers = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     proof {
         container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, dangling_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {
@@ -173,6 +173,11 @@ pub(super) fn reclaim_dangling_thread_drain_full_cache(
         },
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|p: RwLockProcessPtr, q: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            #![trigger old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q)]
+            old(lctx).process_lock_map().dom().contains(p) && old(lctx).process_lock_map().dom().contains(q)
+                ==> final(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q) == old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view().contains(q),
         held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),

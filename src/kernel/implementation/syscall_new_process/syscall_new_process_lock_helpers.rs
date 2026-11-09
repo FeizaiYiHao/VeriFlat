@@ -103,7 +103,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().syscall_progress.view() is None
-            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view_ghost().exited
+            &&& !final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().exited.view()
             &&& final(krnl).thrd_mp.spec_index(x.current_thread_ptr).view().free_quota_pending_clean()
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& x.cpu_lock_perm.view().state() is WriteLock && x.cpu_lock_perm.view().thread_id() == final(lctx).thread_id()
@@ -284,7 +284,7 @@ pub(super) fn new_process_unlock_and_stutter(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).pcid_allc_mp.dom().contains(pcid_allc_ptr),
         old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None,
         old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view() == old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view(),
@@ -589,11 +589,11 @@ pub(super) fn new_process_lock_source_windows(
         proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), root); }
         return (false, Tracked(empty_perms));
     }
-    let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(root, range, Tracked(big), Tracked(&mut *lctx));
+    let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(root, range, Tracked(big), Tracked(&mut *lctx));
     if share_mapping_4k_source_precheck(krnl, range, root, Tracked(&*lctx), Tracked(big)) {
         return (true, Tracked(window_perms));
     }
-    krnl.unlock_pagetable_range_existing_windows(root, range, Tracked(big), Tracked(&mut *lctx), Tracked(window_perms));
+    krnl.unlock_pagetable_range_existing_windows::<false>(root, range, Tracked(big), Tracked(&mut *lctx), Tracked(window_perms));
     (false, Tracked(empty_perms))
 }
 }

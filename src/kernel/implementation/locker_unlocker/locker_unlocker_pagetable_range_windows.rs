@@ -27,9 +27,10 @@ impl KernelK {
     /// window keeps its lock state until this call returns, and under a read-held table each locked window has its
     /// leaves present, lists no stale CPU, and hides no L1 page. If only write-locked L2 entries hid L1 pages before the
     /// call, that still holds and no locked window hides one.
-    pub fn lock_pagetable_range_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn lock_pagetable_range_windows<const WRITE: bool>(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
+            WRITE == (big.state() is WriteLock),
             old(self).inv(),
             old(self).pt_mp.dom().contains(root),
             range.wf(),
@@ -66,13 +67,20 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pt_mp: final(self).pt_mp, pt_lower: final(self).pt_lower, ..*old(self) }),
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, root),
-            update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
-                if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
+            {
+                &&& final(self).pt_mp.spec_index(root).is_init() == old(self).pt_mp.spec_index(root).is_init()
+                &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
+                &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
+                &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
+                &&& final(self).pt_mp.spec_index(root).view()
+                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+            },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
+                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -148,6 +156,7 @@ impl KernelK {
         let mut l2i = first_l2i;
         while l4i < last_l4i || (l4i == last_l4i && (l3i < last_l3i || (l3i == last_l3i && l2i <= last_l2i)))
             invariant
+                WRITE == (big.state() is WriteLock),
                 (first_l4i, first_l3i, first_l2i) == (spec_va2index(range.start).0, spec_va2index(range.start).1, spec_va2index(range.start).2),
                 (last_l4i, last_l3i, last_l2i) == (spec_va2index(range.view().spec_index(range.len - 1)).0, spec_va2index(range.view().spec_index(range.len - 1)).1,
                     spec_va2index(range.view().spec_index(range.len - 1)).2),
@@ -193,7 +202,7 @@ impl KernelK {
             let ghost krnl_i = *self;
             let ghost lctx_i = *lctx;
             let ghost perms_i = perms;
-            let Tracked(perm) = self.lock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
+            let Tracked(perm) = self.lock_pagetable_window::<WRITE>(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
             proof { perms.tracked_insert(window_va, perm); }
             let ghost prev = (l4i, l3i, l2i);
             if l2i < 511 {
@@ -216,9 +225,10 @@ impl KernelK {
     /// holds the big lock of `root` in either mode through `big`; under a read-held table each window must have its
     /// leaves present, list no stale CPU, and hide no L1 page. Releasing windows that hide no L1 page keeps every hiding
     /// L2 entry write-locked.
-    pub fn unlock_pagetable_range_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
+    pub fn unlock_pagetable_range_windows<const WRITE: bool>(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(perms): Tracked<Map<WindowVa, LockPerm>>)
         requires
+            WRITE == (big.state() is WriteLock),
             old(self).inv(),
             old(self).pt_mp.dom().contains(root),
             range.wf(),
@@ -257,13 +267,20 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pt_mp: final(self).pt_mp, pt_lower: final(self).pt_lower, ..*old(self) }),
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, root),
-            update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
-                if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
+            {
+                &&& final(self).pt_mp.spec_index(root).is_init() == old(self).pt_mp.spec_index(root).is_init()
+                &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
+                &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
+                &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
+                &&& final(self).pt_mp.spec_index(root).view()
+                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+            },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
+                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -323,6 +340,7 @@ impl KernelK {
         let mut l2i = first_l2i;
         while l4i < last_l4i || (l4i == last_l4i && (l3i < last_l3i || (l3i == last_l3i && l2i <= last_l2i)))
             invariant
+                WRITE == (big.state() is WriteLock),
                 (first_l4i, first_l3i, first_l2i) == (spec_va2index(range.start).0, spec_va2index(range.start).1, spec_va2index(range.start).2),
                 (last_l4i, last_l3i, last_l2i) == (spec_va2index(range.view().spec_index(range.len - 1)).0, spec_va2index(range.view().spec_index(range.len - 1)).1,
                     spec_va2index(range.view().spec_index(range.len - 1)).2),
@@ -380,7 +398,7 @@ impl KernelK {
             let ghost lctx_i = *lctx;
             let ghost remaining_i = remaining;
             let tracked perm = remaining.tracked_remove(window_va);
-            self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
+            self.unlock_pagetable_window::<WRITE>(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
             let ghost prev = (l4i, l3i, l2i);
             if l2i < 511 {
                 l2i = l2i + 1;
@@ -403,9 +421,10 @@ impl KernelK {
     /// returns, and under a read-held table each locked window has its leaves present, lists no stale CPU, and hides no
     /// L1 page. If only write-locked L2 entries hid L1 pages before the call, that still holds and no locked window hides
     /// one.
-    pub fn lock_pagetable_range_existing_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
+    pub fn lock_pagetable_range_existing_windows<const WRITE: bool>(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
+            WRITE == (big.state() is WriteLock),
             old(self).inv(),
             old(self).pt_mp.dom().contains(root),
             range.wf(),
@@ -431,6 +450,18 @@ impl KernelK {
             big.state() is ReadLock ==> old(self).pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), big.lock_id()),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
+            (forall|l4i: L4Index| #![trigger old(self).pt_mp.spec_index(root).view().spec_held_l4(l4i)]
+                old(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(root).view().spec_held_l4(l4i) is Some
+                    ==> old(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l4(l4i) is Some)
+                ==> forall|l4i: L4Index| #![trigger final(self).pt_mp.spec_index(root).view().spec_held_l4(l4i)]
+                    final(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(root).view().spec_held_l4(l4i) is Some
+                        ==> final(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l4(l4i) is Some,
+            (forall|l4i: L4Index, l3i: L3Index| #![trigger old(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i)]
+                old(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i) is Some
+                    ==> old(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+                ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i)]
+                    final(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i) is Some
+                        ==> final(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -441,13 +472,20 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pt_mp: final(self).pt_mp, pt_lower: final(self).pt_lower, ..*old(self) }),
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, root),
-            update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
-                if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
+            {
+                &&& final(self).pt_mp.spec_index(root).is_init() == old(self).pt_mp.spec_index(root).is_init()
+                &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
+                &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
+                &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
+                &&& final(self).pt_mp.spec_index(root).view()
+                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+            },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
+                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -526,6 +564,7 @@ impl KernelK {
         let mut l2i = first_l2i;
         while l4i < last_l4i || (l4i == last_l4i && (l3i < last_l3i || (l3i == last_l3i && l2i <= last_l2i)))
             invariant
+                WRITE == (big.state() is WriteLock),
                 (first_l4i, first_l3i, first_l2i) == (spec_va2index(range.start).0, spec_va2index(range.start).1, spec_va2index(range.start).2),
                 (last_l4i, last_l3i, last_l2i) == (spec_va2index(range.view().spec_index(range.len - 1)).0, spec_va2index(range.view().spec_index(range.len - 1)).1,
                     spec_va2index(range.view().spec_index(range.len - 1)).2),
@@ -579,7 +618,7 @@ impl KernelK {
                         reveal(lock_pagetable_range_existing_windows_eol_loop_framing); reveal_with_fuel(lock_minor_lt, 4);
                     };
                 }
-                let Tracked(perm) = self.lock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
+                let Tracked(perm) = self.lock_pagetable_window::<WRITE>(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
                 proof { perms.tracked_insert(window_va, perm); }
             }
             let ghost prev = (l4i, l3i, l2i);
@@ -606,9 +645,10 @@ impl KernelK {
     /// cover `range` and whose L3 entry links an L2 page, while this thread holds the big lock of `root` in either mode
     /// through `big`; under a read-held table each of them must have its leaves present, list no stale CPU, and hide no
     /// L1 page. Releasing windows that hide no L1 page keeps every hiding L2 entry write-locked.
-    pub fn unlock_pagetable_range_existing_windows(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
+    pub fn unlock_pagetable_range_existing_windows<const WRITE: bool>(&mut self, root: RwLockPageTableRoot, range: &VaRange4K, Tracked(big): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>, Tracked(perms): Tracked<Map<WindowVa, LockPerm>>)
         requires
+            WRITE == (big.state() is WriteLock),
             old(self).inv(),
             old(self).pt_mp.dom().contains(root),
             range.wf(),
@@ -640,6 +680,18 @@ impl KernelK {
                 },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
+            (forall|l4i: L4Index| #![trigger old(self).pt_mp.spec_index(root).view().spec_held_l4(l4i)]
+                old(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && old(self).pt_mp.spec_index(root).view().spec_held_l4(l4i) is Some
+                    ==> old(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l4(l4i) is Some)
+                ==> forall|l4i: L4Index| #![trigger final(self).pt_mp.spec_index(root).view().spec_held_l4(l4i)]
+                    final(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && final(self).pt_mp.spec_index(root).view().spec_held_l4(l4i) is Some
+                        ==> final(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l4(l4i) is Some,
+            (forall|l4i: L4Index, l3i: L3Index| #![trigger old(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i)]
+                old(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i) is Some
+                    ==> old(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l3(l4i, l3i) is Some)
+                ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i)]
+                    final(self).pt_mp.spec_index(root).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(self).pt_mp.spec_index(root).view().spec_held_l3(l4i, l3i) is Some
+                        ==> final(self).pt_mp.spec_index(root).view().spec_resolve_mapping_l3(l4i, l3i) is Some,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release || final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -650,13 +702,20 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pt_mp: final(self).pt_mp, pt_lower: final(self).pt_lower, ..*old(self) }),
             final(self).pt_mp.unchanged_except(&old(self).pt_mp, root),
-            update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
-                if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
+            {
+                &&& final(self).pt_mp.spec_index(root).is_init() == old(self).pt_mp.spec_index(root).is_init()
+                &&& final(self).pt_mp.spec_index(root).view_rodata() == old(self).pt_mp.spec_index(root).view_rodata()
+                &&& final(self).pt_mp.spec_index(root).locking_thread() == old(self).pt_mp.spec_index(root).locking_thread()
+                &&& final(self).pt_mp.spec_index(root).control() == old(self).pt_mp.spec_index(root).control()
+                &&& final(self).pt_mp.spec_index(root).view()
+                    == (PageTableHigher { lower_backup: Ghost(if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view().lower_backup.view() }), ..old(self).pt_mp.spec_index(root).view() })
+            },
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, final(self).pt_lower.view().spec_index(root)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
-            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher
+                == (PageTableHigher { lower_backup: whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).higher.lower_backup, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).higher }),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms.dom() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
@@ -719,6 +778,7 @@ impl KernelK {
         let mut l2i = first_l2i;
         while l4i < last_l4i || (l4i == last_l4i && (l3i < last_l3i || (l3i == last_l3i && l2i <= last_l2i)))
             invariant
+                WRITE == (big.state() is WriteLock),
                 (first_l4i, first_l3i, first_l2i) == (spec_va2index(range.start).0, spec_va2index(range.start).1, spec_va2index(range.start).2),
                 (last_l4i, last_l3i, last_l2i) == (spec_va2index(range.view().spec_index(range.len - 1)).0, spec_va2index(range.view().spec_index(range.len - 1)).1,
                     spec_va2index(range.view().spec_index(range.len - 1)).2),
@@ -789,7 +849,7 @@ impl KernelK {
                     }) by { reveal(unlock_pagetable_range_existing_windows_eol_loop_framing); };
                 }
                 let tracked perm = remaining.tracked_remove(window_va);
-                self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
+                self.unlock_pagetable_window::<WRITE>(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
             }
             let ghost prev = (l4i, l3i, l2i);
             if l2i < 511 {

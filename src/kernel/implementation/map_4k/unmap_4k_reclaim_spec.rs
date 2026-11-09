@@ -43,7 +43,8 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_table.spec_held_2m_l2(l4i, l3i, l2i)]
         old_table.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
             ==> new_table.spec_held_2m_l2(l4i, l3i, l2i) == old_table.spec_held_2m_l2(l4i, l3i, l2i)
-    &&& post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view()
+    &&& post.pt_mp.spec_index(pagetable).view()
+        == (PageTableHigher { lower_backup: Ghost(if pre.pt_mp.spec_index(pagetable).wlocked() { post.pt_lower.view().spec_index(pagetable) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup.view() }), ..pre.pt_mp.spec_index(pagetable).view() })
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex|
         #![trigger pre.pg_arr.spec_index(i).view().view().state]

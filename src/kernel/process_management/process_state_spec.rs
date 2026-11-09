@@ -34,7 +34,7 @@ pub open spec fn process_emptied_threads_wf(prc_mp: ProcessLockedMap, thrd_mp: T
             && prc_mp.spec_index(p).view().owned_threads.view().contains(t)
             ==>
             thrd_mp.dom().contains(t)
-            && thrd_mp.spec_index(t).view_ghost().exited
+            && thrd_mp.spec_index(t).view().exited.view()
 }
 
 pub proof fn process_emptied_threads_wf_at(prc_mp: ProcessLockedMap, thrd_mp: ThreadLockedMap, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr)
@@ -42,6 +42,6 @@ pub proof fn process_emptied_threads_wf_at(prc_mp: ProcessLockedMap, thrd_mp: Th
         process_emptied_threads_wf(prc_mp, thrd_mp),
     ensures
         prc_mp.dom().contains(prc_ptr) && prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied && prc_mp.spec_index(prc_ptr).view().owned_threads.view().contains(thrd_ptr)
-            ==> thrd_mp.dom().contains(thrd_ptr) && thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            ==> thrd_mp.dom().contains(thrd_ptr) && thrd_mp.spec_index(thrd_ptr).view().exited.view(),
 { reveal(process_emptied_threads_wf); }
 }

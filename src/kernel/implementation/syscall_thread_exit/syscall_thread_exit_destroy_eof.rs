@@ -126,7 +126,7 @@ proof fn thread_exit_destroy_eof_allocator_relations(
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         page_object_owner_wf_at(pre.ctn_mp, pre.thrd_mp, pre.pg_arr, page_ptr2page_index(thrd_ptr));
-        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr); pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        container_thread_wf_thread_at(pre.ctn_mp, pre.thrd_mp, thrd_ptr); pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures();
         reveal(container_kill_retire_wf); reveal(container_allocator_wf); reveal(container_uppertree_seq_wf);
     };
     assert(allocator_global_pool_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_free_page_ptrs_wf); };
@@ -423,14 +423,14 @@ proof fn thread_exit_destroy_eof_thread_relations(
         process_thread_wf(post.prc_mp, post.thrd_mp),
 {
     reveal(thread_exit_destroy_eof_transition_framing);
-    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
     process_perms_wf_at(pre.prc_mp, prc_ptr);
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by {
         reveal(process_emptied_threads_wf);
         assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| post.prc_mp.dom().contains(p_ptr) && post.prc_mp.spec_index(p_ptr).view().state.view() is TablesEmptied && #[trigger] post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
-            implies post.thrd_mp.dom().contains(t_ptr) && post.thrd_mp.spec_index(t_ptr).view_ghost().exited by { process_thread_wf_process_at(pre.prc_mp, pre.thrd_mp, p_ptr, t_ptr); };
+            implies post.thrd_mp.dom().contains(t_ptr) && post.thrd_mp.spec_index(t_ptr).view().exited.view() by { process_thread_wf_process_at(pre.prc_mp, pre.thrd_mp, p_ptr, t_ptr); };
     };
     assert(thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };

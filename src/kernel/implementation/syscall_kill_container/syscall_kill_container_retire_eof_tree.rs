@@ -35,7 +35,7 @@ pub(crate) proof fn kill_container_retire_eof_container_tree(
     reveal(kill_container_retire_eof_transition_framing);
     let target = pre.ctn_mp.spec_index(ctn_ptr);
     container_perms_wf_at(pre.ctn_mp, ctn_ptr);
-    assert(target.view_ghost().uppertree_seq.view().len() > 0);
+    assert(target.view().uppertree_seq.view().len() > 0);
     container_root_wf_at(pre.rt_ctn, pre.ctn_mp, pre.rt_ctn);
     assert(ctn_ptr != pre.rt_ctn && pre.ctn_mp.dom().contains(pre.rt_ctn)) by { reveal(container_root_wf); };
     container_linkedlist_wf_at(pre.rt_ctn, pre.ctn_mp, ctn_ptr); container_perms_wf_at(pre.ctn_mp, parent_ptr);

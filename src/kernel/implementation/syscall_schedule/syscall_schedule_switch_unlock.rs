@@ -27,7 +27,7 @@ pub(super) fn schedule_switch_release_locks(
         old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
-        !old(krnl).thrd_mp.spec_index(next_thread).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(next_thread).view().exited.view(),
         current_process is Some == process_lock_perm is Some,
         current_thread is Some == current_thread_lock_perm is Some,
         current_thread is Some ==> current_thread.unwrap() != next_thread,
@@ -45,7 +45,7 @@ pub(super) fn schedule_switch_release_locks(
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean()
             &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited
+            &&& !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view()
         },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],

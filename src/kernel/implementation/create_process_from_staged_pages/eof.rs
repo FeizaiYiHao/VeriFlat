@@ -14,7 +14,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     let process_pg_idx = page_ptr2page_index(process_pg_ptr);
     let pagetable_pg_idx = page_ptr2page_index(pagetable_pg_ptr);
     let l4_pg_idx = page_ptr2page_index(l4_pg_ptr);
-    let ancestors = pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr);
+    let ancestors = pre.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr);
     &&& post.irt == pre.irt
     &&& post.cpu_arr == pre.cpu_arr
     &&& post.pcid_needflush == pre.pcid_needflush
@@ -89,7 +89,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_pg_ptr, post.pt_lower.view().spec_index(pagetable_pg_ptr))
-    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view_ghost() == post.pt_lower.view().spec_index(pagetable_pg_ptr)
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_pg_ptr)
     &&& forall|pt_ptr: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr)]
         pre.pt_mp.dom().contains(pt_ptr) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt_ptr)
@@ -107,7 +107,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
             &&& post.prc_mp.spec_index(p_ptr).being_killed() == pre.prc_mp.spec_index(p_ptr).being_killed()
             &&& post.prc_mp.spec_index(p_ptr).killer_info() == pre.prc_mp.spec_index(p_ptr).killer_info()
             &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
-            &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
+            &&& post.prc_mp.spec_index(p_ptr).view().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view().uppertree_seq
             &&& post.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions
             &&& post.prc_mp.spec_index(p_ptr).view() == if p_ptr == parent_ptr {
                 Process { children: post.prc_mp.spec_index(p_ptr).view().children, ..pre.prc_mp.spec_index(p_ptr).view() }
@@ -116,13 +116,13 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
             }
         }
     &&& forall|p_ptr: RwLockProcessPtr|
-        #![trigger post.prc_mp.spec_index(process_pg_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)]
+        #![trigger post.prc_mp.spec_index(process_pg_ptr).view().uppertree_seq.view().to_set().contains(p_ptr)]
         #![trigger post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set]
-        post.prc_mp.spec_index(process_pg_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+        post.prc_mp.spec_index(process_pg_ptr).view().uppertree_seq.view().to_set().contains(p_ptr)
             ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set.view().insert(process_pg_ptr)
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set]
-        pre.prc_mp.dom().contains(p_ptr) && !post.prc_mp.spec_index(process_pg_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+        pre.prc_mp.dom().contains(p_ptr) && !post.prc_mp.spec_index(process_pg_ptr).view().uppertree_seq.view().to_set().contains(p_ptr)
             ==> post.prc_mp.spec_index(p_ptr).view_ghost().subtree_set == pre.prc_mp.spec_index(p_ptr).view_ghost().subtree_set
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger post.prc_mp.view().spec_index(p_ptr).is_init()]
@@ -140,6 +140,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_pg_ptr).wlocked()
     &&& !post.prc_mp.spec_index(process_pg_ptr).view().zombie
     &&& post.prc_mp.spec_index(process_pg_ptr).view().state.view() is Creating
+    &&& post.prc_mp.spec_index(process_pg_ptr).view().pci_cleared.view() == false
     &&& post.prc_mp.spec_index(process_pg_ptr).view().pcid == pcid
     &&& post.prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr
     &&& post.prc_mp.spec_index(process_pg_ptr).view_ghost().owned_pci_functions.view().is_empty()
@@ -156,7 +157,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_pg_ptr).view_rodata().view().pagetable == pagetable_pg_ptr
     &&& post.prc_mp.spec_index(process_pg_ptr).view_rodata().view().cr3 == l4_pg_ptr
     &&& post.prc_mp.spec_index(process_pg_ptr).view_rodata().view().pcid == pcid
-    &&& post.prc_mp.spec_index(process_pg_ptr).view_ghost().uppertree_seq.view() == ancestors
+    &&& post.prc_mp.spec_index(process_pg_ptr).view().uppertree_seq.view() == ancestors
     &&& post.prc_mp.spec_index(process_pg_ptr).view_ghost().subtree_set.view() == Set::<RwLockProcessPtr>::empty()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr)
     &&& post.ctn_mp.spec_index(ctn_ptr).view() == pre.ctn_mp.spec_index(ctn_ptr).view()
@@ -316,11 +317,14 @@ proof fn create_process_from_staged_pages_eof_subsystems_inv(
         assert(process_tree_fields_wf(pre.prc_mp)) by { reveal(process_perms_wf); };
         reveal(container_process_wf);
         assert(!pre.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_pg_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_children_parent_wf); };
-        assert(!pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
+        assert(!pre.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().contains(parent_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
         process_perms_wf_at(pre.prc_mp, parent_ptr);
     };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(container_perms_wf(post.ctn_mp)) by {
+        container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr); container_perms_wf_at(pre.ctn_mp, ctn_ptr);
+        reveal(container_perms_wf); reveal(container_tree_fields_wf);
+    };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
 }
@@ -811,7 +815,7 @@ proof fn create_process_from_staged_pages_eof_process_tree_invariants(
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
 {
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    let ancestors = pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr);
+    let ancestors = pre.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr);
     let root_process = pre.ctn_mp.spec_index(ctn_ptr).view().root_process;
     let process_tree_dom = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); };

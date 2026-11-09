@@ -52,7 +52,7 @@ pub(crate) open spec fn kill_retire_table_page_eof_transition_framing(
             pre.pt_mp.dom().contains(r) && r != table ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
-        &&& new_table.view_ghost() == post.pt_lower.view().spec_index(table)
+        &&& new_table.view().lower_backup.view() == post.pt_lower.view().spec_index(table)
         &&& new_c.page_closure() == old_c.page_closure().remove(pg_ptr)
         &&& new_c.mapping_4k() == old_c.mapping_4k()
         &&& new_c.mapping_2m() == old_c.mapping_2m()

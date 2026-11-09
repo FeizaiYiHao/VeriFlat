@@ -120,7 +120,7 @@ pub(super) fn ipc_endpoint_lock_and_copy(
             let owner = old(krnl).ep_mp.spec_index(payload_ep_ptr).view().owning_container;
             let container = old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view().owning_container;
             &&& old(krnl).ctn_mp.dom().contains(container)
-            &&& ret.0 == if owner == container || old(krnl).ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) {
+            &&& ret.0 == if owner == container || old(krnl).ctn_mp.spec_index(container).view().uppertree_seq.view().contains(owner) {
                 RetValueType::Success
             } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
         }),
@@ -128,7 +128,6 @@ pub(super) fn ipc_endpoint_lock_and_copy(
         final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, receiver_thrd_ptr),
         final(krnl).thrd_mp.spec_index(receiver_thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(receiver_thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view_ghost(),
         final(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view() == (Thread {
             endpoint_descriptors: final(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view().endpoint_descriptors,
             ..old(krnl).thrd_mp.spec_index(receiver_thrd_ptr).view()

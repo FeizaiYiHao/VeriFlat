@@ -25,6 +25,9 @@ captured by the repository instructions or obvious from one implementation.
 
 ## Open tasks
 
+- TODO: Consolidate related invariants by object and responsibility into the
+  appropriate existing `*_wf` definitions, avoiding proliferation of separate
+  `*_wf` equations while preserving semantics and object boundaries.
 - Rename existing lemmas whose names do not state what implies what (e.g.
   `lemma_l4_index_path_le_successor` in `src/pagetable_seq/pagetable_range.rs`;
   `kernel_walk_state_preserved_for_held_objects_unchanged`-style names are fine)

@@ -10,7 +10,7 @@ pub(super) open spec fn create_thread_from_staged_page_eof_transition_framing(
     ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 ) -> bool {
     let pg_idx = page_ptr2page_index(pg_ptr);
-    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view();
+    let uppers = pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     let pre_page = pre.pg_arr.spec_index(pg_idx).view();
     let post_page = post.pg_arr.spec_index(pg_idx).view();
     let pre_process = pre.prc_mp.spec_index(prc_ptr);
@@ -39,11 +39,10 @@ pub(super) open spec fn create_thread_from_staged_page_eof_transition_framing(
             &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
             &&& post.ctn_mp.spec_index(c).killer_info() == pre.ctn_mp.spec_index(c).killer_info()
-            &&& post.ctn_mp.spec_index(c).view_ghost() == (ContainerGhost {
-                uppertree_seq: pre_ghost.uppertree_seq, subtree_set: pre_ghost.subtree_set, owned_processes: pre_ghost.owned_processes,
+            &&& post.ctn_mp.spec_index(c).view_ghost() == (ContainerGhost { subtree_set: pre_ghost.subtree_set, owned_processes: pre_ghost.owned_processes,
                 owned_threads: if c == ctn_ptr { Ghost(pre_ghost.owned_threads.view().insert(pg_ptr)) } else { pre_ghost.owned_threads },
                 owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(pre_ghost.owned_indirect_threads.view().insert(pg_ptr)) } else { pre_ghost.owned_indirect_threads },
-                owned_endpoints: pre_ghost.owned_endpoints, retire_ready: pre_ghost.retire_ready,
+                owned_endpoints: pre_ghost.owned_endpoints,
             })
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
@@ -162,7 +161,7 @@ proof fn create_thread_from_staged_page_eof_allocator_quota_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -183,7 +182,7 @@ proof fn create_thread_from_staged_page_eof_allocator_quota_wf(
         container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
     reveal(create_thread_from_staged_page_eof_transition_framing);
-    pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); thread_perms_wf_at(post.thrd_mp, pg_ptr);
+    pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures(); thread_perms_wf_at(post.thrd_mp, pg_ptr);
     lemma_container_process_thread_quota_folds_insert_zero_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, pg_ptr);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); };
@@ -205,7 +204,7 @@ proof fn create_thread_from_staged_page_eof_container_kill_retire_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -229,7 +228,7 @@ proof fn create_thread_from_staged_page_eof_container_kill_retire_wf(
     reveal(create_thread_from_staged_page_eof_transition_framing);
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, prc_ptr); pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, prc_ptr); pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures();
         reveal(container_kill_retire_wf); reveal(container_uppertree_seq_wf);
     };
 }
@@ -249,7 +248,7 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -289,7 +288,7 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -378,7 +377,7 @@ proof fn create_thread_from_staged_page_eof_container_thread_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -399,7 +398,7 @@ proof fn create_thread_from_staged_page_eof_container_thread_wf(
         container_thread_wf(post.ctn_mp, post.thrd_mp),
 {
     reveal(create_thread_from_staged_page_eof_transition_framing);
-    assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { reveal(container_thread_wf); pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); };
+    assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { reveal(container_thread_wf); pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set_ensures(); };
 }
 
 proof fn create_thread_from_staged_page_eof_thread_endpoint_wf(
@@ -417,7 +416,7 @@ proof fn create_thread_from_staged_page_eof_thread_endpoint_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -464,7 +463,7 @@ proof fn create_thread_from_staged_page_eof_thread_cpu_wf(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -505,7 +504,7 @@ proof fn create_thread_from_staged_page_eof_container_process_marks(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -560,7 +559,7 @@ proof fn create_thread_from_staged_page_eof_process_management_inv(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),
@@ -614,7 +613,7 @@ pub(super) proof fn create_thread_from_staged_page_eof_inv(
         pg_ptr != staging_thrd_ptr,
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
-        pre.ctn_mp.spec_index(ctn_ptr).view_ghost().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
+        pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().to_set().subset_of(pre.ctn_mp.dom()),
         pre.sched_mp.dom().contains(sched_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.thrd_mp.spec_index(staging_thrd_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(pg_ptr),

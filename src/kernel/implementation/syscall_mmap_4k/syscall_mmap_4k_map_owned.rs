@@ -30,7 +30,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             va_4k_valid(va),
             old(krnl).thrd_mp.dom().contains(thrd_ptr),
             old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
-            !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
             old(krnl).pt_mp.dom().contains(pagetable_ptr),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_va2index(va).0,
@@ -88,7 +88,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k == old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k - 1,
             final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_leaf(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()),
             final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost(),
-            !final(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+            !final(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
             final(krnl).pt_mp == old(krnl).pt_mp,
             final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable_ptr, final(krnl).pt_lower.view().spec_index(pagetable_ptr)),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(pg_ptr)),
@@ -132,7 +132,8 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
         assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(pg_idx).view().inv()
             && krnl.pg_arr.spec_index(pg_idx).view().view().addr == pg_ptr && krnl.thrd_mp.perms_wf()
             && krnl.thrd_mp.spec_index(thrd_ptr).inv()) by {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); page_ptr_valid_imply_page_index_valid();
+            page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
             thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         };
         proof {

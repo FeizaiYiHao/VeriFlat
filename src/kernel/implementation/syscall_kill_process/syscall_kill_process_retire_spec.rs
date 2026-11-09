@@ -28,7 +28,7 @@ pub(crate) open spec fn kill_retire_eof_transition_framing(
     let process = pre.prc_mp.spec_index(target);
     let pagetable = process.view().pagetable;
     let iommu_table = process.view().iommu_table;
-    let uppers = process.view_ghost().uppertree_seq.view();
+    let uppers = process.view().uppertree_seq.view();
     let node_addr = process.view().parent_linkedlist_node.addr();
     let pages = kill_retire_pages(pre, target);
     let n = pages.len();
@@ -61,7 +61,7 @@ pub(crate) open spec fn kill_retire_eof_transition_framing(
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != ctn_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c)
     &&& post.ctn_mp.spec_index(ctn_ptr).view() == if parent is Some { pre.ctn_mp.spec_index(ctn_ptr).view() }
-        else { Container { zombie: false, ..pre.ctn_mp.spec_index(ctn_ptr).view() } }
+        else { Container { zombie: false, root_process_removed: Ghost(true), ..pre.ctn_mp.spec_index(ctn_ptr).view() } }
     &&& post.ctn_mp.spec_index(ctn_ptr).view_rodata() == pre.ctn_mp.spec_index(ctn_ptr).view_rodata()
     &&& post.ctn_mp.spec_index(ctn_ptr).view_ghost() == (ContainerGhost {
         owned_processes: Ghost(pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().remove(target)), ..pre.ctn_mp.spec_index(ctn_ptr).view_ghost() })

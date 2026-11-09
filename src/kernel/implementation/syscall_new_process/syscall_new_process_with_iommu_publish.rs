@@ -56,7 +56,7 @@ pub(super) fn publish_staged_process_with_iommu(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_cache_1g.view().is_empty(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index: ep_idx, with_iommu: true, child: None })),
-        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thrd_ptr),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().quota_4k >= 5,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
@@ -123,7 +123,9 @@ pub(super) fn publish_staged_process_with_iommu(
         new_process_publish_step_pre(final(steps).view().last().old_u, cpu_id),
         new_process_publish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
@@ -172,7 +174,7 @@ pub(super) fn publish_staged_process_with_iommu(
         final(krnl).thrd_mp.dom().contains(current_thrd_ptr),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thrd_ptr, TypedLockMode::Write),
         !final(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed(),
-        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost() == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view_ghost(),
+        final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc == parent_ptr,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_proc != ret.0,
         final(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container == ctn_ptr,
@@ -224,7 +226,7 @@ pub(super) fn publish_staged_process_with_iommu(
             new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, true);
         };
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
-            let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+            let uppers = krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
             assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
             assert(uppers.len() <= NUM_PAGES) by {
                 let c = krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container;
