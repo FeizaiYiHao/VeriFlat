@@ -1,0 +1,388 @@
+use vstd::prelude::*;
+verus! {
+use crate::*;
+use super::entry::*;
+use super::page_map::*;
+use vstd::simple_pptr::*;
+
+// exec
+impl IommuTable {
+    pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+        ensures
+            self.spec_resolve_mapping_l4(target_l4i) == ret,
+            forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger spec_index2va((target_l4i, l3i, l2i, l1i))]
+                #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i)]
+                pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && ret is None
+                    ==> self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i) is None && self.mapping_4k().dom().contains(spec_index2va((target_l4i, l3i, l2i, l1i))) == false,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+        }
+        let tracked l4_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
+        let l4_tbl: &PageMap = PPtr::<PageMap>::from_usize(self.cr3).borrow(Tracked(l4_perm));
+        let l4_entry = l4_tbl.get(target_l4i);
+        let ret = if l4_entry.perm.present {
+            Some(l4_entry)
+        } else {
+            None
+        };
+        proof { self.get_entry_l4_eof_implies_result_contract(target_l4i, ret); }
+        ret
+    }
+
+    pub fn get_entry_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
+        ensures
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= ret,
+            forall|l2i: L2Index, l1i: L1Index|
+                #![trigger spec_index2va((target_l4i, target_l3i, l2i, l1i))]
+                #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i)]
+                pei_valid(l2i) && pei_valid(l1i) && ret is None ==> self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i) is None && self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, l2i, l1i))) == false,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+        }
+        let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
+        let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
+        let l3_entry = l3_tbl.get(target_l3i);
+        let ret = if l3_entry.perm.present && !l3_entry.perm.ps {
+            Some(l3_entry)
+        } else {
+            None
+        };
+        proof { self.get_entry_l3_eof_implies_result_contract(target_l4i, target_l3i, l4_entry, ret); }
+        ret
+    }
+
+    pub fn get_entry_1g_l3(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
+        ensures
+            self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) =~= ret,
+    {
+        None
+    }
+
+    pub fn get_entry_l2(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+        ensures
+            self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= ret,
+            forall|l1i: L1Index|
+                #![trigger spec_index2va((target_l4i, target_l3i, target_l2i, l1i))]
+                #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, l1i)]
+                pei_valid(l1i) && ret is None ==> self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, l1i) is None && self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, l1i))) == false,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
+        }
+        let tracked l2_perm = self.l2_tables.borrow().tracked_borrow(l3_entry.addr);
+        let l2_tbl: &PageMap = PPtr::<PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
+        let l2_entry = l2_tbl.get(target_l2i);
+        let ret = if l2_entry.perm.present && !l2_entry.perm.ps {
+            Some(l2_entry)
+        } else {
+            None
+        };
+        proof { self.get_entry_l2_eof_implies_result_contract(target_l4i, target_l3i, target_l2i, l3_entry, ret); }
+        ret
+    }
+
+    pub fn get_entry_2m_l2(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
+        ensures
+            self.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) =~= ret,
+    {
+        None
+    }
+
+    pub fn get_entry_l1(&self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
+        ensures
+            self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
+            self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) =~= ret is Some,
+            ret is Some ==> ret->0.addr == self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].addr,
+            ret is Some ==> ret->0.perm.present == self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].present,
+            ret is Some ==> ret->0.perm.execute_disable == self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].execute_disable,
+            ret is Some && ret->0.perm.present
+                ==> self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))
+                && self.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == page_entry_to_map_entry(&ret.unwrap(), Ghost(self.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).owning_container.view())),
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
+            self.wf_l1_at(self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr, target_l1i);
+        }
+        proof { self.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i); }
+
+        let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(l2_entry.addr);
+        let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
+        let l1_entry = l1_tbl.get(target_l1i);
+        if l1_entry.perm.kernel_present {
+            Some(l1_entry)
+        } else {
+            None
+        }
+    }
+
+    pub fn create_entry_l4(&mut self, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+        requires
+            old(self).wf(),
+            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            old(self).spec_resolve_mapping_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            old(self).page_closure().contains(page_map_ptr) == false,
+            page_map_perm.addr() == page_map_ptr,
+            page_map_perm.is_init(),
+            page_map_perm.value().iommu_wf(),
+            forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
+            final(self).cr3 == old(self).cr3,
+            final(self).proc_ptr == old(self).proc_ptr,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) is Some,
+            final(self).spec_resolve_mapping_l4(target_l4i)->0.addr == page_map_ptr,
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
+            final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            final(self).kernel_entries =~= old(self).kernel_entries,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+        }
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        iommu_page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
+            PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: false } },
+            Tracked(&mut *lctx));
+        proof { self.l3_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); self.l3_rev_map = Ghost(self.l3_rev_map.view().insert(page_map_ptr, target_l4i)); }
+        proof {
+            assert(Self::create_entry_l4_eof_transition_framing(*old(self), *self, target_l4i, page_map_ptr)) by { reveal(IommuTable::create_entry_l4_eof_transition_framing); };
+            Self::create_entry_l4_eof(*old(self), *self, target_l4i, page_map_ptr);
+        }
+    }
+
+    pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+        requires
+            old(self).wf(),
+            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            old(self).spec_resolve_mapping_l4(target_l4i) is Some,
+            old(self).spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
+            old(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            page_ptr_valid(page_map_ptr),
+            old(self).page_closure().contains(page_map_ptr) == false,
+            page_map_perm.addr() == page_map_ptr,
+            page_map_perm.is_init(),
+            page_map_perm.value().iommu_wf(),
+            forall|i: usize|
+                #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                #![trigger page_map_perm.value().spec_index(i).perm.present]
+                #![trigger page_map_perm.value().spec_index(i).perm.ps]
+                #![trigger page_map_perm.value().spec_index(i).perm.kernel_present]
+                pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
+            final(self).cr3 == old(self).cr3,
+            final(self).proc_ptr == old(self).proc_ptr,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == page_map_ptr,
+            final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+            final(self).kernel_entries =~= old(self).kernel_entries,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+        }
+
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        iommu_page_map_set_published_in_map(target_l3_p, Tracked(self.l3_tables.borrow_mut()), target_l3i,
+            PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } },
+            Tracked(&mut *lctx));
+        proof { self.l2_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); self.l2_rev_map = Ghost(self.l2_rev_map.view().insert(page_map_ptr, (target_l4i, target_l3i))); }
+        proof {
+            assert(Self::create_entry_l3_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l3_p, page_map_ptr)) by { reveal(IommuTable::create_entry_l3_eof_transition_framing); };
+            Self::create_entry_l3_eof(*old(self), *self, target_l4i, target_l3i, target_l3_p, page_map_ptr);
+        }
+    }
+
+    pub fn create_entry_l2(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+        requires
+            old(self).wf(),
+            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            old(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            old(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+            page_ptr_valid(page_map_ptr),
+            old(self).page_closure().contains(page_map_ptr) == false,
+            page_map_perm.addr() == page_map_ptr,
+            page_map_perm.is_init(),
+            page_map_perm.value().iommu_wf(),
+            forall|i: usize|
+                #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                #![trigger page_map_perm.value().spec_index(i).perm.present]
+                #![trigger page_map_perm.value().spec_index(i).perm.ps]
+                #![trigger page_map_perm.value().spec_index(i).perm.kernel_present]
+                pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
+            final(self).cr3 == old(self).cr3,
+            final(self).proc_ptr == old(self).proc_ptr,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) == old(self).spec_resolve_mapping_l3(target_l4i, target_l3i),
+            final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == page_map_ptr,
+            final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+            final(self).kernel_entries =~= old(self).kernel_entries,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
+        }
+
+        assert(mem_valid(page_map_ptr)) by { page_ptr_valid_imply_mem_valid(page_map_ptr); };
+        iommu_page_map_set_published_in_map(target_l2_p, Tracked(self.l2_tables.borrow_mut()), target_l2i,
+            PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: false, kernel_present: true } },
+            Tracked(&mut *lctx));
+        proof { self.l1_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); self.l1_rev_map = Ghost(self.l1_rev_map.view().insert(page_map_ptr, (target_l4i, target_l3i, target_l2i))); }
+        proof {
+            assert(Self::create_entry_l2_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr)) by { reveal(IommuTable::create_entry_l2_eof_transition_framing); };
+            Self::create_entry_l2_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, page_map_ptr);
+        }
+    }
+
+    pub fn map_4k_page(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+        requires
+            old(self).wf(),
+            old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            iova_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i,))),
+            old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            old(self).spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is None
+                || old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
+            page_ptr_valid(target_entry.addr),
+            target_entry.present,
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() == old(self).page_closure(),
+            final(self).mapping_4k.view() == old(self).mapping_4k.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry),
+            final(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
+                perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: false, kernel_present: true } }),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(target_l4i),
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) == old(self).spec_resolve_mapping_l3(target_l4i, target_l3i),
+            forall|l4i: L4Index|
+                #![trigger pei_valid(l4i)]
+                final(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
+                    #![trigger pei_valid(l3i)]
+                    pei_valid(l3i) ==> forall|l2i: L2Index|
+                        #![trigger final(self).spec_resolve_mapping_l2(l4i, l3i, l2i)]
+                        pei_valid(l2i) ==> final(self).spec_resolve_mapping_l2(l4i, l3i, l2i) == old(self).spec_resolve_mapping_l2(l4i, l3i, l2i),
+            final(self).kernel_entries =~= old(self).kernel_entries,
+            final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
+            final(self).cr3 =~= old(self).cr3,
+            final(self).proc_ptr =~= old(self).proc_ptr,
+    {
+        proof {
+            self.wf_l4_at(target_l4i);
+            self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
+            self.wf_l1_at(self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr, target_l1i);
+        }
+        assert(mem_valid(target_entry.addr)) by { page_ptr_valid_imply_mem_valid(target_entry.addr); };
+        iommu_page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i,
+            PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: false, kernel_present: true } },
+            Tracked(&mut *lctx));
+        proof { self.mapping_4k = Ghost(self.mapping_4k.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),*target_entry)); }
+        proof {
+            assert(Self::map_4k_page_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by { reveal(IommuTable::map_4k_page_eof_transition_framing); };
+            Self::map_4k_page_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
+        }
+    }
+}
+} // verus!

@@ -25,7 +25,7 @@ pub proof fn index_path_successor_implies_path_le_drops_only_predecessor(n: (L4I
 {
 }
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// No abstract 4K mapping exists in the inclusive L1 interval under one
     /// fixed L4/L3/L2 path.
     pub open spec fn spec_mapping_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, start_l1i: L1Index, end_l1i: L1Index) -> bool {

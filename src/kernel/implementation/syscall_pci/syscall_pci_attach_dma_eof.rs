@@ -14,7 +14,7 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr:
             let before = pre.it_mp.spec_index(table).view();
             let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
             &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (PageTable { did: Some(did), ..before })
+            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
             &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
@@ -63,7 +63,7 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
             let before = pre.it_mp.spec_index(table).view();
             let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
             &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (PageTable { did: Some(did), ..before })
+            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
             &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
@@ -109,7 +109,7 @@ proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
             let before = pre.it_mp.spec_index(table).view();
             let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
             &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (PageTable { did: Some(did), ..before })
+            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
             &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()
@@ -157,7 +157,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
             let before = pre.it_mp.spec_index(table).view();
             let did = if before.did is Some { before.did.unwrap() } else { pci_bdf_did(bus, device, function) };
             &&& vtd_domain_id_valid(did)
-            &&& post.it_mp.spec_index(table).view() == (PageTable { did: Some(did), ..before })
+            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: Some(did), ..before })
             &&& post.it_mp.spec_index(table).view().page_closure() == before.page_closure()
             &&& post.it_mp.spec_index(table).view().mapping_4k() == before.mapping_4k()
             &&& post.it_mp.spec_index(table).view().mapping_2m() == before.mapping_2m()

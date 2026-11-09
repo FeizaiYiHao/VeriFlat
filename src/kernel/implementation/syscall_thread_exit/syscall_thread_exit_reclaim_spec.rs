@@ -43,7 +43,7 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
     &&& post.it_mp.lock_id_by_key(iommu_table) == pre.it_mp.lock_id_by_key(iommu_table)
     &&& post.it_mp.spec_index(iommu_table).locking_thread() == table.locking_thread()
     &&& post.it_mp.spec_index(iommu_table).being_killed() == table.being_killed()
-    &&& post.it_mp.spec_index(iommu_table).view() == (PageTable { did: None, ..table.view() })
+    &&& post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..table.view() })
     &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == table.view().mapping_4k()
     &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == table.view().mapping_2m()
     &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == table.view().mapping_1g()

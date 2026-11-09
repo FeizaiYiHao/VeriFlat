@@ -7,7 +7,7 @@ use super::pagemap::*;
 use super::entry::*;
 use vstd::simple_pptr::*;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// First half of 4K unmap: make future page walks miss while retaining the
     /// kernel mapping record that backs any stale TLB entry. A caller must flush
     /// those entries before invoking `unmap_4k_page_kernel`.
@@ -77,8 +77,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     }
 
     /// Final half of 4K unmap: remove the kernel mapping only after its user
-    /// present bit is already clear, or directly from an IOMMU table that no
-    /// device domain references (`did is None`), which no IOTLB can cache.
+    /// present bit is already clear.
     /// Kernel-level callers must additionally establish that no stale TLB entry
     /// remains; restoring `cpu_tlb_wf` after this removal enforces that obligation.
     pub fn unmap_4k_page_kernel(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>)
@@ -91,7 +90,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false || (TABLE_TYPE == IOMMU_TYPE && old(self).did is None),
+            old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -141,7 +140,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             old(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || old(self).mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             old(self).page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures

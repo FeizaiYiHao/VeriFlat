@@ -40,7 +40,7 @@ pub proof fn iommu_table_perms_wf_kernel_l4_end_at(it_mp: IommuTableLockedMap, i
         iommu_table_perms_wf(it_mp),
         it_mp.dom().contains(it_ptr),
     ensures it_mp.spec_index(it_ptr).view().kernel_l4_end == 0,
-{ reveal(iommu_table_perms_wf); reveal(PageTable::kernel_entries_wf); }
+{ reveal(iommu_table_perms_wf); reveal(IommuTable::kernel_entries_wf); }
 
 pub proof fn iommu_table_perms_wf_map(it_mp: IommuTableLockedMap)
     requires iommu_table_perms_wf(it_mp)

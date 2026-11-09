@@ -13,6 +13,7 @@ pub fn iommu_root_table_reassign_detached(
     Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: Option<PciBdf>)
     requires
+        iommu_table_perms_wf(k.it_mp),
         old(irt).inv(),
         old(iommu_tlb).inv(),
         pci_bdf_valid(bus, device, function),
@@ -66,7 +67,7 @@ pub fn iommu_root_table_reassign_detached(
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
         final(iommu_table_map).spec_index(iommu_table_ptr).view()
-            == (PageTable { did: final(iommu_table_map).spec_index(iommu_table_ptr).view().did, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+            == (IommuTable { did: final(iommu_table_map).spec_index(iommu_table_ptr).view().did, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
         final(iommu_table_map).spec_index(iommu_table_ptr).view().did == if ret is Some { Some(pci_bdf_did(ret.unwrap().0, ret.unwrap().1, ret.unwrap().2)) }
             else if old(irt).view().spec_index_iommu_did(bus, device, function) == Some(pci_bdf_did(bus, device, function)) { None }
             else { old(iommu_table_map).spec_index(iommu_table_ptr).view().did },
@@ -125,6 +126,7 @@ fn iommu_root_table_migrate_did(
     Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
 )
     requires
+        iommu_table_perms_wf(k.it_mp),
         old(irt).inv(),
         old(iommu_tlb).inv(),
         page_ptr_valid(root),
@@ -162,6 +164,7 @@ fn iommu_root_table_migrate_did(
     let mut function: usize = 0;
     while bus < PCI_BUS_COUNT
         invariant
+            iommu_table_perms_wf(k.it_mp),
             irt.inv(),
             irt.wlocked_by(lctx),
             irt.locking_thread() == old(irt).locking_thread(),
@@ -219,6 +222,7 @@ pub fn iommu_root_table_detach(
     Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
 )
     requires
+        iommu_table_perms_wf(k.it_mp),
         old(irt).inv(),
         old(iommu_tlb).inv(),
         pci_bdf_valid(bus, device, function),
@@ -308,7 +312,7 @@ pub fn iommu_root_table_attach(
         final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
-        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did: Some(did), ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (IommuTable { did: Some(did), ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init() && iommu_table_map.spec_index(iommu_table_ptr).view().inv()) by {
@@ -336,6 +340,7 @@ pub fn iommu_root_table_detach_all(
     Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
+        iommu_table_perms_wf(k.it_mp),
         old(irt).inv(),
         old(iommu_tlb).inv(),
         iommu_root_table_typed_lock_map_aligned(*old(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
@@ -370,7 +375,7 @@ pub fn iommu_root_table_detach_all(
         final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
-        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (IommuTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
         final(iommu_tlb).inv(),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
@@ -406,6 +411,7 @@ pub fn iommu_root_table_reassign_detach_all(
     Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
+        iommu_table_perms_wf(k.it_mp),
         old(irt).inv(),
         old(iommu_tlb).inv(),
         iommu_root_table_typed_lock_map_aligned(*old(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
@@ -440,7 +446,7 @@ pub fn iommu_root_table_reassign_detach_all(
         final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
-        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (IommuTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
         final(iommu_tlb).inv(),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
             &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))

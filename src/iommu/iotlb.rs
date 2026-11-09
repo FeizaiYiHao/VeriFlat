@@ -24,6 +24,7 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAI
 /// The ATS/device-TLB is not state: every present context entry has translation type 0 (see `IommuRootTable::wf`).
 /// Paging-structure caches of the units are folded into the domain's `SingleTLB`: an attached IOMMU table never changes a
 /// present non-leaf entry, and a kill detaches the table before it invalidates the domain.
+/// Managed table well-formedness excludes W-only entries, making the present/R refill abstraction valid.
 pub struct IommuTLB {
     pub domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
     pub context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,
@@ -50,6 +51,7 @@ impl IommuTLB {
         requires
             old(self).inv(),
             k.iommu_tlb == *old(self),
+            iommu_table_perms_wf(k.it_mp),
             vtd_domain_id_valid(did),
             !lctx.iommu_root_table_lock_map().dom().is_empty(),
         ensures
@@ -74,6 +76,7 @@ impl IommuTLB {
         requires
             old(self).inv(),
             k.iommu_tlb == *old(self),
+            iommu_table_perms_wf(k.it_mp),
             vtd_domain_id_valid(did),
             !lctx.iommu_table_lock_map().dom().is_empty(),
         ensures

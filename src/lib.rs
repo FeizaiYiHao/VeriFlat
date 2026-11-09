@@ -15,6 +15,7 @@ pub mod allocator;
 pub mod pagetable_seq;
 pub mod pagetable_concurrent;
 pub mod iommu;
+pub mod iommu_table;
 pub mod kernel;
 
 pub use define::*;
@@ -30,6 +31,7 @@ pub use allocator::*;
 pub use pagetable_seq::*;
 pub use pagetable_concurrent::*;
 pub use iommu::*;
+pub use iommu_table::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::free_2m_page::drain_2m_cache_batch;

@@ -83,7 +83,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
             == if pre.irt.view().spec_index_owner(b, d, f) == pre.it_mp.spec_index(iommu_table).view().proc_ptr { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) },
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
         post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
-        post.it_mp.spec_index(iommu_table).view() == (PageTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() }),
+        post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() }),
         did matches Some(d) ==> post.iommu_tlb.view() == pre.iommu_tlb.view().insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
         did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view(),
     ensures

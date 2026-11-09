@@ -24,8 +24,7 @@ pub open spec fn cpu_tlb_within_may_cache(k: KernelK, cpu_id: CpuId, pcid: Pcid,
     }
 }
 
-/// What the IOTLB may cache for domain `did` in state `k`: present leaves of the IOMMU table attached at the DID's
-/// anchor B/D/F when the anchor carries `did`, nothing otherwise.
+/// What the IOTLB may cache for domain `did` in state `k`: present leaves of the IOMMU table attached at the DID's anchor B/D/F when the anchor carries `did`, nothing otherwise. Managed IOMMU words satisfy W implies R, so hardware R-or-W reachability is exactly this present/R view.
 pub open spec fn iommu_tlb_within_may_cache(k: KernelK, did: VtdDomainId, tlb: SingleTLB) -> bool {
     let anchor = pci_bdf_of_did(did);
     let root_table = k.irt.view();

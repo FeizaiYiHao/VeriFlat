@@ -47,7 +47,7 @@ impl StructureScan {
     }
 }
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// `scan` names a table page that the matching `remove_l*_entry` can unlink, or reports that no user L4 entry is present.
     pub open spec fn structure_scan_wf(&self, scan: StructureScan) -> bool {
         match scan {

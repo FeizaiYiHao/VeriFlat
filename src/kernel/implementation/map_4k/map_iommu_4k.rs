@@ -30,7 +30,7 @@ pub fn map_shared_page_into_iommu_4k(
         old(krnl).thrd_mp.dom().contains(thrd_ptr),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         !thread_is_dangling(old(krnl).thrd_mp.spec_index(thrd_ptr)),
-        !old(krnl).thrd_mp.spec_index(thrd_ptr).view_ghost().exited,
+        !old(krnl).thrd_mp.spec_index(thrd_ptr).view().exited.view(),
         old(krnl).pt_mp.dom().contains(source_pagetable),
         old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == prc_ptr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
@@ -113,7 +113,9 @@ pub fn map_shared_page_into_iommu_4k(
         assert(!krnl.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((iommu_table_ptr, iova))) by {
             page_iommu_table_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, pg_idx, iommu_table_ptr, iova);
         };
-        assert(krnl.pg_arr.spec_index(pg_idx).view().view().ref_count < usize::MAX) by { mapped_4k_page_ref_count_lt_usize_max(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pg_idx); };
+        assert(krnl.pg_arr.spec_index(pg_idx).view().view().ref_count < usize::MAX) by {
+            mapped_4k_page_ref_count_lt_usize_max(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pg_idx, krnl.ctn_mp, krnl.prc_mp, krnl.it_mp);
+        };
     }
     page_array_add_4k_iommu_mapping(&mut krnl.pg_arr, pg_idx, iommu_table_ptr, iova, Tracked(&*lctx), Tracked(&page_lock_perm));
     iommu_table_map_insert_4k(&mut krnl.it_mp, iommu_table_ptr, indices, target_l1_ptr, &source_entry, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));

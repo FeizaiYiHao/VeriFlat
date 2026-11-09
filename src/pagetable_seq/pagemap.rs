@@ -26,6 +26,12 @@ impl PageMap {
             pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
     }
 
+    pub proof fn wf_at(&self, index: usize)
+        requires self.wf(), pei_valid(index),
+        ensures usize2page_entry(self.ar.view().spec_index(index as int)) =~= self.spec_seq.view().spec_index(index as int),
+    {
+    }
+
     pub open spec fn view(&self) -> Seq<PageEntry> { self.spec_seq.view() }
 
     pub open spec fn spec_index(&self, index: usize) -> PageEntry
@@ -89,6 +95,7 @@ impl PageMap {
             pei_valid(index),
         ensures
             ret =~= self.spec_index(index),
+            mem_valid(ret.addr),
     {
         return usize2page_entry(*self.ar.get(index));
     }
@@ -99,6 +106,7 @@ impl PageMap {
             pei_valid(index),
         ensures
             ret =~= self.spec_index(index),
+            mem_valid(ret.addr),
     {
         return self.index(index);
     }

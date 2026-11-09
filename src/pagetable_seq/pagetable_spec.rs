@@ -85,12 +85,12 @@ pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockS
         |w: WindowVa| if m.dom().contains(w) { m[w] } else if va_range_2m_windows(locked_range).contains(w) { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked })
 }
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state.
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
-            did: if TABLE_TYPE == PT_TYPE { None } else { self.did },
+            did: None,
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
@@ -118,9 +118,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
-            TABLE_TYPE == PT_TYPE ==> pcid is Some,
-            TABLE_TYPE == IOMMU_TYPE ==> pcid is None,
-            TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
+            pcid is Some,
         ensures
             ret.wf(),
             ret.cr3 == page_map_ptr,
@@ -162,7 +160,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         requires
             pei_valid(ret.kernel_l4_end),
             page_ptr_valid(ret.cr3),
-            TABLE_TYPE == IOMMU_TYPE ==> ret.kernel_l4_end == 0,
             ret.l4_table.view().dom() == set![ret.cr3],
             ret.l4_table.view().spec_index(ret.cr3).addr() == ret.cr3,
             ret.l4_table.view().spec_index(ret.cr3).is_init(),
@@ -246,22 +243,14 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     #[verifier::inline]
     pub open spec fn l1_entry(&self, p: PageMapPtr, i: L1Index) -> PageEntry { self.l1_tables.view().spec_index(p).value().spec_index(i) }
 
-    /// A CPU table has a PCID; an IOMMU table has none.
-    pub open spec fn pcid_wf(&self) -> bool {
-        &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some
-        &&& TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
-    }
+    /// A CPU table has a PCID.
+    pub open spec fn pcid_wf(&self) -> bool { self.pcid is Some }
 
-    /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
-    pub open spec fn did_wf(&self) -> bool {
-        &&& TABLE_TYPE == PT_TYPE ==> self.did is None
-        &&& self.did is Some ==> vtd_domain_id_valid(self.did->Some_0)
-    }
+    /// A CPU table has no VT-d domain id.
+    pub open spec fn did_wf(&self) -> bool { self.did is None }
 
     pub open spec fn pcid_value(&self) -> Pcid
-        recommends
-            TABLE_TYPE == PT_TYPE,
-            self.pcid is Some,
+        recommends self.pcid is Some,
     {
         self.pcid.unwrap()
     }
@@ -561,17 +550,17 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             #![trigger self.mapping_4k.view().dom().contains(va)]
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
-            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid::<TABLE_TYPE>(va) && page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
+            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid::<PT_TYPE>(va) && page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m.view().dom().contains(va)]
             #![trigger self.mapping_2m.view().dom().contains(va), page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)]
             #![trigger self.mapping_2m.view().dom().contains(va)]
-            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid::<TABLE_TYPE>(va) && page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)
+            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid::<PT_TYPE>(va) && page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
+            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -677,10 +666,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             }
     }
 
-    /// kernel_entries equals the root's kernel L4 entries `[0, kernel_l4_end)`; an IOMMU table has none.
+    /// kernel_entries equals the root's kernel L4 entries `[0, kernel_l4_end)`.
     #[verifier::opaque]
     pub open spec fn kernel_entries_wf(&self) -> bool {
-        &&& TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
         &&& pei_valid(self.kernel_l4_end)
         &&& self.kernel_entries.view().len() =~= self.kernel_l4_end as nat
         &&& forall|i: L4Index|
@@ -691,11 +679,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub proof fn kernel_entries_wf_l4_end_valid_at(&self)
         requires self.kernel_entries_wf()
         ensures pei_valid(self.kernel_l4_end)
-    { reveal(PageTable::kernel_entries_wf); }
-
-    pub proof fn kernel_entries_wf_iommu_l4_end_at(&self)
-        requires self.kernel_entries_wf()
-        ensures TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
     { reveal(PageTable::kernel_entries_wf); }
 
     pub proof fn kernel_entries_wf_len_at(&self)
@@ -729,20 +712,19 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> LockInvTrait for PageTable<TABLE_TYPE> {
+impl LockInvTrait for PageTable<PT_TYPE> {
     /// The page-table invariant `wf`.
     open spec fn inv(&self) -> bool {
         &&& self.wf()
     }
 }
-impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTable<TABLE_TYPE> {
+impl LockMajorTrait for PageTable<PT_TYPE> {
     open spec fn lock_major_1(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_2(&self) -> LockMajorId { 0x233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 0x233 }
 
     open spec fn lock_major_default(&self) -> LockMajorId {
-        if TABLE_TYPE == PT_TYPE { PAGE_TABLE_LOCK_MAJOR }
-        else { IOMMU_TABLE_LOCK_MAJOR }
+        PAGE_TABLE_LOCK_MAJOR
     }
 
     open spec fn lock_major_1_predicate(&self) -> bool { false }
@@ -751,7 +733,7 @@ impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTable<TABLE_TYPE> {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTable<TABLE_TYPE> {
+impl LockOwnerIdTrait for PageTable<PT_TYPE> {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::none() }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::none() }
 }

@@ -4,7 +4,7 @@ use crate::*;
 use super::pagetable_spec::*;
 use super::entry::*;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// EOF closure of `remove_l2_entry`: table-structure leaves and the shrunk page closure.
     pub(super) proof fn remove_l2_entry_eof_tables(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
         requires

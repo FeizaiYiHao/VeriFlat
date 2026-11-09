@@ -76,7 +76,7 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& post.it_mp.spec_index(t).being_killed() == table.being_killed()
         &&& post.it_mp.spec_index(t).locking_thread() is Write
         &&& post.it_mp.spec_index(t).locking_thread()->Write_thread_id == thread_id
-        &&& post.it_mp.spec_index(t).view() == (PageTable { did: post.it_mp.spec_index(t).view().did, ..table.view() })
+        &&& post.it_mp.spec_index(t).view() == (IommuTable { did: post.it_mp.spec_index(t).view().did, ..table.view() })
         &&& post.it_mp.spec_index(t).view().page_closure() == table.view().page_closure()
         &&& post.it_mp.spec_index(t).view().mapping_4k() == table.view().mapping_4k()
         &&& post.it_mp.spec_index(t).view().mapping_2m() == table.view().mapping_2m()

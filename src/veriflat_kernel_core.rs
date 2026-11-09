@@ -16,6 +16,7 @@ pub mod allocator;
 pub mod pagetable_seq;
 pub mod pagetable_concurrent;
 pub mod iommu;
+pub mod iommu_table;
 
 pub use define::*;
 pub use lemma::*;
@@ -30,6 +31,7 @@ pub use allocator::*;
 pub use pagetable_seq::*;
 pub use pagetable_concurrent::*;
 pub use iommu::*;
+pub use iommu_table::*;
 
 pub mod kernel;
 

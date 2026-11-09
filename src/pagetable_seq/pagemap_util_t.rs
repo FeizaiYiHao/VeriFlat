@@ -169,6 +169,8 @@ pub fn page_perm_to_page_map(pg_ptr: PagePtr, Tracked(page_perm): Tracked<PagePe
         ret.1.view().is_init(),
         ret.1.view().value().wf(),
         forall|i: usize| #![trigger ret.1.view().value().spec_index(i).is_empty()] pei_valid(i) ==> ret.1.view().value().spec_index(i).is_empty(),
+        forall|i: usize| #![trigger ret.1.view().value().ar.view().spec_index(i as int)]
+            pei_valid(i) ==> ret.1.view().value().ar.view().spec_index(i as int) == 0usize,
 {
     unsafe {
         let uptr = pg_ptr as *mut MaybeUninit<PageMap>;

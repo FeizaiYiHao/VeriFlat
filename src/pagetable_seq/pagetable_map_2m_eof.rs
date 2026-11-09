@@ -4,7 +4,7 @@ use crate::*;
 use super::pagetable_spec::*;
 use super::entry::*;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// Operation-state summary of `map_2m_page`: entry `target_l2i` of the L2 map `target_l2_p` now maps `target_entry` as a
     /// 2M page and the kernel 2M mapping records it at that address; every other field is unchanged.
     #[verifier::opaque]
@@ -34,7 +34,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -72,7 +72,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -95,7 +95,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -118,7 +118,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -142,7 +142,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -165,7 +165,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -188,7 +188,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -211,7 +211,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -235,7 +235,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -258,7 +258,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -281,7 +281,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -304,7 +304,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -328,7 +328,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -352,7 +352,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -376,7 +376,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             pre.l2_tables.view().dom().contains(target_l2_p),
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
@@ -400,7 +400,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
@@ -423,7 +423,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || pre.mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             pre.page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
-            page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
+            page_table_key_2m_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures

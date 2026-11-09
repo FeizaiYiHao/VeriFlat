@@ -3,16 +3,21 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The reverse mappings of one mapped 4K page occupy distinct entries in the
-/// finite page-table address space.
+/// CPU and IOMMU reverse mappings each occupy a finite product of physical root pages and aligned 48-bit addresses; their combined cardinality bounds the reference count.
 #[verifier::external_body]
-pub proof fn mapped_4k_page_ref_count_lt_usize_max(pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, pg_idx: PageIndex)
+pub proof fn mapped_4k_page_ref_count_lt_usize_max(
+    pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, pg_idx: PageIndex,
+    container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap,
+)
     requires
         pagetable_perms_wf(pagetable_map),
         pagetable_lower_wf(pagetable_map, pt_lower),
         page_array_wf(page_array),
         page_mappings_pagetable_wf(pagetable_map, pt_lower, page_array),
         pagetable_pages_wf(pagetable_map, pt_lower, page_array),
+        iommu_table_perms_wf(iommu_table_map),
+        iommu_table_pages_wf(iommu_table_map, page_array),
+        page_iommu_table_wf(container_map, process_map, iommu_table_map, page_array),
         index_valid(NUM_PAGES, pg_idx),
         page_array.spec_index(pg_idx).view().view().state is Mapped4k,
     ensures

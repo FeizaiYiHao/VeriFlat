@@ -4,7 +4,7 @@ use crate::*;
 use super::pagetable_spec::*;
 use super::entry::*;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// Operation-state summary of `unmap_4k_page_kernel`: entry `target_l1i` of the L1 map `target_l1_p` is cleared and the
     /// kernel 4K mapping of its address is removed; every other field is unchanged.
     #[verifier::opaque]

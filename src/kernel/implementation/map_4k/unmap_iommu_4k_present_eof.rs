@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Clears the present bit of the 4K leaf `iova` in IOMMU table `iommu_table`; every other kernel field is unchanged.
+/// Disables the raw R/W bits at `iova`, keeping its historical mapping until flush; other kernel fields stay.
 #[verifier::opaque]
 pub(super) open spec fn clear_iommu_4k_mapping_present_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr) -> bool {
     let old_it = pre.it_mp.spec_index(iommu_table);
@@ -11,6 +11,9 @@ pub(super) open spec fn clear_iommu_4k_mapping_present_eof_transition_framing(pr
     &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table)
     &&& new_it.locking_thread() == old_it.locking_thread()
     &&& new_it.being_killed() == old_it.being_killed()
+    &&& new_it.view().spec_resolve_mapping_4k_l1(spec_v2l4index(iova), spec_v2l3index(iova), spec_v2l2index(iova), spec_v2l1index(iova)) is Some
+    &&& !new_it.view().spec_resolve_mapping_4k_l1(spec_v2l4index(iova), spec_v2l3index(iova), spec_v2l2index(iova), spec_v2l1index(iova))->0.perm.present
+    &&& !new_it.view().spec_resolve_mapping_4k_l1(spec_v2l4index(iova), spec_v2l3index(iova), spec_v2l2index(iova), spec_v2l1index(iova))->0.perm.write
     &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, MapEntry { present: false, ..old_it.view().mapping_4k().spec_index(iova) })
     &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
     &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()

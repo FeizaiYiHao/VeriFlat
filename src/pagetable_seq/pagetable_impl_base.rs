@@ -8,7 +8,7 @@ use super::entry::*;
 use vstd::simple_pptr::*;
 
 // exec
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
@@ -390,7 +390,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
-            page_table_key_4k_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i,))),
+            page_table_key_4k_valid::<PT_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i,))),
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             old(self).spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is None

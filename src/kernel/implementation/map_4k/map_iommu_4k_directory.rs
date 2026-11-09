@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 
 verus! {
 use crate::*;
@@ -186,6 +187,14 @@ pub fn install_staged_4k_iommu_table_page(
         thread.syscall_progress = Ghost(iommu_map_4k_progress_after_directory(thread.syscall_progress.view(), level));
     }
     let (page_map_ptr, Tracked(page_map_perm)) = page_perm_to_page_map(pg_ptr, Tracked(page_perm));
+    assert(page_map_perm.value().iommu_wf()) by {
+        assert(iommu_word_valid(0usize)) by (compute);
+        assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user
+            && !spec_usize2page_entry(0usize).perm.write) by (compute);
+        assert_seqs_equal!(page_map_perm.value().spec_seq.view() == Seq::new(512, |i: int| spec_usize2page_entry(0usize)), i => {
+            page_map_perm.value().wf_at(i as usize);
+        });
+    };
     match level {
         MissingPageTableLevel::L4 => {
             iommu_table_map_create_entry_l4(&mut krnl.it_mp, iommu_table_ptr, (indices.0, indices.1), page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx), iommu_table_lock_perm);

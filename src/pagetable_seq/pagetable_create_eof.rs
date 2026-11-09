@@ -4,7 +4,7 @@ use crate::*;
 use super::pagetable_spec::*;
 use super::entry::*;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// Operation-state summary of `create_entry_l4`: the root map's entry `target_l4i` now points to the new empty L3 map
     /// `page_map_ptr`, which joins the L3 maps with reverse index `target_l4i`; every other field is unchanged.
     #[verifier::opaque]

@@ -5,7 +5,7 @@ use super::pagetable_spec::*;
 use super::entry::*;
 use vstd::assert_sets_equal;
 
-impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
+impl PageTable<PT_TYPE> {
     /// Operation-state summary of `remove_l4_entry`: the root map's entry `target_l4i` is cleared and the L3 map `target_l3_p`
     /// leaves the L3 maps and their reverse index; every other field is unchanged.
     #[verifier::opaque]

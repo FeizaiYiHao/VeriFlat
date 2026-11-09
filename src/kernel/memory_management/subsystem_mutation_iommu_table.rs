@@ -41,6 +41,9 @@ pub fn iommu_table_map_clear_4k_present(iommu_table_map: &mut IommuTableLockedMa
         final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is Some,
+        !final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3)->0.perm.present,
+        !final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3)->0.perm.write,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().insert(spec_index2va(indices),
             MapEntry { present: false, ..old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().spec_index(spec_index2va(indices)) }),
         final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
@@ -81,7 +84,7 @@ pub fn iommu_table_map_set_did(
         final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
         final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
         final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
-        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (IommuTable { did, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
 {
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
@@ -232,7 +235,7 @@ pub fn iommu_table_map_create_entry_l4(
         !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
         page_map_perm.addr() == page_map_ptr,
         page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        page_map_perm.value().iommu_wf(),
         forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),
@@ -297,7 +300,7 @@ pub fn iommu_table_map_create_entry_l3(
         !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
         page_map_perm.addr() == page_map_ptr,
         page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        page_map_perm.value().iommu_wf(),
         forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),
@@ -363,7 +366,7 @@ pub fn iommu_table_map_create_entry_l2(
         !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
         page_map_perm.addr() == page_map_ptr,
         page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        page_map_perm.value().iommu_wf(),
         forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),
