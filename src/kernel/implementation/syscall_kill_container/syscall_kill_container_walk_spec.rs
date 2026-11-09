@@ -4,6 +4,19 @@ use crate::*;
 use super::syscall_kill_container_spec::kill_container_progress;
 
 verus! {
+// Clipping is inactive for well-formed lists, whose stored lengths are usize.
+pub open spec fn kill_container_walk_digits(ctn_mp: ContainerLockedMap, chain: Seq<RwLockContainerPtr>) -> Seq<nat> {
+    Seq::new(chain.len(), |i: int| {
+        let count = ctn_mp.spec_index(chain[i]).view().children.view().len();
+        if count <= usize::MAX { count } else { usize::MAX as nat }
+    })
+}
+
+pub open spec fn kill_container_walk_rank(ctn_mp: ContainerLockedMap, chain: Seq<RwLockContainerPtr>, active: bool) -> nat {
+    if active { 1 + seq_to_nat(
+        kill_container_walk_digits(ctn_mp, chain), MAX_CONTAINER_TREE_DEPTH as nat + 1, usize::MAX as nat + 2) } else { 0 }
+}
+
 /// The killer `thrd_ptr` of process `prc_ptr`, running on `cpu_id` in its container `owner_ptr`, walks `chain`,
 /// the containers it marked with `killer_info` from a child of its container down to the target, and works on the
 /// target, or on its own container once the chain is empty, at stage `Walk`. It write-holds its cpu, inside its kernel

@@ -4,6 +4,19 @@ use crate::*;
 use super::syscall_kill_process_spec::kill_progress;
 
 verus! {
+// Clipping is inactive for well-formed lists, whose stored lengths are usize.
+pub open spec fn kill_process_walk_digits(prc_mp: ProcessLockedMap, chain: Seq<RwLockProcessPtr>) -> Seq<nat> {
+    Seq::new(chain.len(), |i: int| {
+        let count = prc_mp.spec_index(chain[i]).view().children.view().len();
+        if count <= usize::MAX { count } else { usize::MAX as nat }
+    })
+}
+
+pub open spec fn kill_process_walk_rank(prc_mp: ProcessLockedMap, chain: Seq<RwLockProcessPtr>, active: bool) -> nat {
+    if active { 1 + seq_to_nat(
+        kill_process_walk_digits(prc_mp, chain), usize::MAX as nat + 1, usize::MAX as nat + 2) } else { 0 }
+}
+
 /// What a kill reaches: the subtree below the killer's process `process`, or every process of the victim container
 /// `container`.
 pub ghost enum KillScope { Subtree { process: RwLockProcessPtr }, Container { container: RwLockContainerPtr } }

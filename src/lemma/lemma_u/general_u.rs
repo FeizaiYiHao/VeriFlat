@@ -1,5 +1,91 @@
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::arithmetic::power::{pow, lemma_pow_positive};
 verus! {
+// Missing sequence positions have value base - 1.
+pub open spec fn seq_value_at(digits: Seq<nat>, index: int, base: nat) -> nat {
+    if 0 <= index < digits.len() { digits[index] } else { (base - 1) as nat }
+}
+
+// Interpret the sequence in base, right-padded with base - 1 to height digits.
+// Spec recursion traverses only the supplied sequence.
+pub open spec fn seq_to_nat(digits: Seq<nat>, height: nat, base: nat) -> nat
+    decreases digits.len(),
+{
+    if height == 0 || digits.len() == 0 { (pow(base as int, height) - 1) as nat }
+    else { (digits[0] * pow(base as int, (height - 1) as nat) + seq_to_nat(digits.drop_first(), (height - 1) as nat, base)) as nat }
+}
+
+pub proof fn seq_bounded_implies_seq_to_nat_bounded(digits: Seq<nat>, height: nat, base: nat)
+    requires
+        base >= 2,
+        digits.len() <= height,
+        forall|i: int| 0 <= i < digits.len() ==> #[trigger] digits[i] < base,
+    ensures
+        seq_to_nat(digits, height, base) < pow(base as int, height),
+    decreases digits.len(),
+{
+    assert(pow(base as int, height) > 0) by { lemma_pow_positive(base as int, height); };
+    if height != 0 && digits.len() != 0 {
+        let tail = seq_to_nat(digits.drop_first(), (height - 1) as nat, base);
+        let place = pow(base as int, (height - 1) as nat);
+        assert(tail < place) by { seq_bounded_implies_seq_to_nat_bounded(digits.drop_first(), (height - 1) as nat, base); };
+        assert(pow(base as int, height) == base * place) by { reveal(pow); };
+        assert(0 <= digits[0] * place + tail < base * place) by(nonlinear_arith)
+            requires
+                0 <= digits[0] < base,
+                0 <= tail < place;
+    }
+}
+
+pub proof fn seq_first_difference_smaller_implies_seq_to_nat_smaller(
+    before: Seq<nat>, after: Seq<nat>, height: nat, base: nat, index: nat)
+    requires
+        base >= 2,
+        before.len() <= height,
+        after.len() <= height,
+        forall|i: int| 0 <= i < before.len() ==> #[trigger] before[i] < base,
+        forall|i: int| 0 <= i < after.len() ==> #[trigger] after[i] < base,
+        index < height,
+        forall|j: int| #![trigger seq_value_at(after, j, base)] #![trigger seq_value_at(before, j, base)]
+            #![trigger after[j]] #![trigger before[j]]
+            0 <= j < index ==> seq_value_at(after, j, base) == seq_value_at(before, j, base),
+        seq_value_at(after, index as int, base) < seq_value_at(before, index as int, base),
+    ensures
+        seq_to_nat(after, height, base) < seq_to_nat(before, height, base),
+    decreases index,
+{
+    let before_tail = if before.len() == 0 { before } else { before.drop_first() };
+    let after_tail = if after.len() == 0 { after } else { after.drop_first() };
+    let before_rest = seq_to_nat(before_tail, (height - 1) as nat, base);
+    let after_rest = seq_to_nat(after_tail, (height - 1) as nat, base);
+    let before_head = seq_value_at(before, 0, base);
+    let after_head = seq_value_at(after, 0, base);
+    let place = pow(base as int, (height - 1) as nat);
+    assert(after_rest < place) by { seq_bounded_implies_seq_to_nat_bounded(after_tail, (height - 1) as nat, base); };
+    assert(pow(base as int, height) == base * place) by { reveal(pow); };
+    assert(pow(base as int, height) > 0) by { lemma_pow_positive(base as int, height); };
+    assert(seq_to_nat(before, height, base) == before_head * place + before_rest) by(nonlinear_arith)
+        requires
+            before_head >= 0,
+            before_rest >= 0,
+            place > 0,
+            before.len() == 0 ==> before_head == base - 1 && before_rest == place - 1,
+            before.len() == 0 ==> seq_to_nat(before, height, base) == base * place - 1,
+            before.len() != 0 ==> seq_to_nat(before, height, base) == (before_head * place + before_rest) as nat;
+    if index == 0 {
+        assert(after_head * place + after_rest < before_head * place + before_rest) by(nonlinear_arith)
+            requires
+                after_head < before_head,
+                0 <= after_rest < place,
+                before_rest >= 0;
+    } else {
+        assert(after_rest < before_rest) by {
+            seq_first_difference_smaller_implies_seq_to_nat_smaller(before_tail, after_tail, (height - 1) as nat, base, (index - 1) as nat);
+        };
+    }
+}
+
 pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
     requires
         !m.dom().contains(key),
