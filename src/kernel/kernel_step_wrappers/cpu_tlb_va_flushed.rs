@@ -97,12 +97,15 @@ impl KernelK {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(self))),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(self)),
@@ -125,6 +128,7 @@ impl KernelK {
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 }
 }

@@ -41,6 +41,8 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -49,6 +51,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
@@ -86,10 +89,11 @@ impl KernelK {
         } else {
             old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), stable_pagetable_ptr);
         }
-        reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
+        process_pagetable_wf_process_at(old(self).prc_mp, old(self).pt_mp, stable_prc_ptr); process_pagetable_wf_process_at(self.prc_mp, self.pt_mp, stable_prc_ptr);
         kernel_process_projection_at(old(self), stable_prc_ptr); kernel_process_projection_at(&*self, stable_prc_ptr);
         kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_eq(old(self), &*self, old(lctx), stable_prc_ptr, stable_pagetable_ptr);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 }
 
@@ -191,6 +195,28 @@ broadcast proof fn kernel_owned_2m_page_implies_u_iommu_4k_mapping_outside_its_f
         }
     }
 }
+
+/// The `Owned4k` page at `addr` is the target of no 4K mapping of any pagetable in the projection of `k`.
+pub proof fn kernel_owned_4k_page_implies_u_outside_pagetable_4k_mappings(k: KernelK, addr: PagePtr)
+    requires
+        k.inv(),
+        k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
+    ensures
+        forall|p: RwLockProcessPtr, v: VAddr| #![trigger kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v]]
+            kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].pagetable is Some && kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
+            ==> kernel_k_to_kernel_u(k).process_map[p].pagetable->Some_0.mapping_4k[v].addr != addr,
+{ reveal(kernel_k_to_kernel_u); reveal(process_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); }
+
+/// The `Owned4k` page at `addr` is the target of no 4K mapping of any IOMMU table in the projection of `k`.
+pub proof fn kernel_owned_4k_page_implies_u_outside_iommu_4k_mappings(k: KernelK, addr: PagePtr)
+    requires
+        k.inv(),
+        k.pg_arr.spec_index(page_ptr2page_index(addr)).view().view().state is Owned4k,
+    ensures
+        forall|p: RwLockProcessPtr, v: VAddr| #![trigger kernel_k_to_kernel_u(k).process_map[p].iommu_table->Some_0.mapping_4k[v]]
+            kernel_k_to_kernel_u(k).process_map.dom().contains(p) && kernel_k_to_kernel_u(k).process_map[p].iommu_table is Some && kernel_k_to_kernel_u(k).process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
+            ==> kernel_k_to_kernel_u(k).process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr,
+{ reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_wf); reveal(page_iommu_table_wf); }
 
 /// The `Owned4k` page at `addr` lies in no 2M frame that a pagetable maps in the projection of `k`.
 pub proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frames(k: KernelK, addr: PagePtr)

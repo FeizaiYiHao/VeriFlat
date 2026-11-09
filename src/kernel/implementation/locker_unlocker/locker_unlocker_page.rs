@@ -60,6 +60,11 @@ impl KernelK {
             final(lctx).page_lock_map().dom().contains(pg_idx),
             // ---- Kernel-wide invariant re-established ----
             final(self).inv(),
+            final(self).pg_arr.inv(),
+            final(self).pg_arr.spec_index(pg_idx).view().inv(),
+            final(self).pg_arr.spec_index(pg_idx).view().is_init(),
+            final(self).pg_arr.spec_index(pg_idx).view().view().inv(),
+            final(self).pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
@@ -92,6 +97,7 @@ impl KernelK {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             page_lock_op_eof(*old(self), *self, pg_idx);
+            assert(self.pg_arr.inv() && self.pg_arr.spec_index(pg_idx).view().view().addr == page_index2page_ptr(pg_idx)) by { page_array_wf_map(self.pg_arr); page_array_wf_at(self.pg_arr, pg_idx); };
         }
         ret
     }

@@ -20,6 +20,10 @@ impl KernelK {
             old(self).thrd_mp.spec_index(thread).view().quota_4k != old(steps).snapshot_k().thrd_mp.spec_index(thread).view().quota_4k,
         ensures
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
+            forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
+                ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -27,6 +31,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
@@ -72,6 +77,8 @@ impl KernelK {
             kernel_thread_projection_at(&steps.snapshot_k(), thread); kernel_thread_projection_at(&*self, thread);
         };
         self.kernel_step_boundary_raw(lctx, steps);
+        assert(forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
+            ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p)) by { reveal(LockedMap::typed_lock_map_aligned); };
         reveal(allocator_free_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
         reveal(page_array_wf); reveal(LockedArray::lock_id_by_index);
         page_ptr_roundtrip(); page_index_roundtrip();
@@ -86,6 +93,7 @@ impl KernelK {
             seq![old(self).allc_2m_mp.spec_index(allocator_2m).owning_container].lemma_index_contains(0);
         };
         reveal(kernel_steps_prefix_unchanged);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 
     pub proof fn kernel_step_boundary_free_2m_block_split(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, thread: RwLockThreadPtr, allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr)
@@ -104,6 +112,10 @@ impl KernelK {
             old(self).thrd_mp.spec_index(thread).view().quota_4k != old(steps).snapshot_k().thrd_mp.spec_index(thread).view().quota_4k,
         ensures
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
+            forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
+                ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -111,6 +123,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
@@ -148,6 +161,8 @@ impl KernelK {
             kernel_thread_projection_at(&steps.snapshot_k(), thread); kernel_thread_projection_at(&*self, thread);
         };
         self.kernel_step_boundary_raw(lctx, steps);
+        assert(forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
+            ==> whole_pagetable(self.pt_mp, self.pt_lower.view(), p) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), p)) by { reveal(LockedMap::typed_lock_map_aligned); };
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf);
         reveal(page_array_wf); reveal(LockedArray::lock_id_by_index);
         page_ptr_roundtrip(); page_index_roundtrip();
@@ -162,6 +177,7 @@ impl KernelK {
             seq![old(self).allc_4k_mp.spec_index(allocator_4k).owning_container].lemma_index_contains(0);
         };
         reveal(kernel_steps_prefix_unchanged);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 }
 
@@ -177,6 +193,7 @@ impl KernelSteps {
         ensures
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,

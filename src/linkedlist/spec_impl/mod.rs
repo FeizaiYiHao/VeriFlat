@@ -415,8 +415,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             ret.1 == self.view().spec_index(0),
             self.view().contains(ret.1),
             ret.1 == self.map().spec_index(ret.0),
+            self.view().no_duplicates(),
     {
-        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map); }
+        proof {
+            reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map);
+            assert(self.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); };
+        }
         let head_addr = self.head.unwrap();
         let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
         let node: &Node<T> = PPtr::<Node<T>>::from_usize(head_addr).borrow(Tracked(head_perm));

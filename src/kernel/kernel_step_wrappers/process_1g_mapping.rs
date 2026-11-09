@@ -26,6 +26,8 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -34,6 +36,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
@@ -50,6 +53,7 @@ impl KernelK {
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
         reveal(process_pagetable_wf); reveal(process_iommu_table_wf);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 }
 

@@ -37,6 +37,56 @@ pub proof fn kernel_container_quota_2m_changed_implies_u_step(pre: &KernelK, pos
     });
 }
 
+/// Freeing a 2M page of the write-held table `table` to its owner `owner`'s 2M allocator `allc_ptr`, whose quota grows by one while every window lock stays, grows the 2M quota of `owner`, which is `origin` or one of its ancestors.
+pub proof fn kernel_page_freed_to_owner_quota_2m_implies_u_step(
+    pre: &KernelK, post: &KernelK, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
+)
+    requires
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+        process_iommu_table_wf(post.prc_mp, post.it_mp),
+        container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_2m_mp: post.allc_2m_mp, ..*pre }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
+        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+            pre.pt_mp.dom().contains(p) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
+        post.pt_mp.unchanged_except(&pre.pt_mp, table) && post.pt_mp.spec_index(table).locking_thread() == pre.pt_mp.spec_index(table).locking_thread(),
+        pre.ctn_mp.dom().contains(owner),
+        pre.ctn_mp.dom().contains(origin),
+        owner == origin || pre.ctn_mp.spec_index(origin).view().uppertree_seq.view().contains(owner),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_2m == allc_ptr,
+        pre.allc_2m_mp.dom().contains(allc_ptr),
+        post.allc_2m_mp.dom() == pre.allc_2m_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(a)]
+            pre.allc_2m_mp.dom().contains(a) && a != allc_ptr ==> post.allc_2m_mp.spec_index(a).quota.view().view() == pre.allc_2m_mp.spec_index(a).quota.view().view(),
+        post.allc_2m_mp.spec_index(allc_ptr).quota.view().view() == pre.allc_2m_mp.spec_index(allc_ptr).quota.view().view() + 1,
+    ensures
+        kernel_u_container_quota_2m_increased(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), origin),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+{
+    let mid = KernelK { allc_2m_mp: pre.allc_2m_mp, ..*post };
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, mid.ep_mp);
+    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, &mid, None);
+    container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner);
+    assert(kernel_container_quota_2m_changed(&mid, post, owner, 1)) by { reveal(kernel_container_quota_2m_changed); reveal(kernel_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };
+    kernel_container_quota_2m_changed_implies_u_step(&mid, post, owner, 1);
+    let a = kernel_k_to_kernel_u(*pre);
+    let b = kernel_k_to_kernel_u(*post);
+    kernel_u_domains_projection(pre); kernel_container_projection_at(pre, origin);
+    let changed = a.container_map.dom().filter(|c: RwLockContainerPtr| a.container_map[c] != b.container_map[c]);
+    assert(kernel_u_container_quota_2m_increased(a, b, origin)) by {
+        reveal(kernel_u_container_quota_2m_increased);
+        assert(b.container_map[owner] != a.container_map[owner]);
+        assert(changed =~= set![owner]);
+        assert(changed.len() == 1);
+        assert(b.container_map.dom() == a.container_map.dom());
+        assert(b.container_map[owner].quota_2m > a.container_map[owner].quota_2m);
+        assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
+    };
+}
+
+
 impl KernelK {
     /// Records the step that returns `delta` 2M quota to `ctn_ptr`, an ancestor of `origin` or `origin` itself.
     pub proof fn kernel_step_boundary_container_quota_2m_changed(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, ctn_ptr: RwLockContainerPtr, delta: int, origin: RwLockContainerPtr)
@@ -54,12 +104,20 @@ impl KernelK {
             kernel_k_to_kernel_u(*old(self)).container_map[ctn_ptr].quota_2m as int == old(steps).snapshot_u().container_map[ctn_ptr].quota_2m as int + delta,
             final(steps).view() == old(steps).view().push(KernelStep { old_u: old(steps).snapshot_u(), new_u: kernel_k_to_kernel_u(*old(self)) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             kernel_k_to_kernel_u(*old(self)) == (KernelU { container_map: old(steps).snapshot_u().container_map.insert(ctn_ptr, ContainerU {
                 quota_2m: (old(steps).snapshot_u().container_map[ctn_ptr].quota_2m as int + delta) as usize,
                 ..old(steps).snapshot_u().container_map[ctn_ptr]
             }), ..old(steps).snapshot_u() }),
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
+            forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
+                let owner = old(self).thrd_mp.spec_index(t).view().owning_container;
+                &&& old(self).ctn_mp.dom().contains(owner)
+                &&& final(self).ctn_mp.spec_index(owner).view().uppertree_seq == old(self).ctn_mp.spec_index(owner).view().uppertree_seq
+            },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -93,6 +151,8 @@ impl KernelK {
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
+        old(self).thrd_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); reveal(container_thread_wf);
     }
 }
 }

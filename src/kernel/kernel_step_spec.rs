@@ -1584,4 +1584,54 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
     &&& post.thrd_mp.dom() == pre.thrd_mp.dom().remove(dangling_ptr)
     &&& forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)] post.thrd_mp.dom().contains(t) ==> post.thrd_mp.spec_index(t) == pre.thrd_mp.spec_index(t)
 }
+/// `kernel_process_quota_{4k,2m,1g}_changed` at the page size `size`.
+pub open spec fn kernel_process_quota_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int, size: PageSize) -> bool {
+    match size {
+        PageSize::SZ4k => kernel_process_quota_4k_changed(pre, post, cpu_id, prc_ptr, ctn_ptr, delta),
+        PageSize::SZ2m => kernel_process_quota_2m_changed(pre, post, cpu_id, prc_ptr, ctn_ptr, delta),
+        PageSize::SZ1g => kernel_process_quota_1g_changed(pre, post, cpu_id, prc_ptr, ctn_ptr, delta),
+    }
+}
+
+/// `kernel_process2thread_quota_{4k,2m,1g}_changed` at the page size `size`.
+pub open spec fn kernel_process2thread_quota_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int, size: PageSize) -> bool {
+    match size {
+        PageSize::SZ4k => kernel_process2thread_quota_4k_changed(pre, post, cpu_id, prc_ptr, thrd_ptr, delta),
+        PageSize::SZ2m => kernel_process2thread_quota_2m_changed(pre, post, cpu_id, prc_ptr, thrd_ptr, delta),
+        PageSize::SZ1g => kernel_process2thread_quota_1g_changed(pre, post, cpu_id, prc_ptr, thrd_ptr, delta),
+    }
+}
+
+/// `kernel_u_only_process_quota_{4k,2m,1g}_changed` at the page size `size`.
+pub open spec fn kernel_u_only_process_quota_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int, size: PageSize) -> bool {
+    match size {
+        PageSize::SZ4k => kernel_u_only_process_quota_4k_changed(old_u, new_u, cpu_id, prc_ptr, ctn_ptr, delta),
+        PageSize::SZ2m => kernel_u_only_process_quota_2m_changed(old_u, new_u, cpu_id, prc_ptr, ctn_ptr, delta),
+        PageSize::SZ1g => kernel_u_only_process_quota_1g_changed(old_u, new_u, cpu_id, prc_ptr, ctn_ptr, delta),
+    }
+}
+
+/// `kernel_u_only_process2thread_quota_{4k,2m,1g}_changed` at the page size `size`.
+pub open spec fn kernel_u_only_process2thread_quota_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int, size: PageSize) -> bool {
+    match size {
+        PageSize::SZ4k => kernel_u_only_process2thread_quota_4k_changed(old_u, new_u, cpu_id, prc_ptr, thrd_ptr, delta),
+        PageSize::SZ2m => kernel_u_only_process2thread_quota_2m_changed(old_u, new_u, cpu_id, prc_ptr, thrd_ptr, delta),
+        PageSize::SZ1g => kernel_u_only_process2thread_quota_1g_changed(old_u, new_u, cpu_id, prc_ptr, thrd_ptr, delta),
+    }
+}
+
+/// The `size` quota of the container `c` in the projection.
+pub open spec fn container_u_quota(c: ContainerU, size: PageSize) -> usize {
+    match size { PageSize::SZ4k => c.quota_4k, PageSize::SZ2m => c.quota_2m, PageSize::SZ1g => c.quota_1g }
+}
+
+/// The `size` quota of the process `p` in the projection.
+pub open spec fn process_u_quota(p: ProcessU, size: PageSize) -> usize {
+    match size { PageSize::SZ4k => p.quota_4k, PageSize::SZ2m => p.quota_2m, PageSize::SZ1g => p.quota_1g }
+}
+
+/// The `size` quota of the thread `t` in the projection.
+pub open spec fn thread_u_quota(t: ThreadU, size: PageSize) -> usize {
+    match size { PageSize::SZ4k => t.quota_4k, PageSize::SZ2m => t.quota_2m, PageSize::SZ1g => t.quota_1g }
+}
 } // verus!

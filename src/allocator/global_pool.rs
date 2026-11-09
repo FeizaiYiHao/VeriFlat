@@ -67,6 +67,8 @@ impl<const SIZE: usize> GlobalPool<SIZE> {
             self.linked_list.map().dom().contains(ret.0),
             ret.1 == self.linked_list.view().spec_index(0),
             ret.1 == self.linked_list.map().spec_index(ret.0),
+            self.linked_list.view().contains(ret.1),
+            self.linked_list.view().no_duplicates(),
     { self.linked_list.peek_head() }
 
     pub fn get(&self, index: usize) -> (ret: PagePtr)

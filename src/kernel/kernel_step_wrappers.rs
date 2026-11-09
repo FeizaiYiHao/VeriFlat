@@ -170,6 +170,7 @@ impl KernelSteps {
         ensures
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(final(self).snapshot_k()),
@@ -187,6 +188,7 @@ impl KernelSteps {
             *self = KernelSteps { steps: self.steps, snapshot_k: *krnl, snapshot_u: self.snapshot_u };
             kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*self, krnl);
         }
+        assert(kernel_steps_prefix_unchanged(old(self).view(), self.view())) by { reveal(kernel_steps_prefix_unchanged); };
     }
 
     /// Strict stuttering boundary: the premises mention only K fields and lock modes.
@@ -202,7 +204,7 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
-            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_op.view().view() =~= old(self).snapshot_k().cpu_op.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
@@ -283,6 +285,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -305,7 +308,7 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
-            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_op.view().view() =~= old(self).snapshot_k().cpu_op.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
             krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
             krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
@@ -393,6 +396,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -418,7 +422,7 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
-            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_op.view().view() =~= old(self).snapshot_k().cpu_op.view().view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
@@ -444,6 +448,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -455,6 +460,7 @@ impl KernelSteps {
         assert(self.snapshot_u() == kernel_k_to_kernel_u(*krnl)) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&self.snapshot_k(), krnl); };
         *self = KernelSteps { steps: self.steps, snapshot_k: *krnl, snapshot_u: self.snapshot_u };
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*self, krnl);
+        assert(kernel_steps_prefix_unchanged(old(self).view(), self.view())) by { reveal(kernel_steps_prefix_unchanged); };
     }
 
     /// Finish without interleaving; append exactly the non-stuttering transition.
@@ -465,6 +471,7 @@ impl KernelSteps {
         ensures
             final(self).view() == record_user_view_change(old(self).view(), old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl)),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
     {
@@ -492,6 +499,7 @@ impl KernelSteps {
                 0 <= start <= old(self).view().len() ==> final(self).view().subrange(start, old(self).view().len() as int) == old(self).view().subrange(start, old(self).view().len() as int),
             final(self).view() == record_user_view_change(old(self).view(), old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl)),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -512,6 +520,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
     {
@@ -534,11 +543,12 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_endpoint_fields); reveal(kernel_k_to_kernel_u); };
+        assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_endpoint_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
@@ -552,6 +562,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
     {
@@ -573,6 +584,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == record_user_view_change(old(self).view(), old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl)),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
     {
@@ -590,6 +602,7 @@ impl KernelSteps {
         ensures
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -611,6 +624,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_context_switch_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid),
@@ -677,6 +691,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_rebalance_pull_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread),

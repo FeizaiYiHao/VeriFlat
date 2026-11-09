@@ -379,6 +379,12 @@ pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContex
     &&& new.allocator_1g_lock_maps() == old.allocator_1g_lock_maps()
 }
 
+/// A typed lock map that gains an absent entry and loses it again is restored; a matched lock/unlock pair keeps the map.
+pub broadcast proof fn typed_lock_map_insert_absent_then_remove_implies_unchanged<K>(held_locks: Map<K, TypedHeldLock>, key: K, entry: TypedHeldLock)
+    requires !held_locks.dom().contains(key),
+    ensures #[trigger] held_locks.insert(key, entry).remove(key) == held_locks,
+{ assert(held_locks.insert(key, entry).remove(key) =~= held_locks); }
+
 /// Every typed lock map other than the 2M-window map is unchanged.
 pub open spec fn nonwindow_typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContext) -> bool {
     &&& new.page_lock_map() == old.page_lock_map()

@@ -99,6 +99,16 @@ pub broadcast group group_kernel_endpoint_nonlock_fields_unchanged_transitive {
     kernel_endpoint_nonlock_fields_unchanged_transitive,
 }
 
+pub broadcast proof fn kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal(pre: &KernelK, post: &KernelK)
+    requires *pre == *post,
+    ensures #[trigger] kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
+{ broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }
+
+pub broadcast proof fn kernel_container_nonlock_fields_and_quotas_unchanged_for_equal(pre: &KernelK, post: &KernelK)
+    requires *pre == *post,
+    ensures #[trigger] kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+{ reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }
+
 pub proof fn kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(steps: &KernelSteps, krnl: &KernelK)
     requires steps.snapshot_k() == *krnl,
     ensures

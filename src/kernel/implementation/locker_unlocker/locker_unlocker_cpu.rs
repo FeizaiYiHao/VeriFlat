@@ -277,7 +277,7 @@ impl KernelK {
             old(self).inv(),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
-            old(self).cpu_op.view().view()[cpu_id as int] is InStep,
+            old(self).cpu_op.view().view()[cpu_id as int] is InStep || old(self).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             old(self).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
@@ -320,6 +320,7 @@ impl KernelK {
         proof {
             assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_implies_array_inv(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
+            assert(old(self).cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, cpu_id); };
         }
         assert(self.cpu_arr.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         self.cpu_arr.exit_step_wunlock_own_cpu(cpu_id, Tracked(self.cpu_op.borrow_mut()), Tracked(&mut *lctx), lock_perm);

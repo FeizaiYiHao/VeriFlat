@@ -2,6 +2,8 @@ use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 #[cfg(verus_keep_ghost)]
+use super::container_quota_1g::{kernel_process2thread_quota_1g_changed_implies_u_step, kernel_process_quota_1g_changed_implies_u_step};
+#[cfg(verus_keep_ghost)]
 use super::boundary::{
     kernel_cpu_offline_request_changed_implies_u_step, kernel_cpu_online_changed_implies_u_step, kernel_cpu_went_off_fields_implies_u_step,
     kernel_process2thread_quota_2m_changed_implies_u_step, kernel_process2thread_quota_4k_changed_implies_u_step,
@@ -10,19 +12,21 @@ use super::boundary::{
 
 verus! {
 impl KernelSteps {
-    pub proof fn end_kernel_step_process_quota_4k_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int)
+    /// Ends the section in which the live process running on `cpu_id` took `delta` quota of page size `size` from its live container.
+    pub proof fn end_kernel_step_process_quota_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int, size: PageSize)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_process_quota_4k_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, ctn_ptr, delta),
+            kernel_process_quota_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, ctn_ptr, delta, size),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
-            kernel_u_only_process_quota_4k_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta),
+            kernel_u_only_process_quota_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta, size),
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
@@ -35,45 +39,56 @@ impl KernelSteps {
                 &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
                 &&& !old_u.container_map.spec_index(ctn_ptr).killed
                 &&& !old_u.container_map.spec_index(ctn_ptr).zombie
-                &&& old_u.container_map.spec_index(ctn_ptr).quota_4k >= delta
+                &&& container_u_quota(old_u.container_map.spec_index(ctn_ptr), size) >= delta
                 &&& old_u.process_map.dom().contains(prc_ptr)
                 &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
                 &&& !old_u.process_map.spec_index(prc_ptr).killed
-                &&& old_u.process_map.spec_index(prc_ptr).quota_4k + delta <= usize::MAX
+                &&& process_u_quota(old_u.process_map.spec_index(prc_ptr), size) + delta <= usize::MAX
                 &&& delta > 0
             },
     {
         hide(kernel_k_user_projection);
-        reveal(kernel_u_only_process_quota_4k_changed);
+        reveal(kernel_u_only_process_quota_4k_changed); reveal(kernel_u_only_process_quota_2m_changed); reveal(kernel_u_only_process_quota_1g_changed);
         use_type_invariant(&*self);
+        let snap = self.snapshot_k();
         assert({
-            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            let pre_u = kernel_k_to_kernel_u(snap);
             &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
             &&& pre_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
             &&& pre_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
         }) by {
-            reveal(kernel_process_quota_4k_changed); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
-            kernel_container_projection_at(&self.snapshot_k(), ctn_ptr); kernel_process_projection_at(&self.snapshot_k(), prc_ptr);
+            match size {
+                PageSize::SZ4k => { reveal(kernel_process_quota_4k_changed); },
+                PageSize::SZ2m => { reveal(kernel_process_quota_2m_changed); },
+                PageSize::SZ1g => { reveal(kernel_process_quota_1g_changed); },
+            }
+            kernel_cpu_projection_at(&snap, cpu_id); kernel_container_projection_at(&snap, ctn_ptr); kernel_process_projection_at(&snap, prc_ptr);
         };
-        assert(kernel_u_only_process_quota_4k_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta)) by {
-            kernel_process_quota_4k_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, prc_ptr, ctn_ptr, delta);
+        assert(kernel_u_only_process_quota_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta, size)) by {
+            match size {
+                PageSize::SZ4k => { kernel_process_quota_4k_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, ctn_ptr, delta); },
+                PageSize::SZ2m => { kernel_process_quota_2m_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, ctn_ptr, delta); },
+                PageSize::SZ1g => { kernel_process_quota_1g_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, ctn_ptr, delta); },
+            }
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    pub proof fn end_kernel_step_process2thread_quota_4k_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int)
+    /// Ends the section in which the live process running on `cpu_id` moved `delta` quota of page size `size` to its live running thread.
+    pub proof fn end_kernel_step_process2thread_quota_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int, size: PageSize)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_process2thread_quota_4k_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, thrd_ptr, delta),
+            kernel_process2thread_quota_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, thrd_ptr, delta, size),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
-            kernel_u_only_process2thread_quota_4k_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta),
+            kernel_u_only_process2thread_quota_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta, size),
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
@@ -85,130 +100,37 @@ impl KernelSteps {
                 &&& old_u.process_map.dom().contains(prc_ptr)
                 &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
                 &&& !old_u.process_map.spec_index(prc_ptr).killed
-                &&& old_u.process_map.spec_index(prc_ptr).quota_4k >= delta
+                &&& process_u_quota(old_u.process_map.spec_index(prc_ptr), size) >= delta
                 &&& old_u.thread_map.dom().contains(thrd_ptr)
                 &&& old_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
                 &&& !old_u.thread_map.spec_index(thrd_ptr).killed
-                &&& old_u.thread_map.spec_index(thrd_ptr).quota_4k + delta <= usize::MAX
+                &&& thread_u_quota(old_u.thread_map.spec_index(thrd_ptr), size) + delta <= usize::MAX
                 &&& delta > 0
             },
     {
         hide(kernel_k_user_projection);
-        reveal(kernel_u_only_process2thread_quota_4k_changed);
+        reveal(kernel_u_only_process2thread_quota_4k_changed); reveal(kernel_u_only_process2thread_quota_2m_changed); reveal(kernel_u_only_process2thread_quota_1g_changed);
         use_type_invariant(&*self);
+        let snap = self.snapshot_k();
         assert({
-            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            let pre_u = kernel_k_to_kernel_u(snap);
             &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
             &&& pre_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
             &&& pre_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
         }) by {
-            reveal(kernel_process2thread_quota_4k_changed); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id); kernel_process_projection_at(&self.snapshot_k(), prc_ptr);
-            kernel_thread_projection_at(&self.snapshot_k(), thrd_ptr);
+            match size {
+                PageSize::SZ4k => { reveal(kernel_process2thread_quota_4k_changed); },
+                PageSize::SZ2m => { reveal(kernel_process2thread_quota_2m_changed); },
+                PageSize::SZ1g => { reveal(kernel_process2thread_quota_1g_changed); },
+            }
+            kernel_cpu_projection_at(&snap, cpu_id); kernel_process_projection_at(&snap, prc_ptr); kernel_thread_projection_at(&snap, thrd_ptr);
         };
-        assert(kernel_u_only_process2thread_quota_4k_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta)) by {
-            kernel_process2thread_quota_4k_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, prc_ptr, thrd_ptr, delta);
-            reveal(kernel_k_to_kernel_u);
-        };
-        self.end_kernel_step_raw(krnl, lctx);
-    }
-
-    pub proof fn end_kernel_step_process_quota_2m_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, delta: int)
-        requires
-            krnl.inv(),
-            lctx.kernel_view_locking_state() is Release,
-            kernel_process_quota_2m_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, ctn_ptr, delta),
-            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
-        ensures
-            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
-            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
-            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).snapshot_k() == *krnl,
-            kernel_u_only_process_quota_2m_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta),
-            {
-                let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
-                let cpu = old_u.cpu_array[cpu_id as int];
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& cpu.lock_state is Unlocked
-                &&& cpu.state is Running
-                &&& cpu.current_process == Some(prc_ptr)
-                &&& cpu.owning_container == ctn_ptr
-                &&& old_u.container_map.dom().contains(ctn_ptr)
-                &&& old_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
-                &&& !old_u.container_map.spec_index(ctn_ptr).killed
-                &&& !old_u.container_map.spec_index(ctn_ptr).zombie
-                &&& old_u.container_map.spec_index(ctn_ptr).quota_2m >= delta
-                &&& old_u.process_map.dom().contains(prc_ptr)
-                &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
-                &&& !old_u.process_map.spec_index(prc_ptr).killed
-                &&& old_u.process_map.spec_index(prc_ptr).quota_2m + delta <= usize::MAX
-                &&& delta > 0
-            },
-    {
-        hide(kernel_k_user_projection);
-        reveal(kernel_u_only_process_quota_2m_changed);
-        use_type_invariant(&*self);
-        assert({
-            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
-            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
-            &&& pre_u.container_map.spec_index(ctn_ptr).lock_state is Unlocked
-            &&& pre_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
-        }) by {
-            reveal(kernel_process_quota_2m_changed); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
-            kernel_container_projection_at(&self.snapshot_k(), ctn_ptr); kernel_process_projection_at(&self.snapshot_k(), prc_ptr);
-        };
-        assert(kernel_u_only_process_quota_2m_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, ctn_ptr, delta)) by {
-            kernel_process_quota_2m_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, prc_ptr, ctn_ptr, delta);
-            reveal(kernel_k_to_kernel_u);
-        };
-        self.end_kernel_step_raw(krnl, lctx);
-    }
-
-    pub proof fn end_kernel_step_process2thread_quota_2m_changed(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, delta: int)
-        requires
-            krnl.inv(),
-            lctx.kernel_view_locking_state() is Release,
-            kernel_process2thread_quota_2m_changed(&old(self).snapshot_k(), krnl, cpu_id, prc_ptr, thrd_ptr, delta),
-        ensures
-            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
-            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
-            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).snapshot_k() == *krnl,
-            kernel_u_only_process2thread_quota_2m_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta),
-            {
-                let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
-                let cpu = old_u.cpu_array[cpu_id as int];
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& cpu.lock_state is Unlocked
-                &&& cpu.state is Running
-                &&& cpu.current_process == Some(prc_ptr)
-                &&& cpu.current_thread == Some(thrd_ptr)
-                &&& old_u.process_map.dom().contains(prc_ptr)
-                &&& old_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
-                &&& !old_u.process_map.spec_index(prc_ptr).killed
-                &&& old_u.process_map.spec_index(prc_ptr).quota_2m >= delta
-                &&& old_u.thread_map.dom().contains(thrd_ptr)
-                &&& old_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
-                &&& !old_u.thread_map.spec_index(thrd_ptr).killed
-                &&& old_u.thread_map.spec_index(thrd_ptr).quota_2m + delta <= usize::MAX
-                &&& delta > 0
-            },
-    {
-        hide(kernel_k_user_projection);
-        reveal(kernel_u_only_process2thread_quota_2m_changed);
-        use_type_invariant(&*self);
-        assert({
-            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
-            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
-            &&& pre_u.process_map.spec_index(prc_ptr).lock_state is Unlocked
-            &&& pre_u.thread_map.spec_index(thrd_ptr).lock_state is Unlocked
-        }) by {
-            reveal(kernel_process2thread_quota_2m_changed); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id); kernel_process_projection_at(&self.snapshot_k(), prc_ptr);
-            kernel_thread_projection_at(&self.snapshot_k(), thrd_ptr);
-        };
-        assert(kernel_u_only_process2thread_quota_2m_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta)) by {
-            kernel_process2thread_quota_2m_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, prc_ptr, thrd_ptr, delta);
+        assert(kernel_u_only_process2thread_quota_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr, delta, size)) by {
+            match size {
+                PageSize::SZ4k => { kernel_process2thread_quota_4k_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, thrd_ptr, delta); },
+                PageSize::SZ2m => { kernel_process2thread_quota_2m_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, thrd_ptr, delta); },
+                PageSize::SZ1g => { kernel_process2thread_quota_1g_changed_implies_u_step(&snap, krnl, cpu_id, prc_ptr, thrd_ptr, delta); },
+            }
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
@@ -225,6 +147,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_cpu_offline_request_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ctn_ptr, target),
@@ -270,6 +193,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_cpu_online_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ctn_ptr, target),
@@ -376,6 +300,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_pci_attach_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, bus, device, function),
@@ -450,6 +375,7 @@ impl KernelSteps {
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
             kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid),

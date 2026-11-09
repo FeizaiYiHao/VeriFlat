@@ -440,17 +440,18 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
             })
         },
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pagetable);
     let before = kernel_k_to_kernel_u(*pre);
     let after = kernel_k_to_kernel_u(*post);
     let process = pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
     if pre.prc_mp.dom().contains(process) { kernel_process_projection_at(pre, process); } if post.prc_mp.dom().contains(process) { kernel_process_projection_at(post, process); }
+    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, process); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, process);
     if pre.thrd_mp.dom().contains(thrd_ptr) { kernel_thread_projection_at(pre, thrd_ptr); }
     assert_maps_equal!(after.process_map[process].pagetable->Some_0.mapping_4k, before.process_map[process].pagetable->Some_0.mapping_4k.remove(va), a => {});
     assert_maps_equal!(after.process_map, before.process_map.insert(process, ProcessU {
         pagetable: Some(PageTableU { mapping_4k: before.process_map[process].pagetable->Some_0.mapping_4k.remove(va), ..before.process_map[process].pagetable->Some_0 }),
         ..before.process_map[process]
-    }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } });
+    }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); });
     assert_maps_equal!(after.thread_map, before.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..before.thread_map[thrd_ptr] }), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
     });
@@ -628,11 +629,11 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre: &Ke
             pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, ..pre_u.process_map[owner].pagetable->Some_0 }),
             ..pre_u.process_map[owner]
         }), p => {
-            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_wf);
+            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p);
         });
     } else {
         assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_wf);
+            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p);
         });
     }
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {

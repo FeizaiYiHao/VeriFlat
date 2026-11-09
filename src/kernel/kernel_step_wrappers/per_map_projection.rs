@@ -343,7 +343,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
 {
     pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_wf);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, table);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let owner = pre.pt_mp.spec_index(table).view().higher.proc_ptr;
@@ -351,10 +351,10 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
         assert_maps_equal!(b.process_map, a.process_map.insert(owner, ProcessU {
             pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
             ..a.process_map[owner]
-        }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } });
+        }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); });
     } else {
         assert_maps_equal!(b.process_map, a.process_map, p => {
-            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
+            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p);
         });
     }
 }

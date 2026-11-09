@@ -35,6 +35,55 @@ pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, a
     kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
+/// After a TLB flush recorded at `snap`, page-table ghost changes keeping lock states, mappings, window locks with `cpu_id` releasing its read hold on `ctn_ptr`'s cpu set (`pre`) drop that reader; then changing only `thrd_ptr`'s syscall progress (`post`) also sets that progress.
+pub proof fn kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(
+    snap: &KernelK, pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr,
+)
+    requires
+        pre.inv(),
+        *pre == (KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, cpu_set_mp: pre.cpu_set_mp, ..*snap }),
+        pre.pt_mp.dom() == snap.pt_mp.dom(),
+        forall|pt: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(pt)] snap.pt_mp.dom().contains(pt) ==> {
+            &&& pre.pt_mp.spec_index(pt).locking_thread() == snap.pt_mp.spec_index(pt).locking_thread()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_4k() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_4k()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_2m()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_1g()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).lower.pagetable_window_locks
+        },
+        pre.ctn_mp.dom().contains(ctn_ptr),
+        pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed() == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
+        snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().read_held_by(cpu_id),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u()
+            == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().without_reader(cpu_id),
+        *post == (KernelK { thrd_mp: post.thrd_mp, ..*pre }),
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+    ensures
+        kernel_k_to_kernel_u(*snap).container_map.dom().contains(ctn_ptr),
+        kernel_k_to_kernel_u(*snap).thread_map.dom().contains(thrd_ptr),
+        kernel_k_to_kernel_u(*snap).container_map[ctn_ptr].cpu_set_lock.read_held_by(cpu_id),
+        ({
+            let pre_u = kernel_k_to_kernel_u(*snap);
+            let unlocked = pre_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: pre_u.container_map[ctn_ptr].cpu_set_lock.without_reader(cpu_id), ..pre_u.container_map[ctn_ptr] });
+            &&& kernel_k_to_kernel_u(*pre) == (KernelU { container_map: unlocked, ..pre_u })
+            &&& kernel_k_to_kernel_u(*post) == (KernelU {
+                thread_map: pre_u.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..pre_u.thread_map[thrd_ptr] }),
+                container_map: unlocked,
+                ..pre_u
+            })
+        }),
+{
+    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap); kernel_container_projection_at(snap, ctn_ptr);
+    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
+    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, ctn_ptr);
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thrd_ptr);
+}
+
 impl KernelK {
     /// Records the section that read-locked the cpu set of the container `ctn_ptr` for the running cpu, or kept that cpu's
     /// read hold on it, and otherwise changed only cpu state, TLBs, needflush flags, and page-table ghost state that keeps
@@ -90,12 +139,15 @@ impl KernelK {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) && (old(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep || old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None)
+                ==> final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep && final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().kernel_call_perm() is None,
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(self))),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(self)),
@@ -132,6 +184,7 @@ impl KernelK {
         self.kernel_step_boundary_raw(lctx, steps);
         reveal(LockedMap::typed_lock_map_aligned);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
     }
 }
 }

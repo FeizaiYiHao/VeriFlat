@@ -46,4 +46,15 @@ pub proof fn process_iommu_table_wf_process_at(prc_mp: ProcessLockedMap, it_mp: 
             }
         }),
 { reveal(process_iommu_table_wf); }
+
+pub proof fn process_iommu_table_wf_table_at(prc_mp: ProcessLockedMap, it_mp: IommuTableLockedMap, it_ptr: RwLockPageTableRoot)
+    requires
+        process_iommu_table_wf(prc_mp, it_mp),
+    ensures
+        it_mp.dom().contains(it_ptr) ==> {
+            let prc_ptr = it_mp.spec_index(it_ptr).view().proc_ptr;
+            &&& prc_mp.dom().contains(prc_ptr)
+            &&& prc_mp.spec_index(prc_ptr).view().iommu_table == Some(it_ptr)
+        },
+{ reveal(process_iommu_table_wf); }
 }
