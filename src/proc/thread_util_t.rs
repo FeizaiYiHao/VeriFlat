@@ -115,7 +115,7 @@ pub fn split_region_tail_into_node<const N: usize, const M: usize>(base: usize, 
 
 /// TCB: retire a write-locked thread object and reclaim its 4k page as raw memory.
 ///
-/// This is the inverse of the `retype_page_perm_to_rwlock` MINT. The object has
+/// This is the inverse of the `retype_thread_region_and_insert` MINT. The object has
 /// already left `thread_map`, the caller exclusively write-holds its lock in the
 /// release phase, its process list returned the in-page process node, and its
 /// other in-page nodes are not linked anywhere, so no other thread can reach or
