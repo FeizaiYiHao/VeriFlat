@@ -25,9 +25,12 @@
 //! kernel step: in ring 3, in a trampoline, in [`run_idle`], or at a `hlt`. The requester holds and
 //! marked this CPU's lock, so this CPU is not inside a step and a step that would lock its own CPU
 //! returns at once. The IPI loads the kernel page table and sets `Cpu::running_to_idle_pending`;
-//! the next exit through [`restore_frame`] diverts to the idle loop instead of ring 3, and the idle
-//! loop clears the flag. Every step also clears it when it releases this CPU's own lock: a flag
-//! still set then is stale, since the requester released the lock before the step could start.
+//! the next exit through [`restore_frame`] diverts to the idle loop instead of ring 3. The handler
+//! does not acknowledge: this CPU acknowledges when it enters its idle loop, after it has left the
+//! trap path of the thread it ran, and clears the flag there (`platform::acknowledge_running_to_idle`).
+//! Until then the requester holds this CPU's lock, so every glue path reaches the idle loop without
+//! a step: through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
+//! Every step also clears the flag when it releases this CPU's own lock, as a safety net.
 //!
 //! TODO: the frame is not the whole user-visible CPU state. The x87/MMX registers (CR0.EM is 0)
 //! and the `fs`/`gs` selectors are neither saved nor reset across a thread switch, so the next
@@ -154,7 +157,8 @@ pub unsafe fn init_cpu() {
 ///   and the interrupt gates, which clear IF until the trampoline's `sti` after the frame is built;
 ///   Trap to User at the `sysretq`/`iretq` of [`restore_frame`], whose `cli` makes its check and
 ///   the return one step; Trap to Idle when [`restore_frame`] diverts on `running_to_idle_pending`,
-///   or when a syscall returns CpuIdle into [`run_idle`].
+///   or when a syscall returns CpuIdle into [`run_idle`]. A running-to-idle IPI is acknowledged
+///   only there, in [`run_idle`], once the trap path is left.
 /// - InStep: the verified kernel holds this CPU's own lock, interrupts off, from its `wlock_cpu` of
 ///   this CPU (the lock executes `cli` when granted) until its unlock (the lock clears
 ///   `running_to_idle_pending`, releases, and executes `sti`).
@@ -219,9 +223,10 @@ unsafe extern "C" fn sys_entry() -> ! {
 /// `rflags`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks. The
 /// frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
 ///
-/// A CPU forced from running to idle goes to the idle loop instead. Interrupts are off from the
-/// check to the return, so a running-to-idle IPI that arrives after the check stays pending until
-/// the CPU is back in ring 3, takes it there, and comes back here through the trampoline.
+/// A CPU forced from running to idle goes to the idle loop instead, which acknowledges the IPI.
+/// Interrupts are off from the check to the return, so a running-to-idle IPI that arrives after the
+/// check stays pending until the CPU is back in ring 3, takes it there, and comes back here through
+/// the trampoline. The check is the only running-to-idle work on this path.
 #[unsafe(naked)]
 pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     naked_asm!(
@@ -841,16 +846,22 @@ fn schedule_from_running(regs: &mut Registers) {
 /// holds the frame of the thread the CPU switched to. A forced running-to-idle transition ends here:
 /// through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
 ///
-/// A running-to-idle IPI may also land inside this loop, between steps or at the `hlt`, and set
-/// `running_to_idle_pending` after the clear below. Nothing else is needed: every step clears the
-/// flag when it releases this CPU's own lock (`platform::veriflat_clear_running_to_idle_pending`),
-/// so a flag set before the step that switches to a thread does not survive that step, and one
-/// set after it makes [`restore_frame`] divert back here.
+/// This is the only place that acknowledges a running-to-idle IPI
+/// (`platform::acknowledge_running_to_idle`): on entry, where this CPU has left the trap path of the
+/// thread it ran, and at the top of every iteration, for an IPI that lands inside this loop, between
+/// steps or at the `hlt`. The acknowledgement clears `running_to_idle_pending` together with the owed
+/// flag; the handler sets both, so outside it they are equal and the entry needs no other clear. Until
+/// the acknowledgement the sender holds this CPU's lock, so every step here returns at once
+/// (`syscall_schedule` with Idle, `rebalance_pull` with Nothing) and the halt does not sleep while the
+/// owed flag is set (`platform::veriflat_halt_until_ipi`): the next iteration acknowledges. An IPI that
+/// lands after the step that switched to a thread sets `running_to_idle_pending`, so
+/// [`restore_frame`] diverts back here and the entry acknowledges.
 fn run_idle(regs: &mut Registers) {
-    cpu::clear_running_to_idle_pending();
+    platform::acknowledge_running_to_idle();
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
     loop {
+        platform::acknowledge_running_to_idle();
         if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
             wait_until_online(cpu_id);
             continue;

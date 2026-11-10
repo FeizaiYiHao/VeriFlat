@@ -1945,10 +1945,12 @@ present, `W(V)`, `V.killed`)
   `InStep` (`cpu_op_wf`, §15), and leaves `R` at `op` Idle; the IPI requires
   `R` marked, Running, and not `InStep`. `R` takes the IPI anywhere outside a
   kernel step, where its interrupt flag is set (user mode, its trap path, its
-  idle loop): it loads the default page table with the default PCID, marks its
-  next trap exit to divert to `run_idle` instead of `V`, and acknowledges.
-  Every own-cpu lock of `R` returns at once on the mark, so `R` cannot spin
-  while the killer waits. `update_lock_id` moves `R` to the idle
+  idle loop): it loads the default page table with the default PCID and marks
+  its next trap exit to divert to `run_idle` instead of `V`. `R` acknowledges
+  when it enters its idle loop, after it has left the trap path of the thread
+  it ran (`V`'s). Every own-cpu lock of `R` returns at once on the mark, so
+  every path of `R` reaches `run_idle` and `R` cannot spin while the killer
+  waits. `update_lock_id` moves `R` to the idle
   major (2), and `R` is released inside the step. The mark is U-visible as
   `cpu.killed` but cleared within the step.
 - Unlink (`kill_process_unlink_step`): `V.state is KILLED`; `V` leaves
@@ -2087,8 +2089,9 @@ unmarked), the kill-aware `CpuLockedArray` lock operations
 `wunlock_own_cpu`),
 `ipi_remote_running_to_idle_raw` under
 `CpuLockedArray::ipi_remote_running_to_idle` (a maskable IPI, taken anywhere
-outside a kernel step, makes the remote cpu load the default page table,
-divert its next trap exit to the idle loop, and acknowledge; it borrows the
+outside a kernel step, makes the remote cpu load the default page table and
+divert its next trap exit to the idle loop; the remote cpu acknowledges when it
+enters its idle loop, after it has left the trap path of the thread it ran; it borrows the
 target's `KernelCallPerm` and leaves its `op` at Idle; the killer spins for
 the acknowledgement; TODO: model this wait
 as a virtual lock in the lock order), `page_map_to_page_perm` (an unlinked

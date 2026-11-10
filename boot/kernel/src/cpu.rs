@@ -119,15 +119,23 @@ pub struct Cpu {
     /// Whether the timer handler re-arms the one-shot LAPIC timer (false while the CPU is Off).
     pub timer_on: bool,
 
-    /// Set by every running-to-idle IPI (`platform::handle_running_to_idle_ipi`), cleared on entry
-    /// to the idle loop and when a kernel step releases this CPU's own lock
-    /// (`platform::veriflat_clear_running_to_idle_pending`).
+    /// Set by every running-to-idle IPI (`platform::handle_running_to_idle_ipi`) together with
+    /// `running_to_idle_ack_owed`, so outside the handler the two are equal; cleared with it by the
+    /// idle loop when it acknowledges (`platform::acknowledge_running_to_idle`) and when a kernel step
+    /// releases this CPU's own lock (`platform::veriflat_clear_running_to_idle_pending`).
     /// While it is set the CPU runs on the kernel page table and must not return to ring 3:
     /// `restore_frame` diverts to the idle loop instead.
     pub running_to_idle_pending: AtomicBool,
 
-    /// Set by the wake-up, running-to-idle, and timer handlers; cleared when this CPU's own lock is
-    /// granted (`platform::veriflat_disable_interrupts`). `platform::veriflat_halt_until_ipi` skips
+    /// Set by every running-to-idle IPI after `running_to_idle_pending`: this CPU owes the sender
+    /// its acknowledgement. The idle loop clears both flags and acknowledges when it enters and at
+    /// the top of every iteration (`platform::acknowledge_running_to_idle`), after this CPU has left
+    /// the trap path of the thread it ran. `platform::veriflat_halt_until_ipi` never halts while it
+    /// is set.
+    pub running_to_idle_ack_owed: AtomicBool,
+
+    /// Set by the wake-up, running-to-idle, and timer handlers; cleared by every attempt to take this
+    /// CPU's own lock, failed ones too (`platform::veriflat_disable_interrupts`). `platform::veriflat_halt_until_ipi` skips
     /// its `hlt` while it is set: an interrupt arrived after the last step read this CPU's state.
     pub wake_seen: AtomicBool,
 
@@ -181,6 +189,7 @@ impl Cpu {
             syscall_sp: 0,
             timer_on: false,
             running_to_idle_pending: AtomicBool::new(false),
+            running_to_idle_ack_owed: AtomicBool::new(false),
             wake_seen: AtomicBool::new(false),
             remote_flushes: 0,
             xapic: MaybeUninit::uninit(),
@@ -256,9 +265,31 @@ pub fn set_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(true, Ordering::Relaxed);
 }
 
-/// Clears `running_to_idle_pending`. For the idle loop and `veriflat_clear_running_to_idle_pending`.
+/// Clears `running_to_idle_pending`. For the idle loop's acknowledgement and `veriflat_clear_running_to_idle_pending`.
 pub fn clear_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(false, Ordering::Relaxed);
+}
+
+/// Sets `running_to_idle_ack_owed`. For the running-to-idle IPI handler.
+pub fn set_running_to_idle_ack_owed() {
+    get_current().running_to_idle_ack_owed.store(true, Ordering::Relaxed);
+}
+
+/// Clears `running_to_idle_ack_owed` and returns whether it was set. For the idle loop's
+/// acknowledgement. A load and a store suffice: no other running-to-idle IPI reaches this CPU
+/// before it acknowledges the one that set the flag.
+pub fn take_running_to_idle_ack_owed() -> bool {
+    let owed = &get_current().running_to_idle_ack_owed;
+    let was = owed.load(Ordering::Relaxed);
+    if was {
+        owed.store(false, Ordering::Relaxed);
+    }
+    was
+}
+
+/// Whether `running_to_idle_ack_owed` is set. For `veriflat_halt_until_ipi`.
+pub fn running_to_idle_ack_owed() -> bool {
+    get_current().running_to_idle_ack_owed.load(Ordering::Relaxed)
 }
 
 /// Sets `wake_seen`. For the wake-up, running-to-idle, and timer handlers.
@@ -266,7 +297,7 @@ pub fn set_wake_seen() {
     get_current().wake_seen.store(true, Ordering::Relaxed);
 }
 
-/// Clears `wake_seen`. For `veriflat_disable_interrupts`, when this CPU's own lock is granted.
+/// Clears `wake_seen`. For `veriflat_disable_interrupts`, at every attempt to take this CPU's own lock.
 pub fn clear_wake_seen() {
     get_current().wake_seen.store(false, Ordering::Relaxed);
 }

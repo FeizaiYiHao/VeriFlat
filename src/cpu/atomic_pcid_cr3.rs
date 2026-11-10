@@ -60,10 +60,11 @@ impl AtomicPcidCr3 {
 
     /// Platform running-to-idle IPI to the remote cpu `cpu_id` that owns this entry: a maskable IPI whose acknowledgement
     /// this cpu awaits. The target takes the IPI with its interrupt flag set, which holds exactly outside a kernel step:
-    /// in user mode, on its trap path, or in its idle loop. There it loads `cr3` with the default PCID, marks its next trap
-    /// exit to divert to the idle loop, and acknowledges. `target_lock` is the target's cpu lock, which the caller
-    /// write-holds and marked: the target runs a thread, is not in a kernel step, and every kernel path of it that would
-    /// lock its own cpu sees the mark and returns at once, so the wait ends. This cpu then stores the default context in
+    /// in user mode, on its trap path, or in its idle loop. There it loads `cr3` with the default PCID and marks its next trap
+    /// exit to divert to the idle loop; it acknowledges when it enters its idle loop, after it has left the trap path of the
+    /// thread it ran. `target_lock` is the target's cpu lock, which the caller write-holds and marked: the target runs a
+    /// thread, is not in a kernel step, and every kernel path of it that would lock its own cpu sees the mark and returns at
+    /// once, so it reaches its idle loop and the wait ends. This cpu then stores the default context in
     /// the target's hardware cr3/pcid word. Sending the IPI uses the target's kernel-call permission `perm`; the target
     /// rests in `Idle` afterwards.
     #[verifier::external_body]

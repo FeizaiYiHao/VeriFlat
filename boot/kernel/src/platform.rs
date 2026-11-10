@@ -57,8 +57,10 @@ impl core::ops::Deref for LineWord {
 static FLUSH_REQUESTS: [[LineWord; MAX_CPUS]; MAX_CPUS] = [const { [const { LineWord::new() }; MAX_CPUS] }; MAX_CPUS];
 
 /// `RUNNING_TO_IDLE_REQUESTS[target]` is the default `cr3` while the caller of
-/// `veriflat_ipi_running_to_idle` waits for `target` to load it, else 0. Only the holder of
-/// `target`'s CPU lock sends it the running-to-idle IPI, so one slot per target suffices.
+/// `veriflat_ipi_running_to_idle` waits for `target` to acknowledge, else 0. `target`'s handler
+/// loads it and leaves it set; `target` acknowledges by clearing it when it enters its idle loop,
+/// after it has left the trap path of the thread it ran (`acknowledge_running_to_idle`). Only the
+/// holder of `target`'s CPU lock sends it the running-to-idle IPI, so one slot per target suffices.
 static RUNNING_TO_IDLE_REQUESTS: [LineWord; MAX_CPUS] = [const { LineWord::new() }; MAX_CPUS];
 
 /// `NMI_FLUSHES[target]` counts the flush requests `target`'s NMI handler served; only that handler writes it.
@@ -155,11 +157,14 @@ pub extern "C" fn veriflat_remote_flush_va_range(cpu_id: usize, pcid: usize, va:
 /// Makes `cpu_id` (another CPU, whose CPU lock the caller holds and marked) abandon the thread it
 /// runs: it loads `default_cr3` (page aligned) with the kernel PCID 0, flushing that PCID, and sets
 /// its `running_to_idle_pending` flag, so its next exit through `restore_frame` enters its idle loop
-/// instead of ring 3. Returns once the target acknowledged. The request travels by the maskable
+/// instead of ring 3. Returns once the target acknowledged, which it does when it enters its idle
+/// loop, after it has left the trap path of the thread it ran: from then on it no longer touches
+/// that thread's registers or trap frame. The request travels by the maskable
 /// running-to-idle IPI, which the target takes anywhere outside a kernel step (interrupts are off
 /// exactly inside one): in user mode, in a trampoline, in its idle loop, or at a `hlt`. The caller
 /// holds the target's lock, so the target is not inside a step, and every path of the target that
-/// would lock its own CPU sees the mark and returns at once.
+/// would lock its own CPU sees the mark and returns at once, so every glue path of the target reaches
+/// its idle loop without a step: through `restore_frame`, or from a step that returned `CpuIdle`.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_ipi_running_to_idle(cpu_id: usize, default_cr3: usize) {
     if !cpu::is_started(cpu_id) {
@@ -177,9 +182,11 @@ pub extern "C" fn veriflat_ipi_running_to_idle(cpu_id: usize, default_cr3: usize
 /// Running-to-idle IPI handler. Interrupts are on everywhere outside a kernel step, so `regs` is a
 /// user frame or a kernel frame of a trampoline, of the idle loop, or of a `hlt`; every frame is
 /// handled alike. Loads the requested default `cr3`, then sets this CPU's `running_to_idle_pending`
-/// flag, so the next exit through `restore_frame` diverts to the idle loop, then acknowledges. A
-/// flag that no such exit consumes is cleared by the idle loop or by the next step's release of
-/// this CPU's own lock (`veriflat_clear_running_to_idle_pending`). Also sets `wake_seen`.
+/// flag, so the next exit through `restore_frame` diverts to the idle loop, then records that this
+/// CPU owes the acknowledgement (`Cpu::running_to_idle_ack_owed`). It does not acknowledge: the
+/// interrupted path may still be the trap path of the thread this CPU ran, and the idle loop
+/// acknowledges once that path is left (`acknowledge_running_to_idle`). Also sets `wake_seen`. The
+/// owed flag itself keeps `veriflat_halt_until_ipi` from halting until the acknowledgement.
 pub fn handle_running_to_idle_ipi(_regs: &Registers) {
     interrupt::end_of_interrupt();
     cpu::set_wake_seen();
@@ -190,7 +197,21 @@ pub fn handle_running_to_idle_ipi(_regs: &Registers) {
         // PCID 0 in bits 11:0 and bit 63 clear: flushes PCID 0's non-global translations.
         unsafe { asm!("mov cr3, {}", in(reg) default_cr3, options(nostack, preserves_flags)) };
         cpu::set_running_to_idle_pending();
-        slot.store(0, Ordering::Release);
+        cpu::set_running_to_idle_ack_owed();
+    }
+}
+
+/// Acknowledges the running-to-idle IPI this CPU took, if it owes the acknowledgement. Called only
+/// by the idle loop, when it enters and at the top of every iteration, where this CPU has left the
+/// trap path of the thread it ran. The handler sets `running_to_idle_pending` and the owed flag
+/// together and no second IPI arrives before the slot store, so outside the handler the two flags
+/// are equal: an owed acknowledgement clears the owed flag, then `running_to_idle_pending`, which the
+/// idle loop consumes, then the request slot. The sender may send the next IPI only after that
+/// release store, so neither clear can drop a later request.
+pub fn acknowledge_running_to_idle() {
+    if cpu::take_running_to_idle_ack_owed() {
+        cpu::clear_running_to_idle_pending();
+        RUNNING_TO_IDLE_REQUESTS[cpu::get_cpu_id()].store(0, Ordering::Release);
     }
 }
 
@@ -231,14 +252,17 @@ pub extern "C" fn veriflat_send_ipi(target: usize) {
 
 /// Halts until an interrupt arrives. Called outside kernel steps, where interrupts are on, so a
 /// wake-up taken after the last step read this CPU's state but before the `hlt` would be slept
-/// through: the wake-up, running-to-idle, and timer handlers set `wake_seen`, the own-lock grant
-/// clears it, and the check runs with interrupts off. `sti; hlt` then halts atomically (an interrupt
-/// is held for one instruction after `sti`), so one arriving after the check still ends the `hlt`.
+/// through: the wake-up, running-to-idle, and timer handlers set `wake_seen`, every attempt to take
+/// this CPU's own lock clears it (`veriflat_disable_interrupts`), and the check runs with interrupts
+/// off. `sti; hlt` then halts atomically (an interrupt is held for one instruction after `sti`), so
+/// one arriving after the check still ends the `hlt`. A CPU that owes a running-to-idle
+/// acknowledgement never halts, whatever `wake_seen` says: a failed own-lock attempt may have
+/// cleared it after the IPI, and the sender waits for the idle loop's next iteration.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_halt_until_ipi() {
     unsafe {
         asm!("cli", options(nostack, preserves_flags));
-        if cpu::wake_seen() {
+        if cpu::wake_seen() || cpu::running_to_idle_ack_owed() {
             asm!("sti", options(nostack, preserves_flags));
         } else {
             asm!("sti", "hlt", options(nostack, preserves_flags));
@@ -246,10 +270,11 @@ pub extern "C" fn veriflat_halt_until_ipi() {
     }
 }
 
-/// Disables interrupts on this CPU. The verified kernel's own-CPU lock calls it inside the lock's
-/// spinlock when it grants the lock, so a CPU runs with interrupts off exactly while it holds its
-/// own CPU lock in a kernel step (model state InStep). No `nomem`: the `asm!` is a compiler barrier.
-/// It also clears `wake_seen`: the step reads this CPU's state after every wake-up seen so far.
+/// Disables interrupts on this CPU. The verified kernel's own-CPU lock calls it right before each
+/// attempt to acquire the lock word, and re-enables interrupts when the attempt fails, so a CPU runs
+/// with interrupts off exactly while it holds its own CPU lock in a kernel step (model state InStep).
+/// No `nomem`: the `asm!` is a compiler barrier. It also clears `wake_seen`, on a failed attempt
+/// too: a granted step reads this CPU's state after every wake-up seen so far.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_disable_interrupts() {
     unsafe { asm!("cli", options(nostack, preserves_flags)) };
@@ -265,9 +290,10 @@ pub extern "C" fn veriflat_enable_interrupts() {
 }
 
 /// Clears this CPU's `running_to_idle_pending` flag. The verified kernel calls it inside a step,
-/// right before it releases this CPU's own lock. A flag still set there is stale: the killer that
-/// set it held this CPU's lock, moved this CPU to idle, and released the lock before the step could
-/// start, so the step's result alone decides where the CPU goes.
+/// right before it releases this CPU's own lock. The flag is clear there: the killer that set it
+/// held this CPU's lock until the idle loop acknowledged, which clears the flag, so no step could
+/// start in between and the step's result alone decides where the CPU goes. The clear is a safety
+/// net that keeps a stale flag from diverting the next exit.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_clear_running_to_idle_pending() {
     cpu::clear_running_to_idle_pending();
