@@ -60,15 +60,15 @@ ap_start32:
 	or eax, 1 << 5
 	mov cr4, eax
 
-	; Enable Long Mode
+	; Enable Long Mode (LME) and No-Execute (NXE), as the BSP does in aloader's crt0.asm
 	mov ecx, 0xc0000080
 	rdmsr
-	or eax, 1 << 8
+	or eax, (1 << 8) | (1 << 11)
 	wrmsr
 
-	; Enable paging
+	; Enable paging (PG) and supervisor write protection (WP), as the BSP does
 	mov eax, cr0
-	or eax, 1 << 31
+	or eax, (1 << 31) | (1 << 16)
 	mov cr0, eax
 
 	; Load 64-bit GDT
