@@ -202,7 +202,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     let pre_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let process = pre_u.process_map.spec_index(prc_ptr);
-    assert(pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_pagetable_wf); reveal(process_iommu_table_wf); };
+    assert(pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr); };
     kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr);
     kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {

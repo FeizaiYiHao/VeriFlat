@@ -396,6 +396,64 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 
+/// A leaf step recorded from `pre` to `post` after range steps that start at `start`, where `post` publishes the present, writable,
+/// executable leaf `va`, page `mapped` of the recorded range, from an `Owned4k` page under the pagetable's read lock and charges the
+/// thread one 4K quota, leaves only range steps.
+pub(super) proof fn mmap_4k_leaf_step_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr,
+    prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr, range: VaRange4K, mapped: usize, phase: Mmap4kPhase,
+)
+    requires
+        0 <= start <= before.len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> mmap_4k_range_step(before[j], cpu_id),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(post, lctx),
+        pre.thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        pre.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, ..*pre }),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
+            quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k, temp_alloc_cache_4k: post.thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_4k,
+            syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view()
+        }),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread(),
+        post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().insert(va, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va)),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).present,
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        pre.pg_arr.spec_index(page_ptr2page_index(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).addr)).view().view().state is Owned4k,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 1,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Mmap4k { range: r, mapped: m, phase: p, .. }) && r == range && m == mapped && p == phase,
+        !(phase is Fill),
+        mapped < range.len,
+        range.view()[mapped as int] == va,
+        post.thrd_mp.spec_index(thrd_ptr).view().quota_4k == pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k - 1,
+        post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_leaf(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).write,
+        !whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).execute_disable,
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == pre.thrd_mp.spec_index(thrd_ptr).view().owning_container,
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id),
+{
+    kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, va);
+    mmap_4k_leaf_step_from_u(pre, kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, va);
+    mmap_4k_range_steps_from_leaf(steps, before, start, cpu_id);
+}
+
 /// Clearing the progress and releasing the mmap locks after the whole recorded range `range` is mapped, setting the window locks
 /// of pagetable `pagetable_ptr` to `windows`, those of `krnl` after unlocking `range`, returning the cpu to its trap path, and
 /// dropping the cpu's read hold on the pagetable, is the exit step from `krnl`'s projection to `post`.

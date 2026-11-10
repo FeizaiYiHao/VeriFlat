@@ -22,7 +22,7 @@ pub(super) proof fn flush_iommu_tlb_for_table_eof(pre: KernelK, post: KernelK, i
     reveal(iommu_tlb_wf);
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
         let owner = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
-        assert(pre.prc_mp.dom().contains(owner) && pre.prc_mp.spec_index(owner).view().iommu_table == Some(iommu_table)) by { reveal(process_iommu_table_wf); };
+        assert(pre.prc_mp.dom().contains(owner) && pre.prc_mp.spec_index(owner).view().iommu_table == Some(iommu_table)) by { process_iommu_table_wf_table_at(pre.prc_mp, pre.it_mp, iommu_table); };
         iommu_root_table_process_wf_table_at(pre.irt.view(), pre.prc_mp, pre.it_mp, iommu_table);
         assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     }

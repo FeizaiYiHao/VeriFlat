@@ -84,7 +84,9 @@ proof fn prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(
             ||| krnl.ctn_mp.spec_index(owner).view_ghost().subtree_set.view().contains(krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container)
         }) by { reveal(page_iommu_table_wf); };
     assert(krnl.prc_mp.dom().contains(thread_proc) && krnl.prc_mp.spec_index(thread_proc).view_rodata().view().owning_container == thread_owner) by { reveal(process_thread_wf); };
-    assert(krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container == thread_owner) by { if krnl.prc_mp.spec_index(thread_proc).view().iommu_table == Some(iommu_table) { assert(proc_ptr == thread_proc) by { reveal(process_iommu_table_wf); }; } };
+    assert(krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container == thread_owner) by {
+        if krnl.prc_mp.spec_index(thread_proc).view().iommu_table == Some(iommu_table) { assert(proc_ptr == thread_proc) by { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, thread_proc); }; }
+    };
     assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thrd_ptr)
         && krnl.thrd_mp.spec_index(thrd_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view().uppertree_seq
         && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth) by { reveal(container_thread_wf); };

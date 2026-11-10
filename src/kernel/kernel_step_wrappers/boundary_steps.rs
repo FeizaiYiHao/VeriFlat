@@ -413,7 +413,7 @@ impl KernelK {
         pagetable_lower_backup_wf_at(old(self).pt_mp, old(self).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(self.pt_mp, self.pt_lower.view(), pagetable);
         let iommu_table = old(self).prc_mp.spec_index(prc_ptr).view().iommu_table;
         if iommu_table is Some {
-            assert(old(self).it_mp.dom().contains(iommu_table.unwrap())) by { reveal(process_iommu_table_wf); };
+            assert(old(self).it_mp.dom().contains(iommu_table.unwrap())) by { process_iommu_table_wf_process_at(old(self).prc_mp, old(self).it_mp, prc_ptr); };
         }
         if old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()) { cpu_op_wf_at(old(self).cpu_op.view().view(), old(self).cpu_arr, old(lctx).cpu_id()); cpu_op_wf_at(self.cpu_op.view().view(), self.cpu_arr, old(lctx).cpu_id()); }
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);

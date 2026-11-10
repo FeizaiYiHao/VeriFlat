@@ -291,25 +291,38 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_container_map(
     ensures
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let new_u = kernel_k_to_kernel_u(*post);
             let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[ctn_ptr] });
             let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0;
             let pcid = old_u.process_map.spec_index(prc_ptr).pcid;
-            &&& new_u.container_map.dom() =~= containers.dom()
-            &&& forall|c: RwLockContainerPtr| #![trigger new_u.container_map.spec_index(c)]
-                containers.dom().contains(c) ==> {
-                    let container = containers.spec_index(c);
-                    let quota_4k = if container.owned_pages.contains(thrd_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
-                    new_u.container_map.spec_index(c) == if c == ctn_ptr {
-                        ContainerU {
-                            zombie: container.zombie || (zombie && container.root_process == prc_ptr), owned_threads: container.owned_threads.remove(thrd_ptr), quota_4k,
-                            free_pcids: if zombie { container.free_pcids.insert(pcid) } else { container.free_pcids }, ..container
-                        }
-                    } else { ContainerU { quota_4k, ..container } }
-                }
+            kernel_k_to_kernel_u(*post).container_map == Map::new(containers.dom(), |c: RwLockContainerPtr| {
+                let container = containers.spec_index(c);
+                let quota_4k = if container.owned_pages.contains(thrd_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
+                if c == ctn_ptr {
+                    ContainerU {
+                        zombie: container.zombie || (zombie && container.root_process == prc_ptr), owned_threads: container.owned_threads.remove(thrd_ptr), quota_4k,
+                        free_pcids: if zombie { container.free_pcids.insert(pcid) } else { container.free_pcids }, ..container
+                    }
+                } else { ContainerU { quota_4k, ..container } }
+            })
         }),
 {
-    reveal(kernel_k_to_kernel_u); reveal(kernel_thread_exit_fields);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    reveal(kernel_thread_exit_fields);
+    let old_u = kernel_k_to_kernel_u(*pre);
+    let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[ctn_ptr] });
+    let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0;
+    let pcid = old_u.process_map.spec_index(prc_ptr).pcid;
+    kernel_process_projection_at(pre, prc_ptr);
+    assert_maps_equal!(kernel_k_to_kernel_u(*post).container_map, Map::new(containers.dom(), |c: RwLockContainerPtr| {
+        let container = containers.spec_index(c);
+        let quota_4k = if container.owned_pages.contains(thrd_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
+        if c == ctn_ptr {
+            ContainerU {
+                zombie: container.zombie || (zombie && container.root_process == prc_ptr), owned_threads: container.owned_threads.remove(thrd_ptr), quota_4k,
+                free_pcids: if zombie { container.free_pcids.insert(pcid) } else { container.free_pcids }, ..container
+            }
+        } else { ContainerU { quota_4k, ..container } }
+    }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); } });
 }
 
 /// A thread exit with the exiting process released projects to that process, unlocked, without the thread, holding

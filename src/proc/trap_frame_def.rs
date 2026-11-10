@@ -65,6 +65,10 @@ impl TrapFrameOption {
     }
 }
 
+// TODO: this frame is the whole per-thread user register state the kernel model knows: the general registers, the error
+// code, and the interrupt frame (rip, cs, rflags, rsp, ss). The x87/MMX/SSE state and the ds/es/fs/gs selectors are neither
+// saved per thread nor part of the kernel model, so they pass from one thread to the next at a switch (see the TODO in
+// boot/kernel/src/syscalls/mod.rs); they should become part of the modelled per-thread register state.
 /// Registers passed to the ISR.
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug)]
