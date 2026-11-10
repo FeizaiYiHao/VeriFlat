@@ -260,12 +260,10 @@ pub(crate) unsafe extern "C" fn restore_frame() -> ! {
         "pop rdi",
         "pop rax",
         "jnz 3f",
-        "inc qword ptr gs:[{sysret_exits}]",
         "mov rsp, [rsp + {user_rsp}]", // error_code, rip, cs, rflags, then the user rsp
         "swapgs",
         "sysretq",
         "3:",
-        "inc qword ptr gs:[{iret_exits}]",
         "add rsp, 8", // error_code
         "swapgs",
         "iretq",
@@ -283,8 +281,6 @@ pub(crate) unsafe extern "C" fn restore_frame() -> ! {
         user_cs = const GlobalDescriptorTable::USER_CS,
         user_ss = const GlobalDescriptorTable::USER_SS,
         user_rsp = const offset_of!(Registers, rsp) - offset_of!(Registers, error_code),
-        sysret_exits = const offset_of!(Cpu, sysret_exits),
-        iret_exits = const offset_of!(Cpu, iret_exits),
     );
 }
 

@@ -50,10 +50,9 @@ pub unsafe fn exit_qemu(code: u32) -> ! {
     use core::sync::atomic::Ordering::Relaxed;
     use crate::platform::{REMOTE_RUNNING_TO_IDLE_IPIS, WAKE_IPIS};
     let high_water = (0..crate::cpu::present_cpus()).map(crate::cpu::kernel_stack_high_water).max().unwrap_or(0);
-    let (sysret, iret) = crate::cpu::restore_frame_exits();
     log::info!(
-        "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), running-to-idle IPIs {}, wake IPIs {}; ring-3 returns: {} sysretq, {} iretq",
-        code, high_water / 1024, crate::cpu::remote_flushes(), crate::platform::nmi_flushes(), REMOTE_RUNNING_TO_IDLE_IPIS.load(Relaxed), WAKE_IPIS.load(Relaxed), sysret, iret,
+        "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), running-to-idle IPIs {}, wake IPIs {}",
+        code, high_water / 1024, crate::cpu::remote_flushes(), crate::platform::nmi_flushes(), REMOTE_RUNNING_TO_IDLE_IPIS.load(Relaxed), WAKE_IPIS.load(Relaxed),
     );
     outl(QEMU_DEBUG_EXIT_PORT, code);
     spin_forever();

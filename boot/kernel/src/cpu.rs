@@ -131,10 +131,6 @@ pub struct Cpu {
     /// its `hlt` while it is set: an interrupt arrived after the last step read this CPU's state.
     pub wake_seen: AtomicBool,
 
-    /// Returns of `restore_frame` through `sysretq` and through `iretq`.
-    pub sysret_exits: u64,
-    pub iret_exits: u64,
-
     /// Remote flushes this CPU requested (`platform::veriflat_remote_flush_pcid`).
     pub remote_flushes: u64,
 
@@ -186,8 +182,6 @@ impl Cpu {
             timer_on: false,
             running_to_idle_pending: AtomicBool::new(false),
             wake_seen: AtomicBool::new(false),
-            sysret_exits: 0,
-            iret_exits: 0,
             remote_flushes: 0,
             xapic: MaybeUninit::uninit(),
             gdt: GlobalDescriptorTable::empty(),
@@ -279,14 +273,6 @@ pub fn clear_wake_seen() {
 
 pub fn wake_seen() -> bool {
     get_current().wake_seen.load(Ordering::Relaxed)
-}
-
-/// Returns of `restore_frame` through `sysretq` and through `iretq` on all CPUs so far.
-pub fn restore_frame_exits() -> (u64, u64) {
-    let cpus = unsafe { &*(&raw const CPUS) };
-    cpus[..present_cpus()].iter().fold((0, 0), |(sysret, iret), cpu| unsafe {
-        (sysret + ptr::read_volatile(&cpu.sysret_exits), iret + ptr::read_volatile(&cpu.iret_exits))
-    })
 }
 
 /// Counts one remote flush request of the current CPU. Only this CPU writes its count.
