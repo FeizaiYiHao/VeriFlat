@@ -15,7 +15,7 @@ pub enum OfflineCheckResult {
 /// requeued at the tail, the cpu publishes the default page table and goes Off, its TLB entries are
 /// flushed, its slot in the container cpu set is closed, and the request bit is cleared.
 pub(super) fn cpu_offline_commit(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr,
     current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, process_lock_perm: Option<Tracked<LockPerm>>,
     thread_lock_perm: Option<Tracked<LockPerm>>, cpu_lock_perm: Tracked<LockPerm>, flag_lock_perm: Tracked<LockPerm>,
@@ -165,7 +165,7 @@ pub(super) fn cpu_offline_commit(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         cpu_offline_check_step_pre(final(steps).view().last().old_u, cpu_id),
-        cpu_offline_check_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id, *pt_regs, cpu_offline_check_flushed_default_pcid(*old(krnl), cpu_id)),
+        cpu_offline_check_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id, cpu_offline_check_flushed_default_pcid(*old(krnl), cpu_id)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
@@ -193,7 +193,7 @@ pub(super) fn cpu_offline_commit(
         };
         if current_thread is Some { thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }
     }
-    cpu_offline_commit_take_cpu_off(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, current_process,
+    cpu_offline_commit_take_cpu_off(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, current_process,
         current_thread, process_lock_perm, thread_lock_perm, cpu_lock_perm, flag_lock_perm, cpu_set_lock_perm, scheduler_lock_perm);
 }
 
@@ -202,7 +202,7 @@ pub(super) fn cpu_offline_commit(
 /// Otherwise the caller continues to `syscall_schedule`. The returned ghost state is where the check decided: the entry
 /// for an early Continue and otherwise the snapshot after holding the cpu across the boundary.
 pub fn cpu_offline_check(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
 ) -> (ret: (OfflineCheckResult, Ghost<KernelK>))
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -227,7 +227,7 @@ pub fn cpu_offline_check(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         cpu_offline_check_entry_trace(
             final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)),
-            cpu_id, *pt_regs, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
+            cpu_id, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
         ),
         ret.0 == cpu_offline_check_result(kernel_k_to_kernel_u(ret.1.view()), cpu_id),
         ret.0 is Off ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
@@ -238,7 +238,7 @@ pub fn cpu_offline_check(
     if cpu_lock_res.is_none() {
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); steps.rebase_snapshot_k_if_unchanged(&*krnl);
-            cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(krnl), cpu_id, *pt_regs);
+            cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(krnl), cpu_id);
             cpu_offline_check_result_from_k(old(krnl), cpu_id, OfflineCheckResult::Continue);
         }
         return (OfflineCheckResult::Continue, Ghost(entry));
@@ -252,6 +252,6 @@ pub fn cpu_offline_check(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
-    cpu_offline_check_locked(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, Tracked(cpu_lock_perm), ctn_ptr, current_process, current_thread)
+    cpu_offline_check_locked(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm), ctn_ptr, current_process, current_thread)
 }
 }

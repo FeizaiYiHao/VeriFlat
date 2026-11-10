@@ -51,8 +51,9 @@ pub unsafe fn init_cpu() {
             cpu.tss.set_ist(i, ist_addr as u64);
         }
 
-        // Interrupts from user mode build their trap frame where `sys_entry` does.
-        cpu.tss.set_rsp(Ring::Ring0, cpu.syscall_sp);
+        // Interrupts from ring 3 push their frame at rsp0, the frame top of the thread this CPU runs
+        // (`syscalls::sync_current_frame` keeps it there). No ring 3 code runs before the first sync.
+        cpu.tss.set_rsp(Ring::Ring0, cpu.kernel_sp);
 
         &cpu.tss as *const TaskStateSegment
     };

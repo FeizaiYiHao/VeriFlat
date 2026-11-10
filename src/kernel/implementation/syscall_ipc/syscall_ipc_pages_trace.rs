@@ -869,12 +869,12 @@ pub(super) proof fn ipc_pages_rendezvous_trace_finish_step(steps: &KernelSteps, 
 }
 
 /// A pages call rejected before any visible change records no step.
-pub(super) proof fn ipc_pages_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_pages_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
         ret is Error,
     ensures
-        ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, range, regs, flushed_default_pcid, ret),
+        ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, range, flushed_default_pcid, ret),
 { reveal(ipc_pages_syscall_trace); reveal(ipc_pages_rendezvous_trace); }
 
 /// The cpu, the running thread that starts sharing a pages rendezvous at its first page, its peer, the sender's page table read-held, and the

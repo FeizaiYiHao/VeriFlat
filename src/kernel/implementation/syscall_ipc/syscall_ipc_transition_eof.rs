@@ -54,7 +54,7 @@ proof fn ipc_block_current_eof_subsystems(
             &&& thread_perms_wf(post.thrd_mp)
             &&& endpoint_perms_wf(post.ep_mp)
         }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); };
-        reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf);
+        reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf); reveal(cpu_trap_frame_wf);
     };
 }
 

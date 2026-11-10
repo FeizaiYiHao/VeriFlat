@@ -18,7 +18,11 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let flush_before = pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let flush_after = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre })
+    &&& post == (KernelK {
+        cpu_arr: post.cpu_arr, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid,
+        cpu_trap_frame: post.cpu_trap_frame, ..pre
+    })
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, current_thrd_ptr)
     &&& thread_after.locking_thread() == thread_before.locking_thread()
     &&& thread_after.being_killed() == thread_before.being_killed()
@@ -33,6 +37,8 @@ pub(super) open spec fn ipc_block_current_eof_transition_framing(
     &&& thread_after.view().blocking_endpoint_index == Some(ep_idx)
     &&& thread_after.view().ipc_payload == payload
     &&& thread_after.view().trap_frame.is_some()
+    &&& thread_after.view().trap_frame.addr() == thread_before.view().trap_frame.addr()
+    &&& thread_after.view().trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value())
     &&& post.ep_mp.unchanged_except(&pre.ep_mp, ep_ptr)
     &&& endpoint_after.is_init() == endpoint_before.is_init()
     &&& endpoint_after.view_rodata() == endpoint_before.view_rodata()
@@ -110,6 +116,8 @@ pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_op == pre.cpu_op
+    &&& post.cpu_regs == pre.cpu_regs
+    &&& post.cpu_trap_frame == pre.cpu_trap_frame
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn

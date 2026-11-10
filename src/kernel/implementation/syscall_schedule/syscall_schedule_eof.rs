@@ -4,10 +4,10 @@ use crate::*;
 use super::syscall_schedule_spec::scheduler_context_switch_eof_transition_framing;
 
 verus! {
-proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -46,10 +46,10 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, p
 }
 
 /// The cpu relations close after the switch.
-proof fn scheduler_context_switch_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -88,10 +88,10 @@ proof fn scheduler_context_switch_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id
 }
 
 /// The endpoint, call-link, and dangling-chain relations close after the switch.
-proof fn scheduler_context_switch_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -133,10 +133,10 @@ proof fn scheduler_context_switch_eof_endpoint_wf(pre: KernelK, post: KernelK, c
     assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
 }
 
-proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -166,9 +166,9 @@ proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post:
     ensures post.process_management_inv(),
 {
     reveal(scheduler_context_switch_eof_transition_framing);
-    scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
-    scheduler_context_switch_eof_cpu_wf(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
-    scheduler_context_switch_eof_endpoint_wf(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, sched_ptr, next_thread);
+    scheduler_context_switch_eof_cpu_wf(pre, post, cpu_id, sched_ptr, next_thread);
+    scheduler_context_switch_eof_endpoint_wf(pre, post, cpu_id, sched_ptr, next_thread);
     assert(post.process_management_inv()) by {
         assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
         assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp); };
@@ -177,10 +177,10 @@ proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post:
     };
 }
 
-pub(super) proof fn scheduler_context_switch_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn scheduler_context_switch_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -221,20 +221,21 @@ pub(super) proof fn scheduler_context_switch_eof_subsystems(pre: KernelK, post: 
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
-        scheduler_context_switch_eof_thread_perms(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
+        assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); thread_perms_wf_implies_node_slot_addrs(pre.thrd_mp, next_thread); };
+        scheduler_context_switch_eof_thread_perms(pre, post, cpu_id, sched_ptr, next_thread);
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
+        scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre, post, cpu_id, sched_ptr, next_thread);
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { cpu_offline_flags_wf_preserved_for_cpu_owner_eq(post.cpu_offline_mp, pre.cpu_arr, post.cpu_arr); };
         reveal(KernelK::default_pagetable_wf);
     };
 }
 
 /// Thread-map leaf of `scheduler_context_switch_eof_subsystems`, kept apart from the process and page-table reveals.
-proof fn scheduler_context_switch_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -277,10 +278,10 @@ proof fn scheduler_context_switch_eof_thread_perms(pre: KernelK, post: KernelK, 
 }
 
 /// CR3/PCID leaf of `scheduler_context_switch_eof_subsystems`, kept apart from the thread-map reveals.
-proof fn scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+proof fn scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -321,10 +322,10 @@ proof fn scheduler_context_switch_eof_cpu_hw_cr3_pcid(pre: KernelK, post: Kernel
     reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf);
 }
 
-pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
@@ -350,10 +351,10 @@ pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: Kern
     };
 }
 
-pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr)
     requires
         pre.inv(),
-        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, sched_ptr, next_thread),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
@@ -398,6 +399,9 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread != Some(next_thread),
         post.thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
         post.thrd_mp.spec_index(next_thread).view().error_code is None,
+        post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom().insert(cpu_id),
+        post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id),
+        post.cpu_trap_frame.view().view()[cpu_id].value() == pre.thrd_mp.spec_index(next_thread).view().trap_frame.view()->Some_0,
         scheduler_shards_of(post.sched_mp.spec_index(sched_ptr)) == scheduler_shards_of(pre.sched_mp.spec_index(sched_ptr)).update(cpu_id as int,
             match pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread {
                 Some(previous) => pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().skip(1).push(previous),
@@ -406,21 +410,21 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some ==> {
             let previous = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
             &&& post.thrd_mp.spec_index(previous).view().state == (ThreadState::SCHEDULED { cpu_id })
-            &&& *post.thrd_mp.spec_index(previous).view().trap_frame.get_some_0() == entry_regs
+            &&& post.thrd_mp.spec_index(previous).view().trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value())
         },
         forall|other_cpu: CpuId| #![trigger post.cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
     hide(Seq::contains);
     reveal(scheduler_context_switch_eof_transition_framing);
-    scheduler_context_switch_eof_subsystems(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
-    scheduler_context_switch_eof_memory(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_subsystems(pre, post, cpu_id, sched_ptr, next_thread);
+    scheduler_context_switch_eof_memory(pre, post, cpu_id, sched_ptr, next_thread);
     assert(scheduler_shards_of(post.sched_mp.spec_index(sched_ptr)) =~= scheduler_shards_of(pre.sched_mp.spec_index(sched_ptr)).update(cpu_id as int,
         match pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread {
             Some(previous) => pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().skip(1).push(previous),
             None => pre.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().skip(1),
         })) by { reveal(scheduler_shards_of); };
-    scheduler_context_switch_eof_process_management_inv(pre, post, cpu_id, sched_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_process_management_inv(pre, post, cpu_id, sched_ptr, next_thread);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
         reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);

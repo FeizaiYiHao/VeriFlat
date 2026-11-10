@@ -15,12 +15,13 @@ pub(super) fn schedule_switch_unlock_and_record(
     next_thread: RwLockThreadPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid, same: bool,
     process_lock_perm: Option<Tracked<LockPerm>>, current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>,
     Tracked(next_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<Option<LockPerm>>,
-    Ghost(entry_k): Ghost<KernelK>, Ghost(switch_k): Ghost<KernelK>, Ghost(entry_regs): Ghost<Registers>,
+    Ghost(entry_k): Ghost<KernelK>, Ghost(switch_k): Ghost<KernelK>,
 )
     requires
         entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, cpu_op: entry_k.cpu_op, prc_mp: entry_k.prc_mp, thrd_mp: entry_k.thrd_mp, sched_mp: entry_k.sched_mp, ..old(steps).snapshot_k() }),
         entry_k.cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         entry_k.cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        !(old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is User),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         entry_k.sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, sched_ptr),
         scheduler_shards_of(entry_k.sched_mp.spec_index(sched_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(sched_ptr)),
@@ -88,7 +89,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         entry_k.thrd_mp.spec_index(next_thread).view().temp_alloc_clean(),
         entry_k.thrd_mp.spec_index(next_thread).view().syscall_progress.view() is None,
         entry_k.prc_mp.dom().contains(entry_k.thrd_mp.spec_index(next_thread).view().owning_proc),
-        scheduler_context_switch_eof_transition_framing(switch_k, *old(krnl), cpu_id, sched_ptr, next_thread, entry_regs),
+        scheduler_context_switch_eof_transition_framing(switch_k, *old(krnl), cpu_id, sched_ptr, next_thread),
         old(krnl).cpu_arr.inv(),
         old(krnl).cpu_tlb.inv(),
         old(krnl).pcid_needflush.inv(),
@@ -97,7 +98,10 @@ pub(super) fn schedule_switch_unlock_and_record(
         old(krnl).sched_mp.perms_wf(),
         old(krnl).sched_mp.spec_index(sched_ptr).shards.inv(),
         old(krnl).sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.wf(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, pcid_needflush: old(krnl).pcid_needflush, cpu_hw_cr3_pcid: old(krnl).cpu_hw_cr3_pcid, sched_mp: old(krnl).sched_mp, thrd_mp: old(krnl).thrd_mp, cpu_tlb: old(krnl).cpu_tlb, ..switch_k }),
+        *old(krnl) == (KernelK {
+            cpu_arr: old(krnl).cpu_arr, pcid_needflush: old(krnl).pcid_needflush, cpu_hw_cr3_pcid: old(krnl).cpu_hw_cr3_pcid, sched_mp: old(krnl).sched_mp, thrd_mp: old(krnl).thrd_mp,
+            cpu_tlb: old(krnl).cpu_tlb, cpu_trap_frame: old(krnl).cpu_trap_frame, ..switch_k
+        }),
         old(krnl).thrd_mp.dom() == entry_k.thrd_mp.dom(),
         old(krnl).sched_mp.dom().contains(sched_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -195,7 +199,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, true, context_switch_flushed_pcid(entry_k, cpu_id, next_thread)),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, true, context_switch_flushed_pcid(entry_k, cpu_id, next_thread)),
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == entry_k.cpu_arr.spec_index(other_cpu).view().view().view(),
         {
@@ -207,11 +211,12 @@ pub(super) fn schedule_switch_unlock_and_record(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(next_thread)
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id })
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().error_code is None
+            &&& final(krnl).cpu_trap_frame.view().view()[cpu_id].value() == entry_k.thrd_mp.spec_index(next_thread).view().trap_frame.view()->Some_0
             &&& scheduler_shards_of(final(krnl).sched_mp.spec_index(sched_ptr)) == shards.update(cpu_id as int, match current_thread { Some(ptr) => queue.skip(1).push(ptr), None => queue.skip(1) })
             &&& (current_thread is Some ==> {
                 let prev = current_thread.unwrap();
                 &&& final(krnl).thrd_mp.spec_index(prev).view().state == (ThreadState::SCHEDULED { cpu_id })
-                &&& *final(krnl).thrd_mp.spec_index(prev).view().trap_frame.get_some_0() == entry_regs
+                &&& final(krnl).thrd_mp.spec_index(prev).view().trap_frame.view() == Some(entry_k.cpu_trap_frame.view().view()[cpu_id].value())
             })
         },
 {
@@ -221,23 +226,23 @@ pub(super) fn schedule_switch_unlock_and_record(
             &&& (current_process is Some ==> !old(steps).snapshot_k().prc_mp.spec_index(current_process.unwrap()).being_killed())
         }) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
         kernel_scheduler_shards_projection_at(entry_k.sched_mp.spec_index(sched_ptr), cpu_id);
-        scheduler_context_switch_eof(switch_k, *krnl, cpu_id, sched_ptr, next_thread, entry_regs);
+        scheduler_context_switch_eof(switch_k, *krnl, cpu_id, sched_ptr, next_thread);
     }
     schedule_switch_release_locks(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid, same, process_lock_perm,
         current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm));
     proof {
         let ghost flushed_pcid = context_switch_flushed_pcid(entry_k, cpu_id, next_thread);
         let ghost switch_before = steps.view();
-        assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, entry_regs, flushed_pcid)) by {
+        assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, flushed_pcid)) by {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap));
             reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             broadcast use kernel_process_nonlock_fields_unchanged_transitive;
         };
-        steps.end_kernel_step_context_switch(&*krnl, &*lctx, cpu_id, next_thread, entry_regs, flushed_pcid);
-        assert(schedule_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, entry_regs, true, flushed_pcid)) by {
-            schedule_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid);
-            schedule_trace_switch_step(&*steps, switch_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, entry_regs, flushed_pcid);
+        steps.end_kernel_step_context_switch(&*krnl, &*lctx, cpu_id, next_thread, flushed_pcid);
+        assert(schedule_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, true, flushed_pcid)) by {
+            schedule_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, flushed_pcid);
+            schedule_trace_switch_step(&*steps, switch_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, flushed_pcid);
         };
     }
 }

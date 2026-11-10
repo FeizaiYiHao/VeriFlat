@@ -406,7 +406,7 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         }),
         final(krnl).thrd_mp.dom().contains(victim_ptr),
         final(krnl).thrd_mp.spec_index(victim_ptr).view() == (Thread {
-            state: ThreadState::KILLED, error_code: final(krnl).thrd_mp.spec_index(victim_ptr).view().error_code,
+            state: ThreadState::KILLED, error_code: final(krnl).thrd_mp.spec_index(victim_ptr).view().error_code, trap_frame: final(krnl).thrd_mp.spec_index(victim_ptr).view().trap_frame,
             blocking_endpoint_ptr: final(krnl).thrd_mp.spec_index(victim_ptr).view().blocking_endpoint_ptr,
             blocking_endpoint_index: final(krnl).thrd_mp.spec_index(victim_ptr).view().blocking_endpoint_index,
             scheduler_linkedlist_node: final(krnl).thrd_mp.spec_index(victim_ptr).view().scheduler_linkedlist_node,

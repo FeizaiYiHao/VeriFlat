@@ -311,7 +311,7 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
     requires
         pre.inv(),
         post.subsystems_inv(),
-        post == (KernelK { thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, ..pre }),
+        post == (KernelK { thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, cpu_trap_frame: post.cpu_trap_frame, ..pre }),
         post.ep_mp.dom() == pre.ep_mp.dom(),
         post.sched_mp.dom() == pre.sched_mp.dom(),
         post.thrd_mp.dom() == pre.thrd_mp.dom(),
@@ -487,6 +487,7 @@ pub(crate) proof fn kill_cpu_to_idle_eof(pre: KernelK, post: KernelK, victim_ptr
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+        assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); };
         assert(thread_perms_wf(post.thrd_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
             reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);

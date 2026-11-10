@@ -113,6 +113,29 @@ pub fn split_region_tail_into_node<const N: usize, const M: usize>(base: usize, 
     (Tracked::assume_new(), node_addr, Tracked::assume_new())
 }
 
+/// TCB: split the last `TRAP_FRAME_SLOT_SZ` bytes off an owned region starting a page and initialize the `Registers` that end
+/// the slot as a zeroed frame.
+#[verifier::external_body]
+pub fn split_region_tail_into_trap_frame<const N: usize, const M: usize>(base: usize, Tracked(perm): Tracked<PointsTo<[u8; N]>>)
+    -> (ret: (Tracked<PointsTo<[u8; M]>>, usize, Tracked<PointsTo<Registers>>))
+    requires
+        perm.is_init(),
+        perm.addr() == base,
+        M + 192 == N,
+        M % 64 == 0,
+        page_ptr_valid(base),
+    ensures
+        ret.0.view().is_init(),
+        ret.0.view().addr() == base,
+        ret.1 == base + N - 168,
+        ret.2.view().is_init(),
+        ret.2.view().addr() == ret.1,
+{
+    let frame_addr = base + N - TRAP_FRAME_SZ;
+    unsafe { (frame_addr as *mut Registers).write(Registers::zeroed()); }
+    (Tracked::assume_new(), frame_addr, Tracked::assume_new())
+}
+
 /// TCB: retire a write-locked thread object and reclaim its 4k page as raw memory.
 ///
 /// This is the inverse of the `retype_thread_region_and_insert` MINT. The object has
@@ -120,7 +143,10 @@ pub fn split_region_tail_into_node<const N: usize, const M: usize>(base: usize, 
 /// release phase, its process list returned the in-page process node, and its
 /// other in-page nodes are not linked anywhere, so no other thread can reach or
 /// wait on the lock. The held lock disappears from `lctx` with the object.
-/// TCB assumption: `ExternalNode::is_init()` means the slot holds the initialized node permission at `addr()`, and the address `requires` make the three slots this page's own tail slots, so the parked and passed node permissions plus the lock object cover exactly the returned page.
+/// TCB assumption: `ExternalNode::is_init()` means the slot holds the initialized permission at `addr()`, `TrapFrameSlot::is_some()` means it holds the
+/// sealed frame permission at `addr()`, whose frame was initialized before sealing, and the address
+/// `requires` make the three node slots and the trap-frame slot this page's own tail slots, so the parked and passed permissions plus the lock object cover
+/// exactly the returned page.
 #[verifier::external_body]
 pub fn retype_thread_rwlock_to_4k_page_perm(
     thrd_ptr: RwLockThreadPtr, Tracked(thread_perm): Tracked<PointsTo<ThreadRwLock>>, Tracked(proc_node_perm): Tracked<PointsTo<Node<RwLockThreadPtr>>>,
@@ -135,6 +161,8 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
         thread_perm.value().view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
         thread_perm.value().view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
         thread_perm.value().view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
+        thread_perm.value().view().trap_frame.is_some(),
+        thread_perm.value().view().trap_frame.addr() == thread_trap_frame_addr(thrd_ptr),
         proc_node_perm.is_init(),
         proc_node_perm.addr() == thread_perm.value().view().proc_linkedlist_node.addr(),
         thread_perm.value().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: lock_perm.lock_id() }),
@@ -512,7 +540,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     }
 }
 
-/// Retype an owned thread page less its three node slots into a fresh write-locked thread and insert it into `thrd_mp`.
+/// Retype an owned thread page less its three node slots and its trap-frame slot into a fresh write-locked thread and insert it into `thrd_mp`.
 pub fn retype_thread_region_and_insert(thrd_mp: &mut ThreadLockedMap, pg_ptr: PagePtr, value: Thread, Ghost(ghost): Ghost<ThreadGhost>, Tracked(page_perm): Tracked<ThreadRegionPerm>,
     Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
     requires
@@ -550,8 +578,8 @@ pub fn retype_thread_region_and_insert(thrd_mp: &mut ThreadLockedMap, pg_ptr: Pa
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(pg_ptr), TypedHeldLock { lock_id: final(thrd_mp).lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
 {
-    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    thrd_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS>(pg_ptr, value, (), Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)))
+    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS_AND_TRAP_FRAME && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    thrd_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS_AND_TRAP_FRAME>(pg_ptr, value, (), Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)))
 }
 
 /// Boot-only: retype an owned process page less its node slot into the only, unlocked entry of `prc_mp`.
@@ -584,7 +612,7 @@ pub fn retype_process_region_as_unlocked_singleton(prc_mp: &mut ProcessLockedMap
 /// Boot-only: retype the root thread page in place, then schedule it on CPU 0 so
 /// both intrusive nodes take their final in-page addresses before any list uses them.
 pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, thread_value: Thread, initial_regs: &Registers,
-    Tracked(page_perm): Tracked<ThreadRegionPerm>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    Tracked(page_perm): Tracked<ThreadRegionPerm>, frame: Tracked<PointsTo<Registers>>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
         old(thread_map).perms_wf(),
         old(thread_map).dom().is_empty(),
@@ -598,6 +626,8 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         thread_value.scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
         thread_value.proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
         thread_value.endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
+        thread_value.trap_frame.addr() == thread_trap_frame_addr(thrd_ptr),
+        frame.view().addr() == thread_trap_frame_addr(thrd_ptr),
         0 < NUM_CPUS,
     ensures
         final(thread_map).perms_wf(),
@@ -608,8 +638,8 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
             proc_linkedlist_node: final(thread_map).spec_index(thrd_ptr).view().proc_linkedlist_node,
             ..thread_value
         }),
-        final(thread_map).spec_index(thrd_ptr).view().trap_frame.is_some(),
-        *final(thread_map).spec_index(thrd_ptr).view().trap_frame.get_some_0() == *initial_regs,
+        final(thread_map).spec_index(thrd_ptr).view().trap_frame.view() == Some(*initial_regs),
+        final(thread_map).spec_index(thrd_ptr).view().trap_frame.addr() == thread_trap_frame_addr(thrd_ptr),
         !final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node.is_init(),
         !final(thread_map).spec_index(thrd_ptr).view().proc_linkedlist_node.is_init(),
         final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
@@ -633,7 +663,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thrd_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&lctx), Tracked(&lock_perm));
-    let (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm) = thread.fresh_to_scheduled(thrd_ptr, 0, initial_regs);
+    let (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm) = thread.fresh_to_scheduled(thrd_ptr, 0, frame, initial_regs);
     proof { lctx.update_lock_id(KernelObjId::Thread(thrd_ptr), fresh_lock_id, thread_map.lock_id_by_key(thrd_ptr)); }
     thread_map.wunlock(thrd_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(KernelObjId::Thread(thrd_ptr)));
     (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm)
@@ -667,6 +697,8 @@ impl KernelK {
             final(self).pcid_needflush == old(self).pcid_needflush,
             final(self).cpu_hw_cr3_pcid == old(self).cpu_hw_cr3_pcid,
             final(self).cpu_op == old(self).cpu_op,
+            final(self).cpu_regs == old(self).cpu_regs,
+            final(self).cpu_trap_frame == old(self).cpu_trap_frame,
             final(self).ctn_mp == old(self).ctn_mp,
             final(self).sched_mp == old(self).sched_mp,
             final(self).pcid_allc_mp == old(self).pcid_allc_mp,
@@ -739,6 +771,8 @@ impl KernelK {
             old(self).thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
             old(self).thrd_mp.spec_index(thrd_ptr).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
             old(self).thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
+            old(self).thrd_mp.spec_index(thrd_ptr).view().trap_frame.is_some(),
+            old(self).thrd_mp.spec_index(thrd_ptr).view().trap_frame.addr() == thread_trap_frame_addr(thrd_ptr),
             proc_node_perm.is_init(),
             proc_node_perm.addr() == old(self).thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr(),
             lock_perm.state() is WriteLock,
@@ -774,3 +808,5 @@ impl KernelK {
 
 // Layout contract of `split_region_tail_into_node`: one node fits its slot and the slot alignment.
 const _: () = assert!(core::mem::size_of::<crate::Node<usize>>() <= crate::NODE_SLOT_SZ && core::mem::align_of::<crate::Node<usize>>() <= crate::NODE_SLOT_SZ);
+// Layout contract of `split_region_tail_into_trap_frame`: the frame fills the end of its slot at an 8-byte aligned address.
+const _: () = assert!(core::mem::size_of::<crate::Registers>() == crate::TRAP_FRAME_SZ && core::mem::align_of::<crate::Registers>() == 8 && crate::TRAP_FRAME_SZ <= crate::TRAP_FRAME_SLOT_SZ);

@@ -17,7 +17,7 @@ pub proof fn kernel_new_thread_fields_implies_u_new_thread_entry(
             lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id }, caller: None, callee: None, owning_container: ctn_ptr,
             owning_proc: prc_ptr, last_cpu: cpu_id, quota_4k: 0, quota_2m: 0, quota_1g: 0,
             endpoint_descriptors: Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { ep_ptr } else { None }),
-            blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: None, trap_frame: Some(initial_regs), syscall_progress: None,
+            blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: None, regs: initial_regs, syscall_progress: None,
             killed: false,
         }),
 {

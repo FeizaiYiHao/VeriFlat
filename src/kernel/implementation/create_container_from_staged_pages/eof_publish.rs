@@ -78,6 +78,8 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pcid_needflush == pre.pcid_needflush
     &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
     &&& post.cpu_op == pre.cpu_op
+    &&& post.cpu_regs == pre.cpu_regs
+    &&& post.cpu_trap_frame == pre.cpu_trap_frame
     &&& post.ep_mp == pre.ep_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
@@ -385,6 +387,8 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
         post.pcid_needflush == pre.pcid_needflush,
         post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid,
         post.cpu_op == pre.cpu_op,
+        post.cpu_regs == pre.cpu_regs,
+        post.cpu_trap_frame == pre.cpu_trap_frame,
         post.ep_mp == pre.ep_mp,
         post.allc_4k_mp.dom() == pre.allc_4k_mp.dom().insert(allocator_4k_page),
         post.allc_2m_mp.dom() == pre.allc_2m_mp.dom().insert(allocator_2m_page),

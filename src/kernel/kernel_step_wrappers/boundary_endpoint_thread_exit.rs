@@ -10,6 +10,8 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_step(
     ep_idx: EndpointIdx, new_ep_ptr: RwLockEndpointPtr,
 )
     requires
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         index_valid(NUM_CPUS, cpu_id),
         pre.prc_mp.dom().contains(prc_ptr),
         kernel_new_endpoint_fields(pre, post, ctn_ptr, thrd_ptr, ep_idx, new_ep_ptr, None),
@@ -151,6 +153,8 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_thread_map(
     pre: &KernelK, post: &KernelK, ctn_ptr: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr, ep_idx: EndpointIdx, new_ep_ptr: RwLockEndpointPtr,
 )
     requires
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) ==> (post.cpu_op.view().view()[i as int] is User) == (pre.cpu_op.view().view()[i as int] is User),
         kernel_new_endpoint_fields(pre, post, ctn_ptr, thrd_ptr, ep_idx, new_ep_ptr, None),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
             pre.thrd_mp.dom().contains(p) ==> if p == thrd_ptr { post.thrd_mp.spec_index(p).locking_thread() is None } else { post.thrd_mp.spec_index(p).locking_thread() == pre.thrd_mp.spec_index(p).locking_thread() },
@@ -174,7 +178,9 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_thread_map(
     assert_maps_equal!(post_u.thread_map, unlocked.insert(thrd_ptr, ThreadU {
         quota_4k: (thread.quota_4k as int - 1) as usize, endpoint_descriptors: thread.endpoint_descriptors.update(ep_idx as int, Some(new_ep_ptr)),
         syscall_progress: None, ..thread
-    }), p => { if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); } });
+    }), p => {
+        if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); } thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, p);
+    });
 }
 
 /// Endpoint creation projects to the new endpoint, unlocked and empty, held only at the caller's `ep_idx`.
@@ -206,6 +212,7 @@ pub proof fn kernel_thread_exit_fields_and_unlocks_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, flushed_default_pcid: bool,
 )
     requires
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         kernel_thread_exit_fields(pre, post, cpu_id, thrd_ptr, flushed_default_pcid),
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
@@ -368,13 +375,18 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_process_map(
 
 /// A thread exit removes the thread from the thread projection.
 proof fn kernel_thread_exit_fields_and_unlocks_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, flushed_default_pcid: bool)
-    requires kernel_thread_exit_fields(pre, post, cpu_id, thrd_ptr, flushed_default_pcid),
+    requires
+        kernel_thread_exit_fields(pre, post, cpu_id, thrd_ptr, flushed_default_pcid),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map.remove(thrd_ptr),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     reveal(kernel_thread_exit_fields);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(*pre).thread_map.remove(thrd_ptr), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+        thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+        let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
     });
 }
 
@@ -564,6 +576,7 @@ pub proof fn kernel_caller_woken_implies_u_step(before: &KernelK, after: &Kernel
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.dom().contains(caller_ptr),
         *after == (KernelK { thrd_mp: after.thrd_mp, sched_mp: after.sched_mp, ..*before }),
+        !(before.thrd_mp.spec_index(caller_ptr).view().state is RUNNING),
         after.thrd_mp.dom() == before.thrd_mp.dom(),
         forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)]
             before.thrd_mp.dom().contains(t) && t != thrd_ptr && t != caller_ptr ==> after.thrd_mp.spec_index(t) == before.thrd_mp.spec_index(t),
@@ -645,6 +658,10 @@ proof fn kernel_caller_woken_implies_u_container_map(before: &KernelK, after: &K
 /// `cpu_id` with `ErrorIpcCalleeExited`.
 proof fn kernel_caller_woken_implies_u_thread_map(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
     requires
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
+        !(before.thrd_mp.spec_index(caller_ptr).view().state is RUNNING),
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.dom().contains(caller_ptr),
         after.thrd_mp.dom() == before.thrd_mp.dom(),
@@ -707,7 +724,8 @@ pub proof fn kernel_descriptor_dropped_implies_u_step(
                 lock_state: thread.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee, owning_container: t.owning_container, owning_proc: t.owning_proc,
                 last_cpu: t.last_cpu, quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g, endpoint_descriptors: t.endpoint_descriptors.view(),
                 blocking_endpoint_ptr: t.blocking_endpoint_ptr, ipc_payload: t.ipc_payload, error_code: t.error_code,
-                trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None }, syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
+                regs: match t.state { ThreadState::RUNNING { cpu_id } => if before.cpu_op.view().view()[cpu_id as int] is User { before.cpu_regs.view().view()[cpu_id as int] } else { before.cpu_trap_frame.view().view()[cpu_id].value() }, _ => t.trap_frame.view()->Some_0 },
+                syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
             })
         }),
         ({

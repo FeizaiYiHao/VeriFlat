@@ -110,9 +110,9 @@ pub(super) proof fn ipc_rendezvous_result_from_k(
 }
 
 /// The block wrapper's user-view facts are exactly the block step on `pre`/`post`.
-pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool)
     requires
-        kernel_u_ipc_block_changed(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+        kernel_u_ipc_block_changed(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thrd_ptr);
@@ -140,7 +140,7 @@ pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
         },
     ensures
         ipc_block_step_pre(pre, cpu_id, ep_idx, waiting_state),
-        ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid),
 { reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// The rendezvous wrapper's user-view facts are exactly the rendezvous step on `pre`/`post`.
@@ -474,32 +474,32 @@ pub(super) proof fn ipc_endpoint_finish_step_from_u(
 { reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); }
 
 /// The one block step pushed since `before` is the complete blocking trace.
-pub(super) proof fn ipc_ordinary_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn ipc_ordinary_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ipc_block_step_pre(pre, cpu_id, ep_idx, waiting_state),
         !pre.cpu_array[cpu_id as int].killed,
-        ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid),
     ensures
         ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state,
-            payload, regs, flushed_default_pcid, RetValueType::CpuIdle),
+            payload, flushed_default_pcid, RetValueType::CpuIdle),
 { reveal(ipc_ordinary_syscall_trace); reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// A blocking trace since `before` is the payload's syscall trace.
-pub(super) proof fn ipc_syscall_trace_from_block(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn ipc_syscall_trace_from_block(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool)
     requires
         payload is Pages ==> payload->Pages_va_range.wf() && payload->Pages_va_range.len > 0,
         ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state,
-            payload, regs, flushed_default_pcid, RetValueType::CpuIdle),
+            payload, flushed_default_pcid, RetValueType::CpuIdle),
     ensures
         payload is Pages ==> ipc_pages_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
-            waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, RetValueType::CpuIdle),
+            waiting_state, payload->Pages_va_range, flushed_default_pcid, RetValueType::CpuIdle),
         payload is Endpoint ==> ipc_endpoint_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
-            waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, RetValueType::CpuIdle),
+            waiting_state, payload->Endpoint_endpoint_index, flushed_default_pcid, RetValueType::CpuIdle),
 { reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); }
 
 /// The rendezvous outcome since `before`, per payload kind, is the payload's syscall trace.
-pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, ret: RetValueType)
     requires
         !(ret is CpuIdle),
         payload is Pages ==> ipc_pages_rendezvous_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
@@ -517,24 +517,24 @@ pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, befor
         },
     ensures
         payload is Pages ==> ipc_pages_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
-            waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, ret),
+            waiting_state, payload->Pages_va_range, flushed_default_pcid, ret),
         payload is Endpoint ==> ipc_endpoint_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx,
-            waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, ret),
+            waiting_state, payload->Endpoint_endpoint_index, flushed_default_pcid, ret),
         (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(
-            steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid, ret),
+            steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid, ret),
 { reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); }
 
 /// A call rejected before any visible change records no step for any payload kind.
-pub(super) proof fn ipc_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
         ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled || ret is ErrorReplyOutOfPhase
             || (ret is CpuIdle && ipc_entry_result(pre, cpu_id, ep_idx, waiting_state, false) == Some(RetValueType::CpuIdle)),
         ret is CpuIdle && payload is Pages ==> payload->Pages_va_range.wf() && payload->Pages_va_range.len > 0,
     ensures
-        payload is Pages ==> ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, ret),
-        payload is Endpoint ==> ipc_endpoint_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, ret),
-        (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid, ret),
+        payload is Pages ==> ipc_pages_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Pages_va_range, flushed_default_pcid, ret),
+        payload is Endpoint ==> ipc_endpoint_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index, flushed_default_pcid, ret),
+        (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(trace, pre, pre, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid, ret),
 { reveal(ipc_entry_result); reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_pages_rendezvous_trace); reveal(ipc_endpoint_rendezvous_trace); }
 
 /// A rendezvous abandoned because the queue head died records no step for the Pages and Endpoint payloads.

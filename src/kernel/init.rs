@@ -625,6 +625,8 @@ pub open spec fn boot_kernel_state(
     &&& *krnl.dflt_pt == default_pagetable
     // CPUs.
     &&& krnl.cpu_op.view().view() == Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off })
+    &&& krnl.cpu_regs.view().view().len() == NUM_CPUS
+    &&& krnl.cpu_trap_frame.view().view() == Map::<CpuId, TrapFramePerm>::empty()
     &&& krnl.cpu_arr.inv()
     &&& forall|cpu_id: CpuId|
         #![trigger krnl.cpu_arr.spec_index(cpu_id)]
@@ -861,8 +863,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().error_code is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().caller is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().callee is None
-    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.is_some()
-    &&& *krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.get_some_0() == initial_regs
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.view() == Some(initial_regs)
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().blocking_endpoint_ptr is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
@@ -880,6 +881,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(layout.root_thread)
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == thread_proc_node_addr(layout.root_thread)
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(layout.root_thread)
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().trap_frame.addr() == thread_trap_frame_addr(layout.root_thread)
     // Root endpoint.
     &&& krnl.ep_mp.perms_wf()
     &&& krnl.ep_mp.dom() =~= set![layout.root_endpoint]
@@ -1071,10 +1073,10 @@ pub fn finish_init_from_boot(
         });
     };
     let iommu_table = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
-    let (Tracked(thread_region_perm), thread_sched_node, thread_proc_node, thread_endpoint_node) = split_thread_page_node_slots(layout.root_thread, Tracked(thread_page_perm));
-    let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint, thread_sched_node, thread_proc_node, thread_endpoint_node);
+    let (Tracked(thread_region_perm), thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame, thread_frame) = split_thread_page_node_slots(layout.root_thread, Tracked(thread_page_perm));
+    let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint, thread_sched_node, thread_proc_node, thread_endpoint_node, thread_trap_frame);
     let mut thrd_mp = ThreadLockedMap::new_empty();
-    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_region_perm));
+    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_region_perm), thread_frame);
     let (Tracked(process_region_perm), process_parent_node) = split_process_page_node_slot(layout.root_process, Tracked(process_page_perm));
     let process = Process::new_boot_root(process_parent_node, layout.cpu_pagetable, layout.iommu_table, layout.root_thread, process_node_addr, process_node_perm);
     let scheduler = Scheduler::new_boot_root(layout.root_container, layout.root_thread, scheduler_node_addr, scheduler_node_perm);
@@ -1098,6 +1100,8 @@ pub fn finish_init_from_boot(
     proof { default_pagetable.view().table_pages_wf_cr3_at(); }
     let cpu_array = Cpu::new_boot_array(layout.root_container, default_cr3);
     let tracked cpu_op = CpuOpArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off }));
+    let tracked cpu_regs = CpuRegsArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| *initial_regs));
+    let tracked cpu_trap_frame = CpuTrapFrameTable::new(Map::tracked_empty());
     let cpu_tlb = CpuTLB::new_empty();
     let iommu_tlb = IommuTLB::new_empty();
     let irt_addr = irt_cell_base();
@@ -1161,7 +1165,7 @@ pub fn finish_init_from_boot(
     proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
-        pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
+        pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), cpu_regs: Tracked(cpu_regs), cpu_trap_frame: Tracked(cpu_trap_frame), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
         prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
     };
     proof {

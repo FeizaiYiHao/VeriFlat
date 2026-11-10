@@ -67,8 +67,7 @@ pub fn create_thread_from_staged_page_merged(
         final(krnl).thrd_mp.spec_index(pg_ptr).view().syscall_progress.view() is None,
         !final(krnl).thrd_mp.spec_index(pg_ptr).view().exited.view(),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().state == (ThreadState::SCHEDULED { cpu_id }),
-        final(krnl).thrd_mp.spec_index(pg_ptr).view().trap_frame.is_some(),
-        *final(krnl).thrd_mp.spec_index(pg_ptr).view().trap_frame.get_some_0() == *initial_regs,
+        final(krnl).thrd_mp.spec_index(pg_ptr).view().trap_frame.view() == Some(*initial_regs),
         final(krnl).thrd_mp.spec_index(pg_ptr).view().owning_container == ctn_ptr,
         final(krnl).thrd_mp.spec_index(pg_ptr).view().owning_proc == prc_ptr,
         final(krnl).thrd_mp.spec_index(pg_ptr).view().endpoint_descriptors.spec_index(0) is None,
@@ -197,11 +196,11 @@ pub fn create_thread_from_staged_page_merged(
     let pg_idx = page_ptr2page_index(pg_ptr);
     let ghost page_locks = lctx.page_lock_map();
     let Tracked(page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsThread }, Ghost(page_locks), Tracked(&*lctx), Tracked(page_lock_perm));
-    let (Tracked(thread_region_perm), sched_node, proc_node, endpoint_node) = split_thread_page_node_slots(pg_ptr, Tracked(page_perm));
-    let thread_value = Thread::new_fresh(ctn_ptr, container_depth, prc_ptr, process_depth, proc_pagetable, Ghost(uppers), sched_node, proc_node, endpoint_node);
+    let (Tracked(thread_region_perm), sched_node, proc_node, endpoint_node, trap_frame, frame) = split_thread_page_node_slots(pg_ptr, Tracked(page_perm));
+    let thread_value = Thread::new_fresh(ctn_ptr, container_depth, prc_ptr, process_depth, proc_pagetable, Ghost(uppers), sched_node, proc_node, endpoint_node, trap_frame);
     let (Tracked(thread_perm), sched_node_addr, node_addr) = process_subsystem_create_scheduled_thread(
         &krnl.ctn_mp, &mut krnl.prc_mp, &mut krnl.thrd_mp, &mut krnl.sched_mp, pg_ptr, prc_ptr,
-        staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, thread_value, initial_regs, Tracked(thread_region_perm),
+        staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, thread_value, initial_regs, frame, Tracked(thread_region_perm),
         Tracked(&mut *lctx), Tracked(process_lock_perm), Tracked(staging_thread_lock_perm), Tracked(scheduler_lock_perm),
     );
     proof {

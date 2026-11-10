@@ -26,6 +26,7 @@ pub proof fn kernel_thread_quotas_exchanged_implies_u_step(pre: &KernelK, post: 
         post.cpu_arr.spec_index(cpu_id).view().killer_info() == pre.cpu_arr.spec_index(cpu_id).view().killer_info(),
         forall|other: CpuId| #![trigger post.cpu_op.view().view().spec_index(other as int)] index_valid(NUM_CPUS, other) && other != cpu_id ==>
             post.cpu_op.view().view().spec_index(other as int) == pre.cpu_op.view().view().spec_index(other as int),
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
         post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
         post.thrd_mp.spec_index(thread).view() == (Thread { quota_4k, quota_2m, ..pre.thrd_mp.spec_index(thread).view() }),
@@ -53,7 +54,7 @@ pub proof fn kernel_thread_quotas_exchanged_implies_u_step(pre: &KernelK, post: 
         lock_state: post_u.cpu_array[cpu_id as int].lock_state, op: post_u.cpu_array[cpu_id as int].op, ..cpu
     }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread, ThreadU { lock_state: post_u.thread_map[thread].lock_state, quota_4k, quota_2m, ..t }),
-        ptr => { if pre.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(pre, ptr); } if post.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(post, ptr); } });
+        ptr => { if pre.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(pre, ptr); } if post.thrd_mp.dom().contains(ptr) { kernel_thread_projection_at(post, ptr); } thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, ptr); });
     assert_maps_equal!(post_u.container_map, pre_u.container_map, ptr => {
         if pre.ctn_mp.dom().contains(ptr) {
             kernel_container_projection_at(pre, ptr); kernel_container_projection_at(post, ptr);

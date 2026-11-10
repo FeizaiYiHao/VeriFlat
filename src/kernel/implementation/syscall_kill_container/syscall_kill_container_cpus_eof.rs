@@ -102,7 +102,10 @@ proof fn kill_container_cpus_eof_subsystems_inv(
 {
     reveal(kill_container_cpus_eof_transition_framing);
     assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
-    assert(post.subsystems_inv()) by { reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf); };
+    assert(post.subsystems_inv()) by {
+        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
+        reveal(cpu_op_wf); reveal(cpu_trap_frame_wf);
+    };
 }
 
 proof fn kill_container_cpus_eof_process_management_inv(

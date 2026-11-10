@@ -122,6 +122,8 @@ pub open spec fn kernel_cpu_process_thread_nonlock_fields_unchanged(pre: &Kernel
     &&& kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_thread_nonlock_fields_unchanged(pre.thrd_mp, post.thrd_mp)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& post.dflt_pt == pre.dflt_pt
 }
 
@@ -224,6 +226,8 @@ pub open spec fn kernel_new_thread_fields(
     ctn_ptr: RwLockContainerPtr, cpu_id: CpuId, new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers,
     initial_endpoint: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
 ) -> bool {
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& post.irt.view().owners() == pre.irt.view().owners()
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
@@ -347,8 +351,7 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.thrd_mp.spec_index(new_thrd_ptr).view().ipc_payload == IPCPayLoad::Empty
     &&& post.thrd_mp.spec_index(new_thrd_ptr).view().error_code == None
     &&& post.thrd_mp.spec_index(new_thrd_ptr).view().syscall_progress.view() is None
-    &&& post.thrd_mp.spec_index(new_thrd_ptr).view().trap_frame.is_some()
-    &&& *post.thrd_mp.spec_index(new_thrd_ptr).view().trap_frame.get_some_0() == initial_regs
+    &&& post.thrd_mp.spec_index(new_thrd_ptr).view().trap_frame.view() == Some(initial_regs)
     &&& !post.thrd_mp.spec_index(new_thrd_ptr).being_killed()
 }
 
@@ -387,6 +390,8 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     let process = pre.prc_mp.spec_index(prc_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_process == Some(prc_ptr)
@@ -533,6 +538,8 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     let process = pre.prc_mp.spec_index(prc_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_process == Some(prc_ptr)
@@ -678,6 +685,8 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
     let process = pre.prc_mp.spec_index(prc_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_process == Some(prc_ptr)
@@ -1209,15 +1218,18 @@ pub open spec fn cpu_tlb_after_cpu_went_off(tlb: Map<(CpuId, Pcid), SingleTLB>, 
 #[verifier::opaque]
 /// `cpu_offline_check` with every lock released again: the non-Off cpu `cpu_id`, with a pending request of
 /// its container, went Off and unlocked, its live running thread (if any) was requeued at the tail of shard `cpu_id` with
-/// `regs`, the request bit was cleared, and the cpu's TLB entries were flushed. The cpu may be write-held at `pre`; every
+/// the frame of its trap-frame slot, the request bit was cleared, and the cpu's TLB entries were flushed. The cpu may be write-held at `pre`; every
 /// other cpu keeps its lock mode.
-pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
+pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, flushed_default_pcid: bool) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let previous = cpu.current_thread;
     let ctn_ptr = cpu.owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& !(pre.cpu_op.view().view()[cpu_id as int] is User)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Off)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1339,7 +1351,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
             &&& b.blocking_endpoint_ptr == a.blocking_endpoint_ptr
             &&& b.ipc_payload == a.ipc_payload
             &&& b.error_code == if previous == Some(t) { None } else { a.error_code }
-            &&& (previous == Some(t) ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == regs)
+            &&& (previous == Some(t) ==> b.trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value()))
             &&& (previous != Some(t) ==> b.trap_frame == a.trap_frame)
             &&& b.syscall_progress.view() == a.syscall_progress.view()
             &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
@@ -1354,6 +1366,8 @@ pub open spec fn kernel_new_endpoint_fields(
     new_ep_ptr: RwLockEndpointPtr, staging_progress: Option<SyscallProgress>,
 ) -> bool {
     let new_endpoint = post.ep_mp.spec_index(new_ep_ptr);
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& post.irt.view().owners() == pre.irt.view().owners()
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
@@ -1447,6 +1461,8 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view().len() == NUM_CPUS
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& pre.thrd_mp.dom().contains(thrd_ptr)
     &&& pre.prc_mp.dom().contains(prc_ptr)
     &&& !pre_process.view().zombie

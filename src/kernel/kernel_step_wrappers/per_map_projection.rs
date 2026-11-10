@@ -100,14 +100,16 @@ pub proof fn kernel_cpu_state_set_and_current_cleared_implies_u_cpu_array(pre: &
 /// The IPC block fields project to the thread map with only the blocking thread waiting on the endpoint.
 pub proof fn kernel_ipc_block_fields_implies_u_thread_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, )
-    requires kernel_ipc_block_fields(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+    waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, )
+    requires
+        kernel_ipc_block_fields(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
             let post_u = kernel_k_user_projection(*post);
             post_u.thread_map == pre_u.thread_map.insert(thrd_ptr, ThreadU {
-                state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(thrd_ptr)
+                state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, ..pre_u.thread_map.spec_index(thrd_ptr)
             })
         }),
 {
@@ -117,15 +119,20 @@ pub proof fn kernel_ipc_block_fields_implies_u_thread_map(
     let pre_u = kernel_k_user_projection(*pre);
     let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {
-        state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(thrd_ptr)
-    }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
+        state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, ..pre_u.thread_map.spec_index(thrd_ptr)
+    }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); }
+        thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+        let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
+    });
 }
 
 /// The IPC block fields project to the endpoint map with only the blocking thread appended to the endpoint queue.
 pub proof fn kernel_ipc_block_fields_implies_u_endpoint_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, )
-    requires kernel_ipc_block_fields(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+    waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, )
+    requires kernel_ipc_block_fields(pre, post, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
@@ -158,8 +165,8 @@ pub proof fn kernel_ipc_block_fields_implies_u_endpoint_map(
 /// The call-handoff fields project to the cpu array with only `cpu_id` switched to the callee.
 pub proof fn kernel_ipc_call_handoff_fields_implies_u_cpu_array(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
-    requires kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+    callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>, )
+    requires kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
@@ -183,16 +190,18 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_cpu_array(
 /// The call-handoff fields project to the thread map with the caller waiting for the reply and the callee running.
 pub proof fn kernel_ipc_call_handoff_fields_implies_u_thread_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
-    requires kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+    callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>, )
+    requires
+        kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
             let post_u = kernel_k_user_projection(*post);
             let caller = pre_u.thread_map.spec_index(caller_ptr);
             let callee = pre_u.thread_map.spec_index(callee_ptr);
-            post_u.thread_map == pre_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: Some(regs), ..caller })
-                .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee })
+            post_u.thread_map == pre_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), ..caller })
+                .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, ..callee })
         }),
 {
     hide(kernel_k_user_projection);
@@ -202,18 +211,21 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_thread_map(
     let post_u = kernel_k_user_projection(*post);
     let caller = pre_u.thread_map.spec_index(caller_ptr);
     let callee = pre_u.thread_map.spec_index(callee_ptr);
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: Some(regs), ..caller })
-        .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }), t => {
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), ..caller })
+        .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, ..callee }), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); }
         if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); }
+        thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+        let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
     });
 }
 
 /// The call-handoff fields project to the endpoint map with only the callee dequeued from the endpoint.
 pub proof fn kernel_ipc_call_handoff_fields_implies_u_endpoint_map(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, )
-    requires kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+    callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>, )
+    requires kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
@@ -236,10 +248,10 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_endpoint_map(
 }
 
 /// The cpu-off fields project to the container map with the requeued thread and the cleared request bit of the cpu's container.
-pub proof fn kernel_cpu_went_off_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
+pub proof fn kernel_cpu_went_off_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, flushed_default_pcid: bool)
     requires
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
-        kernel_cpu_went_off_fields(pre, post, cpu_id, regs, flushed_default_pcid),
+        kernel_cpu_went_off_fields(pre, post, cpu_id, flushed_default_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
         ({
@@ -280,16 +292,18 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_container_map(pre: &KernelK, p
     });
 }
 
-/// The cpu-off fields project to the thread map with only the cpu's running thread, if any, requeued with `regs`.
-pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
-    requires kernel_cpu_went_off_fields(pre, post, cpu_id, regs, flushed_default_pcid),
+/// The cpu-off fields project to the thread map with only the cpu's running thread, if any, requeued.
+pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, flushed_default_pcid: bool)
+    requires
+        kernel_cpu_went_off_fields(pre, post, cpu_id, flushed_default_pcid),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
             let post_u = kernel_k_user_projection(*post);
             post_u.thread_map == match pre_u.cpu_array[cpu_id as int].current_thread {
                 Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
-                    state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
+                    state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..pre_u.thread_map.spec_index(prev)
                 }),
                 None => pre_u.thread_map,
             }
@@ -303,12 +317,20 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post
     match pre_u.cpu_array[cpu_id as int].current_thread {
         Some(prev) => {
             assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(prev, ThreadU {
-                state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
-            }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); kernel_thread_user_projection_at(post, t); } });
+                state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..pre_u.thread_map.spec_index(prev)
+            }), t => {
+                if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); kernel_thread_user_projection_at(post, t); }
+                thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+                let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+                if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
+            });
         },
         None => {
             assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {
                 if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); kernel_thread_user_projection_at(post, t); }
+                thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+                let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+                if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
             });
         },
     }
@@ -368,6 +390,9 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_thread_map(pre
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
         kernel_thread_quota_4k_changed(pre, post, thread, -1),
         post.thrd_mp.spec_index(thread).view().syscall_progress == pre.thrd_mp.spec_index(thread).view().syscall_progress,
+        post.cpu_regs.view().view() == pre.cpu_regs.view().view(),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view(),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
@@ -550,6 +575,10 @@ pub proof fn kernel_thread_lock_mode_changed_implies_u_thread_map(pre: &KernelK,
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).lock_state_u() == mode,
         kernel_thread_nonlock_fields_unchanged(pre.thrd_mp, post.thrd_mp),
+        post.cpu_regs.view().view() == pre.cpu_regs.view().view(),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) ==> (post.cpu_op.view().view()[i as int] is User) == (pre.cpu_op.view().view()[i as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures
         kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map.insert(thrd_ptr, ThreadU { lock_state: mode, ..kernel_k_to_kernel_u(*pre).thread_map.spec_index(thrd_ptr) }),
 {
@@ -558,6 +587,7 @@ pub proof fn kernel_thread_lock_mode_changed_implies_u_thread_map(pre: &KernelK,
     let new_u = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(new_u.thread_map, old_u.thread_map.insert(thrd_ptr, ThreadU { lock_state: mode, ..old_u.thread_map.spec_index(thrd_ptr) }), t => {
         if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+        thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
     });
 }
 
@@ -654,6 +684,9 @@ pub proof fn kernel_thread_lock_and_progress_changed_implies_u_thread_map(pre: &
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
         post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        post.cpu_regs.view().view() == pre.cpu_regs.view().view(),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view(),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);

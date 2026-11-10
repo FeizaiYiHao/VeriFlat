@@ -179,7 +179,8 @@ pub struct Thread {
     pub ipc_payload: IPCPayLoad,
 
     pub error_code: Option<RetValueType>,  //this will only be set when it comes out of endpoint and goes to scheduler.
-    pub trap_frame: TrapFrameOption,
+    /// The saved user registers; the permission is parked here exactly while the thread is not RUNNING.
+    pub trap_frame: TrapFrameSlot,
 
     pub upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
 
@@ -223,7 +224,7 @@ pub ghost struct ThreadU {
     pub blocking_endpoint_ptr: Option<RwLockEndpointPtr>,
     pub ipc_payload: IPCPayLoad,
     pub error_code: Option<RetValueType>,
-    pub trap_frame: Option<Registers>,
+    pub regs: Registers,
     pub syscall_progress: Option<SyscallProgress>,
     pub killed: bool,
 }
@@ -236,11 +237,13 @@ impl Thread {
     /// Boot-only fresh root thread: RUNNING on CPU 0 with endpoint 0 set. The
     /// caller retypes it into its page before taking any intrusive node.
     pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, ep_ptr: RwLockEndpointPtr,
-        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>) -> (ret: Self)
+        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>, trap_frame: TrapFrameSlot)
+        -> (ret: Self)
         requires
             scheduler_linkedlist_node.is_init(),
             proc_linkedlist_node.is_init(),
             endpoint_linkedlist_node.is_init(),
+            trap_frame.is_none(),
         ensures
             ret.inv(),
             !ret.exited.view(),
@@ -260,6 +263,7 @@ impl Thread {
             ret.caller is None,
             ret.callee is None,
             ret.trap_frame.is_none(),
+            ret.trap_frame.addr() == trap_frame.addr(),
             ret.blocking_endpoint_ptr is None,
             ret.blocking_endpoint_index is None,
             ret.free_quota_pending_clean(),
@@ -275,7 +279,8 @@ impl Thread {
             ret.proc_linkedlist_node == proc_linkedlist_node,
             ret.endpoint_linkedlist_node == endpoint_linkedlist_node,
     {
-        let mut thread = Self::new_fresh(owning_container, 0, owning_proc, 0, proc_pagetable_ptr, Ghost(Seq::empty()), scheduler_linkedlist_node, proc_linkedlist_node, endpoint_linkedlist_node);
+        let mut thread = Self::new_fresh(owning_container, 0, owning_proc, 0, proc_pagetable_ptr, Ghost(Seq::empty()), scheduler_linkedlist_node, proc_linkedlist_node, endpoint_linkedlist_node,
+            trap_frame);
         thread.endpoint_descriptors.set(0, Some(ep_ptr));
         thread
     }
@@ -338,14 +343,17 @@ impl Thread {
     /// Construct a fresh Thread for retype operations.
     /// State is RUNNING{cpu_id: 0} (not waiting, not SCHEDULED).
     /// All endpoint fields are None/empty, all pending quotas are 0,
-    /// caller/callee are None, linkedlist nodes are init, trap_frame is None.
+    /// caller/callee are None, linkedlist nodes are init; the trap-frame slot `trap_frame` is empty, as a RUNNING thread holds
+    /// no frame permission.
     pub fn new_fresh(owning_container: RwLockContainerPtr, container_depth: usize, owning_proc: RwLockProcessPtr, process_depth: usize, proc_pagetable_ptr: RwLockPageTableRoot, upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
-        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>) -> (ret: Self)
+        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>, trap_frame: TrapFrameSlot)
+        -> (ret: Self)
         requires
             upper_container_seq.view().len() == container_depth,
             scheduler_linkedlist_node.is_init(),
             proc_linkedlist_node.is_init(),
             endpoint_linkedlist_node.is_init(),
+            trap_frame.is_none(),
         ensures
             ret.inv(),
             !ret.exited.view(),
@@ -375,6 +383,7 @@ impl Thread {
             ret.ipc_payload is Empty,
             ret.error_code is None,
             ret.trap_frame.is_none(),
+            ret.trap_frame.addr() == trap_frame.addr(),
             ret.free_quota_pending_clean(),
             ret.syscall_progress.view() is None,
             ret.temp_alloc_clean(),
@@ -391,7 +400,7 @@ impl Thread {
             proc_linkedlist_node, quota_4k: 0, quota_2m: 0, quota_1g: 0, temp_alloc_cache_4k: Ghost(Set::empty()),
             temp_alloc_cache_2m: Ghost(Set::empty()), temp_alloc_cache_1g: Ghost(Set::empty()), endpoint_descriptors, blocking_endpoint_ptr: None,
             blocking_endpoint_index: None, endpoint_linkedlist_node, ipc_payload: IPCPayLoad::Empty, error_code: None,
-            trap_frame: TrapFrameOption::zeroed_none(), upper_container_seq, direct_free_quota_pending_4k: Ghost(0), direct_free_quota_pending_2m: Ghost(0),
+            trap_frame, upper_container_seq, direct_free_quota_pending_4k: Ghost(0), direct_free_quota_pending_2m: Ghost(0),
             direct_free_quota_pending_1g: Ghost(0), indirect_free_quota_pending_4k: Ghost(Seq::new(container_depth as nat, |i: int| 0usize)),
             indirect_free_quota_pending_2m: Ghost(Seq::new(container_depth as nat, |i: int| 0usize)),
             indirect_free_quota_pending_1g: Ghost(Seq::new(container_depth as nat, |i: int| 0usize)), syscall_progress: Ghost(None),
@@ -400,14 +409,17 @@ impl Thread {
     }
 
     /// In-place RUNNING -> SCHEDULED transition for a freshly retyped thread. Both
-    /// intrusive nodes are taken here so their addresses are the in-page ones.
-    pub fn fresh_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, initial_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    /// intrusive nodes are taken here so their addresses are the in-page ones; `initial_regs` is written through the raw frame
+    /// permission `frame`, which is then sealed and parked.
+    pub fn fresh_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, frame: Tracked<PointsTo<Registers>>, initial_regs: &Registers)
+        -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
             old(self).scheduler_linkedlist_node.is_init(),
             old(self).proc_linkedlist_node.is_init(),
             index_valid(NUM_CPUS, cpu_id),
+            frame.view().addr() == old(self).trap_frame.addr(),
         ensures
             final(self).inv(),
             *final(self) == (Thread {
@@ -418,8 +430,8 @@ impl Thread {
             final(self).state == (ThreadState::SCHEDULED { cpu_id }),
             final(self).last_cpu == cpu_id,
             final(self).current_lock_major() == THREAD_SCHEDULED_LOCK_MAJOR,
-            final(self).trap_frame.is_some(),
-            *final(self).trap_frame.get_some_0() == *initial_regs,
+            final(self).trap_frame.view() == Some(*initial_regs),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
             !final(self).scheduler_linkedlist_node.is_init(),
             !final(self).proc_linkedlist_node.is_init(),
             final(self).scheduler_linkedlist_node.addr() == old(self).scheduler_linkedlist_node.addr(),
@@ -437,7 +449,10 @@ impl Thread {
         node_update_value(sched_node_addr, &mut sched_node_perm, thrd_ptr);
         let (process_node_addr, mut process_node_perm) = self.proc_linkedlist_node.take();
         node_update_value(process_node_addr, &mut process_node_perm, thrd_ptr);
-        self.trap_frame.set_self(initial_regs);
+        let tracked mut frame_perm = frame.get();
+        PPtr::<Registers>::from_usize(self.trap_frame.addr()).write(Tracked(&mut frame_perm), *initial_regs);
+        let tracked sealed = TrapFramePerm::new(frame_perm);
+        self.trap_frame.put(Tracked(sealed));
         self.state = ThreadState::SCHEDULED { cpu_id };
         self.last_cpu = cpu_id;
         (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm)
@@ -461,32 +476,33 @@ impl Thread {
         self.quota_4k = self.quota_4k - 1;
     }
 
-    pub fn running_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn running_to_scheduled(&mut self, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, frame: Tracked<TrapFramePerm>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
             index_valid(NUM_CPUS, cpu_id),
+            frame.view().addr() == old(self).trap_frame.addr(),
         ensures
             final(self).inv(),
             *final(self) == (Thread { state: final(self).state, error_code: final(self).error_code, trap_frame: final(self).trap_frame, scheduler_linkedlist_node: final(self).scheduler_linkedlist_node, ..*old(self) }),
             final(self).scheduler_linkedlist_node.addr() == old(self).scheduler_linkedlist_node.addr(),
             final(self).error_code is None,
             final(self).state == (ThreadState::SCHEDULED { cpu_id }),
-            final(self).trap_frame.is_some(),
-            *final(self).trap_frame.get_some_0() == *pt_regs,
+            final(self).trap_frame.view() == Some(frame.view().value()),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == thrd_ptr,
     {
-        self.trap_frame.set_self(pt_regs);
+        self.trap_frame.put(frame);
         let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
         node_update_value(node_addr, &mut node_perm, thrd_ptr);
         self.state = ThreadState::SCHEDULED { cpu_id };
         (node_addr, node_perm)
     }
 
-    pub fn scheduled_to_running(&mut self, cpu_id: CpuId, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers) -> (ret: Option<RetValueType>)
+    pub fn scheduled_to_running(&mut self, cpu_id: CpuId, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>) -> (ret: (Option<RetValueType>, usize, Tracked<TrapFramePerm>))
         requires
             old(self).inv(),
             old(self).state is SCHEDULED,
@@ -501,19 +517,21 @@ impl Thread {
             }),
             final(self).scheduler_linkedlist_node.addr() == old(self).scheduler_linkedlist_node.addr(),
             final(self).error_code is None,
-            ret == old(self).error_code,
+            ret.0 == old(self).error_code,
             final(self).state == (ThreadState::RUNNING { cpu_id }),
             final(self).trap_frame.is_none(),
-            *final(pt_regs) == *old(self).trap_frame.get_some_0(),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
+            ret.1 == old(self).trap_frame.addr(),
+            ret.2.view().addr() == old(self).trap_frame.addr(),
+            ret.2.view().value() == old(self).trap_frame.view()->Some_0,
     {
         self.scheduler_linkedlist_node.put(node_perm);
-        self.trap_frame.set_dst(pt_regs);
-        self.trap_frame.set_to_none();
+        let (frame_addr, frame) = self.trap_frame.take();
         let ret = self.error_code;
         self.error_code = None;
         self.state = ThreadState::RUNNING { cpu_id };
         self.last_cpu = cpu_id;
-        ret
+        (ret, frame_addr, frame)
     }
 
     /// Retargets a queued thread to shard `cpu_id`; its scheduler node stays with the run queue.
@@ -529,10 +547,12 @@ impl Thread {
 
     /// Move the running thread into an endpoint wait queue and hand its
     /// intrusive endpoint node to the queue owner.
-    pub fn block_on_endpoint(&mut self, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    pub fn block_on_endpoint(&mut self, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad,
+        frame: Tracked<TrapFramePerm>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
             old(self).state is RUNNING,
+            frame.view().addr() == old(self).trap_frame.addr(),
             waiting_state.is_endpoint_waiting(),
             waiting_state is RECEIVING_CALL ==> old(self).caller is None,
             payload.wf(),
@@ -550,8 +570,8 @@ impl Thread {
             final(self).blocking_endpoint_ptr == Some(ep_ptr),
             final(self).blocking_endpoint_index == Some(ep_idx),
             final(self).ipc_payload =~= payload,
-            final(self).trap_frame.is_some(),
-            final(self).trap_frame.get_some_0() =~= pt_regs,
+            final(self).trap_frame.view() == Some(frame.view().value()),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
             final(self).caller == old(self).caller,
             final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
@@ -566,7 +586,7 @@ impl Thread {
         self.blocking_endpoint_ptr = Some(ep_ptr);
         self.blocking_endpoint_index = Some(ep_idx);
         self.ipc_payload = payload;
-        self.trap_frame.set_self(pt_regs);
+        self.trap_frame.put(frame);
         self.state = waiting_state;
         (node_addr, node_perm)
     }
@@ -720,26 +740,28 @@ impl Thread {
 
     /// The running caller waits for a reply while a previously blocked
     /// receive-call thread takes over its CPU.
-    pub fn running_caller_to_waiting_reply(&mut self, callee_ptr: RwLockThreadPtr, self_ptr: RwLockThreadPtr, pt_regs: &Registers)
+    pub fn running_caller_to_waiting_reply(&mut self, callee_ptr: RwLockThreadPtr, self_ptr: RwLockThreadPtr, frame: Tracked<TrapFramePerm>)
         requires
             old(self).inv(),
             old(self).state is RUNNING,
             old(self).callee is None,
             callee_ptr != self_ptr,
+            frame.view().addr() == old(self).trap_frame.addr(),
         ensures
             final(self).inv(),
             *final(self) == (Thread { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: final(self).trap_frame, ..*old(self) }),
-            final(self).trap_frame.is_some(),
-            final(self).trap_frame.get_some_0() =~= pt_regs,
+            final(self).trap_frame.view() == Some(frame.view().value()),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
     {
-        self.trap_frame.set_self(pt_regs);
+        self.trap_frame.put(frame);
         self.callee = Some(callee_ptr);
         self.state = ThreadState::WAITING_REPLY;
     }
 
     /// A blocked receive-call thread becomes the running callee and restores
     /// the register image it saved when entering the endpoint.
-    pub fn endpoint_receiver_to_running(&mut self, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers)
+    pub fn endpoint_receiver_to_running(&mut self, thrd_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        -> (ret: (usize, Tracked<TrapFramePerm>))
         requires
             old(self).inv(),
             old(self).state is RECEIVING_CALL,
@@ -759,22 +781,25 @@ impl Thread {
             final(self).endpoint_linkedlist_node.is_init(),
             final(self).endpoint_linkedlist_node.addr() == old(self).endpoint_linkedlist_node.addr(),
             final(self).trap_frame.is_none(),
-            *final(pt_regs) =~= *old(self).trap_frame.get_some_0(),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
+            ret.0 == old(self).trap_frame.addr(),
+            ret.1.view().addr() == old(self).trap_frame.addr(),
+            ret.1.view().value() == old(self).trap_frame.view()->Some_0,
     {
         self.endpoint_linkedlist_node.put(endpoint_node_perm);
-        self.trap_frame.set_dst(pt_regs);
-        self.trap_frame.set_to_none();
+        let (frame_addr, frame) = self.trap_frame.take();
         self.blocking_endpoint_ptr = None;
         self.blocking_endpoint_index = None;
         self.caller = Some(caller_ptr);
         self.call_depth = Ghost(caller_depth.view() + 1);
         self.last_cpu = cpu_id;
         self.state = ThreadState::RUNNING { cpu_id };
+        (frame_addr, frame)
     }
 
     /// A caller waiting for its reply takes over the replying callee's CPU and restores the register image it
     /// saved when it called.
-    pub fn waiting_reply_to_running(&mut self, cpu_id: CpuId, pt_regs: &mut Registers)
+    pub fn waiting_reply_to_running(&mut self, cpu_id: CpuId) -> (ret: (usize, Tracked<TrapFramePerm>))
         requires
             old(self).inv(),
             old(self).state is WAITING_REPLY,
@@ -783,13 +808,16 @@ impl Thread {
             final(self).inv(),
             *final(self) == (Thread { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: final(self).trap_frame, ..*old(self) }),
             final(self).trap_frame.is_none(),
-            *final(pt_regs) =~= *old(self).trap_frame.get_some_0(),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
+            ret.0 == old(self).trap_frame.addr(),
+            ret.1.view().addr() == old(self).trap_frame.addr(),
+            ret.1.view().value() == old(self).trap_frame.view()->Some_0,
     {
-        self.trap_frame.set_dst(pt_regs);
-        self.trap_frame.set_to_none();
+        let (frame_addr, frame) = self.trap_frame.take();
         self.callee = None;
         self.last_cpu = cpu_id;
         self.state = ThreadState::RUNNING { cpu_id };
+        (frame_addr, frame)
     }
 
     /// A caller waiting for its reply is woken on shard `cpu_id` with `result` because its callee exited.
@@ -872,14 +900,18 @@ impl Thread {
     }
 
     /// A killer forced the CPU running this thread to idle.
-    pub fn running_to_killed(&mut self)
+    pub fn running_to_killed(&mut self, frame: Tracked<TrapFramePerm>)
         requires
             old(self).inv(),
             old(self).state is RUNNING,
+            frame.view().addr() == old(self).trap_frame.addr(),
         ensures
             final(self).inv(),
-            *final(self) == (Thread { state: ThreadState::KILLED, ..*old(self) }),
+            *final(self) == (Thread { state: ThreadState::KILLED, trap_frame: final(self).trap_frame, ..*old(self) }),
+            final(self).trap_frame.view() == Some(frame.view().value()),
+            final(self).trap_frame.addr() == old(self).trap_frame.addr(),
     {
+        self.trap_frame.put(frame);
         self.state = ThreadState::KILLED;
     }
 
@@ -984,10 +1016,8 @@ impl LockInvTrait for Thread {
         &&& self.endpoint_descriptors.wf()
         &&& self.ipc_payload.wf()
         &&& self.error_code is Some ==> self.state is SCHEDULED
-        // A running thread has no saved registers; a scheduled, waiting, or in-transit thread has them saved.
-        &&& self.state is RUNNING ==> self.trap_frame.is_none()
-        &&& self.state is SCHEDULED ==> self.trap_frame.is_some()
-        &&& (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_TRANSIT) ==> self.trap_frame.is_some()
+        // The frame permission is parked in the thread whenever it is not RUNNING.
+        &&& !(self.state is RUNNING) ==> self.trap_frame.is_some()
         &&& self.state is SCHEDULED ==> index_valid(NUM_CPUS, self.state->SCHEDULED_cpu_id)
         &&& index_valid(NUM_CPUS, self.last_cpu)
         // A thread waiting on an endpoint names it through a valid descriptor.

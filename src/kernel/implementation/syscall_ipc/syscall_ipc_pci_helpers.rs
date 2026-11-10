@@ -320,7 +320,7 @@ verus! {
         proof {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr,
-                peer_result, None, pci_transfer)) by { reveal(kernel_ipc_rendezvous_fields); };
+                peer_result, None, pci_transfer) && krnl.cpu_regs.view().view() == steps.snapshot_k().cpu_regs.view().view() && krnl.cpu_trap_frame.view().view() == steps.snapshot_k().cpu_trap_frame.view().view()) by { reveal(kernel_ipc_rendezvous_fields); };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr,
                 peer_result, None, pci_transfer, payload, false);
             assert({

@@ -51,7 +51,8 @@ their maps' domains.
 
 - `cpu_id`;
 - the syscall's user arguments, on the first step of the syscall (for example
-  `va`, `range`, `endpoint_index`, `regs`, an amount, or the IPC payload);
+  `va`, `range`, `endpoint_index`, a new thread's initial `regs`, an amount,
+  or the IPC payload);
   later steps read them from `prog`;
 - K-internal choices that U cannot determine, such as schedule's
   `flushed_pcid` and IPC's `flushed_default_pcid`.
@@ -211,7 +212,7 @@ Stutters: CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoQu
 
 Status: conforms (focused run #27374).
 
-- Arguments: entry `regs`. K-internal label: `flushed_pcid`
+- Arguments: none. K-internal label: `flushed_pcid`
   (`context_switch_flushed_pcid`): `None` when `next` belongs to the cpu's
   current process, which keeps its page table, PCID, and flush flag;
   otherwise `next`'s PCID when its flush is pending or its dirty slot names
@@ -312,7 +313,7 @@ that `P.children[i]` does not own; CpuNotOff.
 
 Status: conforms, including the Hold/Release protocol (Batch 2 validation, §2).
 
-Entry `cpu_offline_check(cpu_id, pt_regs) -> OfflineCheckResult { Continue, Off }`
+Entry `cpu_offline_check(cpu_id) -> OfflineCheckResult { Continue, Off }`
 is run by the trap layer on every cpu right before each `syscall_schedule`:
 from a running thread (timer tick, `sys_schedule`) and on each pass of the
 idle loop. It is not a syscall: no `Caller`, and `C` is
@@ -346,8 +347,7 @@ entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
 - Effect (`kernel_u_cpu_went_off_changed`): `cpu.state = Off`,
   `cpu.current_process = cpu.current_thread = None`;
   `C.cpu_offline_requests[cpu_id] = false`; `prev`, if any, becomes
-  `SCHEDULED { cpu_id }` with `error_code = None`, `trap_frame = Some(pt_regs)`
-  and is pushed on `C.scheduler[cpu_id]`; `cpu_tlb` keeps its domain, every `(cpu_id, p)`
+  `SCHEDULED { cpu_id }` with `error_code = None` and is pushed on `C.scheduler[cpu_id]`; `cpu_tlb` keeps its domain, every `(cpu_id, p)`
   entry with `p != KERNEL_DEFAULT_PCID` becomes empty, and
   `(cpu_id, KERNEL_DEFAULT_PCID)` is reset to empty exactly when the label
   `flushed_default_pcid` holds (the cpu was Running and its default-PCID
@@ -982,7 +982,7 @@ Status: conforms (workspace run #27751; Pci payload workspace run #28638).
 The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 - Arguments: `endpoint_index`, the payload, the waiting direction fixed by the
-  entry point, `regs`; K-internal label `flushed_default_pcid`.
+  entry point; K-internal label `flushed_default_pcid`.
 - `IpcCaller(u, cpu_id, i)`: `Caller`, `prog is None`,
   `cpu.current_process == Some(P)`, `thr.state == RUNNING { cpu_id }`,
   `!thr.killed`, `edp_idx_valid(i)`, `E(i)` present,
@@ -994,8 +994,8 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
 **Block** (blocking entry points)
 
 - Pre: `IpcCaller`; `E(i).queue` is empty or waits in the caller's direction.
-- Effect: `kernel_u_ipc_block_changed`: `T` waits on `E(i)` with the payload
-  and `regs`, the CPU goes idle, and the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB
+- Effect: `kernel_u_ipc_block_changed`: `T` waits on `E(i)` with the payload,
+  the CPU goes idle, and the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB
   entry is flushed when `flushed_default_pcid`.
 
 **Rendezvous**
@@ -1056,7 +1056,7 @@ callers, RECEIVE for queued receivers and receive-callers).
 
 - Arguments: `endpoint_index`, the payload (`Empty` for `call`,
   `receive_call`, and `reply_and_receive`; `Usize { value }` for the
-  `_usize` entries), `regs`; K-internal label `flushed_pcid`, as §4.
+  `_usize` entries); K-internal label `flushed_pcid`, as §4.
 - Payloads are not type-checked between a call and its acceptance: a
   `call` and a `call_usize` are both accepted by `receive_call`. A delivered
   `Empty` returns Success and `Usize { value }` returns
@@ -1096,8 +1096,8 @@ callers, RECEIVE for queued receivers and receive-callers).
   `S.caller is None`, `S.callee is None`, `S` blocks on `E(i)`, `S` is of
   `T`'s container, and `S.owning_proc` is present.
 - Effect: `kernel_u_ipc_call_handoff_changed`: `S` is dequeued, becomes
-  `RUNNING { cpu_id }` with `caller = Some(T)`, `last_cpu = cpu_id`, no
-  blocking endpoint, and no saved frame; `T` saves `regs`, becomes
+  `RUNNING { cpu_id }` with `caller = Some(T)`, `last_cpu = cpu_id`, and no
+  blocking endpoint; `T` becomes
   WAITING_REPLY with `callee = Some(S)`; the CPU's current process and
   thread become `S`'s; the `(cpu_id, pcid)` TLB entry is flushed when
   `flushed_pcid` is `Some(pcid)`. The syscall returns `ipc_call_result` of
@@ -1123,8 +1123,8 @@ callers, RECEIVE for queued receivers and receive-callers).
   `T.state is WAITING_REPLY`, `T.callee == Some(S)`, `T` is of `S`'s
   container, and `T.owning_proc` is present.
 - Effect: `kernel_u_ipc_reply_handoff_changed`: `T` becomes
-  `RUNNING { cpu_id }` with `callee = None`, `last_cpu = cpu_id`, and no
-  saved frame; `S` saves `regs`, becomes RECEIVING_CALL with
+  `RUNNING { cpu_id }` with `callee = None` and `last_cpu = cpu_id`;
+  `S` becomes RECEIVING_CALL with
   `caller = None` and the `Empty` payload, and is queued at the tail of
   `E(i)`, whose direction becomes RECEIVE when it was empty; the CPU's
   current process and thread become `T`'s; the `(cpu_id, pcid)` TLB entry
@@ -1190,9 +1190,9 @@ EndpointTargetInUse, TypeMismatch.
 
 Status: conforms (workspace run #27816).
 
-- Arguments: `endpoint_index` (the channel), `va`, `range`, `regs`; the entry
+- Arguments: `endpoint_index` (the channel), `va`, `range`; the entry
   point fixes the direction. `R = VaRange4K { start: va, len: range }` is the
-  caller's payload. `regs` and the K-internal `flushed_default_pcid` serve only
+  caller's payload. The K-internal `flushed_default_pcid` serves only
   the §11 block step. Lock tables, check, and finish also take
   `endpoint_index`; the other later steps take only `cpu_id`.
 - U locks: enter write-locks `cpu`, `T`, `peer`, and the channel
@@ -1460,6 +1460,45 @@ offline kick IPI and `send_ipi` are removed; the NMI remote TLB flush is
 unchanged. `KernelK.cpu_published` is renamed `cpu_hw_cr3_pcid`
 (`CpuHwCr3PcidArray`, `cpu_hw_cr3_pcid_wf`, `load_hw_cr3_pcid`,
 `src/cpu/hw_cr3_pcid.rs`).
+
+User registers and trap frames (2026-11-10, applied): each thread's saved
+`Registers` live in a 192-byte slot at the tail of its own 4K page
+(`thread_trap_frame_addr(t) = t + 3736`). The slot's permission is sealed in
+`TrapFramePerm` (`src/proc/trap_frame_perm.rs`; verified, private field:
+verified code moves it but cannot read or write the frame); it sits in
+`Thread.trap_frame` while the thread is not RUNNING and in slot `c` of
+`KernelK.cpu_trap_frame` (`CpuTrapFrameTable`, `src/cpu/cpu_trap_frame.rs`;
+verified `take`/`put` with cpu `c`'s own local context; `cpu_trap_frame_wf`
+in `KernelK::inv`, point lemma `cpu_trap_frame_wf_at`) while it runs on `c`.
+`KernelK.cpu_regs` (`CpuRegsArray`, `src/cpu/cpu_regs.rs`) is the hardware
+register state of every cpu; the kernel never writes it. `ThreadU.regs`
+projects the frame, or `cpu_regs[c]` while the thread runs in user mode on
+`c`. Syscalls neither take nor return registers; `new_thread` and the
+`new_process`/`new_container` entries still take the new thread's initial
+`regs`, written into the raw frame before it is sealed. Trusted items:
+`split_region_tail_into_trap_frame` (external_body; splits the frame slot off
+a thread page and zero-initializes it), `CpuRegsArray::new_boot`
+(external_body; init only), the env events `kernel_k_trap_enter` (frame :=
+`cpu_regs[c]`, `cpu_regs[c]` unconstrained), `kernel_k_trap_return`
+(`cpu_regs[c]` := frame), `kernel_k_trap_divert`, `kernel_k_regs_changed`
+(user code changes `cpu_regs[c]`) and `kernel_k_trap_return_values_written`
+(rax/rdx/rsi of the frame), with their U steps `kernel_u_regs_changed_step`
+and `kernel_u_trap_return_values_written_step`, the
+`kernel_step_boundary_framing` own-cpu line (the own `cpu_trap_frame` slot
+keeps presence and value while the cpu is `InStep`),
+`retype_thread_rwlock_to_4k_page_perm` now requiring the parked frame at
+`thread_trap_frame_addr`, and `ipi_remote_running_to_idle_raw`, which also
+removes the target's slot and returns its `TrapFramePerm` (value `cpu_regs`
+of the target when it was `User`, the slot's frame otherwise; sound because
+the target acknowledges only in its idle loop). Boot-glue assumptions: the
+own cpu's `current_thread` read outside steps is stable; the boot frame
+offset 3736 (top 3904) equals `thread_trap_frame_addr`; the cpu lock-cell
+value offset is `size_of::<SpinWord>()` rounded to `align_of::<Cpu>()`
+(boot-asserted); rsp points into a thread page only with IF=0; ring-3 IRQs
+push at `TSS.rsp0` = the running thread's frame top; exceptions use IST1;
+CR0.TS|MP is set on every cpu before the first user entry and never cleared,
+CR4.OSFXSR/OSXSAVE stay 0 and the kernel is soft-float, so a user FP
+instruction faults instead of leaking FP state between threads.
 
 Per-cpu scheduler shards (approved 2026-10-07, applied):
 `ContainerU.scheduler: Seq<Seq<RwLockThreadPtr>>` has one run queue per cpu id

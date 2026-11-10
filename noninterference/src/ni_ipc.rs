@@ -4,24 +4,24 @@ use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_sp
 
 verus! {
 /// Blocking a running thread of `a` on an endpoint it holds leaves the view of `b` unchanged.
-pub proof fn ipc_block_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_block_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_block_step_pre(old_u, cpu_id, ep_idx, waiting_state),
-        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_block_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_block_step_lr` preserves isolation.
-pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_block_step_pre(old_u, cpu_id, ep_idx, waiting_state),
-        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+        ipc_block_step(old_u, new_u, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_block_changed);
@@ -114,24 +114,24 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 
 /// A call handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and the
 /// receive-call head, which is of its container, so it leaves the view of `b` unchanged.
-pub proof fn ipc_call_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_call_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_call_handoff_step_pre(old_u, cpu_id, ep_idx),
-        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, flushed_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_call_handoff_step_lr` preserves isolation.
-pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_call_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_call_handoff_step_pre(old_u, cpu_id, ep_idx),
-        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_call_handoff_step(old_u, new_u, cpu_id, ep_idx, flushed_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_call_handoff_changed); reveal(kernel_u_endpoint_ownership_wf);
@@ -168,24 +168,24 @@ pub proof fn ipc_accept_call_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 
 /// A reply handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and its
 /// recorded caller, which is of its container, so it leaves the view of `b` unchanged.
-pub proof fn ipc_reply_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_reply_handoff_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_reply_handoff_step_pre(old_u, cpu_id, ep_idx),
-        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, flushed_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_reply_handoff_step_lr` preserves isolation.
-pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         ipc_reply_handoff_step_pre(old_u, cpu_id, ep_idx),
-        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_reply_handoff_step(old_u, new_u, cpu_id, ep_idx, flushed_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);

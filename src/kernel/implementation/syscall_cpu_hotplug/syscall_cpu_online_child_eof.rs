@@ -72,7 +72,7 @@ pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_pt
     ensures post.inv(),
 {
     reveal(cpu_online_child_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf); };
+    assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf); reveal(cpu_trap_frame_wf); };
     assert(post.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
     cpu_online_child_eof_process_management_inv(pre, post, cpu_set_ptr, target, child_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

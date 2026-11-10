@@ -137,7 +137,7 @@ pub(super) fn iommu_map_4k_exit(
     krnl.wunlock_process(prc_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr);
+        process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); cpu_op_wf_at(exit_start.cpu_op.view().view(), exit_start.cpu_arr, cpu_id);
         process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr); process_iommu_table_wf_process_at(exit_start.prc_mp, exit_start.it_mp, prc_ptr);
         iommu_map_4k_exit_step_from_k(&exit_start, &*krnl, &exit_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable_ptr, iommu_table_ptr);
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);

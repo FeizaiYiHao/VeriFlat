@@ -166,6 +166,8 @@ impl KernelK {
             final(self).pcid_needflush == old(self).pcid_needflush,
             final(self).cpu_hw_cr3_pcid == old(self).cpu_hw_cr3_pcid,
             final(self).cpu_op == old(self).cpu_op,
+            final(self).cpu_regs == old(self).cpu_regs,
+            final(self).cpu_trap_frame == old(self).cpu_trap_frame,
             final(self).ctn_mp == old(self).ctn_mp,
             final(self).sched_mp == old(self).sched_mp,
             final(self).pcid_allc_mp == old(self).pcid_allc_mp,

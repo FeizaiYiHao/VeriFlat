@@ -44,7 +44,7 @@ verus! {
     /// syscall-entry state `steps.snapshot_k()`, from which only the cpu and current-thread locks were taken.
     fn ipc_lock_entry_endpoint(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, expect_caller: bool, pt_regs: &Registers,
+        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, expect_caller: bool,
         prc_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
         Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>,
     ) -> (ret: Result<IpcEntryLocked, RetValueType>)
@@ -135,13 +135,13 @@ verus! {
                 &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_thread
                 &&& payload is Pages ==> ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                     kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload->Pages_va_range,
-                    *pt_regs, ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), r)
+                    ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), r)
                 &&& payload is Endpoint ==> ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                     kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index,
-                    *pt_regs, ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), r)
+                    ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), r)
                 &&& (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(
                     final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
-                    kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, *pt_regs,
+                    kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload,
                     ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), r)
                 &&& endpoint_option is Some
                 &&& old(steps).snapshot_k().ep_mp.dom().contains(entry_ep_ptr)
@@ -296,7 +296,7 @@ verus! {
             }
             proof {
                 ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx,
-                    waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), result);
+                    waiting_state, payload, ipc_block_flushes_default_pcid(old(steps).snapshot_k(), cpu_id), result);
             }
             proof { ipc_entry_result_from_k(&old(steps).snapshot_k(), cpu_id, ep_idx, waiting_state, blocking, Some(result)); }
             return Err(result);
@@ -327,7 +327,7 @@ verus! {
     #[verifier::spinoff_prover]
     pub(super) fn ipc_lock_entry(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, expect_caller: bool, pt_regs: &Registers,
+        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, expect_caller: bool,
     ) -> (ret: Result<IpcEntryLocked, RetValueType>)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -383,13 +383,13 @@ verus! {
                 &&& !(r is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread
                 &&& payload is Pages ==> ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                     kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload->Pages_va_range,
-                    *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
+                    ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
                 &&& payload is Endpoint ==> ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                     kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload->Endpoint_endpoint_index,
-                    *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
+                    ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
                 &&& (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(
                     final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
-                    kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, *pt_regs,
+                    kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload,
                     ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
                 &&& r is ErrorIpcNoPeer || r is ErrorIpcSameDirection ==> {
                     &&& endpoint_option is Some
@@ -515,7 +515,7 @@ verus! {
                 if expect_caller { ipc_reply_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, Some(RetValueType::CpuIdle)); }
                 else { ipc_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, waiting_state, blocking, Some(RetValueType::CpuIdle)); }
                 ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx,
-                    waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::CpuIdle);
+                    waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::CpuIdle);
             }
             return Err(RetValueType::CpuIdle);
         }
@@ -560,7 +560,7 @@ verus! {
             }
             proof {
                 ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx,
-                    waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorThreadKilled);
+                    waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorThreadKilled);
             }
             proof {
                 if expect_caller { ipc_reply_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, Some(RetValueType::ErrorThreadKilled)); }
@@ -582,7 +582,7 @@ verus! {
                 assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by { kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, None, Some(current_thrd_ptr), None, None); };
                 ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx,
-                    waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorReplyOutOfPhase);
+                    waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorReplyOutOfPhase);
                 if expect_caller { ipc_reply_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, Some(RetValueType::ErrorReplyOutOfPhase)); }
                 else { ipc_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, waiting_state, blocking, Some(RetValueType::ErrorReplyOutOfPhase)); }
             }
@@ -598,7 +598,7 @@ verus! {
                 }
                 proof {
                     ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx,
-                        waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorInvalidEndpoint);
+                        waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorInvalidEndpoint);
                 }
                 proof {
                     if expect_caller { ipc_reply_entry_result_from_k(&*old(krnl), cpu_id, ep_idx, Some(RetValueType::ErrorInvalidEndpoint)); }
@@ -607,13 +607,13 @@ verus! {
                 return Err(RetValueType::ErrorInvalidEndpoint);
             },
         };
-        ipc_lock_entry_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, waiting_state, payload, blocking, expect_caller, pt_regs, prc_ptr,
+        ipc_lock_entry_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, waiting_state, payload, blocking, expect_caller, prc_ptr,
             current_thrd_ptr, ep_ptr, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm))
     }
 
     pub(super) fn syscall_ipc_ordinary(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
-        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool, pt_regs: &mut Registers,
+        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, blocking: bool,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -644,10 +644,10 @@ verus! {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             payload is Pages ==> ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx,
-                waiting_state, payload->Pages_va_range, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+                waiting_state, payload->Pages_va_range, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             payload is Endpoint ==> ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx,
-                waiting_state, payload->Endpoint_endpoint_index, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+                waiting_state, payload->Endpoint_endpoint_index, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -655,10 +655,9 @@ verus! {
             final(steps).snapshot_k() == *final(krnl),
             (payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(
                 final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-                kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
-            *final(pt_regs) =~= *old(pt_regs),
             !blocking && !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             !blocking && !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
             !blocking && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() ==> !(ret is CpuIdle),
@@ -686,7 +685,7 @@ verus! {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, waiting_state)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx,
-                    waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+                    waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
             },
             ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value),
             payload is Empty ==> (ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection),
@@ -702,21 +701,21 @@ verus! {
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, ep_idx, waiting_state, blocking),
     {
         hide(Set::is_empty);
-        let entry = match ipc_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, waiting_state, payload, blocking, false, &*pt_regs) { Ok(entry) => entry, Err(ret) => return ret };
+        let entry = match ipc_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ep_idx, waiting_state, payload, blocking, false) { Ok(entry) => entry, Err(ret) => return ret };
         let IpcEntryLocked { process_ptr: prc_ptr, current_thread_ptr: current_thrd_ptr, endpoint_ptr: ep_ptr, queue_len, queue_is_send, cpu_lock_perm, current_thread_lock_perm, endpoint_lock_perm } = entry;
         let waiting_is_send = match waiting_state { ThreadState::SENDING => true, _ => false };
         if queue_len == 0 || queue_is_send == waiting_is_send {
-            let ret = ipc_block_current(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, &*pt_regs, cpu_lock_perm, current_thread_lock_perm, endpoint_lock_perm);
+            let ret = ipc_block_current(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, cpu_lock_perm, current_thread_lock_perm, endpoint_lock_perm);
             proof {
                 ipc_syscall_trace_from_block(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state,
-                    payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id));
+                    payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id));
             }
             return ret;
         }
         let ret = ipc_rendezvous_from_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, waiting_is_send, cpu_lock_perm, current_thread_lock_perm, endpoint_lock_perm);
         proof {
             ipc_syscall_trace_from_rendezvous(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state,
-                payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret);
+                payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret);
         }
         ret
     }

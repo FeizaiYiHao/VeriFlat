@@ -11,7 +11,7 @@ verus! {
 /// without a step. A set bit holds the cpu across a boundary inside its kernel step, recording the hold step, and rechecks
 /// from the snapshot after it, which the result returns as the decision state.
 pub(super) fn cpu_offline_check_locked(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, ctn_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
 ) -> (ret: (OfflineCheckResult, Ghost<KernelK>))
     requires
@@ -78,7 +78,7 @@ pub(super) fn cpu_offline_check_locked(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         cpu_offline_check_entry_trace(
             final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, *pt_regs, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
         ),
         ret.0 == cpu_offline_check_result(kernel_k_to_kernel_u(ret.1.view()), cpu_id),
         ret.0 is Off ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
@@ -105,7 +105,7 @@ pub(super) fn cpu_offline_check_locked(
         release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
-            cpu_offline_check_trace_stutter_released(&*steps, old(steps).view(), &old(steps).snapshot_k(), &*krnl, cpu_id, *pt_regs);
+            cpu_offline_check_trace_stutter_released(&*steps, old(steps).view(), &old(steps).snapshot_k(), &*krnl, cpu_id);
             cpu_offline_check_result_from_k(&old(steps).snapshot_k(), cpu_id, OfflineCheckResult::Continue);
         }
         return (OfflineCheckResult::Continue, Ghost(entry));
@@ -122,7 +122,7 @@ pub(super) fn cpu_offline_check_locked(
     }
     let ghost decision = *krnl;
     let ret = cpu_offline_check_recheck(
-        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, Tracked(cpu_lock_perm), ctn_ptr, current_process, current_thread,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm), ctn_ptr, current_process, current_thread,
         Ghost(entry), Ghost(start),
     );
     (ret, Ghost(decision))

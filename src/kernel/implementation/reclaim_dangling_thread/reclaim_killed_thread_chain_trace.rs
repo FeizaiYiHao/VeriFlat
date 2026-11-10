@@ -37,7 +37,7 @@ pub open spec fn killed_thread_reclaim_partial_trace(
     forall|j: int| #![trigger steps[j]] start <= j < steps.len() ==> killed_thread_reclaim_step(steps[j], entry, cpu_id, processes, containers, container)
 }
 
-/// A state that keeps the cpu `cpu_id` of `entry` and its running thread, the lock modes, kill marks, and owning
+/// A state that keeps the cpu `cpu_id` of `entry`, its trap-frame slot, and its running thread, the lock modes, kill marks, and owning
 /// containers of the held `processes`, and the lock modes and upper trees of the held `containers` keeps the projection at
 /// `entry` that a killed thread reclaim step from it needs.
 pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry: &KernelK, cpu_id: CpuId, processes: Set<RwLockProcessPtr>, containers: Set<RwLockContainerPtr>)
@@ -47,10 +47,13 @@ pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry:
         krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == entry.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == entry.cpu_arr.spec_index(cpu_id).view().being_killed(),
         krnl.cpu_op.view().view()[cpu_id as int] == entry.cpu_op.view().view()[cpu_id as int],
+        !(entry.cpu_op.view().view()[cpu_id as int] is User),
+        krnl.cpu_trap_frame.view().view()[cpu_id] == entry.cpu_trap_frame.view().view()[cpu_id],
         entry.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         krnl.thrd_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         ({
             let current_thread = entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            &&& entry.thrd_mp.spec_index(current_thread).view().state == (ThreadState::RUNNING { cpu_id })
             &&& krnl.thrd_mp.spec_index(current_thread).view() == entry.thrd_mp.spec_index(current_thread).view()
             &&& krnl.thrd_mp.spec_index(current_thread).locking_thread() == entry.thrd_mp.spec_index(current_thread).locking_thread()
             &&& krnl.thrd_mp.spec_index(current_thread).being_killed() == entry.thrd_mp.spec_index(current_thread).being_killed()

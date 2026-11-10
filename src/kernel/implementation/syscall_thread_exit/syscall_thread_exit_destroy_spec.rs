@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The exiting thread `thrd_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table: its
-/// process drops it through the process-list node at `proc_node_addr`, absorbs its quotas, and becomes a zombie without
-/// threads; a zombie root process makes the container a zombie; the container and its upper containers drop the thread;
+/// The exiting thread `thrd_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table and empties
+/// its trap-frame slot: its process drops it through the process-list node at `proc_node_addr`, absorbs its quotas, and
+/// becomes a zombie without threads; a zombie root process makes the container a zombie; the container and its upper containers drop the thread;
 /// and the thread's page returns through its free-list node at `cache_node_addr` to shard `cpu_id` of the 4K allocator
 /// of its owner `owner`, whose quota grows by one; a zombie releases its PCID to its container's PCID allocator.
 #[verifier::opaque]
@@ -35,9 +35,10 @@ pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     let pre_pcid_allocator = pre.pcid_allc_mp.spec_index(pcid_allc_ptr);
     let post_pcid_allocator = post.pcid_allc_mp.spec_index(pcid_allc_ptr);
     &&& post == (KernelK {
-        cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp,
-        thrd_mp: post.thrd_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
+        cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_trap_frame: post.cpu_trap_frame,
+        ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
     })
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
     &&& post_cpu.locking_thread() == pre_cpu.locking_thread()
     &&& post_cpu.being_killed() == pre_cpu.being_killed()

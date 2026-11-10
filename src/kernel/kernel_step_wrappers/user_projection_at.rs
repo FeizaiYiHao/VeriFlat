@@ -104,7 +104,7 @@ pub proof fn kernel_thread_user_projection_at(krnl: &KernelK, ptr: RwLockThreadP
                 quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g,
                 endpoint_descriptors: t.endpoint_descriptors.view(), blocking_endpoint_ptr: t.blocking_endpoint_ptr,
                 ipc_payload: t.ipc_payload, error_code: t.error_code,
-                trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None },
+                regs: match t.state { ThreadState::RUNNING { cpu_id } => if krnl.cpu_op.view().view()[cpu_id as int] is User { krnl.cpu_regs.view().view()[cpu_id as int] } else { krnl.cpu_trap_frame.view().view()[cpu_id].value() }, _ => t.trap_frame.view()->Some_0 },
                 syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
             })
         }),

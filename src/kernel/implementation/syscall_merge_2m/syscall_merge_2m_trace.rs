@@ -30,6 +30,7 @@ pub proof fn merge_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, 
         post.cpu_arr.spec_index(cpu_id).view().killer_info() == pre.cpu_arr.spec_index(cpu_id).view().killer_info(),
         forall|other: CpuId| #![trigger post.cpu_op.view().view().spec_index(other as int)] index_valid(NUM_CPUS, other) && other != cpu_id ==>
             post.cpu_op.view().view().spec_index(other as int) == pre.cpu_op.view().view().spec_index(other as int),
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
         post.thrd_mp.spec_index(thread).being_killed() == pre.thrd_mp.spec_index(thread).being_killed(),
         m <= usize::MAX / 512,

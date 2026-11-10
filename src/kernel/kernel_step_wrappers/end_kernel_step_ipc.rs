@@ -10,12 +10,12 @@ verus! {
 impl KernelSteps {
     pub proof fn end_kernel_step_ipc_block(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
-        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool,
+        ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool,
     )
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_ipc_block_fields(&old(self).snapshot_k(), krnl, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+            kernel_ipc_block_fields(&old(self).snapshot_k(), krnl, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
@@ -24,7 +24,7 @@ impl KernelSteps {
             kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             kernel_u_ipc_block_changed(old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr, ep_ptr,
-                ep_idx, waiting_state, payload, regs, flushed_default_pcid),
+                ep_idx, waiting_state, payload, flushed_default_pcid),
             final(self).snapshot_k() == *krnl,
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
@@ -69,8 +69,8 @@ impl KernelSteps {
             reveal(kernel_ipc_block_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), thrd_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
-        assert(kernel_u_ipc_block_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid)) by {
-            kernel_ipc_block_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid);
+        assert(kernel_u_ipc_block_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid)) by {
+            kernel_ipc_block_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
@@ -78,12 +78,12 @@ impl KernelSteps {
 
     pub proof fn end_kernel_step_ipc_call_handoff(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
-        ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+        ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
     )
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_ipc_call_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+            kernel_ipc_call_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
@@ -91,7 +91,7 @@ impl KernelSteps {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            kernel_u_ipc_call_handoff_changed(old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+            kernel_u_ipc_call_handoff_changed(old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
             final(self).snapshot_k() == *krnl,
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
@@ -148,8 +148,8 @@ impl KernelSteps {
             reveal(kernel_ipc_call_handoff_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), caller_ptr); kernel_thread_projection_at(&self.snapshot_k(), callee_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
-        assert(kernel_u_ipc_call_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid)) by {
-            kernel_ipc_call_handoff_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid);
+        assert(kernel_u_ipc_call_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid)) by {
+            kernel_ipc_call_handoff_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
@@ -231,12 +231,12 @@ impl KernelSteps {
 
     pub proof fn end_kernel_step_ipc_reply_handoff(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
-        ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+        ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
     )
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_ipc_reply_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid),
+            kernel_ipc_reply_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
@@ -244,7 +244,7 @@ impl KernelSteps {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            kernel_u_ipc_reply_handoff_changed(old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid),
+            kernel_u_ipc_reply_handoff_changed(old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid),
             final(self).snapshot_k() == *krnl,
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
@@ -298,8 +298,8 @@ impl KernelSteps {
             reveal(kernel_ipc_reply_handoff_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id);
             kernel_thread_projection_at(&self.snapshot_k(), callee_ptr); kernel_thread_projection_at(&self.snapshot_k(), caller_ptr); kernel_endpoint_projection_at(&self.snapshot_k(), ep_ptr);
         };
-        assert(kernel_u_ipc_reply_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid)) by {
-            kernel_ipc_reply_handoff_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid);
+        assert(kernel_u_ipc_reply_handoff_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid)) by {
+            kernel_ipc_reply_handoff_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
@@ -316,6 +316,8 @@ impl KernelSteps {
             lctx.kernel_view_locking_state() is Release,
             kernel_ipc_rendezvous_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, peer_result, cpu_transfer, pci_transfer),
             krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_regs.view().view() == old(self).snapshot_k().cpu_regs.view().view(),
+            krnl.cpu_trap_frame.view().view() == old(self).snapshot_k().cpu_trap_frame.view().view(),
             krnl.cpu_set_mp.dom() == old(self).snapshot_k().cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger krnl.cpu_set_mp.spec_index(p)]
                 old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread()

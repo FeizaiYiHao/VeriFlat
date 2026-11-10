@@ -50,7 +50,8 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
                 lock_state: thread.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee, owning_container: t.owning_container, owning_proc: t.owning_proc,
                 last_cpu: t.last_cpu, quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g, endpoint_descriptors: t.endpoint_descriptors.view(),
                 blocking_endpoint_ptr: t.blocking_endpoint_ptr, ipc_payload: t.ipc_payload, error_code: t.error_code,
-                trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None }, syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
+                regs: match t.state { ThreadState::RUNNING { cpu_id } => if before.cpu_op.view().view()[cpu_id as int] is User { before.cpu_regs.view().view()[cpu_id as int] } else { before.cpu_trap_frame.view().view()[cpu_id].value() }, _ => t.trap_frame.view()->Some_0 },
+                syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
             })
         }),
         kernel_k_to_kernel_u(*before).thread_map.dom().contains(thrd_ptr),

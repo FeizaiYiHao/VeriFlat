@@ -275,7 +275,7 @@ pub(super) fn ipc_schedule_peer_on_shard(
 pub(super) fn ipc_block_current_release_and_end_step(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     current_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad,
-    pt_regs: &Registers, Ghost(default_cr3): Ghost<PageTableRoot>, Ghost(entry_k): Ghost<KernelK>, Ghost(locked_k): Ghost<KernelK>,
+    Ghost(default_cr3): Ghost<PageTableRoot>, Ghost(entry_k): Ghost<KernelK>, Ghost(locked_k): Ghost<KernelK>,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
     Tracked(needflush_perm): Tracked<LockPerm>,
 )
@@ -322,6 +322,7 @@ pub(super) fn ipc_block_current_release_and_end_step(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle,
         edp_idx_valid(ep_idx),
         waiting_state.is_endpoint_waiting(),
@@ -334,7 +335,6 @@ pub(super) fn ipc_block_current_release_and_end_step(
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).being_killed() == false,
         !old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().exited.view(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().state == waiting_state,
-        *old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().trap_frame.get_some_0() == *pt_regs,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().free_quota_pending_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is None,
@@ -388,9 +388,9 @@ pub(super) fn ipc_block_current_release_and_end_step(
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         ipc_block_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state),
         ipc_block_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id,
-            ep_idx, waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(entry_k, cpu_id)),
+            ep_idx, waiting_state, payload, ipc_block_flushes_default_pcid(entry_k, cpu_id)),
         ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(entry_k, cpu_id), RetValueType::CpuIdle),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, ipc_block_flushes_default_pcid(entry_k, cpu_id), RetValueType::CpuIdle),
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -402,22 +402,22 @@ pub(super) fn ipc_block_current_release_and_end_step(
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle));
         let ghost flushed = ipc_block_flushes_default_pcid(entry_k, cpu_id);
-        assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, *pt_regs, flushed) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
+        assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             reveal(kernel_ipc_block_fields); reveal(ipc_block_current_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
         };
-        steps.end_kernel_step_ipc_block(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, *pt_regs, flushed);
+        steps.end_kernel_step_ipc_block(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed);
         assert({
             &&& ipc_block_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state)
             &&& ipc_ordinary_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state,
-                payload, *pt_regs, flushed, RetValueType::CpuIdle)
+                payload, flushed, RetValueType::CpuIdle)
         }) by {
             assert(!old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             };
-            ipc_block_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, *pt_regs, flushed);
-            ipc_ordinary_trace_block_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state, payload, *pt_regs, flushed);
+            ipc_block_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed);
+            ipc_ordinary_trace_block_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, waiting_state, payload, flushed);
         };
     }
 }

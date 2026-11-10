@@ -66,17 +66,22 @@ impl AtomicPcidCr3 {
     /// thread, is not in a kernel step, and every kernel path of it that would lock its own cpu sees the mark and returns at
     /// once, so it reaches its idle loop and the wait ends. This cpu then stores the default context in
     /// the target's hardware cr3/pcid word. Sending the IPI uses the target's kernel-call permission `perm`; the target
-    /// rests in `Idle` afterwards.
+    /// rests in `Idle` afterwards. The target's slot of `cpu_trap_frame`, the permission to the trap frame of the thread it
+    /// ran, returns to this cpu: the target acknowledges only in its idle loop and no longer touches that frame, which holds
+    /// the target's hardware registers if it was in user mode and its saved frame otherwise.
     #[verifier::external_body]
     pub(super) fn ipi_remote_running_to_idle_raw(
         &mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: Tracked<&KernelCallPerm>,
-        Ghost(target_lock): Ghost<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>, Tracked(lctx): Tracked<&LocalContext>,
-    )
+        Ghost(target_lock): Ghost<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>, Tracked(lctx): Tracked<&LocalContext>, Tracked(cpu_regs): Tracked<&CpuRegsArray>,
+        Tracked(cpu_trap_frame): Tracked<&mut CpuTrapFrameTable>,
+    ) -> (ret: Tracked<TrapFramePerm>)
         requires
             old(hardware).wf(),
             perm.view().cpu_id() == cpu_id,
             target_lock.being_killed(),
             target_lock.view().view().state is Running,
+            target_lock.view().view().current_thread is Some,
+            old(cpu_trap_frame).view().dom().contains(cpu_id),
             !(old(cpu_op).view()[cpu_id as int] is InStep),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id != lctx.cpu_id(),
@@ -91,6 +96,9 @@ impl AtomicPcidCr3 {
             final(self).view() == (cr3, KERNEL_DEFAULT_PCID),
             final(self).owner_cpu() == cpu_id,
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::Idle),
+            final(cpu_trap_frame).view() == old(cpu_trap_frame).view().remove(cpu_id),
+            ret.view().addr() == old(cpu_trap_frame).view()[cpu_id].addr(),
+            ret.view().value() == if old(cpu_op).view()[cpu_id as int] is User { cpu_regs.view()[cpu_id as int] } else { old(cpu_trap_frame).view()[cpu_id].value() },
     {
         unsafe { veriflat_ipi_running_to_idle(cpu_id, cr3); }
         proof { cpu_op.ipi_running_to_idle(cpu_id); }
@@ -98,6 +106,7 @@ impl AtomicPcidCr3 {
         hardware.current_cr3 = cr3;
         hardware.current_pcid = KERNEL_DEFAULT_PCID;
         self.atomic.store(cpu_id, pack_pcid_cr3(cr3, KERNEL_DEFAULT_PCID), Tracked(lctx));
+        Tracked::assume_new()
     }
 
     pub fn store(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)

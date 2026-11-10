@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal;
 use crate::*;
 
 verus! {
@@ -54,5 +55,52 @@ pub proof fn kernel_iommu_tlb_within_may_cache_projection(krnl: &KernelK, did: V
         }
     }
     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_user_projection(*krnl)) by { reveal(kernel_k_to_kernel_u); };
+}
+
+/// A register change on cpu `cpu_id` projects to its U step: the registers of the live thread the cpu runs become `regs`.
+pub proof fn kernel_k_regs_changed_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers)
+    requires
+        pre.inv(),
+        kernel_k_regs_changed(*pre, *post, cpu_id, regs),
+    ensures
+        kernel_u_regs_changed_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_regs_changed_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, regs),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    let t = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    assert(kernel_u_regs_changed_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_regs_changed_step_pre); };
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(t, ThreadU { regs, ..pre_u.thread_map[t] }), x => {
+        if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, x); }
+    });
+    assert(kernel_u_regs_changed_step(pre_u, post_u, cpu_id, regs)) by { reveal(kernel_u_regs_changed_step); reveal(kernel_k_to_kernel_u); };
+}
+
+/// Writing the return values on cpu `cpu_id` projects to its U step: `rax`, `rdx` and `rsi` of the live thread the cpu runs
+/// take them.
+pub proof fn kernel_k_trap_return_values_written_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64)
+    requires
+        pre.inv(),
+        kernel_k_trap_return_values_written(*pre, *post, cpu_id, rax, rdx, rsi),
+    ensures
+        kernel_u_trap_return_values_written_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_return_values_written_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, rax, rdx, rsi),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    let t = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+    let thread = pre_u.thread_map[t];
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(pre.thrd_mp, pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    assert(kernel_u_trap_return_values_written_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_return_values_written_step_pre); };
+    kernel_thread_projection_at(pre, t);
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(t, ThreadU { regs: Registers { rax, rdx, rsi, ..thread.regs }, ..thread }), x => {
+        let c = pre.thrd_mp.spec_index(x).view().state->RUNNING_cpu_id;
+        if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, x); }
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
+    });
+    assert(kernel_u_trap_return_values_written_step(pre_u, post_u, cpu_id, rax, rdx, rsi)) by { reveal(kernel_u_trap_return_values_written_step); reveal(kernel_k_to_kernel_u); };
 }
 }

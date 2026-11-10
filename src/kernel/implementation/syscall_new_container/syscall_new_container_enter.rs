@@ -20,6 +20,7 @@ pub(super) fn enter_new_container_commit(
         endpoint is Some ==> old(steps).snapshot_k().ep_mp.spec_index(endpoint->Some_0).locking_thread() is None,
         old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, caller_cpu_id),
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(caller_cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[caller_cpu_id as int] is Trap,
         old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, parent_ctn_ptr),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_prc_ptr),
         old(krnl).thrd_mp.unchanged_except(&old(steps).snapshot_k().thrd_mp, current_thrd_ptr),

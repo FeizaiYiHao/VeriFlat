@@ -4,24 +4,24 @@ use veriflat_syscall_schedule::syscall_schedule::syscall_schedule_spec::*;
 
 verus! {
 /// Switching a cpu of `a` to the head of its container's local scheduler shard leaves the view of `b` unchanged.
-pub proof fn schedule_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, entry_regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn schedule_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         schedule_step_pre(old_u, cpu_id),
-        schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
+        schedule_step(old_u, new_u, cpu_id, flushed_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_context_switch_changed); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `schedule_step_lr` preserves isolation.
-pub proof fn schedule_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, entry_regs: Registers, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn schedule_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_pcid: Option<Pcid>, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         schedule_step_pre(old_u, cpu_id),
-        schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
+        schedule_step(old_u, new_u, cpu_id, flushed_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_context_switch_changed); reveal(kernel_u_cpu_ownership_wf);

@@ -1,10 +1,19 @@
 //! Syscall entry, dispatch into the verified kernel, and the idle loop.
 //!
-//! Every entry saves the complete user register file as a [`Registers`] frame at the top of the
-//! per-CPU kernel stack, and every exit restores a complete frame. The verified kernel switches
-//! threads by rewriting that frame (`syscall_schedule` swaps it with the next thread's trap frame),
-//! so no register may be treated as clobbered: [`restore_frame`] returns with `sysretq` only when
-//! that gives exactly the state `iretq` would.
+//! The trap frame of a thread is the `Registers` slot inside that thread's own 4K page
+//! (`thread_trap_frame_addr` of the verified kernel, [`cpu::THREAD_FRAME_OFFSET`]). Every entry from
+//! ring 3 saves the complete user register file directly into the slot of the thread the CPU runs:
+//! `sys_entry` pushes it below the per-CPU frame-top word (`Cpu::frame_top`), and an interrupt from
+//! ring 3 pushes it below TSS.rsp0, which holds the same address. The trampoline then continues on
+//! the per-CPU kernel stack. Every exit restores the complete frame of the thread the CPU runs then
+//! ([`resume_current_frame`]). The verified kernel switches threads by moving the frame permissions
+//! between the threads and its per-CPU slot table and by recording the new current thread in its cpu
+//! object; it never copies registers. After every call into it, [`sync_current_frame`] reads that
+//! record and points `frame_top` and TSS.rsp0 at the current thread's slot. No register may be
+//! treated as clobbered: [`restore_frame`] returns with `sysretq` only when that gives exactly the
+//! state `iretq` would. The trap layer writes a thread's frame only while it runs on this CPU: the
+//! saves at entry, and the return values (rax, rdx, rsi) that [`encode`] writes into the frame of
+//! the thread the CPU returns to (the model's trap-return-values-written event).
 //!
 //! Per-CPU data is reached through the GS base. Ring 3 can reload `gs` and so zero that base, so
 //! every crossing executes `swapgs`: `sys_entry` and the interrupt trampolines (for frames from
@@ -16,8 +25,10 @@
 //! (`platform::veriflat_disable_interrupts`, `platform::veriflat_enable_interrupts`). Everywhere
 //! else (ring 3, the trampolines, the idle loop, an Off CPU) they are on. `syscall` and the
 //! interrupt gates clear IF in hardware; `sys_entry` and the interrupt trampolines (for frames from
-//! ring 3) execute `sti` once the frame is built, and [`restore_frame`] executes `cli` first, so
-//! its last check and the return to ring 3 are one step. An interrupt taken in the kernel keeps IF
+//! ring 3) execute `sti` once the frame is saved in the thread's slot and `rsp` is on the kernel
+//! stack, and [`resume_current_frame`] and [`restore_frame`] execute `cli` first, so `rsp` never
+//! points into a thread page while interrupts are on, and the last check and the return to ring 3
+//! are one step. An interrupt taken in the kernel keeps IF
 //! clear in its handler, which only acknowledges, re-arms the timer, or sets a flag.
 //!
 //! A running-to-idle IPI (`platform::veriflat_ipi_running_to_idle`) makes this CPU abandon its
@@ -32,11 +43,13 @@
 //! a step: through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
 //! Every step also clears the flag when it releases this CPU's own lock, as a safety net.
 //!
-//! TODO: the frame is not the whole user-visible CPU state. The x87/MMX registers (CR0.EM is 0)
-//! and the `fs`/`gs` selectors are neither saved nor reset across a thread switch, so the next
-//! thread, of any container, reads what the previous one left. Either set CR0.EM = 1 (the Rust
-//! targets are soft-float, nothing in tree uses x87) and reload `fs`/`gs` with 0 before every
-//! return to ring 3, or save and restore that state per thread.
+//! User mode has no floating point: every CPU enters ring 3 with CR0.TS set (see
+//! [`cpu::disable_user_fp`]), so x87/MMX instructions raise #NM and SSE/AVX raise #UD, and the
+//! faulting thread exits.
+//!
+//! TODO: the frame is not the whole user-visible CPU state. The `fs`/`gs` selectors are neither saved
+//! nor reset across a thread switch, so the next thread, of any container, reads what the previous
+//! one left. Reload `fs`/`gs` with 0 before every return to ring 3, or save and restore them per thread.
 
 use core::arch::naked_asm;
 use core::mem::{offset_of, size_of};
@@ -75,7 +88,7 @@ use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4
 use veriflat_monolith::kernel::implementation::syscall_unmap_2m::syscall_unmap_2m;
 use veriflat_monolith::kernel::implementation::syscall_mmap_1g::syscall_mmap_1g;
 use veriflat_monolith::kernel::implementation::syscall_unmap_1g::syscall_unmap_1g;
-use veriflat_monolith::{IPCPayLoad, Registers, RetValueType, MAX_NUM_ENDPOINT_DESCRIPTORS, NUM_CPUS, PCI_BUS_COUNT, PCI_DEVICE_COUNT, PCI_FUNCTION_COUNT};
+use veriflat_monolith::{IPCPayLoad, Registers, RetValueType, TRAP_FRAME_SZ, MAX_NUM_ENDPOINT_DESCRIPTORS, NUM_CPUS, PCI_BUS_COUNT, PCI_DEVICE_COUNT, PCI_FUNCTION_COUNT};
 use vstd::prelude::Tracked;
 use x86::msr;
 use x86::segmentation::SegmentSelector;
@@ -87,7 +100,7 @@ use crate::glue::kernel;
 use crate::interrupt::{self, Cycles};
 use crate::platform;
 
-const _: () = assert!(size_of::<Registers>() == 21 * 8);
+const _: () = assert!(size_of::<Registers>() == 21 * 8 && TRAP_FRAME_SZ == size_of::<Registers>());
 
 /// RFLAGS bits cleared on `syscall`: TF, IF, DF, NT, AC.
 const SYSCALL_FMASK: u64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 14) | (1 << 18);
@@ -154,7 +167,8 @@ pub unsafe fn init_cpu() {
 /// - Idle: the [`run_idle`] loop and its `hlt`, interrupts on.
 /// - User: ring 3, interrupts on.
 /// - Trap: the trampoline without this CPU's own lock, interrupts on. User to Trap at `sys_entry`
-///   and the interrupt gates, which clear IF until the trampoline's `sti` after the frame is built;
+///   and the interrupt gates, which clear IF until the trampoline's `sti` after the frame is saved in
+///   the running thread's slot (the trap entry: the user registers become that frame);
 ///   Trap to User at the `sysretq`/`iretq` of [`restore_frame`], whose `cli` makes its check and
 ///   the return one step; Trap to Idle when [`restore_frame`] diverts on `running_to_idle_pending`,
 ///   or when a syscall returns CpuIdle into [`run_idle`]. A running-to-idle IPI is acknowledged
@@ -170,7 +184,8 @@ unsafe extern "C" fn sys_entry() -> ! {
     naked_asm!(
         "swapgs",
         "mov r10, rsp",
-        "mov rsp, gs:{syscall_sp_offset}",
+        // The frame slot in the page of the thread this CPU runs.
+        "mov rsp, gs:{frame_top_offset}",
 
         // struct Registers, from the highest field down.
         "push {user_ss}", // ss
@@ -195,23 +210,25 @@ unsafe extern "C" fn sys_entry() -> ! {
         "push r14",
         "push r15",
 
-        // The frame is on the kernel stack: Trap runs with interrupts on.
-        "sti",
+        // The frame is saved: continue on the kernel stack, and Trap runs with interrupts on. No
+        // interrupt may arrive before the switch: it would push below the slot, into the thread.
         "mov rdi, rsp",
-        "sub rsp, 8", // 21 pushes leave rsp 8 off the 16-byte call alignment
+        "mov rsp, gs:{kernel_sp_offset}",
+        "sti",
         "call {dispatch}",
-        "add rsp, 8",
-        "jmp {restore}",
+        "jmp {resume}",
 
         user_ss = const GlobalDescriptorTable::USER_SS,
         user_cs = const GlobalDescriptorTable::USER_CS,
-        syscall_sp_offset = const offset_of!(Cpu, syscall_sp),
+        frame_top_offset = const offset_of!(Cpu, frame_top),
+        kernel_sp_offset = const offset_of!(Cpu, kernel_sp),
         dispatch = sym syscall_dispatch,
-        restore = sym restore_frame,
+        resume = sym resume_current_frame,
     );
 }
 
-/// Restores the frame at `rsp` and returns to it.
+/// Restores the frame at `rsp` (the current thread's slot, or for an exception that returns to ring 3
+/// its frame on the exception IST stack) and returns to it.
 ///
 /// `sysretq` takes `rip` from `rcx` and `rflags` from `r11`, leaves both registers holding them,
 /// and loads the selectors `STAR` names, so it gives exactly the state `iretq` would when the frame
@@ -289,69 +306,107 @@ pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     );
 }
 
-/// Enters the frame at `frame` (on the current CPU's kernel stack).
+/// Returns to the thread this CPU runs: restores the frame below `frame_top`, which
+/// [`sync_current_frame`] keeps on the current thread's slot. The tail of every path to ring 3; a
+/// pending running-to-idle request diverts it before the frame is read. Interrupts go off before
+/// `rsp` moves into the thread's page: an interrupt taken there would push into the thread object.
 #[unsafe(naked)]
-unsafe extern "C" fn enter_frame(frame: *const Registers) -> ! {
+pub(crate) unsafe extern "C" fn resume_current_frame() -> ! {
     naked_asm!(
-        "mov rsp, rdi",
+        "cli",
+        "mov rsp, gs:{frame_top_offset}",
+        "sub rsp, {frame_size}",
         "jmp {restore}",
+        frame_top_offset = const offset_of!(Cpu, frame_top),
+        frame_size = const size_of::<Registers>(),
         restore = sym restore_frame,
     );
+}
+
+/// The thread the verified kernel records as this CPU's current one (`Cpu::current_thread` of its own cpu object).
+/// Read outside kernel steps only. Trusted: only this CPU's own steps write that field, and a killer that holds
+/// this CPU's lock clears it only after the running-to-idle acknowledgement, which this CPU gives only in
+/// [`run_idle`]; so between steps the value is stable, and a thread read here keeps its page until this CPU
+/// acknowledges.
+fn current_thread() -> Option<usize> {
+    unsafe { (*cpu::get_current().verified_cpu).current_thread() }
+}
+
+/// Points `frame_top` and TSS.rsp0 at the trap-frame slot of the thread this CPU runs and returns that frame, or
+/// returns `None` when the CPU runs no thread. Called after every kernel step that may have changed the thread.
+fn sync_current_frame() -> Option<*mut Registers> {
+    let thread = current_thread()?;
+    let top = (thread + cpu::THREAD_FRAME_TOP_OFFSET) as u64;
+    let cpu = cpu::get_current();
+    if cpu.frame_top != top {
+        cpu.frame_top = top;
+        cpu.tss.set_rsp(Ring::Ring0, top);
+    }
+    Some((top as usize - size_of::<Registers>()) as *mut Registers)
+}
+
+/// The frame of the thread this CPU runs after a kernel step, synchronized; runs the idle loop first if the step left
+/// the CPU without a thread.
+fn running_frame() -> *mut Registers {
+    loop {
+        if let Some(frame) = sync_current_frame() {
+            return frame;
+        }
+        run_idle();
+    }
 }
 
 /// Ends the current thread after a fault in ring 3, exactly as if it had made the `thread_exit`
 /// syscall. The exception trampoline has done what `sys_entry` does (`swapgs`, `cld`, the complete
 /// frame, interrupts on), but the frame lies on the exception IST stack, which the next exception
-/// reuses: it moves unchanged to the frame slot of the kernel stack, where `sys_entry` builds it
-/// (free while the CPU ran in ring 3), and [`fault_exit_frame`] continues on that stack.
+/// reuses: it moves unchanged into the faulting thread's own slot, where `sys_entry` would have
+/// saved it (the trap entry), and [`fault_exit_on_kernel_stack`] continues on the kernel stack.
 pub(crate) fn exit_faulting_thread(name: &str, regs: &Registers) -> ! {
     log::warn!("CPU {}: {} in ring 3 at rip {:#x}; the thread exits", cpu::get_cpu_id(), name, regs.rip);
     unsafe {
-        let frame = cpu::top_frame();
-        frame.write(*regs);
-        fault_exit_frame(frame)
+        cpu::current_frame().write(*regs);
+        fault_exit_on_kernel_stack()
     }
 }
 
-/// Runs [`fault_exit`] on the frame slot `frame` of the current CPU's kernel stack, on that stack,
-/// and returns through [`restore_frame`], like the tail of `sys_entry`.
+/// Runs [`fault_exit`] on the current CPU's kernel stack and returns to the thread the CPU then runs,
+/// like the tail of `sys_entry`.
 #[unsafe(naked)]
-unsafe extern "C" fn fault_exit_frame(frame: *mut Registers) -> ! {
+unsafe extern "C" fn fault_exit_on_kernel_stack() -> ! {
     naked_asm!(
-        "mov rsp, rdi",
-        "sub rsp, 8", // the slot is 8 off the 16-byte call alignment, as in sys_entry
+        "mov rsp, gs:{kernel_sp_offset}",
         "call {fault_exit}",
-        "add rsp, 8",
-        "jmp {restore}",
+        "jmp {resume}",
+        kernel_sp_offset = const offset_of!(Cpu, kernel_sp),
         fault_exit = sym fault_exit,
-        restore = sym restore_frame,
+        resume = sym resume_current_frame,
     );
 }
 
-/// The `thread_exit` of a faulting thread. On `CpuIdle` the thread is gone and the idle loop leaves
-/// the next thread's frame in `regs`, as `syscall_dispatch` does. Any other result (a kill or
-/// lock-order conflict in progress) leaves the saved frame untouched: the thread re-runs the faulting
-/// instruction with its own registers, faults again, and retries.
-extern "C" fn fault_exit(regs: &mut Registers) {
+/// The `thread_exit` of a faulting thread. On `CpuIdle` the thread is gone and the idle loop picks
+/// the next thread, as `syscall_dispatch` does. Any other result (a kill or lock-order conflict in
+/// progress) leaves the saved frame untouched: the thread re-runs the faulting instruction with its
+/// own registers, faults again, and retries.
+extern "C" fn fault_exit() {
     let ret = syscall_thread_exit(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu::get_cpu_id());
     if let RetValueType::CpuIdle = ret {
-        run_idle(regs);
+        run_idle();
     }
+    running_frame();
 }
 
-/// Abandons the current thread for the idle loop: restarts on this CPU's kernel stack below the
-/// frame slot. Entered from [`restore_frame`] with the kernel GS base and interrupts off, and turns
-/// them on once on the new stack: the idle loop runs with interrupts on.
+/// Abandons the current thread for the idle loop: restarts at the top of this CPU's kernel stack,
+/// which holds nothing on the way out to ring 3. Entered from [`restore_frame`] with the kernel GS
+/// base and interrupts off, and turns them on once on the new stack: the idle loop runs with
+/// interrupts on. The abandoned thread's frame is not touched again.
 #[unsafe(naked)]
 unsafe extern "C" fn running_to_idle_kernel_gs() -> ! {
     naked_asm!(
-        "mov rsp, gs:{syscall_sp_offset}",
-        "sub rsp, {reserve}",
+        "mov rsp, gs:{kernel_sp_offset}",
         "sti",
         "call {entry}",
         "ud2",
-        syscall_sp_offset = const offset_of!(Cpu, syscall_sp),
-        reserve = const cpu::FRAME_SLOT_RESERVE,
+        kernel_sp_offset = const offset_of!(Cpu, kernel_sp),
         entry = sym running_to_idle_entry,
     );
 }
@@ -360,10 +415,8 @@ unsafe extern "C" fn running_to_idle_kernel_gs() -> ! {
 /// [`enter_first_thread`], but the timer already runs.
 extern "C" fn running_to_idle_entry() -> ! {
     unsafe {
-        let frame = cpu::top_frame();
-        frame.write(Registers::zeroed());
-        run_idle(&mut *frame);
-        enter_frame(frame);
+        run_idle();
+        resume_current_frame();
     }
 }
 
@@ -371,25 +424,23 @@ extern "C" fn running_to_idle_entry() -> ! {
 /// after the verified kernel is initialized. The boot CPU runs with interrupts off until here; the
 /// idle loop runs with them on.
 pub unsafe fn enter_first_thread() -> ! {
-    let frame = cpu::top_frame();
-    frame.write(Registers::zeroed());
+    cpu::assert_user_fp_disabled();
     start_timer();
     platform::veriflat_enable_interrupts();
-    run_idle(&mut *frame);
-    log::info!("entering first thread at {:#x}", (*frame).rip);
-    enter_frame(frame);
+    run_idle();
+    log::info!("entering first thread at {:#x}", (*cpu::current_frame()).rip);
+    resume_current_frame();
 }
 
 /// Parks a started AP: it is Off in the verified model until `cpu_online` wakes it, then runs the
 /// idle loop and enters the thread it finds. The AP trampoline turned interrupts off; an Off CPU
 /// runs with them on, so its halts end at the wake IPI.
 pub unsafe fn enter_off_cpu() -> ! {
-    let frame = cpu::top_frame();
-    frame.write(Registers::zeroed());
+    cpu::assert_user_fp_disabled();
     platform::veriflat_enable_interrupts();
     wait_until_online(cpu::get_cpu_id());
-    run_idle(&mut *frame);
-    enter_frame(frame);
+    run_idle();
+    resume_current_frame();
 }
 
 /// Arms the scheduling tick and keeps it re-armed. With feature `no-timer` it arms nothing and leaves
@@ -413,7 +464,7 @@ pub fn timer_interrupt(regs: &mut Registers) {
         interrupt::set_timer(TICK);
     }
     if from_user(regs) {
-        schedule_from_running(regs);
+        schedule_from_running();
     }
 }
 
@@ -430,8 +481,9 @@ fn from_user(regs: &Registers) -> bool {
     regs.cs & 3 == 3
 }
 
-/// Writes a verified result into the caller's frame.
-fn encode(regs: &mut Registers, ret: RetValueType) {
+/// Writes a verified result into `regs`, the frame of the thread this CPU returns to: the model's
+/// trap-return-values-written event of this CPU.
+fn encode(regs: *mut Registers, ret: RetValueType) {
     use RetValueType::*;
     let (rax, rdx, rsi): (i64, u64, u64) = match ret {
         SuccessUsize { value } => (value as i64, 0, 0),
@@ -441,9 +493,11 @@ fn encode(regs: &mut Registers, ret: RetValueType) {
         Success => (0, 0, 0),
         other => (-(MODEL_ERROR_BASE + error_index(other) as i64), 0, 0),
     };
-    regs.rax = rax as u64;
-    regs.rdx = rdx;
-    regs.rsi = rsi;
+    unsafe {
+        (*regs).rax = rax as u64;
+        (*regs).rdx = rdx;
+        (*regs).rsi = rsi;
+    }
 }
 
 /// The position of an error variant in `RetValueType`; `vsys::error_name` mirrors it.
@@ -535,8 +589,9 @@ fn set_trap_error(regs: &mut Registers, err: isize) {
     regs.rax = err as i64 as u64;
 }
 
-/// Dispatches a syscall. On return the frame holds the registers of the thread to resume, which is
-/// the caller unless the call blocked or yielded.
+/// Dispatches a syscall of the thread whose frame is `regs` (its slot). On return `frame_top` is on
+/// the slot of the thread to resume, which is the caller unless the call blocked, yielded, or handed
+/// the CPU off; `regs` is not touched after a kernel step that may have ended the caller.
 extern "C" fn syscall_dispatch(regs: &mut Registers) {
     let nr = regs.rax as usize;
     let (a1, a2, a3, a4, a5, a6, a7) =
@@ -587,7 +642,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         }
         vsys::NR_SCHEDULE => {
             regs.rax = 0;
-            schedule_from_running(regs);
+            schedule_from_running();
             return;
         }
         vsys::NR_ALLOC_QUOTA_4K => syscall_alloc_quota_4k(k, t!(), t!(), cpu_id, a1),
@@ -667,73 +722,73 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         }
         vsys::NR_SEND_EMPTY => {
             require!(endpoint_ok(a1));
-            syscall_send_empty(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_send_empty(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_RECEIVE_EMPTY => {
             require!(endpoint_ok(a1));
-            syscall_receive_empty(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_receive_empty(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_SEND_EMPTY_NO_BLOCK => {
             require!(endpoint_ok(a1));
-            syscall_send_empty_no_block(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_send_empty_no_block(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_RECEIVE_EMPTY_NO_BLOCK => {
             require!(endpoint_ok(a1));
-            syscall_receive_empty_no_block(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_receive_empty_no_block(k, t!(), t!(), cpu_id, a1)
         }
-        // A direct handoff leaves `regs` holding the frame of the thread switched to, so the
-        // common `encode` below delivers the result to that thread.
+        // A direct handoff makes the thread switched to this CPU's current thread, so the common
+        // `encode` below delivers the result into that thread's frame.
         vsys::NR_CALL => {
             require!(endpoint_ok(a1));
-            syscall_call(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Empty, regs)
+            syscall_call(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Empty)
         }
         vsys::NR_CALL_USIZE => {
             require!(endpoint_ok(a1));
-            syscall_call(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Usize { value: a2 }, regs)
+            syscall_call(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Usize { value: a2 })
         }
         vsys::NR_RECEIVE_CALL => {
             require!(endpoint_ok(a1));
-            syscall_receive_call(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_receive_call(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_REPLY_AND_RECEIVE => {
             require!(endpoint_ok(a1));
-            syscall_reply_and_receive(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Empty, regs)
+            syscall_reply_and_receive(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Empty)
         }
         vsys::NR_REPLY_AND_RECEIVE_USIZE => {
             require!(endpoint_ok(a1));
-            syscall_reply_and_receive(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Usize { value: a2 }, regs)
+            syscall_reply_and_receive(k, t!(), t!(), cpu_id, a1, IPCPayLoad::Usize { value: a2 })
         }
         vsys::NR_SEND_CPU => {
             require!(endpoint_ok(a1) && a2 < NUM_CPUS);
-            syscall_send_cpu(k, t!(), t!(), cpu_id, a1, a2, regs)
+            syscall_send_cpu(k, t!(), t!(), cpu_id, a1, a2)
         }
         vsys::NR_RECEIVE_CPU => {
             require!(endpoint_ok(a1));
-            syscall_receive_cpu(k, t!(), t!(), cpu_id, a1, regs)
+            syscall_receive_cpu(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_SEND_PCI => {
             require!(endpoint_ok(a1) && bdf_ok(a2, a3, a4));
-            syscall_send_pci(k, t!(), t!(), cpu_id, a1, a2 as u8, a3 as u8, a4 as u8, regs)
+            syscall_send_pci(k, t!(), t!(), cpu_id, a1, a2 as u8, a3 as u8, a4 as u8)
         }
         vsys::NR_RECEIVE_PCI => {
             require!(endpoint_ok(a1) && bdf_ok(a2, a3, a4));
-            syscall_receive_pci(k, t!(), t!(), cpu_id, a1, a2 as u8, a3 as u8, a4 as u8, regs)
+            syscall_receive_pci(k, t!(), t!(), cpu_id, a1, a2 as u8, a3 as u8, a4 as u8)
         }
         vsys::NR_SEND_ENDPOINT => {
             require!(endpoint_ok(a1) && endpoint_ok(a2));
-            syscall_send_endpoint(k, t!(), t!(), cpu_id, a1, a2, regs)
+            syscall_send_endpoint(k, t!(), t!(), cpu_id, a1, a2)
         }
         vsys::NR_RECEIVE_ENDPOINT => {
             require!(endpoint_ok(a1) && endpoint_ok(a2));
-            syscall_receive_endpoint(k, t!(), t!(), cpu_id, a1, a2, regs)
+            syscall_receive_endpoint(k, t!(), t!(), cpu_id, a1, a2)
         }
         vsys::NR_SEND_PAGES => {
             require!(endpoint_ok(a1));
-            syscall_send_pages(k, t!(), t!(), cpu_id, a1, a2, a3, regs)
+            syscall_send_pages(k, t!(), t!(), cpu_id, a1, a2, a3)
         }
         vsys::NR_RECEIVE_PAGES => {
             require!(endpoint_ok(a1));
-            syscall_receive_pages(k, t!(), t!(), cpu_id, a1, a2, a3, regs)
+            syscall_receive_pages(k, t!(), t!(), cpu_id, a1, a2, a3)
         }
         vsys::NR_PCI_ATTACH_DMA => {
             require!(bdf_ok(a1, a2, a3));
@@ -746,10 +801,10 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
     };
 
     if let RetValueType::CpuIdle = ret {
-        // The caller blocked (its frame is saved in its thread) or exited (its thread is gone). Pick the next thread.
-        run_idle(regs);
+        // The caller blocked (its frame stays in its thread) or exited (its thread is gone). Pick the next thread.
+        run_idle();
     } else {
-        encode(regs, ret);
+        encode(running_frame(), ret);
     }
 }
 
@@ -823,27 +878,30 @@ fn debug_print(data: usize, len: usize) {
 }
 
 /// `sys_schedule` or a timer tick from a running thread: the offline check, then a context switch.
-fn schedule_from_running(regs: &mut Registers) {
+fn schedule_from_running() {
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
-    if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
+    if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id).0 {
         wait_until_online(cpu_id);
-        run_idle(regs);
+        run_idle();
         return;
     }
-    match syscall_schedule(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs) {
+    match syscall_schedule(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {
         ScheduleResult::Switched { syscall_return, .. } => {
+            let frame = running_frame();
             if let Some(ret) = syscall_return {
-                encode(regs, ret);
+                encode(frame, ret);
             }
         }
-        ScheduleResult::Continue => {}
-        ScheduleResult::Idle => run_idle(regs),
+        ScheduleResult::Continue => {
+            running_frame();
+        }
+        ScheduleResult::Idle => run_idle(),
     }
 }
 
-/// The idle loop of a CPU without a running thread; it runs with interrupts on. Returns once `regs`
-/// holds the frame of the thread the CPU switched to. A forced running-to-idle transition ends here:
+/// The idle loop of a CPU without a running thread; it runs with interrupts on. Returns once the CPU
+/// runs a thread and `frame_top` is on that thread's slot. A forced running-to-idle transition ends here:
 /// through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
 ///
 /// This is the only place that acknowledges a running-to-idle IPI
@@ -856,20 +914,22 @@ fn schedule_from_running(regs: &mut Registers) {
 /// owed flag is set (`platform::veriflat_halt_until_ipi`): the next iteration acknowledges. An IPI that
 /// lands after the step that switched to a thread sets `running_to_idle_pending`, so
 /// [`restore_frame`] diverts back here and the entry acknowledges.
-fn run_idle(regs: &mut Registers) {
+fn run_idle() {
     platform::acknowledge_running_to_idle();
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
     loop {
         platform::acknowledge_running_to_idle();
-        if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
+        if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id).0 {
             wait_until_online(cpu_id);
             continue;
         }
-        match syscall_schedule(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs) {
+        match syscall_schedule(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {
             ScheduleResult::Switched { syscall_return, .. } => {
+                // No acknowledgement can have happened since the step, so the thread it chose is still current.
+                let frame = sync_current_frame().expect("switched to no thread");
                 if let Some(ret) = syscall_return {
-                    encode(regs, ret);
+                    encode(frame, ret);
                 }
                 return;
             }

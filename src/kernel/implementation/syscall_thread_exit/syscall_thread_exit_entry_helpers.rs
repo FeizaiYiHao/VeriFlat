@@ -259,6 +259,7 @@ pub(super) fn thread_exit_enter_with_caller(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is None && !old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp, thrd_mp: old(krnl).thrd_mp, ..pre }),
         old(krnl).cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        !(pre.cpu_op.view().view()[cpu_id as int] is User),
         old(krnl).cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
         old(krnl).ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),

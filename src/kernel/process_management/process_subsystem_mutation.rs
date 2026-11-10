@@ -804,7 +804,7 @@ pub fn process_subsystem_create_scheduled_thread(
     ctn_mp: &ContainerLockedMap, prc_mp: &mut ProcessLockedMap, thrd_mp: &mut ThreadLockedMap,
     sched_mp: &mut SchedulerUnLockedMap, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr,
     staging_thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
-    thread_value: Thread, initial_regs: &Registers, Tracked(page_perm): Tracked<ThreadRegionPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
+    thread_value: Thread, initial_regs: &Registers, frame: Tracked<PointsTo<Registers>>, Tracked(page_perm): Tracked<ThreadRegionPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(staging_thread_lock_perm): Tracked<&LockPerm>, Tracked(shard_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (Tracked<LockPerm>, usize, usize))
     requires
@@ -846,6 +846,8 @@ pub fn process_subsystem_create_scheduled_thread(
         thread_value.scheduler_linkedlist_node.addr() == thread_sched_node_addr(pg_ptr),
         thread_value.proc_linkedlist_node.addr() == thread_proc_node_addr(pg_ptr),
         thread_value.endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(pg_ptr),
+        thread_value.trap_frame.addr() == thread_trap_frame_addr(pg_ptr),
+        frame.view().addr() == thread_value.trap_frame.addr(),
         thread_value.owning_container == ctn_ptr,
         thread_value.container_depth == ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
         thread_value.container_depth == old(prc_mp).spec_index(prc_ptr).view_rodata().view().container_depth,
@@ -887,8 +889,7 @@ pub fn process_subsystem_create_scheduled_thread(
         final(thrd_mp).spec_index(pg_ptr).view() == (Thread { state: ThreadState::SCHEDULED { cpu_id }, last_cpu: cpu_id, trap_frame: final(thrd_mp).spec_index(pg_ptr).view().trap_frame,
             scheduler_linkedlist_node: final(thrd_mp).spec_index(pg_ptr).view().scheduler_linkedlist_node,
             proc_linkedlist_node: final(thrd_mp).spec_index(pg_ptr).view().proc_linkedlist_node, ..thread_value }),
-        final(thrd_mp).spec_index(pg_ptr).view().trap_frame.is_some(),
-        *final(thrd_mp).spec_index(pg_ptr).view().trap_frame.get_some_0() == *initial_regs,
+        final(thrd_mp).spec_index(pg_ptr).view().trap_frame.view() == Some(*initial_regs),
         !final(thrd_mp).spec_index(pg_ptr).view().scheduler_linkedlist_node.is_init(),
         !final(thrd_mp).spec_index(pg_ptr).view().proc_linkedlist_node.is_init(),
         ret.1 == final(thrd_mp).spec_index(pg_ptr).view().scheduler_linkedlist_node.addr(),
@@ -964,7 +965,7 @@ pub fn process_subsystem_create_scheduled_thread(
     let ghost fresh_lock_id = thrd_mp.lock_id_by_key(pg_ptr);
     proof { assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thrd_mp.borrow_mut_typed(pg_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    let (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm) = thread.fresh_to_scheduled(pg_ptr, cpu_id, initial_regs);
+    let (sched_node_addr, sched_node_perm, process_node_addr, process_node_perm) = thread.fresh_to_scheduled(pg_ptr, cpu_id, frame, initial_regs);
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(pg_ptr), fresh_lock_id, thrd_mp.lock_id_by_key(pg_ptr));

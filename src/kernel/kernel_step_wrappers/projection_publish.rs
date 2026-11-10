@@ -89,7 +89,8 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
                 lock_state: entry.lock_state_u(), state: t.state, caller: t.caller, callee: t.callee, owning_container: t.owning_container, owning_proc: t.owning_proc,
                 last_cpu: t.last_cpu, quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g, endpoint_descriptors: t.endpoint_descriptors.view(),
                 blocking_endpoint_ptr: t.blocking_endpoint_ptr, ipc_payload: t.ipc_payload, error_code: t.error_code,
-                trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None }, syscall_progress: t.syscall_progress.view(), killed: entry.being_killed(),
+                regs: match t.state { ThreadState::RUNNING { cpu_id } => if before.cpu_op.view().view()[cpu_id as int] is User { before.cpu_regs.view().view()[cpu_id as int] } else { before.cpu_trap_frame.view().view()[cpu_id].value() }, _ => t.trap_frame.view()->Some_0 },
+                syscall_progress: t.syscall_progress.view(), killed: entry.being_killed(),
             })
         }),
         ({
@@ -148,6 +149,9 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_thread_map(
     before: &KernelK, after: &KernelK, thread: RwLockThreadPtr, iommu: Option<RwLockPageTableRoot>, progress: Option<SyscallProgress>,
 )
     requires
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
         before.thrd_mp.spec_index(thread).view().quota_4k >= if iommu is Some { 5usize } else { 3usize },
         after.thrd_mp.unchanged_except(&before.thrd_mp, thread),
         kernel_thread_quota_4k_changed(before, after, thread, if iommu is Some { -5 } else { -3 }),
@@ -484,6 +488,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     ep_ptr: Option<RwLockEndpointPtr>, release_source_process: Option<RwLockProcessPtr>, staging_progress: Option<SyscallProgress>,
 )
     requires
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
@@ -646,6 +652,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_thread_map(
     cpu_id: CpuId, new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers, ep_ptr: Option<RwLockEndpointPtr>, staging_progress: Option<SyscallProgress>,
 )
     requires
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) ==> (post.cpu_op.view().view()[i as int] is User) == (pre.cpu_op.view().view()[i as int] is User),
         kernel_new_thread_fields(pre, post, prc_ptr, thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, initial_regs, ep_ptr, staging_progress),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
             pre.thrd_mp.dom().contains(p) ==> if p == thrd_ptr { post.thrd_mp.spec_index(p).locking_thread() is None } else { post.thrd_mp.spec_index(p).locking_thread() == pre.thrd_mp.spec_index(p).locking_thread() },
@@ -668,7 +676,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_thread_map(
     assert_maps_equal!(post_u.thread_map, unlocked.insert(thrd_ptr, ThreadU {
         quota_4k: (staging.quota_4k as int - 1) as usize, syscall_progress: staging_progress, ..staging
     }).insert(new_thrd_ptr, post_u.thread_map.spec_index(new_thrd_ptr)), p => {
-        if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); }
+        if pre.thrd_mp.dom().contains(p) { kernel_thread_projection_at(pre, p); } if post.thrd_mp.dom().contains(p) { kernel_thread_projection_at(post, p); } thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, p);
     });
 }
 

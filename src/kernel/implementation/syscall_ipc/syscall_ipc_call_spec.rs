@@ -69,11 +69,11 @@ pub open spec fn ipc_call_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx
 }
 
 /// User-visible call handoff: the queue head records the caller and runs on the caller's CPU, and the caller
-/// saves `regs` and waits for the reply.
-pub open spec fn ipc_call_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
+/// parks the frame of the cpu's trap-frame slot and waits for the reply.
+pub open spec fn ipc_call_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>) -> bool {
     let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let ep_ptr = old_u.thread_map.spec_index(caller_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
-    kernel_u_ipc_call_handoff_changed(old_u, new_u, cpu_id, caller_ptr, ep_ptr, ep_idx, old_u.endpoint_map.spec_index(ep_ptr).queue[0], regs, flushed_pcid)
+    kernel_u_ipc_call_handoff_changed(old_u, new_u, cpu_id, caller_ptr, ep_ptr, ep_idx, old_u.endpoint_map.spec_index(ep_ptr).queue[0], flushed_pcid)
 }
 
 /// The running receive-call thread holds no caller and the unlocked queue head of the endpoint at
@@ -130,23 +130,23 @@ pub open spec fn ipc_reply_handoff_step_pre(old_u: KernelU, cpu_id: CpuId, ep_id
     &&& old_u.process_map.dom().contains(caller.owning_proc)
 }
 
-/// User-visible reply handoff: the recorded caller resumes on the CPU, and the running thread saves `regs`
-/// and waits for the next call on the endpoint at `ep_idx`.
-pub open spec fn ipc_reply_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
+/// User-visible reply handoff: the recorded caller resumes on the CPU, and the running thread parks the frame of the cpu's
+/// trap-frame slot and waits for the next call on the endpoint at `ep_idx`.
+pub open spec fn ipc_reply_handoff_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_pcid: Option<Pcid>) -> bool {
     let callee_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let callee = old_u.thread_map.spec_index(callee_ptr);
-    kernel_u_ipc_reply_handoff_changed(old_u, new_u, cpu_id, callee_ptr, callee.endpoint_descriptors[ep_idx as int]->Some_0, ep_idx, callee.caller->Some_0, regs, flushed_pcid)
+    kernel_u_ipc_reply_handoff_changed(old_u, new_u, cpu_id, callee_ptr, callee.endpoint_descriptors[ep_idx as int]->Some_0, ep_idx, callee.caller->Some_0, flushed_pcid)
 }
 
 /// A call is one block step or a CpuIdle stutter as in ordinary IPC, one rendezvous error step against a plain receiver or a
 /// foreign receive-call waiter, one handoff step, or a stuttering rejection.
 #[verifier::opaque]
 pub open spec fn ipc_call_syscall_trace(
-    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers,
+    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad,
     flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType,
 ) -> bool {
     if ret is CpuIdle {
-        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload, regs, flushed_default_pcid, ret)
+        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload, flushed_default_pcid, ret)
     } else if ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
@@ -160,7 +160,7 @@ pub open spec fn ipc_call_syscall_trace(
         &&& trace[0].new_u == post
         &&& ret == ipc_call_result(payload)
         &&& ipc_call_handoff_step_pre(pre, cpu_id, ep_idx)
-        &&& ipc_call_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid)
+        &&& ipc_call_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid)
     } else {
         &&& trace.len() == 0
         &&& post == pre
@@ -170,9 +170,9 @@ pub open spec fn ipc_call_syscall_trace(
 /// A receive_call is one block step or a CpuIdle stutter as in ordinary IPC, one rendezvous error step against a plain sender
 /// or a foreign caller, one acceptance step, or a stuttering rejection.
 #[verifier::opaque]
-pub open spec fn ipc_receive_call_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType) -> bool {
+pub open spec fn ipc_receive_call_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_default_pcid: bool, ret: RetValueType) -> bool {
     if ret is CpuIdle {
-        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty, regs, flushed_default_pcid, ret)
+        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty, flushed_default_pcid, ret)
     } else if ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
@@ -262,7 +262,7 @@ pub open spec fn ipc_reply_dangling_caller_released_step(old_u: KernelU, new_u: 
 /// running thread; a rejection stutters.
 #[verifier::opaque]
 pub open spec fn ipc_reply_and_receive_syscall_trace(
-    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers,
+    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad,
     flushed_pcid: Option<Pcid>, ret: RetValueType,
 ) -> bool {
     if ret is Success || ret is SuccessUsize {
@@ -271,7 +271,7 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
         &&& trace[0].new_u == post
         &&& ret == ipc_call_result(payload)
         &&& ipc_reply_handoff_step_pre(pre, cpu_id, ep_idx)
-        &&& ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid)
+        &&& ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid)
     } else if ret is ErrorIpcCallerKilled {
         let last = trace.len() - 1;
         // take over + at least one reclaim step + release
@@ -292,10 +292,10 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
 }
 
 /// Dequeues the receive-call callee, runs it on `cpu_id`, records the caller on it, and parks the caller waiting for
-/// the reply with `entry_regs`; a callee of another process also switches `cpu_id` to that process and updates the
+/// the reply with the frame of the cpu's trap-frame slot, which then holds the callee's frame; a callee of another process also switches `cpu_id` to that process and updates the
 /// affected PCID publication and TLB state.
 #[verifier::opaque]
-pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, callee_ptr: RwLockThreadPtr) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -313,7 +313,13 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(ep_ptr);
     let endpoint_after = post.ep_mp.spec_index(ep_ptr);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK {
+        cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb,
+        cpu_trap_frame: post.cpu_trap_frame, ..pre
+    })
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().insert(cpu_id, post.cpu_trap_frame.view().view()[cpu_id])
+    &&& post.cpu_trap_frame.view().view()[cpu_id].addr() == pre.thrd_mp.spec_index(callee_ptr).view().trap_frame.addr()
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == pre.thrd_mp.spec_index(callee_ptr).view().trap_frame.view()->Some_0
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
@@ -357,7 +363,8 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
         &&& (ptr == caller_ptr ==> {
             &&& after.view() == (Thread { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: after.view().trap_frame, ..before.view() })
             &&& after.view().trap_frame.is_some()
-            &&& *after.view().trap_frame.get_some_0() == entry_regs
+            &&& after.view().trap_frame.addr() == before.view().trap_frame.addr()
+            &&& after.view().trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value())
         })
         &&& (ptr == callee_ptr ==> {
             &&& after.view() == (Thread {
@@ -368,6 +375,7 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
             &&& after.view().endpoint_linkedlist_node.is_init()
             &&& after.view().endpoint_linkedlist_node.addr() == before.view().endpoint_linkedlist_node.addr()
             &&& after.view().trap_frame.is_none()
+            &&& after.view().trap_frame.addr() == before.view().trap_frame.addr()
         })
     })
     &&& post.ep_mp.dom() == pre.ep_mp.dom()
@@ -466,11 +474,11 @@ pub(super) open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, pos
     &&& endpoint_after.view().queue.dom() == endpoint_before.view().queue.dom().remove(caller_node)
 }
 
-/// Resumes the recorded caller on `cpu_id` and parks the replying callee with `entry_regs` at the endpoint tail as a
+/// Resumes the recorded caller on `cpu_id` and parks the replying callee with the frame of the cpu's trap-frame slot, which then holds the caller's frame, at the endpoint tail as a
 /// receive-call waiter; a caller of another process also switches `cpu_id` to that process and updates the affected
 /// PCID publication and TLB state.
 #[verifier::opaque]
-pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -489,7 +497,13 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(ep_ptr);
     let endpoint_after = post.ep_mp.spec_index(ep_ptr);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK {
+        cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb,
+        cpu_trap_frame: post.cpu_trap_frame, ..pre
+    })
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().insert(cpu_id, post.cpu_trap_frame.view().view()[cpu_id])
+    &&& post.cpu_trap_frame.view().view()[cpu_id].addr() == pre.thrd_mp.spec_index(caller_ptr).view().trap_frame.addr()
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == pre.thrd_mp.spec_index(caller_ptr).view().trap_frame.view()->Some_0
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
@@ -538,11 +552,13 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
             &&& !after.view().endpoint_linkedlist_node.is_init()
             &&& after.view().endpoint_linkedlist_node.addr() == before.view().endpoint_linkedlist_node.addr()
             &&& after.view().trap_frame.is_some()
-            &&& *after.view().trap_frame.get_some_0() == entry_regs
+            &&& after.view().trap_frame.addr() == before.view().trap_frame.addr()
+            &&& after.view().trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value())
         })
         &&& (ptr == caller_ptr ==> {
             &&& after.view() == (Thread { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: after.view().trap_frame, ..before.view() })
             &&& after.view().trap_frame.is_none()
+            &&& after.view().trap_frame.addr() == before.view().trap_frame.addr()
         })
     })
     &&& post.ep_mp.dom() == pre.ep_mp.dom()

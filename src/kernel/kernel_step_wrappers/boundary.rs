@@ -287,17 +287,20 @@ pub(super) proof fn kernel_cpu_online_changed_implies_u_step(pre: &KernelK, post
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } });
     assert(post_u.thread_map == pre_u.thread_map && post_u.endpoint_map == pre_u.endpoint_map && post_u.process_map == pre_u.process_map) by {
-        reveal(kernel_k_to_kernel_u); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post); kernel_process_maps_unchanged_implies_u_process_map(pre, post);
+        reveal(kernel_k_to_kernel_u); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post); kernel_process_maps_unchanged_implies_u_process_map(pre, post);
+        assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(*pre).thread_map, t => {
+            if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); } thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, t);
+        });
     };
 }
 
-pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, flushed_default_pcid: bool)
     requires
         post.inv(),
-        kernel_cpu_went_off_fields(pre, post, cpu_id, regs, flushed_default_pcid),
+        kernel_cpu_went_off_fields(pre, post, cpu_id, flushed_default_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
-        kernel_u_cpu_went_off_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, regs, flushed_default_pcid),
+        kernel_u_cpu_went_off_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, flushed_default_pcid),
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_cpu_went_off_changed); reveal(kernel_cpu_went_off_fields);
@@ -316,8 +319,8 @@ pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, pos
     });
     kernel_endpoint_nonlock_fields_and_locks_unchanged_implies_u_endpoint_map(pre, post);
     kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process_map(pre, post);
-    kernel_cpu_went_off_fields_implies_u_container_map(pre, post, cpu_id, regs, flushed_default_pcid);
-    kernel_cpu_went_off_fields_implies_u_thread_map(pre, post, cpu_id, regs, flushed_default_pcid);
+    kernel_cpu_went_off_fields_implies_u_container_map(pre, post, cpu_id, flushed_default_pcid);
+    kernel_cpu_went_off_fields_implies_u_thread_map(pre, post, cpu_id, flushed_default_pcid);
 }
 
 pub(super) proof fn kernel_process_added_implies_u_neq(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr)
@@ -658,6 +661,8 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(pre.thrd_mp, pre.cpu_arr),
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -727,7 +732,9 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
     });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU {
         lock_state, syscall_progress: post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thrd_ptr)
-    }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
+    }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, t);
+    });
     kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
@@ -742,6 +749,8 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(pre.thrd_mp, pre.cpu_arr),
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.lock_state_u() == post.thrd_mp.spec_index(thrd_ptr).lock_state_u(),
         pre.thrd_mp.dom().contains(thrd_ptr),
@@ -786,7 +795,7 @@ pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK,
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU { lock_state, ..pre_u.thread_map.spec_index(thrd_ptr) }), t => {
-        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, t);
     });
     assert_maps_equal!(pagetable_map_user_view(post.pt_mp, post.pt_lower.view()), pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()));
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
@@ -810,6 +819,7 @@ pub proof fn kernel_cpu_lock_mode_changed_implies_u_step(pre: &KernelK, post: &K
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> {
             &&& post.ctn_mp.spec_index(p).lock_state_u() == pre.ctn_mp.spec_index(p).lock_state_u()
             &&& post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
@@ -848,8 +858,10 @@ pub proof fn kernel_cpu_lock_mode_changed_implies_u_step(pre: &KernelK, post: &K
     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre, &mid);
     kernel_cpu_lock_mode_changed_implies_u_cpu_array(&mid, post, cpu_id, post.cpu_arr.spec_index(cpu_id).value.lock_state_u());
     kernel_container_maps_unchanged_implies_u_container_map(&mid, post); kernel_process_maps_unchanged_implies_u_process_map(&mid, post);
-    kernel_thread_map_unchanged_implies_u_thread_map(&mid, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(&mid, post);
-    kernel_u_domains_projection(&mid); kernel_u_domains_projection(post);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(&mid, post); kernel_u_domains_projection(&mid); kernel_u_domains_projection(post);
+    assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, kernel_k_to_kernel_u(mid).thread_map, t => {
+        if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(&mid, t); kernel_thread_projection_at(post, t); } thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+    });
 }
 
 } // verus!

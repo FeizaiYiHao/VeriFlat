@@ -46,10 +46,12 @@ pub const IST_IRQ: usize = 2;
 /// NMIs can arrive anywhere, including in `sys_entry` before it switches stacks and in
 /// `restore_frame` after it loads the user `rsp` for `sysretq`, so they get their own IST stack.
 /// Every exception entry defaults to `IST_EXCEPTION` (`Entry::missing_exception`), which also
-/// covers machine checks there. IRQs use no IST: from user mode they build their frame at the top
-/// of the kernel stack like `sys_entry`, and in the kernel they arrive anywhere outside a kernel
-/// step (interrupts are on there) and push their frame on the current stack. Their handler keeps
-/// interrupts off for a kernel frame, so IRQs nest at most one deep.
+/// covers machine checks there. IRQs use no IST: from user mode the CPU pushes their frame at
+/// TSS.rsp0, the frame top of the running thread, so the trampoline completes the frame in that
+/// thread's own slot like `sys_entry` and then switches to the kernel stack; in the kernel they arrive
+/// anywhere outside a kernel step and outside a trampoline's stretch on a thread slot (interrupts are
+/// on exactly there) and push their frame on the current stack. Their handler keeps interrupts off
+/// for a kernel frame, so IRQs nest at most one deep.
 pub const IST_NMI: usize = IST_IRQ;
 
 /// The global IDT.
@@ -131,7 +133,89 @@ macro_rules! trampoline {
     }}
 }
 
-/// Wraps a `Registers` handler for a vector whose frame carries a CPU error code. A frame from
+/// Builds the naked trampoline of an IRQ vector (no CPU error code, no IST). From ring 3 the CPU
+/// pushed the interrupt frame at TSS.rsp0, the frame top of the running thread, so the pushes complete
+/// the frame in that thread's own slot; the trampoline then continues on the kernel stack with
+/// interrupts on (Trap) and leaves through `resume_current_frame`, which restores the frame of the
+/// thread the CPU then runs (the handler may switch threads). From the kernel it saves the frame on
+/// the current stack, keeps interrupts off, and returns with `iretq`.
+macro_rules! wrap_irq {
+    ($handler:path) => {{
+        let _: unsafe extern "C" fn(&mut Registers) = $handler;
+
+        /// IRQ trampoline
+        #[unsafe(naked)]
+        unsafe extern "C" fn trampoline(_: TrampolineMarker) {
+            naked_asm!(
+                // Here rsp is at [rip][cs][rflags][rsp][ss]; push 0 as the error code first
+                "cld",
+                "push 0",
+                "test byte ptr [rsp + 16], 3",
+                "jz 1f",
+                "swapgs",
+                "1:",
+                "push rax",
+                "push rdi",
+                "push rsi",
+                "push rdx",
+                "push rcx",
+                "push r8",
+                "push r9",
+                "push r10",
+                "push r11",
+                "push rbx",
+                "push rbp",
+                "push r12",
+                "push r13",
+                "push r14",
+                "push r15",
+
+                // fn handler(registers: &mut Registers)
+                "mov rdi, rsp",
+                "test byte ptr [rsp + {frame_cs}], 3",
+                "jz 4f",
+                // From ring 3: the frame is the thread's slot; nothing more may be pushed there.
+                "mov rsp, gs:{kernel_sp}",
+                "sti",
+                "call {handler}",
+                "jmp {resume}",
+
+                // From the kernel: 21 qwords keep rsp 8 off alignment
+                "4:",
+                "sub rsp, 8",
+                "call {handler}",
+                "add rsp, 8",
+                "pop r15",
+                "pop r14",
+                "pop r13",
+                "pop r12",
+                "pop rbp",
+                "pop rbx",
+                "pop r11",
+                "pop r10",
+                "pop r9",
+                "pop r8",
+                "pop rcx",
+                "pop rdx",
+                "pop rsi",
+                "pop rdi",
+                "pop rax",
+                "add rsp, 8", // error_code
+                "iretq",
+
+                handler = sym $handler,
+                frame_cs = const offset_of!(Registers, cs),
+                kernel_sp = const offset_of!(crate::cpu::Cpu, kernel_sp),
+                resume = sym crate::syscalls::resume_current_frame,
+            );
+        }
+
+        trampoline
+    }}
+}
+
+/// Wraps a `Registers` handler for an exception vector whose frame carries a CPU error code. Exceptions run on
+/// the IST stack `IST_EXCEPTION`, so their frame never lies in a thread slot. A frame from
 /// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in, turns interrupts on once
 /// the frame is built (Trap runs with them on), and leaves through `restore_frame`, the only exit to
 /// ring 3 (a running-to-idle IPI relies on it). A frame from the kernel already has the kernel GS
@@ -146,7 +230,7 @@ macro_rules! wrap_interrupt_with_error_code {
     };
 }
 
-/// Wraps a `Registers` handler for a vector without a CPU error code.
+/// Wraps a `Registers` handler for an exception vector without a CPU error code.
 macro_rules! wrap_interrupt {
     ($handler:path) => {
         // Here rsp is at [rip][cs][rflags][rsp][ss]; push 0 as the error code first
@@ -339,12 +423,12 @@ pub unsafe fn init() {
     idt.security_exception.set_handler_fn(wrap_interrupt_with_error_code!(security_exception));
 
     for irq in 0..idt.interrupts.len() {
-        idt.interrupts[irq].set_handler_fn(wrap_interrupt!(spurious));
+        idt.interrupts[irq].set_handler_fn(wrap_irq!(spurious));
         idt.interrupts[irq].set_ist(0);
     }
-    idt.interrupts[IRQ_TIMER].set_handler_fn(wrap_interrupt!(timer));
-    idt.interrupts[IRQ_WAKE].set_handler_fn(wrap_interrupt!(wake));
-    idt.interrupts[IRQ_RUNNING_TO_IDLE].set_handler_fn(wrap_interrupt!(running_to_idle));
+    idt.interrupts[IRQ_TIMER].set_handler_fn(wrap_irq!(timer));
+    idt.interrupts[IRQ_WAKE].set_handler_fn(wrap_irq!(wake));
+    idt.interrupts[IRQ_RUNNING_TO_IDLE].set_handler_fn(wrap_irq!(running_to_idle));
 }
 
 /// Initializes per-CPU interrupt controllers.

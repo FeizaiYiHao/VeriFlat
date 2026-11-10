@@ -5,7 +5,7 @@ use super::syscall_ipc_call_spec::*;
 
 verus! {
 /// The cpu and emptied-thread relations close after the transition.
-proof fn ipc_call_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_call_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -34,7 +34,7 @@ proof fn ipc_call_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId,
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.subsystems_inv(),
     ensures
         process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
@@ -50,7 +50,7 @@ proof fn ipc_call_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId,
 }
 
 /// The endpoint queue, descriptor, and reference-counter relations close after the transition.
-proof fn ipc_call_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_call_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -79,7 +79,7 @@ proof fn ipc_call_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: C
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.subsystems_inv(),
     ensures
         thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
@@ -95,7 +95,7 @@ proof fn ipc_call_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: C
 }
 
 /// The caller and callee link to each other after the handoff.
-proof fn ipc_call_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_call_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -124,7 +124,7 @@ proof fn ipc_call_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.subsystems_inv(),
     ensures thread_caller_callee_wf(post.thrd_mp),
 {
@@ -132,7 +132,7 @@ proof fn ipc_call_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_
     assert(thread_caller_callee_wf(post.thrd_mp)) by { reveal(thread_caller_callee_wf); };
 }
 
-proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -164,14 +164,14 @@ proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
     reveal(ipc_call_handoff_eof_transition_framing);
-    ipc_call_handoff_eof_cpu_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
-    ipc_call_handoff_eof_endpoint_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
-    ipc_call_handoff_eof_caller_callee_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
+    ipc_call_handoff_eof_cpu_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
+    ipc_call_handoff_eof_endpoint_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
+    ipc_call_handoff_eof_caller_callee_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
     assert(post.process_management_inv()) by {
         assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
         assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp); };
@@ -184,7 +184,7 @@ proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK
 }
 
 /// The thread permission relations close after the call handoff.
-proof fn ipc_call_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_call_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -214,7 +214,7 @@ proof fn ipc_call_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_i
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -233,7 +233,7 @@ proof fn ipc_call_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_i
 
 /// Closes every invariant after the call handoff from the entry invariants, the summary, and the
 /// representation facts produced by the switch and the dequeue.
-pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -263,7 +263,7 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -275,18 +275,19 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
 {
     hide(Seq::contains);
     reveal(ipc_call_handoff_eof_transition_framing);
-    ipc_call_handoff_eof_thread_perms_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
+    ipc_call_handoff_eof_thread_perms_wf(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+        assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); thread_perms_wf_implies_node_slot_addrs(pre.thrd_mp, callee_ptr); };
         reveal(KernelK::default_pagetable_wf);
     };
 }
 
-pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -315,7 +316,7 @@ pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
     ensures
         post.memory_management_inv(),
 {
@@ -324,7 +325,7 @@ pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
 }
 
-pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -357,7 +358,7 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
         pre.ep_mp.spec_index(ep_ptr).view().queue.view()[0] == callee_ptr,
         pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(caller_ptr),
-        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr, entry_regs),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, ep_ptr, callee_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -367,9 +368,9 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
     ensures post.inv(),
 {
     reveal(ipc_call_handoff_eof_transition_framing);
-    ipc_call_handoff_eof_subsystems(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
-    ipc_call_handoff_eof_memory(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
-    ipc_call_handoff_eof_process_management_inv(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, entry_regs);
+    ipc_call_handoff_eof_subsystems(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
+    ipc_call_handoff_eof_memory(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
+    ipc_call_handoff_eof_process_management_inv(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
         reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);
@@ -667,7 +668,7 @@ pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
 }
 
 /// The reply handoff leaves the cpu and emptied-thread relations closed.
-proof fn ipc_reply_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_reply_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -693,7 +694,7 @@ proof fn ipc_reply_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.subsystems_inv(),
     ensures
         process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
@@ -709,7 +710,7 @@ proof fn ipc_reply_handoff_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId
 }
 
 /// The reply handoff leaves the caller and callee links closed.
-proof fn ipc_reply_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_reply_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -735,7 +736,7 @@ proof fn ipc_reply_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.subsystems_inv(),
     ensures thread_caller_callee_wf(post.thrd_mp),
 {
@@ -744,7 +745,7 @@ proof fn ipc_reply_handoff_eof_caller_callee_wf(pre: KernelK, post: KernelK, cpu
 }
 
 /// The reply handoff leaves the endpoint queue, descriptor, and reference-counter relations closed.
-proof fn ipc_reply_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_reply_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -770,7 +771,7 @@ proof fn ipc_reply_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: 
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.subsystems_inv(),
     ensures
         thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp),
@@ -785,7 +786,7 @@ proof fn ipc_reply_handoff_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: 
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
 }
 
-proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -811,14 +812,14 @@ proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: Kernel
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
     reveal(ipc_reply_handoff_eof_transition_framing);
-    ipc_reply_handoff_eof_cpu_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
-    ipc_reply_handoff_eof_caller_callee_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
-    ipc_reply_handoff_eof_endpoint_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
+    ipc_reply_handoff_eof_cpu_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
+    ipc_reply_handoff_eof_caller_callee_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
+    ipc_reply_handoff_eof_endpoint_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
     assert(post.process_management_inv()) by {
         assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
         assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp); };
@@ -828,7 +829,7 @@ proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: Kernel
 }
 
 /// The thread permission relations close after the reply handoff.
-proof fn ipc_reply_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+proof fn ipc_reply_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -855,7 +856,7 @@ proof fn ipc_reply_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -873,7 +874,7 @@ proof fn ipc_reply_handoff_eof_thread_perms_wf(pre: KernelK, post: KernelK, cpu_
 
 /// Closes every invariant after the reply handoff from the entry invariants, the summary, and the
 /// representation facts produced by the switch and the enqueue.
-pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -900,7 +901,7 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -911,18 +912,19 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
         post.subsystems_inv(),
 {
     reveal(ipc_reply_handoff_eof_transition_framing);
-    ipc_reply_handoff_eof_thread_perms_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
+    ipc_reply_handoff_eof_thread_perms_wf(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_wf); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+        assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); thread_perms_wf_implies_node_slot_addrs(pre.thrd_mp, caller_ptr); };
         reveal(KernelK::default_pagetable_wf);
     };
 }
 
-pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -948,7 +950,7 @@ pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cp
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
     ensures
         post.memory_management_inv(),
 {
@@ -957,7 +959,7 @@ pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cp
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
 }
 
-pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
+pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -984,7 +986,7 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
         pre.ep_mp.spec_index(ep_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(ep_ptr).view().queue_state is RECEIVE,
         !pre.ep_mp.spec_index(ep_ptr).view().queue.view().contains(callee_ptr),
         !pre.ep_mp.spec_index(ep_ptr).view().queue.map().dom().contains(pre.thrd_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
-        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.pcid_needflush.inv(),
@@ -994,9 +996,9 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
     ensures post.inv(),
 {
     reveal(ipc_reply_handoff_eof_transition_framing);
-    ipc_reply_handoff_eof_subsystems(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
-    ipc_reply_handoff_eof_memory(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
-    ipc_reply_handoff_eof_process_management_inv(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, entry_regs);
+    ipc_reply_handoff_eof_subsystems(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
+    ipc_reply_handoff_eof_memory(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
+    ipc_reply_handoff_eof_process_management_inv(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match); reveal(cpu_dirty_map_covers_nonempty_tlb);
         reveal(process_pagetable_wf); reveal(container_process_wf); reveal(process_thread_wf);

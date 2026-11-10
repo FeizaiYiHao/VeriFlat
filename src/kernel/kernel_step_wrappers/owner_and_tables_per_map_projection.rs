@@ -85,6 +85,9 @@ pub proof fn kernel_page_owner_changed_implies_u_container_map(before: &KernelK,
 pub proof fn kernel_thread_progress_changed_implies_u_thread_map(pre: &KernelK, post: &KernelK, thread: RwLockThreadPtr)
     requires
         pre.thrd_mp.dom().contains(thread),
+        post.cpu_regs.view().view() == pre.cpu_regs.view().view(),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view(),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thread),
         post.thrd_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thrd_mp.spec_index(thread).view().syscall_progress, exited: post.thrd_mp.spec_index(thread).view().exited, ..pre.thrd_mp.spec_index(thread).view() }),
         post.thrd_mp.spec_index(thread).locking_thread() == pre.thrd_mp.spec_index(thread).locking_thread(),

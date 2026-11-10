@@ -82,10 +82,10 @@ pub(super) fn schedule_switch_read_target(
 
 /// Switches `cpu_id` from `current_thread`, if any, to `next_thread`, the head of shard `cpu_id` of `sched_ptr`: unless
 /// `next_thread` runs in the cpu's current process (`same`), loads the target address space with the `(cpu_id, pcid)`
-/// needflush cell write-held; requeues the previous thread at the shard tail with `pt_regs` as its trap frame, and resumes
-/// `next_thread` into `pt_regs`.
+/// needflush cell write-held; requeues the previous thread at the shard tail with the frame of the cpu's trap-frame slot parked in
+/// it, and puts the frame of `next_thread` into that slot.
 pub(super) fn schedule_switch_commit(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, pt_regs: &mut Registers, sched_ptr: RwLockSchedulerPtr,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr,
     next_thread: RwLockThreadPtr, current_thread: Option<RwLockThreadPtr>, next_process: RwLockProcessPtr, next_pagetable: RwLockPageTableRoot,
     cr3: PageTableRoot, pcid: Pcid, depth: usize, same: bool, current_thread_lock_perm: &Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<&LockPerm>,
     Tracked(next_lock_perm): Tracked<&LockPerm>, Tracked(cpu_lock_perm): Tracked<&LockPerm>, Tracked(needflush_perm): Tracked<&Option<LockPerm>>,
@@ -161,8 +161,11 @@ pub(super) fn schedule_switch_commit(
             &&& perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },
     ensures
-        scheduler_context_switch_eof_transition_framing(*old(krnl), *final(krnl), cpu_id, sched_ptr, next_thread, *old(pt_regs)),
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, pcid_needflush: final(krnl).pcid_needflush, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, sched_mp: final(krnl).sched_mp, thrd_mp: final(krnl).thrd_mp, cpu_tlb: final(krnl).cpu_tlb, ..*old(krnl) }),
+        scheduler_context_switch_eof_transition_framing(*old(krnl), *final(krnl), cpu_id, sched_ptr, next_thread),
+        *final(krnl) == (KernelK {
+            cpu_arr: final(krnl).cpu_arr, pcid_needflush: final(krnl).pcid_needflush, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, sched_mp: final(krnl).sched_mp, thrd_mp: final(krnl).thrd_mp,
+            cpu_tlb: final(krnl).cpu_tlb, cpu_trap_frame: final(krnl).cpu_trap_frame, ..*old(krnl)
+        }),
         final(krnl).cpu_arr.inv(),
         final(krnl).cpu_tlb.inv(),
         final(krnl).pcid_needflush.inv(),
@@ -195,7 +198,6 @@ pub(super) fn schedule_switch_commit(
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thrd_ptr, TypedLockMode::Write)
             &&& current_thread_lock_perm.unwrap().view().lock_id() == final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id
         },
-        *final(pt_regs) == *old(krnl).thrd_mp.spec_index(next_thread).view().trap_frame.get_some_0(),
         syscall_return == old(krnl).thrd_mp.spec_index(next_thread).view().error_code,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -234,7 +236,8 @@ pub(super) fn schedule_switch_commit(
             &&& krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.len()
         }) by { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, sched_ptr); reveal(LinkedList::wf_value_list); };
         thread_perms_wf_map(krnl.thrd_mp); thread_perms_wf_at(krnl.thrd_mp, next_thread);
-        if current_thread is Some { thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); }
+        if current_thread is Some { thread_perms_wf_at(krnl.thrd_mp, current_thread.unwrap()); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, current_thread.unwrap()); }
+        cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id);
         assert(krnl.cpu_arr.inv()) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); };
         assert({
             &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
@@ -257,17 +260,21 @@ pub(super) fn schedule_switch_commit(
         let ghost old_prev_lock_id = krnl.thrd_mp.lock_id_by_key(prev);
         let prev_perm = current_thread_lock_perm.as_ref().unwrap();
         let previous = krnl.thrd_mp.borrow_mut_typed(prev, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(prev_perm.borrow()));
-        let (addr, perm) = previous.running_to_scheduled(prev, cpu_id, pt_regs);
+        let tracked prev_frame = krnl.cpu_trap_frame.borrow_mut().take(&*lctx);
+        let (addr, perm) = previous.running_to_scheduled(prev, cpu_id, Tracked(prev_frame));
         let shard = krnl.sched_mp.borrow_mut_shard_typed(sched_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(scheduler_lock_perm));
         shard.queue.push_tail(addr, perm);
         proof { lctx.update_lock_id(KernelObjId::Thread(prev), old_prev_lock_id, krnl.thrd_mp.lock_id_by_key(prev)); }
     };
     let target = krnl.thrd_mp.borrow_mut_typed(next_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(next_lock_perm));
-    let syscall_return = target.scheduled_to_running(cpu_id, node_perm, pt_regs);
+    let (syscall_return, _, Tracked(next_frame)) = target.scheduled_to_running(cpu_id, node_perm);
     proof {
+        krnl.cpu_trap_frame.borrow_mut().put(&*lctx, next_frame);
         lctx.update_lock_id(KernelObjId::Thread(next_thread), old(krnl).thrd_mp.lock_id_by_key(next_thread), krnl.thrd_mp.lock_id_by_key(next_thread));
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-        assert(scheduler_context_switch_eof_transition_framing(*old(krnl), *krnl, cpu_id, sched_ptr, next_thread, *old(pt_regs))) by { reveal(scheduler_context_switch_eof_transition_framing); };
+        assert(scheduler_context_switch_eof_transition_framing(*old(krnl), *krnl, cpu_id, sched_ptr, next_thread)) by {
+            reveal(scheduler_context_switch_eof_transition_framing); assert(krnl.cpu_trap_frame.view().view() =~= old(krnl).cpu_trap_frame.view().view().insert(cpu_id, krnl.cpu_trap_frame.view().view()[cpu_id]));
+        };
     }
     syscall_return
 }

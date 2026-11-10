@@ -124,16 +124,18 @@ pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: Kernel
 }
 
 /// The write-held remote cpu `remote` running the write-held marked thread `victim_ptr` is forced from running to idle:
-/// the cpu loads the default page table with the default PCID and goes idle, its running state becomes Idle, and the
-/// thread becomes killed.
+/// the cpu loads the default page table with the default PCID and goes idle, its running state becomes Idle, its
+/// trap-frame slot is emptied, and the thread becomes killed with that slot's frame (the hardware registers if the cpu was
+/// in user mode).
 #[verifier::opaque]
 pub(crate) open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
     let victim = pre.thrd_mp.spec_index(victim_ptr);
     let after_victim = post.thrd_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();
     let after = post.cpu_arr.spec_index(remote).view();
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, thrd_mp: post.thrd_mp, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, cpu_trap_frame: post.cpu_trap_frame, thrd_mp: post.thrd_mp, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(remote as int, CpuOpState::Idle)
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(remote)
     &&& post.thrd_mp.unchanged_except(&pre.thrd_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
@@ -141,7 +143,11 @@ pub(crate) open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, po
     &&& after_victim.being_killed() == victim.being_killed()
     &&& after_victim.killer_info() == victim.killer_info()
     &&& after_victim.locking_thread() == victim.locking_thread()
-    &&& after_victim.view() == (Thread { state: ThreadState::KILLED, ..victim.view() })
+    &&& after_victim.view() == (Thread { state: ThreadState::KILLED, trap_frame: after_victim.view().trap_frame, ..victim.view() })
+    &&& after_victim.view().trap_frame.is_some()
+    &&& after_victim.view().trap_frame.addr() == victim.view().trap_frame.addr()
+    &&& after_victim.view().trap_frame.view()
+        == Some(if pre.cpu_op.view().view()[remote as int] is User { pre.cpu_regs.view().view()[remote as int] } else { pre.cpu_trap_frame.view().view()[remote].value() })
     &&& post.cpu_arr.inv()
     &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, remote)
     &&& after.is_init()

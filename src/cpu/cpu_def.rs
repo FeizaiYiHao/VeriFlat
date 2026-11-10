@@ -589,11 +589,13 @@ impl CpuLockedArray {
     /// Force the remote cpu `cpu_id`, which this thread write-holds, from running to idle: mark the cpu for `killer_info`,
     /// make it load the default page table with the default PCID, unmark it, and leave it idle. Its TLB entries, PCID flush
     /// flags, and dirty bitmap stay as they are. The running-to-idle IPI uses the target's kernel-call permission, which
-    /// stays in the cpu object because the target is outside a kernel step while this thread holds its lock.
+    /// stays in the cpu object because the target is outside a kernel step while this thread holds its lock. The target's slot
+    /// of `cpu_trap_frame` returns, holding the target's hardware registers if it was in user mode and its saved frame
+    /// otherwise.
     pub fn ipi_remote_running_to_idle(
         &mut self, cpu_id: CpuId, default_cr3: PageTableRoot, Ghost(killer_info): Ghost<KillerInfo>, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Tracked(cpu_op): Tracked<&mut CpuOpArray>,
-        Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
-    )
+        Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>, Tracked(cpu_regs): Tracked<&CpuRegsArray>, Tracked(cpu_trap_frame): Tracked<&mut CpuTrapFrameTable>,
+    ) -> (ret: Tracked<TrapFramePerm>)
         requires
             old(self).inv(),
             old(self).spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id),
@@ -608,6 +610,8 @@ impl CpuLockedArray {
             old(self).spec_index(cpu_id).view().is_init(),
             old(self).spec_index(cpu_id).view().view().wf(),
             old(self).spec_index(cpu_id).view().view().view().state is Running,
+            old(self).spec_index(cpu_id).view().view().view().current_thread is Some,
+            old(cpu_trap_frame).view().dom().contains(cpu_id),
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
             cpu_lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -634,6 +638,9 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..old(self).spec_index(cpu_id).view().view().view() }),
             final(self).spec_index(cpu_id).view().view().kernel_call_perm() == old(self).spec_index(cpu_id).view().view().kernel_call_perm(),
             final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::Idle),
+            final(cpu_trap_frame).view() == old(cpu_trap_frame).view().remove(cpu_id),
+            ret.view().addr() == old(cpu_trap_frame).view()[cpu_id].addr(),
+            ret.view().value() == if old(cpu_op).view()[cpu_id as int] is User { cpu_regs.view()[cpu_id as int] } else { old(cpu_trap_frame).view()[cpu_id].value() },
     {
         proof { lctx.enter_kernel_view_release(); }
         assert(self.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -641,8 +648,8 @@ impl CpuLockedArray {
         let ghost target_lock = self.spec_index(cpu_id).view();
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
-        hw_cr3_pcid[cpu_id].ipi_remote_running_to_idle_raw(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()),
-            Ghost(target_lock), Tracked(&*lctx));
+        let frame = hw_cr3_pcid[cpu_id].ipi_remote_running_to_idle_raw(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()),
+            Ghost(target_lock), Tracked(&*lctx), Tracked(cpu_regs), Tracked(&mut *cpu_trap_frame));
         self.unkill(cpu_id, Tracked(&*lctx));
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
@@ -650,6 +657,7 @@ impl CpuLockedArray {
         cpu.current_thread = None;
         cpu.current_pagetable = None;
         cpu.state = CpuState::Idle;
+        frame
     }
 
     /// Wake the remote cpu `cpu_id`, which this thread write-holds right after publishing it Idle from Off, out of

@@ -28,6 +28,8 @@ pub type EndpointRwLock = LockCell<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 /// and L3 levels and the 1G leaves under the big lock.
 /// `cpu_op` is each cpu's running state (`Off`, `Idle`, `User`, `Trap`, `InStep`); only the TCB primitives of
 /// `cpu_op.rs` write it.
+/// `cpu_regs` is the hardware register state of every cpu; the kernel never writes it, only the trap-handler env events do.
+/// `cpu_trap_frame` holds, for each cpu that runs a thread, the sealed permission to that thread's trap frame.
 /// `cpu_tlb` is the content of every cpu's TLB and paging-structure cache for each PCID; `iommu_tlb` is the IOTLB of
 /// every IOMMU domain together with the context cache.
 // `irt` leads the layout (`init.rs` pins its offset); `repr(C)` keeps that independent of lock-word niches.
@@ -43,6 +45,8 @@ pub struct KernelK{
     pub cpu_offline_mp: CpuOfflineFlagsUnLockedMap,
     pub cpu_hw_cr3_pcid: CpuHwCr3PcidArray,
     pub cpu_op: Tracked<CpuOpArray>,
+    pub cpu_regs: Tracked<CpuRegsArray>,
+    pub cpu_trap_frame: Tracked<CpuTrapFrameTable>,
     pub ctn_mp: ContainerLockedMap,
     pub sched_mp: SchedulerUnLockedMap,
     pub pcid_allc_mp: PcidAllocatorLockedMap,
@@ -86,7 +90,9 @@ impl KernelK{
         &&& cpu_hw_cr3_pcid_wf(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush)
         // one cpu_op entry per cpu
         &&& self.cpu_op.view().view().len() == NUM_CPUS
+        &&& self.cpu_regs.view().view().len() == NUM_CPUS
         &&& cpu_op_wf(self.cpu_op.view().view(), self.cpu_arr)
+        &&& cpu_trap_frame_wf(self.cpu_trap_frame.view().view(), self.cpu_arr)
         &&& self.cpu_tlb.inv()
         &&& self.iommu_tlb.inv()
         // Lock tokens of the object maps and the allocators
@@ -308,8 +314,8 @@ impl KernelK{
 }
 
 /// What the trusted step boundary `KernelK::kernel_step_boundary_raw` keeps from `pre` to `post` for the thread whose
-/// local context across the boundary is `lctx`: the local cpu's hardware cr3/pcid word while that cpu is inside a
-/// kernel step, and its running state unless an IPI drops it to Idle, the re-established invariant, every object
+/// local context across the boundary is `lctx`: the local cpu's hardware cr3/pcid word and its trap-frame slot while that cpu
+/// is inside a kernel step, its running state unless an IPI drops it to Idle, the re-established invariant, every object
 /// `lctx` holds, lock-id alignment, the default page table, and the read-only data of the owners of held objects.
 /// Part of the boundary's TCB contract.
 pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx: LocalContext) -> bool {
@@ -317,6 +323,10 @@ pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx:
         let own = lctx.cpu_id() as int;
         &&& pre.cpu_op.view().view()[own] is InStep ==> post.cpu_hw_cr3_pcid[own].view() == pre.cpu_hw_cr3_pcid[own].view()
         &&& post.cpu_op.view().view()[own] == pre.cpu_op.view().view()[own] || post.cpu_op.view().view()[own] is Idle
+        &&& pre.cpu_op.view().view()[own] is InStep ==> {
+            &&& post.cpu_trap_frame.view().view().dom().contains(lctx.cpu_id()) == pre.cpu_trap_frame.view().view().dom().contains(lctx.cpu_id())
+            &&& pre.cpu_trap_frame.view().view().dom().contains(lctx.cpu_id()) ==> post.cpu_trap_frame.view().view()[lctx.cpu_id()] == pre.cpu_trap_frame.view().view()[lctx.cpu_id()]
+        }
     }
     &&& post.inv()
     &&& forall|cpu_id: CpuId, pcid: Pcid|

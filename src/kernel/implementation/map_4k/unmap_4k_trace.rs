@@ -102,11 +102,11 @@ pub proof fn unmap_4k_flush_step_pre_from_k(
     kernel_pagetable_mappings_projection_at(krnl, prc_ptr);
 }
 
-/// While the caller write-holds its cpu, its held non-dangling thread keeps its `entry` object, and its page table, held in
-/// either mode, keeps its `entry` payload up to the table stale-CPU record (and, while write-held, its lock owner and
-/// mappings), the caller's thread, process, and container `ctn_ptr` project in `snap_u`, which `krnl` extends by a
-/// TLB update and a read hold on the cpu set of that container, as each TLB-flush step of the range requires; a process or
-/// container that `held` write-locks keeps its lock.
+/// While the caller write-holds its cpu, which keeps its `entry` operation state and trap-frame slot, its held non-dangling
+/// thread keeps its `entry` object, and its page table, held in either mode, keeps its `entry` payload up to the table
+/// stale-CPU record (and, while write-held, its lock owner and mappings), the caller's thread, process, and container
+/// `ctn_ptr` project in `snap_u`, which `krnl` extends by a TLB update and a read hold on the cpu set of that container, as
+/// each TLB-flush step of the range requires; a process or container that `held` write-locks keeps its lock.
 pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
     krnl: &KernelK, entry: &KernelK, lctx: &LocalContext, held: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, snap_u: KernelU,
     ctn_ptr: RwLockContainerPtr,
@@ -132,7 +132,11 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
         entry.pt_mp.dom().contains(pagetable),
         !entry.prc_mp.spec_index(entry.thrd_mp.spec_index(thrd_ptr).view().owning_proc).view().zombie,
         held.pagetable_lock_map().dom().contains(pagetable),
+        index_valid(NUM_CPUS, cpu_id),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        krnl.cpu_op.view().view()[cpu_id as int] == entry.cpu_op.view().view()[cpu_id as int],
+        !(krnl.cpu_op.view().view()[cpu_id as int] is User),
+        entry.cpu_trap_frame.view().view().dom().contains(cpu_id) ==> krnl.cpu_trap_frame.view().view()[cpu_id] == entry.cpu_trap_frame.view().view()[cpu_id],
         held_threads_unchanged(entry.thrd_mp, krnl.thrd_mp, held),
         held_processes_unchanged(entry.prc_mp, krnl.prc_mp, held),
         krnl.pt_mp.dom().contains(pagetable),
@@ -169,6 +173,8 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
     process_pagetable_wf_process_at(entry.prc_mp, entry.pt_mp, prc_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
     kernel_thread_projection_at(krnl, thrd_ptr); kernel_thread_projection_at(entry, thrd_ptr);
+    cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_thread_at(entry.thrd_mp, entry.cpu_arr, thrd_ptr);
+    cpu_trap_frame_wf_at(entry.cpu_trap_frame.view().view(), entry.cpu_arr, cpu_id);
     kernel_process_projection_at(krnl, prc_ptr); kernel_process_projection_at(entry, prc_ptr);
     kernel_l4_end_projection_at(krnl, pagetable); kernel_l4_end_projection_at(entry, pagetable);
     if typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) {

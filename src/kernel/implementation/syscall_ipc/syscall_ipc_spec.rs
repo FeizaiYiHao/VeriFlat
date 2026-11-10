@@ -108,10 +108,10 @@ pub open spec fn ipc_block_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: Endpo
 }
 
 /// User-visible blocking step: the caller waits on the endpoint with `payload` and its CPU goes idle.
-pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool) -> bool {
+pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let ep_ptr = old_u.thread_map.spec_index(thrd_ptr).endpoint_descriptors[ep_idx as int]->Some_0;
-    kernel_u_ipc_block_changed(old_u, new_u, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, regs, flushed_default_pcid)
+    kernel_u_ipc_block_changed(old_u, new_u, cpu_id, thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, flushed_default_pcid)
 }
 
 /// The unlocked endpoint queue head waits in the opposite direction, so the caller rendezvous with it; a CPU
@@ -160,7 +160,7 @@ pub open spec fn ipc_rendezvous_step(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 #[verifier::opaque]
 pub open spec fn ipc_ordinary_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType,
+    waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, ret: RetValueType,
 ) -> bool {
     if ret is CpuIdle && (!(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed) {
         &&& trace.len() == 0
@@ -170,7 +170,7 @@ pub open spec fn ipc_ordinary_syscall_trace(
         &&& trace[0].old_u == pre
         &&& trace[0].new_u == post
         &&& ipc_block_step_pre(pre, cpu_id, ep_idx, waiting_state)
-        &&& ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid)
+        &&& ipc_block_step(pre, post, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid)
     } else if ipc_rendezvous_ret(ret) {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
@@ -687,12 +687,12 @@ pub open spec fn ipc_pages_rendezvous_trace(trace: Seq<KernelStep>, pre: KernelU
 #[verifier::opaque]
 pub open spec fn ipc_pages_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, range: VaRange4K, regs: Registers, flushed_default_pcid: bool, ret: RetValueType,
+    waiting_state: ThreadState, range: VaRange4K, flushed_default_pcid: bool, ret: RetValueType,
 ) -> bool {
     if ret is CpuIdle {
         &&& range.wf()
         &&& range.len > 0
-        &&& ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range }, regs, flushed_default_pcid, ret)
+        &&& ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, IPCPayLoad::Pages { va_range: range }, flushed_default_pcid, ret)
     } else { ipc_pages_rendezvous_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, range, ret) }
 }
 
@@ -772,11 +772,11 @@ pub open spec fn ipc_endpoint_rendezvous_trace(trace: Seq<KernelStep>, pre: Kern
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload_index: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType,
+    waiting_state: ThreadState, payload_index: EndpointIdx, flushed_default_pcid: bool, ret: RetValueType,
 ) -> bool {
     if ret is CpuIdle {
         ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state,
-            IPCPayLoad::Endpoint { endpoint_index: payload_index }, regs, flushed_default_pcid, ret)
+            IPCPayLoad::Endpoint { endpoint_index: payload_index }, flushed_default_pcid, ret)
     } else { ipc_endpoint_rendezvous_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, payload_index, ret) }
 }
 }

@@ -289,6 +289,7 @@ pub(crate) fn kill_walk_and_finish(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&cleared_k, krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&cleared_k, krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(cleared_k.ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
+        assert(walk_k.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(walk_k.cpu_op.view().view(), walk_k.cpu_arr, cpu_id); };
         kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&cleared_k, &*krnl, &*lctx, cpu_id, prc_ptr, thrd_ptr, None, false, None, false, None);
         kill_finish_step_from_u(kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(cleared_k), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, thrd_ptr);
         kill_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(walk_k), kernel_k_to_kernel_u(*krnl), cpu_id, child_index);

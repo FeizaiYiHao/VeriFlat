@@ -186,6 +186,7 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
 /// Unchanged thread non-lock fields and lock modes leave the projected thread map unchanged.
 proof fn kernel_lock_states_unchanged_implies_u_thread_map(pre: &KernelK, post: &KernelK)
     requires
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|p: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(p)]
             post.thrd_mp.dom().contains(p) && pre.thrd_mp.dom().contains(p) ==> post.thrd_mp.spec_index(p).lock_state_u() == pre.thrd_mp.spec_index(p).lock_state_u(),
@@ -217,13 +218,13 @@ proof fn kernel_lock_states_unchanged_implies_u_endpoint_map(pre: &KernelK, post
     });
 }
 
-pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
+pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
     requires
         post.inv(),
-        kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
+        kernel_context_switch_fields(pre, post, cpu_id, next_thread, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
-        kernel_u_context_switch_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, next_thread, entry_regs, flushed_pcid),
+        kernel_u_context_switch_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, next_thread, flushed_pcid),
 {
     hide(kernel_k_user_projection);
     reveal(kernel_u_context_switch_changed); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
@@ -235,7 +236,7 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
     let run_queue = container.scheduler[cpu_id as int];
     let requeued = match cpu.current_thread {
         Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
-            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(entry_regs), ..pre_u.thread_map.spec_index(prev)
+            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..pre_u.thread_map.spec_index(prev)
         }),
         None => pre_u.thread_map,
     };
@@ -269,10 +270,10 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
         if let Some(t) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } }
         if let Some(p) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_process { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } }
     };
-    kernel_context_switch_fields_implies_u_cpu_array(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
-    kernel_context_switch_fields_implies_u_thread_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
-    kernel_context_switch_fields_implies_u_process_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
-    kernel_context_switch_fields_implies_u_container_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
+    kernel_context_switch_fields_implies_u_cpu_array(pre, post, cpu_id, next_thread, flushed_pcid);
+    kernel_context_switch_fields_implies_u_thread_map(pre, post, cpu_id, next_thread, flushed_pcid);
+    kernel_context_switch_fields_implies_u_process_map(pre, post, cpu_id, next_thread, flushed_pcid);
+    kernel_context_switch_fields_implies_u_container_map(pre, post, cpu_id, next_thread, flushed_pcid);
     assert(post_u == (KernelU {
         cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU {
             state: CpuState::Running, op: CpuOpState::Trap, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
@@ -281,7 +282,7 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
             scheduler: container.scheduler.update(cpu_id as int, match cpu.current_thread { Some(prev) => run_queue.skip(1).push(prev), None => run_queue.skip(1) }),
             ..container
         }),
-        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next }),
+        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, ..next }),
         cpu_tlb: match flushed_pcid {
             Some(pcid) => pre_u.cpu_tlb.insert((cpu_id, pcid), post_u.cpu_tlb[(cpu_id, pcid)]),
             None => pre_u.cpu_tlb,
@@ -299,8 +300,8 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
 }
 
 /// The context-switch fields project to the cpu array with only `cpu_id` running `next_thread`.
-proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
-    requires kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
+proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
+    requires kernel_context_switch_fields(pre, post, cpu_id, next_thread, flushed_pcid),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
@@ -324,8 +325,10 @@ proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &
 }
 
 /// The context-switch fields project to the thread map with the previous thread requeued and `next_thread` running.
-proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
-    requires kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
+proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
+    requires
+        kernel_context_switch_fields(pre, post, cpu_id, next_thread, flushed_pcid),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre);
@@ -333,11 +336,11 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
             let next = pre_u.thread_map.spec_index(next_thread);
             let requeued = match pre_u.cpu_array[cpu_id as int].current_thread {
                 Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
-                    state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(entry_regs), ..pre_u.thread_map.spec_index(prev)
+                    state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..pre_u.thread_map.spec_index(prev)
                 }),
                 None => pre_u.thread_map,
             };
-            post_u.thread_map == requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next })
+            post_u.thread_map == requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, ..next })
         }),
 {
     hide(kernel_k_user_projection);
@@ -349,21 +352,26 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
     let next = pre_u.thread_map.spec_index(next_thread);
     let requeued = match pre_u.cpu_array[cpu_id as int].current_thread {
         Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
-            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(entry_regs), ..pre_u.thread_map.spec_index(prev)
+            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..pre_u.thread_map.spec_index(prev)
         }),
         None => pre_u.thread_map,
     };
     assert_maps_equal!(post_u.thread_map, requeued.insert(next_thread, ThreadU {
-        state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next
-    }), t => { if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
+        state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, ..next
+    }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); }
+        thread_cpu_wf_thread_at(post.thrd_mp, post.cpu_arr, t);
+        let c = post.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
+    });
 }
 
 /// The context-switch fields leave the process map projection unchanged.
-proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
+proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
+        kernel_context_switch_fields(pre, post, cpu_id, next_thread, flushed_pcid),
     ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
 {
     hide(kernel_k_user_projection);
@@ -377,10 +385,10 @@ proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post:
 }
 
 /// The context-switch fields project to the container map with only the cpu's own shard rotated.
-proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
+proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
     requires
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
-        kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
+        kernel_context_switch_fields(pre, post, cpu_id, next_thread, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
         ({
@@ -593,6 +601,9 @@ pub proof fn kernel_container_root_published_implies_u_step(
         before.cpu_arr.spec_index(transfer_cpu).value.view().view().owning_container == parent,
         kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
         after.cpu_op.view().view() == before.cpu_op.view().view(),
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
         after.cpu_arr.spec_index(transfer_cpu).value.wlocked_by_thread(cpu_id),
         forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu ==>
             after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
@@ -751,6 +762,9 @@ proof fn kernel_container_root_published_implies_u_cpu_array(before: &KernelK, a
 /// Publishing a container root projects to the thread map with only `thread` charged the funding and given `progress`.
 proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, after: &KernelK, thread: RwLockThreadPtr, funding: usize, progress: Option<SyscallProgress>)
     requires
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
         before.thrd_mp.spec_index(thread).view().quota_4k >= 8 + funding,
         after.thrd_mp.unchanged_except(&before.thrd_mp, thread),
         after.thrd_mp.spec_index(thread).being_killed() == before.thrd_mp.spec_index(thread).being_killed(),
@@ -1023,6 +1037,7 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
     wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
 )
     requires
+        (after.cpu_op.view().view()[cpu_id as int] is User) == (before.cpu_op.view().view()[cpu_id as int] is User),
         after.inv(),
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, wake_cpu),
@@ -1031,6 +1046,7 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
         caller != peer,
         before.ep_mp.dom().contains(endpoint),
         !(before.thrd_mp.spec_index(peer).view().state is SCHEDULED),
+        !(before.thrd_mp.spec_index(peer).view().state is RUNNING),
         descriptor matches Some((receiver, index)) ==> (receiver == caller || receiver == peer) && edp_idx_valid(index),
         *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, prc_mp: after.prc_mp, thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
         kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
@@ -1212,6 +1228,11 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
     wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
 )
     requires
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        forall|i: CpuId| #![trigger after.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) ==> (after.cpu_op.view().view()[i as int] is User) == (before.cpu_op.view().view()[i as int] is User),
+        thread_cpu_wf(after.thrd_mp, after.cpu_arr),
+        !(before.thrd_mp.spec_index(peer).view().state is RUNNING),
         before.thrd_mp.dom().contains(caller),
         before.thrd_mp.dom().contains(peer),
         caller != peer,
@@ -1264,7 +1285,9 @@ proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
         lock_state: LockStateU::Unlocked, syscall_progress: after.thrd_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
     }).insert(peer, ThreadU {
         lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
-    }), t => { if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
+    }), t => {
+        if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } thread_cpu_wf_thread_at(after.thrd_mp, after.cpu_arr, t);
+    });
 }
 
 } // verus!

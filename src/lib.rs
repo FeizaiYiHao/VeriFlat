@@ -99,7 +99,8 @@ verus! {
 global size_of usize == 8;
 // Layouts of the lock objects retyped from owned pages, checked against rustc; callers of `retype_page_perm_to_rwlock`
 // and `retype_page_perm_2m_to_rwlock` discharge the layout `requires` with `broadcast use crate::VERUS_layout_of_<type>`.
-global layout ThreadRwLock is size == 2464, align == 8;
+global layout ThreadRwLock is size == 2296, align == 8;
+global layout Registers is size == 168, align == 8;
 global layout ProcessRwLock is size == 256, align == 8;
 global layout EndpointRwLock is size == 72, align == 8;
 global layout CpuSetRwLock is size == 2176, align == 64;

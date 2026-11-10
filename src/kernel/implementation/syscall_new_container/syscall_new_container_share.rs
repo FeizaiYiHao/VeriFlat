@@ -995,6 +995,7 @@ fn end_new_container_finish_step(
             == pagetable_window_locks_after_unlocking_range(whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), child_pagetable_ptr).lower.pagetable_window_locks, source_range),
         lctx.kernel_view_locking_state() is Release,
         old(steps).snapshot_k().inv(),
+        old(steps).snapshot_k().cpu_op.view().view()[caller_cpu_id as int] is InStep,
         index_valid(NUM_CPUS, caller_cpu_id),
         finish_lctx.cpu_id() == caller_cpu_id,
         parent_ctn_ptr != child_ctn_ptr,

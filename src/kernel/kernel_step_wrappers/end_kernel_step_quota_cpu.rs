@@ -276,6 +276,8 @@ impl KernelSteps {
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
             krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
+            krnl.cpu_regs.view().view() == old(self).snapshot_k().cpu_regs.view().view(),
+            krnl.cpu_trap_frame.view().view() == old(self).snapshot_k().cpu_trap_frame.view().view(),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
                     &&& krnl.ctn_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_state_u()
@@ -362,11 +364,11 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    pub proof fn end_kernel_step_cpu_went_off(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
+    pub proof fn end_kernel_step_cpu_went_off(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, flushed_default_pcid: bool)
         requires
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
-            kernel_cpu_went_off_fields(&old(self).snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid),
+            kernel_cpu_went_off_fields(&old(self).snapshot_k(), krnl, cpu_id, flushed_default_pcid),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
             // The snapshot write-holds `cpu_id` for this section; the went-off step releases that hold.
             old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
@@ -378,7 +380,7 @@ impl KernelSteps {
             kernel_steps_prefix_unchanged(old(self).view(), final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
-            kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid),
+            kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, flushed_default_pcid),
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
@@ -402,8 +404,8 @@ impl KernelSteps {
             if let Some(t) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if self.snapshot_k().thrd_mp.dom().contains(t) { kernel_thread_projection_at(&self.snapshot_k(), t); } }
             if let Some(p) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_process { if self.snapshot_k().prc_mp.dom().contains(p) { kernel_process_projection_at(&self.snapshot_k(), p); } }
         };
-        assert(kernel_u_cpu_went_off_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid)) by {
-            kernel_cpu_went_off_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid);
+        assert(kernel_u_cpu_went_off_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, flushed_default_pcid)) by {
+            kernel_cpu_went_off_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, flushed_default_pcid);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);

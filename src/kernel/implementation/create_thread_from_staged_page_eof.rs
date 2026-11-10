@@ -659,8 +659,7 @@ pub(super) proof fn create_thread_from_staged_page_eof_new_thread_fields(
         pre.ctn_mp.dom().contains(ctn_ptr),
         pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler == sched_ptr,
         create_thread_from_staged_page_eof_transition_framing(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr),
-        post.thrd_mp.spec_index(pg_ptr).view().trap_frame.is_some(),
-        *post.thrd_mp.spec_index(pg_ptr).view().trap_frame.get_some_0() == initial_regs,
+        post.thrd_mp.spec_index(pg_ptr).view().trap_frame.view() == Some(initial_regs),
     ensures
         kernel_new_thread_fields(&pre, &post, prc_ptr, staging_thrd_ptr, ctn_ptr, cpu_id, pg_ptr, initial_regs, None, pre.thrd_mp.spec_index(staging_thrd_ptr).view().syscall_progress.view()),
 {

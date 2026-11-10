@@ -33,6 +33,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
     reveal(thread_exit_destroy_eof_transition_framing);
     assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); };
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };

@@ -192,6 +192,7 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                 old(steps).view().len() <= steps.view().len(),
                 steps.view().len() == old(steps).view().len() + if m > 0 && !(m < n && available) { m as int - 1 } else { m as int },
                 m == 0 ==> steps.snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
+                !(steps.snapshot_k().cpu_op.view().view()[cpu_id as int] is User),
                 m == 0 ==> steps.snapshot_k().cpu_arr.spec_index(cpu_id).view().locking_thread() is None,
                 m == 0 ==> steps.snapshot_k().thrd_mp.spec_index(thrd_ptr).locking_thread() is None,
                 m == 0 ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),

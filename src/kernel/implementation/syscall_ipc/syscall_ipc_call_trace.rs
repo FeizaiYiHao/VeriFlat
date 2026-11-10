@@ -205,7 +205,7 @@ pub(super) proof fn ipc_reply_dangling_caller_released_step_from_u(pre_u: Kernel
 
 /// The ensures of a reply to a dangling caller recorded since `before` are the ErrorIpcCallerKilled reply_and_receive trace.
 pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
-    steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers,
+    steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad,
     flushed_pcid: Option<Pcid>,
 )
     requires
@@ -224,16 +224,16 @@ pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
             &&& trace[last].new_u == post
         }),
     ensures
-        ipc_reply_and_receive_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_pcid,
+        ipc_reply_and_receive_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, flushed_pcid,
             RetValueType::ErrorIpcCallerKilled),
 { reveal(ipc_reply_and_receive_syscall_trace); }
 
 /// The call-handoff wrapper's user-view facts are exactly the call handoff step on `pre`/`post`.
-pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, pre_k: KernelK)
+pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>, pre_k: KernelK)
     requires
         pre == kernel_k_to_kernel_u(pre_k),
         !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
-        kernel_u_ipc_call_handoff_changed(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, regs, flushed_pcid),
+        kernel_u_ipc_call_handoff_changed(pre, post, cpu_id, caller_ptr, ep_ptr, ep_idx, callee_ptr, flushed_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let caller = pre.thread_map.spec_index(caller_ptr);
@@ -273,7 +273,7 @@ pub(super) proof fn ipc_call_handoff_step_from_u(pre: KernelU, post: KernelU, cp
         },
     ensures
         ipc_call_handoff_step_pre(pre, cpu_id, ep_idx),
-        ipc_call_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_call_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid),
 { kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_call_handoff_step_pre); reveal(ipc_step_pre); }
 
 /// The accept-call wrapper's user-view facts are exactly the accept step on `pre`/`post`.
@@ -324,11 +324,11 @@ pub(super) proof fn ipc_accept_call_step_from_u(pre: KernelU, post: KernelU, cpu
 { kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_accept_call_step_pre); reveal(ipc_step_pre); }
 
 /// The reply-handoff wrapper's user-view facts are exactly the reply handoff step on `pre`/`post`.
-pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, pre_k: KernelK)
+pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>, pre_k: KernelK)
     requires
         pre == kernel_k_to_kernel_u(pre_k),
         !pre_k.cpu_arr.spec_index(cpu_id).value.being_killed(),
-        kernel_u_ipc_reply_handoff_changed(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, regs, flushed_pcid),
+        kernel_u_ipc_reply_handoff_changed(pre, post, cpu_id, callee_ptr, ep_ptr, ep_idx, caller_ptr, flushed_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let callee = pre.thread_map.spec_index(callee_ptr);
@@ -365,13 +365,13 @@ pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, c
         },
     ensures
         ipc_reply_handoff_step_pre(pre, cpu_id, ep_idx),
-        ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid),
 { kernel_cpu_projection_at(&pre_k, cpu_id); reveal(ipc_reply_handoff_step_pre); reveal(ipc_step_pre); }
 
 /// A rejected ordinary call records no step and leaves the user view unchanged.
-pub(super) proof fn ipc_rejection_trace_stutters(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_rejection_trace_stutters(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool, ret: RetValueType)
     requires
-        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, payload, regs, flushed_default_pcid, ret),
+        ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, ep_idx, waiting_state, payload, flushed_default_pcid, ret),
         !(ret is CpuIdle) || ipc_entry_result(pre, cpu_id, ep_idx, waiting_state, false) == Some(RetValueType::CpuIdle),
         !ipc_rendezvous_ret(ret),
     ensures
@@ -380,27 +380,27 @@ pub(super) proof fn ipc_rejection_trace_stutters(trace: Seq<KernelStep>, pre: Ke
 { reveal(ipc_ordinary_syscall_trace); reveal(ipc_entry_result); }
 
 /// The one block step pushed since `before` is the blocking call trace.
-pub(super) proof fn ipc_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>)
+pub(super) proof fn ipc_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
-        ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload, regs,
+        ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload,
             flushed_default_pcid, RetValueType::CpuIdle),
     ensures
-        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, RetValueType::CpuIdle),
+        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, flushed_default_pcid, flushed_pcid, RetValueType::CpuIdle),
 { reveal(ipc_call_syscall_trace); }
 
 /// The one block step pushed since `before` is the blocking receive-call trace.
-pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_default_pcid: bool)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL,
-            IPCPayLoad::Empty, regs, flushed_default_pcid, RetValueType::CpuIdle),
+            IPCPayLoad::Empty, flushed_default_pcid, RetValueType::CpuIdle),
     ensures
-        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, regs, flushed_default_pcid, RetValueType::CpuIdle),
+        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, flushed_default_pcid, RetValueType::CpuIdle),
 { reveal(ipc_receive_call_syscall_trace); }
 
 /// The one rendezvous error step pushed since `before` is the rejected call trace.
-pub(super) proof fn ipc_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
+pub(super) proof fn ipc_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers,
@@ -408,11 +408,11 @@ pub(super) proof fn ipc_call_trace_error_step(steps: &KernelSteps, before: Seq<K
         ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, ThreadState::CALLING, payload),
         ipc_rendezvous_step(pre, post, cpu_id, ep_idx, ThreadState::CALLING, payload),
     ensures
-        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, ret),
+        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, flushed_default_pcid, flushed_pcid, ret),
 { reveal(ipc_call_syscall_trace); }
 
 /// The one rendezvous error step pushed since `before` is the rejected receive-call trace.
-pub(super) proof fn ipc_receive_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_receive_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_default_pcid: bool, ret: RetValueType)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ret is ErrorIpcTypeMismatch || ret is ErrorCallAcrossContainers,
@@ -420,68 +420,68 @@ pub(super) proof fn ipc_receive_call_trace_error_step(steps: &KernelSteps, befor
         ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty),
         ipc_rendezvous_step(pre, post, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty),
     ensures
-        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, regs, flushed_default_pcid, ret),
+        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, flushed_default_pcid, ret),
 { reveal(ipc_receive_call_syscall_trace); }
 
 /// The one handoff step pushed since `before` is the successful call trace.
-pub(super) proof fn ipc_call_trace_handoff_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
+pub(super) proof fn ipc_call_trace_handoff_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ret == ipc_call_result(payload),
         ipc_call_handoff_step_pre(pre, cpu_id, ep_idx),
-        ipc_call_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_call_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid),
     ensures
-        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, ret),
+        ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, flushed_default_pcid, flushed_pcid, ret),
 { reveal(ipc_call_syscall_trace); }
 
 /// The one acceptance step pushed since `before` is the successful receive-call trace.
-pub(super) proof fn ipc_receive_call_trace_accept_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_receive_call_trace_accept_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_default_pcid: bool, ret: RetValueType)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ret == ipc_accept_call_result(pre, cpu_id, ep_idx),
         ipc_accept_call_step_pre(pre, cpu_id, ep_idx),
         ipc_accept_call_step(pre, post, cpu_id, ep_idx),
     ensures
-        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, regs, flushed_default_pcid, ret),
+        ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, flushed_default_pcid, ret),
 { reveal(ipc_receive_call_syscall_trace); }
 
 /// The one reply handoff step pushed since `before` is the successful reply_and_receive trace.
-pub(super) proof fn ipc_reply_and_receive_trace_handoff_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_pcid: Option<Pcid>, ret: RetValueType)
+pub(super) proof fn ipc_reply_and_receive_trace_handoff_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ret == ipc_call_result(payload),
         ipc_reply_handoff_step_pre(pre, cpu_id, ep_idx),
-        ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid),
+        ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, flushed_pcid),
     ensures
-        ipc_reply_and_receive_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, regs, flushed_pcid, ret),
+        ipc_reply_and_receive_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, ep_idx, payload, flushed_pcid, ret),
 { reveal(ipc_reply_and_receive_syscall_trace); }
 
 /// A call rejected before any visible change records no step.
-pub(super) proof fn ipc_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
+pub(super) proof fn ipc_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         trace.len() == 0,
         !(ret is CpuIdle) || ipc_entry_result(pre, cpu_id, ep_idx, ThreadState::CALLING, false) == Some(RetValueType::CpuIdle),
         !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
-        ipc_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, payload, regs, flushed_default_pcid, flushed_pcid, ret),
+        ipc_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, payload, flushed_default_pcid, flushed_pcid, ret),
 { reveal(ipc_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_entry_result); }
 
 /// A receive_call rejected before any visible change records no step.
-pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
+pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
         !(ret is CpuIdle) || ipc_entry_result(pre, cpu_id, ep_idx, ThreadState::RECEIVING_CALL, false) == Some(RetValueType::CpuIdle),
         !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
-        ipc_receive_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, regs, flushed_default_pcid, ret),
+        ipc_receive_call_syscall_trace(trace, pre, pre, cpu_id, ep_idx, flushed_default_pcid, ret),
 { reveal(ipc_receive_call_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_entry_result); }
 
 /// A reply_and_receive rejected before any visible change records no step.
-pub(super) proof fn ipc_reply_and_receive_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_pcid: Option<Pcid>, ret: RetValueType)
+pub(super) proof fn ipc_reply_and_receive_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, payload: IPCPayLoad, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         trace.len() == 0,
         !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcCallerKilled),
     ensures
-        ipc_reply_and_receive_syscall_trace(trace, pre, pre, cpu_id, ep_idx, payload, regs, flushed_pcid, ret),
+        ipc_reply_and_receive_syscall_trace(trace, pre, pre, cpu_id, ep_idx, payload, flushed_pcid, ret),
 { reveal(ipc_reply_and_receive_syscall_trace); }
 }

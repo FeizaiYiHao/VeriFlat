@@ -52,6 +52,7 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(cpu_hw_cr3_pcid_wf(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(PageTable::table_pages_wf); };
     assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(cpu_op_wf(krnl.cpu_op.view().view(), krnl.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_trap_frame_wf(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr)) by { reveal(cpu_trap_frame_wf); };
     assert(container_perms_wf(krnl.ctn_mp)) by { reveal(container_perms_wf); assert(container_tree_fields_wf(krnl.ctn_mp)) by { reveal(container_tree_fields_wf); }; };
     assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
     assert(thread_perms_wf(krnl.thrd_mp)) by {

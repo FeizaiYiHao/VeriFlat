@@ -17,6 +17,11 @@ pub const NODE_SLOT_SZ: usize = 64;
 pub const PAGE_SZ_4K_LESS_1_NODE_SLOT: usize = 4096 - NODE_SLOT_SZ;
 pub const PAGE_SZ_4K_LESS_2_NODE_SLOTS: usize = 4096 - 2 * NODE_SLOT_SZ;
 pub const PAGE_SZ_4K_LESS_3_NODE_SLOTS: usize = 4096 - 3 * NODE_SLOT_SZ;
+/// The trap-frame slot of a thread page, right below its three node slots; the saved `Registers` end at the slot end.
+pub const TRAP_FRAME_SLOT_SZ: usize = 192;
+/// Size of the saved user registers, `Registers`.
+pub const TRAP_FRAME_SZ: usize = 168;
+pub const PAGE_SZ_4K_LESS_3_NODE_SLOTS_AND_TRAP_FRAME: usize = PAGE_SZ_4K_LESS_3_NODE_SLOTS - TRAP_FRAME_SLOT_SZ;
 pub const PAGE_SZ_2M_LESS_1_NODE_SLOT: usize = 0x200000 - NODE_SLOT_SZ;
 pub const PCID_MAX: usize = 4096;
 pub const KERNEL_DEFAULT_PCID: Pcid = 0;

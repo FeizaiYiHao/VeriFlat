@@ -152,13 +152,13 @@ pub open spec fn kernel_u_only_process2thread_quota_1g_changed(old_u: KernelU, n
 /// The live head `next_thread` of shard `cpu_id` replaces the live thread running on `cpu_id`, which is requeued at
 /// the tail of that shard.
 #[verifier::opaque]
-pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
+pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let container = old_u.container_map.spec_index(cpu.owning_container);
     let next = old_u.thread_map.spec_index(next_thread);
     let requeued = match cpu.current_thread {
         Some(prev) => old_u.thread_map.insert(prev, ThreadU {
-            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(entry_regs), ..old_u.thread_map.spec_index(prev)
+            state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..old_u.thread_map.spec_index(prev)
         }),
         None => old_u.thread_map,
     };
@@ -192,7 +192,7 @@ pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU,
             scheduler: container.scheduler.update(cpu_id as int, match cpu.current_thread { Some(prev) => run_queue.skip(1).push(prev), None => run_queue.skip(1) }),
             ..container
         }),
-        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next }),
+        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, ..next }),
         cpu_tlb: match flushed_pcid {
             Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
             None => old_u.cpu_tlb,
@@ -237,7 +237,7 @@ pub open spec fn kernel_u_rebalance_pull_changed(old_u: KernelU, new_u: KernelU,
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_block_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool,
+    waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread = old_u.thread_map.spec_index(thrd_ptr);
@@ -259,7 +259,7 @@ pub open spec fn kernel_u_ipc_block_changed(
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..cpu }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU {
-            state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, trap_frame: Some(regs), ..thread
+            state: waiting_state, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: payload, ..thread
         }),
         endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU {
             queue: endpoint.queue.push(thrd_ptr),
@@ -276,12 +276,11 @@ pub open spec fn kernel_u_ipc_block_changed(
 }
 
 /// The live caller running on `cpu_id` hands its CPU to the live receive-call head `callee_ptr` of the
-/// endpoint at `ep_idx`, which records the caller and runs; the caller saves `regs` and waits for the
-/// reply.
+/// endpoint at `ep_idx`, which records the caller and runs; the caller waits for the reply.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_call_handoff_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+    callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let caller = old_u.thread_map.spec_index(caller_ptr);
@@ -314,8 +313,8 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
     &&& old_u.process_map.dom().contains(callee.owning_proc)
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { current_process: Some(callee.owning_proc), current_thread: Some(callee_ptr), ..cpu }),
-        thread_map: old_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: Some(regs), ..caller })
-            .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }),
+        thread_map: old_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), ..caller })
+            .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, ..callee }),
         endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
         cpu_tlb: match flushed_pcid {
             Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
@@ -369,11 +368,11 @@ pub open spec fn kernel_u_ipc_accept_call_changed(
 }
 
 /// The live callee running on `cpu_id` replies to its recorded caller `caller_ptr`, which resumes on `cpu_id`,
-/// and waits with `regs` for the next call on the endpoint at `ep_idx`.
+/// and waits for the next call on the endpoint at `ep_idx`.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_reply_handoff_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+    caller_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let callee = old_u.thread_map.spec_index(callee_ptr);
@@ -404,8 +403,8 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { current_process: Some(caller.owning_proc), current_thread: Some(caller_ptr), ..cpu }),
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU {
-            state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
-        }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: None, ..caller }),
+            state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(ep_ptr), ipc_payload: IPCPayLoad::Empty, ..callee
+        }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, ..caller }),
         endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU {
             queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
         }),
@@ -875,15 +874,15 @@ pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu
 }
 
 /// The non-Off cpu `cpu_id`, whose container `C` has a pending request for it, goes Off and unlocked: its running
-/// thread, if any, is requeued at the tail of shard `cpu_id` of `C`'s scheduler with `regs`, `C`'s request bit for the cpu is
+/// thread, if any, is requeued at the tail of shard `cpu_id` of `C`'s scheduler, `C`'s request bit for the cpu is
 /// cleared, and the cpu's TLB entries are flushed except an unflushed default-PCID entry.
 #[verifier::opaque]
-pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
+pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_default_pcid: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let ctn_ptr = cpu.owning_container;
     let container = old_u.container_map.spec_index(ctn_ptr);
     let requeued = match cpu.current_thread {
-        Some(prev) => old_u.thread_map.insert(prev, ThreadU { state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..old_u.thread_map.spec_index(prev) }),
+        Some(prev) => old_u.thread_map.insert(prev, ThreadU { state: ThreadState::SCHEDULED { cpu_id }, error_code: None, ..old_u.thread_map.spec_index(prev) }),
         None => old_u.thread_map,
     };
     &&& index_valid(NUM_CPUS, cpu_id)
@@ -1194,7 +1193,7 @@ pub open spec fn kernel_u_new_thread_changed(
         lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id }, caller: None, callee: None, owning_container: ctn_ptr,
         owning_proc: prc_ptr, last_cpu: cpu_id, quota_4k: 0, quota_2m: 0, quota_1g: 0,
         endpoint_descriptors: Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { ep_ptr } else { None }),
-        blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: None, trap_frame: Some(initial_regs), syscall_progress: None,
+        blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: None, regs: initial_regs, syscall_progress: None,
         killed: false,
     })
     &&& new_u.thread_map == old_u.thread_map.insert(staging_thrd_ptr, ThreadU {
@@ -1246,5 +1245,40 @@ pub open spec fn kernel_u_trap_divert_step_pre(old_u: KernelU, cpu_id: CpuId) ->
 #[verifier::opaque]
 pub open spec fn kernel_u_trap_divert_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Idle, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+}
+
+/// Cpu `cpu_id` runs its live current thread in user mode, whose registers may change.
+#[verifier::opaque]
+pub open spec fn kernel_u_regs_changed_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array[cpu_id as int].state is Running
+    &&& old_u.cpu_array[cpu_id as int].op is User
+    &&& old_u.cpu_array[cpu_id as int].current_thread is Some
+    &&& old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)
+}
+
+/// The registers of the thread cpu `cpu_id` runs become `regs`.
+#[verifier::opaque]
+pub open spec fn kernel_u_regs_changed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers) -> bool {
+    let t = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    new_u == (KernelU { thread_map: old_u.thread_map.insert(t, ThreadU { regs, ..old_u.thread_map[t] }), ..old_u })
+}
+
+/// Cpu `cpu_id` runs its live current thread on its trap path, whose syscall return values may be written.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_return_values_written_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array[cpu_id as int].state is Running
+    &&& old_u.cpu_array[cpu_id as int].op is Trap
+    &&& old_u.cpu_array[cpu_id as int].current_thread is Some
+    &&& old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)
+}
+
+/// The `rax`, `rdx` and `rsi` registers of the thread cpu `cpu_id` runs take the syscall's return values.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_return_values_written_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64) -> bool {
+    let t = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map[t];
+    new_u == (KernelU { thread_map: old_u.thread_map.insert(t, ThreadU { regs: Registers { rax, rdx, rsi, ..thread.regs }, ..thread }), ..old_u })
 }
 } // verus!

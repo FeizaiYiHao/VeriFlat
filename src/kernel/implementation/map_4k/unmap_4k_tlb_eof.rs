@@ -106,7 +106,7 @@ proof fn flush_local_pcid_and_clear_eof_subsystems_inv(pre: KernelK, post: Kerne
     ensures post.subsystems_inv(),
 {
     reveal(flush_local_pcid_and_clear_eof_transition_framing);
-    reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf); reveal(KernelK::default_pagetable_wf);
+    reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf); reveal(cpu_trap_frame_wf); reveal(KernelK::default_pagetable_wf);
 }
 
 proof fn flush_local_pcid_and_clear_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)

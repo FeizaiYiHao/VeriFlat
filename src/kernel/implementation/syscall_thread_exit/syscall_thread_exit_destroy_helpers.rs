@@ -7,9 +7,9 @@ use super::syscall_thread_exit_destroy_eof::thread_exit_destroy_eof;
 
 verus! {
 /// Destroy the running exiting thread while every lock of the finish step is held: `cpu_id` goes idle on the default
-/// page table, the process drops the thread and absorbs its quotas, a zombie releases its PCID to the container's PCID
-/// allocator `pcid_allc_ptr`, a zombie root process makes the container a zombie, the containers drop the thread,
-/// and the thread's page returns to shard `cpu_id` of the 4K allocator `allc_ptr` of its owner `owner`, whose quota
+/// page table, the thread's frame moves from the cpu's trap-frame slot back into the thread page, the process drops the
+/// thread and absorbs its quotas, a zombie releases its PCID to the container's PCID allocator `pcid_allc_ptr`, a zombie
+/// root process makes the container a zombie, the containers drop the thread, and the thread's page returns to shard `cpu_id` of the 4K allocator `allc_ptr` of its owner `owner`, whose quota
 /// grows by one. Returns whether the process became a zombie.
 pub(super) fn thread_exit_destroy_remove_thread(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr,
@@ -194,6 +194,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
     proof {
         thread_perms_wf_map(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, thrd_ptr);
+        thread_cpu_wf_thread_at(krnl.thrd_mp, krnl.cpu_arr, thrd_ptr); cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, prc_ptr);
@@ -252,6 +253,8 @@ pub(super) fn thread_exit_destroy_remove_thread(
         let container = krnl.ctn_mp.borrow_mut_typed(ctn_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm));
         container.zombie = true;
     }
+    let tracked frame = krnl.cpu_trap_frame.borrow_mut().take(&*lctx);
+    krnl.thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm)).trap_frame.put(Tracked(frame));
     let Tracked(page_perm) = krnl.remove_thread_and_reclaim_4k_page_perm(thrd_ptr, proc_node_perm, Tracked(thread_lock_perm), Tracked(&mut *lctx));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(pg_idx);
     let (cache_node_addr, cache_node_perm) = page_array_retire_kernel_object_4k_to_cache(&mut krnl.pg_arr, pg_idx, Tracked(page_perm), allc_ptr, cpu_id, Tracked(&*lctx), Tracked(page_lock_perm));

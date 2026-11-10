@@ -18,7 +18,7 @@ pub open spec fn context_switch_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_t
 #[verifier::opaque]
 /// The live head `next_thread` of shard `cpu_id` of the CPU's container replaces the live thread running on
 /// `cpu_id`, which is requeued at the tail of that shard, and at most the `(cpu_id, flushed_pcid)` TLB entry is flushed.
-pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
+pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let previous = cpu.current_thread;
     let next = pre.thrd_mp.spec_index(next_thread);
@@ -26,7 +26,12 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     let run_queue = scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler))[cpu_id as int];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& !(pre.cpu_op.view().view()[cpu_id as int] is User)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom().insert(cpu_id)
+    &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == next.view().trap_frame.view()->Some_0
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -158,7 +163,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             &&& b.ipc_payload == a.ipc_payload
             &&& b.error_code == if t == next_thread || previous == Some(t) { None } else { a.error_code }
             &&& (t == next_thread ==> b.trap_frame.is_none())
-            &&& (previous == Some(t) ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == entry_regs)
+            &&& (previous == Some(t) ==> b.trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value()))
             &&& (t != next_thread && previous != Some(t) ==> b.trap_frame == a.trap_frame)
             &&& b.syscall_progress.view() == a.syscall_progress.view()
             &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
@@ -218,14 +223,17 @@ pub open spec fn kernel_rebalance_pull_fields(pre: &KernelK, post: &KernelK, cpu
 /// idle, and at most the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is flushed.
 pub open spec fn kernel_ipc_block_fields(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool,
+    waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool,
 ) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let thread = pre.thrd_mp.spec_index(thrd_ptr);
     let endpoint = pre.ep_mp.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& !(pre.cpu_op.view().view()[cpu_id as int] is User)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -303,7 +311,7 @@ pub open spec fn kernel_ipc_block_fields(
             &&& b.blocking_endpoint_ptr == if t == thrd_ptr { Some(ep_ptr) } else { a.blocking_endpoint_ptr }
             &&& b.ipc_payload == if t == thrd_ptr { payload } else { a.ipc_payload }
             &&& b.error_code == a.error_code
-            &&& (t == thrd_ptr ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == regs)
+            &&& (t == thrd_ptr ==> b.trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value()))
             &&& (t != thrd_ptr ==> b.trap_frame == a.trap_frame)
             &&& b.syscall_progress.view() == a.syscall_progress.view()
             &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
@@ -326,18 +334,23 @@ pub open spec fn kernel_ipc_block_fields(
 #[verifier::opaque]
 /// The live caller running on `cpu_id` hands its CPU to the live head `callee_ptr` of the endpoint at
 /// `ep_idx`, a receive-call waiter of its container: the callee is dequeued, records the caller, and
-/// runs on `cpu_id` with its saved frame restored; the caller saves `regs` and waits for the reply; the
+/// runs on `cpu_id` with its saved frame restored; the caller saves the frame of the trap-frame slot and waits for the reply; the
 /// callee's process PCID entry `flushed_pcid` is flushed.
 pub open spec fn kernel_ipc_call_handoff_fields(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+    callee_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let caller = pre.thrd_mp.spec_index(caller_ptr);
     let callee = pre.thrd_mp.spec_index(callee_ptr);
     let endpoint = pre.ep_mp.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& !(pre.cpu_op.view().view()[cpu_id as int] is User)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom()
+    &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == callee.view().trap_frame.view()->Some_0
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -431,7 +444,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
             &&& b.ipc_payload == a.ipc_payload
             &&& b.error_code == a.error_code
             &&& (t == callee_ptr ==> b.trap_frame.is_none())
-            &&& (t == caller_ptr ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == regs)
+            &&& (t == caller_ptr ==> b.trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value()))
             &&& (t != callee_ptr && t != caller_ptr ==> b.trap_frame == a.trap_frame)
             &&& b.syscall_progress.view() == a.syscall_progress.view()
             &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
@@ -546,19 +559,24 @@ pub open spec fn kernel_ipc_accept_call_fields(
 
 #[verifier::opaque]
 /// The live callee running on `cpu_id` replies to its recorded live caller `caller_ptr` and hands it the CPU:
-/// the caller resumes with its saved frame on `cpu_id`, the callee saves `regs`, drops the caller, and waits
+/// the caller resumes with its saved frame on `cpu_id`, the callee saves the frame of the trap-frame slot, drops the caller, and waits
 /// for the next call on the endpoint at `ep_idx`; the caller's process PCID entry `flushed_pcid` is
 /// flushed.
 pub open spec fn kernel_ipc_reply_handoff_fields(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>,
+    caller_ptr: RwLockThreadPtr, flushed_pcid: Option<Pcid>,
 ) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let callee = pre.thrd_mp.spec_index(callee_ptr);
     let caller = pre.thrd_mp.spec_index(caller_ptr);
     let endpoint = pre.ep_mp.spec_index(ep_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& !(pre.cpu_op.view().view()[cpu_id as int] is User)
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom()
+    &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == caller.view().trap_frame.view()->Some_0
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -649,7 +667,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
             &&& b.ipc_payload == if t == callee_ptr { IPCPayLoad::Empty } else { a.ipc_payload }
             &&& b.error_code == a.error_code
             &&& (t == caller_ptr ==> b.trap_frame.is_none())
-            &&& (t == callee_ptr ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == regs)
+            &&& (t == callee_ptr ==> b.trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value()))
             &&& (t != caller_ptr && t != callee_ptr ==> b.trap_frame == a.trap_frame)
             &&& b.syscall_progress.view() == a.syscall_progress.view()
             &&& post.thrd_mp.spec_index(t).being_killed() == pre.thrd_mp.spec_index(t).being_killed()
@@ -687,6 +705,8 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     let peer_container = peer.view().owning_container;
     let wake_cpu = if peer_container == caller.view().owning_container { cpu_id } else { peer.view().last_cpu };
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(caller_thrd_ptr)

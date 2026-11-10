@@ -1,74 +1,74 @@
 use vstd::prelude::*;
+use crate::*;
 verus! {
-pub struct TrapFrameOption {
-    pub reg: Registers,
-    pub exist: bool,
+/// The trap-frame slot of a thread page: the address of the saved `Registers` and, while the thread is not RUNNING, the
+/// parked sealed permission to them.
+pub struct TrapFrameSlot {
+    addr: usize,
+    perm: Tracked<Option<TrapFramePerm>>,
 }
 
-impl TrapFrameOption {
-    pub open spec fn spec_is_some(&self) -> bool { self.exist }
-    pub open spec fn spec_is_none(&self) -> bool { self.exist == false }
+impl TrapFrameSlot {
+    pub closed spec fn spec_addr(&self) -> usize { self.addr }
 
-    pub open spec fn get_some_0(&self) -> &Registers
-        recommends
-            self.is_some(),
-    {
-        &self.reg
-    }
+    /// The slot holds the frame permission at `addr()`.
+    pub closed spec fn is_some(&self) -> bool { self.perm.view() is Some && self.perm.view()->Some_0.addr() == self.addr }
 
-    #[verifier(when_used_as_spec(spec_is_some))]
-    pub fn is_some(&self) -> (ret: bool)
-        ensures
-            ret == self.is_some(),
-    {
-        self.exist
-    }
+    pub open spec fn is_none(&self) -> bool { !self.is_some() }
 
-    #[verifier(when_used_as_spec(spec_is_none))]
-    pub fn is_none(&self) -> (ret: bool)
-        ensures
-            ret == self.is_none(),
-    {
-        self.exist == false
-    }
+    /// The parked registers, if the slot holds the frame permission.
+    pub closed spec fn view(&self) -> Option<Registers> { if self.is_some() { Some(self.perm.view()->Some_0.value()) } else { None } }
 
-    pub fn set_self(&mut self, src: &Registers)
-        ensures
-            final(self).is_some(),
-            final(self).get_some_0() =~= src,
-    {
-        self.exist = true;
-        self.reg = *src;
-    }
-
-    pub fn set_dst(&self, dst: &mut Registers)
-        requires
-            self.is_some(),
-        ensures
-            *final(dst) =~= *self.get_some_0(),
-    {
-        *dst = self.reg;
-    }
-
-    pub fn set_to_none(&mut self)
-        ensures
-            final(self).is_none(),
-    {
-        self.exist = false;
-    }
-
-    pub fn zeroed_none() -> (ret: Self)
+    /// The empty slot of the frame at `addr`.
+    pub fn new_empty(addr: usize) -> (ret: Self)
         ensures
             ret.is_none(),
+            ret.addr() == addr,
     {
-        Self { reg: Registers::zeroed(), exist: false }
+        Self { addr, perm: Tracked(None) }
+    }
+
+    #[verifier(when_used_as_spec(spec_addr))]
+    pub fn addr(&self) -> (ret: usize)
+        ensures
+            ret == self.addr()
+    {
+        self.addr
+    }
+
+    pub fn take(&mut self) -> (ret: (usize, Tracked<TrapFramePerm>))
+        requires
+            old(self).is_some(),
+        ensures
+            final(self).is_none(),
+            final(self).addr() == old(self).addr(),
+            ret.0 == old(self).addr(),
+            ret.1.view().addr() == old(self).addr(),
+            ret.1.view().value() == old(self).view()->Some_0,
+    {
+        let tracked perm = self.perm.borrow_mut().tracked_take();
+        (self.addr, Tracked(perm))
+    }
+
+    pub fn put(&mut self, frame: Tracked<TrapFramePerm>)
+        requires
+            old(self).addr() == frame.view().addr(),
+        ensures
+            final(self).is_some(),
+            final(self).addr() == old(self).addr(),
+            final(self).view() == Some(frame.view().value()),
+    {
+        let Tracked(frame) = frame;
+        self.perm = Tracked(Some(frame));
     }
 }
 
-// TODO: this frame is the whole per-thread user register state the kernel model knows: the general registers, the error
-// code, and the interrupt frame (rip, cs, rflags, rsp, ss). The x87/MMX/SSE state and the ds/es/fs/gs selectors are neither
-// saved per thread nor part of the kernel model, so they pass from one thread to the next at a switch (see the TODO in
-// boot/kernel/src/syscalls/mod.rs); they should become part of the modelled per-thread register state.
+// This frame is the whole per-thread user register state the kernel model knows: the general registers, the error code,
+// and the interrupt frame (rip, cs, rflags, rsp, ss). User floating point (x87/MMX/SSE) is switched off: the boot glue sets
+// CR0.TS|MP on every cpu and never clears it, so a user FP instruction faults instead of leaking state between threads.
+// TODO: support floating point later by saving/restoring the FP state per thread at a switch and modelling it. The fs/gs
+// base and the ds/es/fs/gs selectors are still neither saved per thread nor modelled (see the TODO in
+// boot/kernel/src/syscalls/mod.rs).
 /// Registers passed to the ISR.
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug)]

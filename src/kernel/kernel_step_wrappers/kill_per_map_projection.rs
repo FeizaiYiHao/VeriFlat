@@ -53,7 +53,11 @@ pub proof fn kernel_process_maps_unchanged_implies_u_process_map(pre: &KernelK, 
 
 /// An unchanged thread map projects to an unchanged thread map.
 pub proof fn kernel_thread_map_unchanged_implies_u_thread_map(pre: &KernelK, post: &KernelK)
-    requires post.thrd_mp == pre.thrd_mp,
+    requires
+        post.thrd_mp == pre.thrd_mp,
+        post.cpu_regs.view().view() == pre.cpu_regs.view().view(),
+        post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view(),
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures kernel_k_to_kernel_u(*post).thread_map == kernel_k_to_kernel_u(*pre).thread_map,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);

@@ -266,6 +266,17 @@ fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: u
     }
 }
 
+type CpuLock = LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>;
+
+/// The verified kernel's object of cpu `cpu_id`, the value of its lock cell in the cpu-cell static (the lock word comes
+/// first in the `repr(C)` cell). The trap layer reads only `current_thread` of its own cpu through it, outside steps
+/// (`syscalls::sync_current_frame`).
+pub fn verified_cpu(cpu_id: usize) -> *const Cpu {
+    assert!(cpu_id < NUM_CPUS);
+    let value_offset = size_of::<SpinWord>().next_multiple_of(align_of::<Cpu>());
+    (<CpuLock as TokenCellBase>::cell_base() + cpu_id * size_of::<CpuLock>() + value_offset) as *const Cpu
+}
+
 /// Physical address of the VT-d root table: one 4K page past the root-table lock cell, which lies in the identity-mapped
 /// kernel image.
 pub fn iommu_root_table() -> u64 {
@@ -428,5 +439,11 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(),
     );
+    // The cpu objects lie where `verified_cpu` looks: every one belongs to the root container, and only cpu 0 is Idle.
+    for cpu_id in 0..NUM_CPUS {
+        let cpu = &*verified_cpu(cpu_id);
+        assert!(cpu.owning_container() == root_container && cpu.current_thread().is_none(), "cpu {} object misplaced", cpu_id);
+        assert!(matches!(cpu.state(), CpuState::Idle) == (cpu_id == 0), "cpu {} object misplaced", cpu_id);
+    }
     log::info!("VeriFlat kernel initialized: root container {:#x}, root thread {:#x}", root_container, layout.root_thread);
 }

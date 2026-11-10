@@ -127,6 +127,14 @@ impl KernelK {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
             final(steps).snapshot_k() == *final(self),
+            forall|allocator: RwLockPageAllocatorPtr, source: usize|
+                #![trigger old(lctx).allocator_cache_2m_lock_map().dom().contains((allocator, source))]
+                #![trigger final(self).allc_2m_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS && old(self).allc_2m_mp.dom().contains(allocator)
+                && (if source < NUM_CPUS { old(lctx).allocator_cache_2m_lock_map().dom().contains((allocator, source)) }
+                    else { old(lctx).allocator_global_pool_2m_lock_map().dom().contains(allocator) }) ==> {
+                    &&& final(self).allc_2m_mp.dom().contains(allocator)
+                    &&& final(self).allc_2m_mp.spec_index(allocator).merge_2m_source_list(source) == old(self).allc_2m_mp.spec_index(allocator).merge_2m_source_list(source)
+                },
             final(self).allc_2m_mp.dom().contains(allocator_2m),
             final(self).allc_4k_mp.dom().contains(allocator_4k),
             final(self).allc_2m_mp.spec_index(allocator_2m).owning_container == old(self).allc_2m_mp.spec_index(allocator_2m).owning_container,

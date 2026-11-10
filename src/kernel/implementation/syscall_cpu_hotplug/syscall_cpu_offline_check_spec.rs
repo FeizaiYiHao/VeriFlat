@@ -27,7 +27,7 @@ pub open spec fn cpu_offline_check_flushed_default_pcid(pre: KernelK, cpu_id: Cp
 #[verifier::opaque]
 pub(super) open spec fn cpu_went_off_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr,
-    cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers,
+    cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr,
 ) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
@@ -51,8 +51,9 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
     let cell_after = table_after.flags.spec_index(cpu_id).view();
     &&& post == (KernelK {
         cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_tlb: post.cpu_tlb,
-        sched_mp: post.sched_mp, thrd_mp: post.thrd_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
+        sched_mp: post.sched_mp, thrd_mp: post.thrd_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, cpu_trap_frame: post.cpu_trap_frame, ..pre
     })
+    &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view().remove(cpu_id)
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
@@ -83,8 +84,9 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
             &&& after.view() == (Thread { state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: after.view().trap_frame, scheduler_linkedlist_node: after.view().scheduler_linkedlist_node, ..before.view() })
             &&& after.view().scheduler_linkedlist_node.addr() == before.view().scheduler_linkedlist_node.addr()
             &&& !after.view().scheduler_linkedlist_node.is_init()
+            &&& after.view().trap_frame.addr() == before.view().trap_frame.addr()
             &&& after.view().trap_frame.is_some()
-            &&& *after.view().trap_frame.get_some_0() == entry_regs
+            &&& after.view().trap_frame.view() == Some(pre.cpu_trap_frame.view().view()[cpu_id].value())
         })
     })
     &&& post.sched_mp.unchanged_except(&pre.sched_mp, sched_ptr)
@@ -210,8 +212,8 @@ pub open spec fn cpu_offline_check_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 
 /// User-visible offline step: `cpu_id` goes Off, its running thread is requeued at the tail, its
 /// container's request bit is cleared, and its TLB entries are flushed.
-pub open spec fn cpu_offline_check_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, entry_regs: Registers, flushed_default_pcid: bool) -> bool {
-    kernel_u_cpu_went_off_changed(old_u, new_u, cpu_id, entry_regs, flushed_default_pcid)
+pub open spec fn cpu_offline_check_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_default_pcid: bool) -> bool {
+    kernel_u_cpu_went_off_changed(old_u, new_u, cpu_id, flushed_default_pcid)
 }
 
 /// The partial trace after holding from the entry state `pre`: the single hold step.
@@ -227,14 +229,14 @@ pub open spec fn cpu_offline_check_trace_after_hold(trace: Seq<KernelStep>, pre:
 /// not requested continues without a step. Otherwise it records the hold step from `pre` and, from the decision state
 /// after the boundary, where unheld objects may have changed, either the release step or the offline step to `post`.
 #[verifier::opaque]
-pub open spec fn cpu_offline_check_entry_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, went_off: bool, flushed_default_pcid: bool) -> bool {
+pub open spec fn cpu_offline_check_entry_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, went_off: bool, flushed_default_pcid: bool) -> bool {
     // The live, non-Off, requested cpu takes the hold step; any other entry cpu continues without a step.
     if cpu_offline_check_hold_step_pre(pre, cpu_id) {
         &&& trace.len() == 2
         &&& trace[0].old_u == pre
         &&& cpu_offline_check_hold_step(pre, trace[0].new_u, cpu_id)
         &&& trace[1].new_u == post
-        &&& went_off ==> cpu_offline_check_step_pre(trace[1].old_u, cpu_id) && cpu_offline_check_step(trace[1].old_u, post, cpu_id, regs, flushed_default_pcid)
+        &&& went_off ==> cpu_offline_check_step_pre(trace[1].old_u, cpu_id) && cpu_offline_check_step(trace[1].old_u, post, cpu_id, flushed_default_pcid)
         &&& !went_off ==> cpu_offline_check_release_step_pre(trace[1].old_u, cpu_id) && cpu_offline_check_release_step(trace[1].old_u, post, cpu_id)
     } else {
         &&& !went_off

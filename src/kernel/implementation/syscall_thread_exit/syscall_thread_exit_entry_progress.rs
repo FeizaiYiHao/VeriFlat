@@ -36,6 +36,7 @@ pub(super) fn thread_exit_enter_record_progress(
         held_k.ctn_mp.spec_index(ctn_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(prc_ptr).view_rodata().view().depth)),
         held_k == (KernelK { cpu_arr: held_k.cpu_arr, cpu_op: held_k.cpu_op, ctn_mp: held_k.ctn_mp, prc_mp: held_k.prc_mp, thrd_mp: held_k.thrd_mp, ..pre }),
         held_k.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        !(pre.cpu_op.view().view()[cpu_id as int] is User),
         held_k.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         held_k.ctn_mp.unchanged_except(&pre.ctn_mp, ctn_ptr),
         held_k.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr),

@@ -6,7 +6,7 @@ use super::syscall_ipc_queue_eof::*;
 verus! {
 pub(super) fn ipc_block_thread_on_endpoint(
     thread_map: &mut ThreadLockedMap, Tracked(lctx): Tracked<&LocalContext>, thrd_ptr: RwLockThreadPtr,
-    ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers,
+    ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, frame: Tracked<TrapFramePerm>,
     thread_lock_perm: Tracked<&LockPerm>,
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
@@ -18,6 +18,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thrd_ptr).view().state is RUNNING,
+        frame.view().addr() == old(thread_map).spec_index(thrd_ptr).view().trap_frame.addr(),
         old(thread_map).spec_index(thrd_ptr).view().syscall_progress.view() is None,
         waiting_state.is_endpoint_waiting(),
         payload.wf(),
@@ -44,7 +45,8 @@ pub(super) fn ipc_block_thread_on_endpoint(
         final(thread_map).spec_index(thrd_ptr).view().blocking_endpoint_index == Some(ep_idx),
         final(thread_map).spec_index(thrd_ptr).view().ipc_payload =~= payload,
         final(thread_map).spec_index(thrd_ptr).view().trap_frame.is_some(),
-        final(thread_map).spec_index(thrd_ptr).view().trap_frame.get_some_0() =~= pt_regs,
+        final(thread_map).spec_index(thrd_ptr).view().trap_frame.view() == Some(frame.view().value()),
+        final(thread_map).spec_index(thrd_ptr).view().trap_frame.addr() == old(thread_map).spec_index(thrd_ptr).view().trap_frame.addr(),
         ret.0 == final(thread_map).spec_index(thrd_ptr).view().endpoint_linkedlist_node.addr(),
         ret.1.view().is_init(),
         ret.1.view().addr() == ret.0,
@@ -53,7 +55,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
     proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thrd_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
-        thread_mut.block_on_endpoint(thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, pt_regs)
+        thread_mut.block_on_endpoint(thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, frame)
     };
     proof { ipc_block_thread_on_endpoint_eof(*old(thread_map), *thread_map, thrd_ptr); }
     ret

@@ -27,6 +27,8 @@ pub(super) open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_op == pre.cpu_op
+    &&& post.cpu_regs == pre.cpu_regs
+    &&& post.cpu_trap_frame == pre.cpu_trap_frame
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn

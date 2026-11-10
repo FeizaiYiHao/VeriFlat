@@ -89,6 +89,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     proof {
         let exit_k = *krnl;
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
+        cpu_op_wf_at(exit_start.cpu_op.view().view(), exit_start.cpu_arr, cpu_id);
         iommu_unmap_4k_exit_step_from_k(&exit_start, &exit_k, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table);
         iommu_unmap_4k_trace_exit_step(exit_before, steps.view(), kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, iova, range);
     }

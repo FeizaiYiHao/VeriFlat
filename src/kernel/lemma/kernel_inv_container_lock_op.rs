@@ -11,6 +11,7 @@ pub open spec fn container_invariant_fields_unchanged(pre: ContainerLockedMap, p
         #![trigger post.spec_index(c_ptr)]
         pre.dom().contains(c_ptr) ==> {
             &&& post.spec_index(c_ptr).view() == pre.spec_index(c_ptr).view()
+            &&& post.spec_index(c_ptr).view().owned_pages.view() == pre.spec_index(c_ptr).view().owned_pages.view()
             &&& post.spec_index(c_ptr).view_rodata() == pre.spec_index(c_ptr).view_rodata()
             &&& post.spec_index(c_ptr).view_ghost() == pre.spec_index(c_ptr).view_ghost()
         }

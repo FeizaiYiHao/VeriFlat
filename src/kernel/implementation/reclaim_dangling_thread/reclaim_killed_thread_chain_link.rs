@@ -47,6 +47,7 @@ pub(super) fn reclaim_killed_thread_link(
         kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
+        old(krnl).cpu_trap_frame.view().view().dom().contains(cpu_id) ==> final(krnl).cpu_trap_frame.view().view().dom().contains(cpu_id) && final(krnl).cpu_trap_frame.view().view()[cpu_id] == old(krnl).cpu_trap_frame.view().view()[cpu_id],
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] #![trigger final(krnl).ctn_mp.spec_index(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
@@ -123,7 +124,7 @@ pub(super) fn reclaim_killed_thread_link(
         assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container)) by {
             let processes = old(lctx).process_lock_map().dom();
             let containers = old(lctx).container_lock_map().dom();
-            held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
+            held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx)); cpu_trap_frame_wf_at(old(krnl).cpu_trap_frame.view().view(), old(krnl).cpu_arr, cpu_id);
             killed_thread_reclaim_step_pre_from_k(&caller_k, old(krnl), cpu_id, processes, containers);
             killed_thread_reclaim_step_pre_from_k(&reclaim_snap, old(krnl), cpu_id, processes, containers);
             killed_thread_reclaim_chain_trace(steps.view(), old(steps).view().len() as int, iter_steps, desc_steps, caller_steps, kernel_k_to_kernel_u(*old(krnl)),

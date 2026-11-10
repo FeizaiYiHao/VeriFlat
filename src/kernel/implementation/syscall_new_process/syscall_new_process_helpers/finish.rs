@@ -275,6 +275,7 @@ fn end_new_process_finish_step(
 )
     requires
         old(steps).snapshot_k() == finish_k,
+        finish_k.cpu_op.view().view()[cpu_id as int] is InStep,
         ({
             let source = finish_k.prc_mp.spec_index(parent_ptr).view().pagetable;
             let target = finish_k.prc_mp.spec_index(child_ptr).view().pagetable;

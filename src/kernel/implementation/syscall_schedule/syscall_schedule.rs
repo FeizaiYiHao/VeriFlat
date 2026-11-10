@@ -56,7 +56,7 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
 }
 
 fn schedule_switch_to_queue_head(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, current_process: Option<RwLockProcessPtr>,
     current_thread: Option<RwLockThreadPtr>, process_lock_perm: Option<Tracked<LockPerm>>, current_thread_lock_perm: Option<Tracked<LockPerm>>,
     scheduler_lock_perm: Tracked<LockPerm>, next_lock_perm: Tracked<LockPerm>, cpu_lock_perm: Tracked<LockPerm>,
@@ -66,6 +66,7 @@ fn schedule_switch_to_queue_head(
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thrd_mp: old(krnl).thrd_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        !(old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is User),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, sched_ptr),
         scheduler_shards_of(old(krnl).sched_mp.spec_index(sched_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(sched_ptr)),
@@ -198,7 +199,7 @@ fn schedule_switch_to_queue_head(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), true, context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, true, context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)),
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
         {
@@ -210,14 +211,14 @@ fn schedule_switch_to_queue_head(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(next_process)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(next_thread)
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& *final(pt_regs) == *old(krnl).thrd_mp.spec_index(next_thread).view().trap_frame.get_some_0()
+            &&& final(krnl).cpu_trap_frame.view().view()[cpu_id].value() == old(krnl).thrd_mp.spec_index(next_thread).view().trap_frame.view()->Some_0
             &&& syscall_return == old(krnl).thrd_mp.spec_index(next_thread).view().error_code
             &&& final(krnl).thrd_mp.spec_index(next_thread).view().error_code is None
             &&& scheduler_shards_of(final(krnl).sched_mp.spec_index(sched_ptr)) == shards.update(cpu_id as int, match current_thread { Some(ptr) => queue.skip(1).push(ptr), None => queue.skip(1) })
             &&& (current_thread is Some ==> {
                 let prev = current_thread.unwrap();
                 &&& final(krnl).thrd_mp.spec_index(prev).view().state == (ThreadState::SCHEDULED { cpu_id })
-                &&& *final(krnl).thrd_mp.spec_index(prev).view().trap_frame.get_some_0() == *old(pt_regs)
+                &&& final(krnl).thrd_mp.spec_index(prev).view().trap_frame.view() == Some(old(krnl).cpu_trap_frame.view().view()[cpu_id].value())
             })
         },
 {
@@ -233,17 +234,17 @@ fn schedule_switch_to_queue_head(
         proof { needflush_perm = Some(perm); }
     }
     let ghost before_switch = *krnl;
-    let syscall_return = schedule_switch_commit(krnl, Tracked(&mut *lctx), cpu_id, pt_regs, sched_ptr, next_thread, current_thread, next_process, next_pagetable, cr3, pcid, depth,
+    let syscall_return = schedule_switch_commit(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr, next_thread, current_thread, next_process, next_pagetable, cr3, pcid, depth,
         same, &current_thread_lock_perm, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm), Tracked(&cpu_lock_perm), Tracked(&needflush_perm));
     schedule_switch_unlock_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid, same,
         process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm),
-        Ghost(*old(krnl)), Ghost(before_switch), Ghost(*old(pt_regs)));
+        Ghost(*old(krnl)), Ghost(before_switch));
     syscall_return
 }
 
 /// Timer entry for a user context or the idle loop. Kernel execution is not
-/// preemptible; the entry layer binds `lctx` to this CPU and restores `pt_regs`.
-pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &mut Registers) -> (ret: ScheduleResult)
+/// preemptible; the entry layer binds `lctx` to this CPU and restores the trap frame of the thread it runs.
+pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId) -> (ret: ScheduleResult)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
@@ -265,7 +266,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), ret is Switched,
+        schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is Switched,
             if ret is Switched { context_switch_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr) } else { None }),
         ret == schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         (ret is Switched) == {
@@ -280,7 +281,6 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         ret is Idle ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle || old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         ret is Continue ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         !(ret is Switched) ==> {
-            &&& *final(pt_regs) == *old(pt_regs)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
         },
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
@@ -295,14 +295,14 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(next)
             &&& final(krnl).thrd_mp.spec_index(next).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& *final(pt_regs) == *old(krnl).thrd_mp.spec_index(next).view().trap_frame.get_some_0()
+            &&& final(krnl).cpu_trap_frame.view().view()[cpu_id].value() == old(krnl).thrd_mp.spec_index(next).view().trap_frame.view()->Some_0
             &&& ret->Switched_syscall_return == old(krnl).thrd_mp.spec_index(next).view().error_code
             &&& final(krnl).thrd_mp.spec_index(next).view().error_code is None
             &&& scheduler_shards_of(final(krnl).sched_mp.spec_index(sched_ptr)) == shards.update(cpu_id as int, match cpu.current_thread { Some(ptr) => queue.skip(1).push(ptr), None => queue.skip(1) })
             &&& (cpu.current_thread is Some ==> {
                 let prev = cpu.current_thread.unwrap();
                 &&& final(krnl).thrd_mp.spec_index(prev).view().state == (ThreadState::SCHEDULED { cpu_id })
-                &&& *final(krnl).thrd_mp.spec_index(prev).view().trap_frame.get_some_0() == *old(pt_regs)
+                &&& final(krnl).thrd_mp.spec_index(prev).view().trap_frame.view() == Some(old(krnl).cpu_trap_frame.view().view()[cpu_id].value())
             })
         },
 {
@@ -314,7 +314,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     if cpu_lock_res.is_none() {
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
-            schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+            schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
             assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { thread_cpu_wf_killed_cpu_at(old(krnl).thrd_mp, old(krnl).cpu_arr, cpu_id); };
             schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Idle);
         }
@@ -333,7 +333,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     let current_thread = cpu.current_thread();
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
     let sched_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().scheduler;
-    let locked = schedule_lock_current_and_shard(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, current_process, current_thread, Tracked(cpu_lock_perm), Ghost(*old(pt_regs)));
+    let locked = schedule_lock_current_and_shard(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, current_process, current_thread, Tracked(cpu_lock_perm));
     if locked.is_none() {
         proof { schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Continue); }
         return ScheduleResult::Continue;
@@ -348,7 +348,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
         proof { assert(context_switch_flushed_pcid(*krnl, cpu_id, next_thread) == context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)); }
         let syscall_return = schedule_switch_to_queue_head(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, sched_ptr, next_thread, current_process, current_thread,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, next_thread, current_process, current_thread,
             process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), next_perm, Tracked(cpu_lock_perm),
         );
         proof { schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Switched { thread_ptr: next_thread, syscall_return }); }
@@ -358,7 +358,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
     proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
     schedule_continue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, current_process, current_thread, process_lock_perm, current_thread_lock_perm,
-        Tracked(scheduler_lock_perm), Tracked(cpu_lock_perm), Ghost(*old(pt_regs)));
+        Tracked(scheduler_lock_perm), Tracked(cpu_lock_perm));
     proof { schedule_result_from_k(old(krnl), cpu_id, ret); }
     ret
 }

@@ -33,6 +33,8 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     unsafe {
         console::early_init();
         logging::early_init();
+        // FPU plan A on the boot CPU: user mode never gets floating point (see `cpu::disable_user_fp`).
+        cpu::disable_user_fp();
 
         cpu::init_cpu(0);
         gdt::init_cpu();

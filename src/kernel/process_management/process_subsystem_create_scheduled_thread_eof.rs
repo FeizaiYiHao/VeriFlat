@@ -27,6 +27,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_eof_transition_framin
     &&& thread_value.scheduler_linkedlist_node.addr() == thread_sched_node_addr(pg_ptr)
     &&& thread_value.proc_linkedlist_node.addr() == thread_proc_node_addr(pg_ptr)
     &&& thread_value.endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(pg_ptr)
+    &&& thread_value.trap_frame.addr() == thread_trap_frame_addr(pg_ptr)
     &&& post_thread.spec_index(pg_ptr).is_init()
     &&& !post_thread.spec_index(pg_ptr).being_killed()
     &&& post_thread.spec_index(staging_thrd_ptr).view() == (Thread { quota_4k: post_thread.spec_index(staging_thrd_ptr).view().quota_4k,

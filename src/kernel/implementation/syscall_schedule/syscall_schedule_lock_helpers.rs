@@ -11,7 +11,7 @@ verus! {
 pub(super) fn schedule_continue(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr,
     current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, process_lock_perm: Option<Tracked<LockPerm>>,
-    current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Ghost(entry_regs): Ghost<Registers>,
+    current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -110,7 +110,7 @@ pub(super) fn schedule_continue(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, false, None),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, false, None),
         forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)]
             index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(i).view().view().view(),
 {
@@ -129,7 +129,7 @@ pub(super) fn schedule_continue(
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
         };
-        schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
+        schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id);
     }
 }
 
@@ -138,7 +138,7 @@ pub(super) fn schedule_continue(
 /// If the current process or thread is being killed, releases every lock and finishes the call without recording a step.
 pub(super) fn schedule_lock_current_and_shard(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr,
-    current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Ghost(entry_regs): Ghost<Registers>,
+    current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 ) -> (ret: Option<(Option<Tracked<LockPerm>>, Option<Tracked<LockPerm>>, Tracked<LockPerm>, Tracked<LockPerm>)>)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -208,7 +208,7 @@ pub(super) fn schedule_lock_current_and_shard(
             &&& final(steps).view() == old(steps).view()
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-                kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, false, None)
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, false, None)
         },
         ret is Some ==> *final(steps) == *old(steps),
         ret is Some ==> *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, thrd_mp: final(krnl).thrd_mp, sched_mp: final(krnl).sched_mp, ..*old(krnl) }),
@@ -308,7 +308,7 @@ pub(super) fn schedule_lock_current_and_shard(
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), None, None, None, None);
-                schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
+                schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id);
             }
             return None;
         }
@@ -320,7 +320,7 @@ pub(super) fn schedule_lock_current_and_shard(
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(prc_ptr), Some(thrd_ptr), None, None, None);
-                schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
+                schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id);
             }
             return None;
         }

@@ -4,9 +4,7 @@ use core::arch::naked_asm;
 
 /// `memcpy` for the whole kernel image, the verified kernel included; it takes the place of the weak
 /// one of `compiler_builtins`, which runs three `rep movs` (byte head, qword body, byte tail) for
-/// any size. The hot callers copy 168-byte trap frames: every IPC call and reply moves the caller's
-/// and the callee's `Registers` between the CPU's frame slot and the threads (`TrapFrameOption::
-/// set_self`, `set_dst`). Up to 256 bytes it copies qwords in a loop, then the remaining bytes;
+/// any size. Up to 256 bytes it copies qwords in a loop, then the remaining bytes;
 /// longer copies take `rep movsq` for the qwords and the same byte loop for the rest,
 /// so no size depends on ERMS or FSRM. Regions must not overlap, as for any `memcpy`.
 #[unsafe(no_mangle)]

@@ -66,9 +66,13 @@ ap_start32:
 	or eax, (1 << 8) | (1 << 11)
 	wrmsr
 
-	; Enable paging (PG) and supervisor write protection (WP), as the BSP does
+	; Enable paging (PG) and supervisor write protection (WP), as the BSP does. Also FPU plan A, as
+	; the BSP does in `cpu::disable_user_fp`: set TS (bit 3) and MP (bit 1), so user x87/MMX raises
+	; #NM; CR4.OSFXSR/OSXSAVE stay clear, so SSE/AVX raises #UD. Trusted: every cpu enters user mode
+	; with CR0.TS set; the kernel never clears it; the kernel is compiled soft-float.
+	; TODO: FP support later needs a per-thread flag with xsave/xrstor on switches.
 	mov eax, cr0
-	or eax, (1 << 31) | (1 << 16)
+	or eax, (1 << 31) | (1 << 16) | (1 << 3) | (1 << 1)
 	mov cr0, eax
 
 	; Load 64-bit GDT

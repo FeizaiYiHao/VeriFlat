@@ -4,10 +4,10 @@ use crate::*;
 use super::syscall_cpu_offline_check_spec::{cpu_went_off_eof_transition_framing, cpu_offline_check_flushed_default_pcid};
 
 verus! {
-proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -38,10 +38,10 @@ proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK
     };
 }
 
-proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -69,7 +69,7 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
 {
     reveal(cpu_went_off_eof_transition_framing);
     assert(post.process_management_inv()) by {
-        cpu_went_off_eof_container_thread_scheduler(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
+        cpu_went_off_eof_container_thread_scheduler(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(thread_cpu_wf(post.thrd_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
@@ -92,10 +92,10 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
     };
 }
 
-proof fn cpu_went_off_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -140,10 +140,10 @@ proof fn cpu_went_off_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuI
     reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
 }
 
-proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -187,7 +187,8 @@ proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: Cp
     reveal(cpu_went_off_eof_transition_framing);
     assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
-    cpu_went_off_eof_thread_perms(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
+    assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by { reveal(cpu_trap_frame_wf); };
+    cpu_went_off_eof_thread_perms(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
@@ -196,10 +197,10 @@ proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: Cp
     reveal(KernelK::default_pagetable_wf);
 }
 
-proof fn cpu_went_off_eof_memory_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_memory_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -253,10 +254,10 @@ proof fn cpu_went_off_eof_memory_management_inv(pre: KernelK, post: KernelK, cpu
     container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
 }
 
-proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -311,10 +312,10 @@ proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_pt
 
 /// Closes every kernel invariant after the committed offline from the entry invariants, the summary, and
 /// the representation facts its callees guarantee.
-pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr)
     requires
         pre.inv(),
-        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
         ({
             let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
             let queue_before = pre.sched_mp.spec_index(sched_ptr).shards.spec_index(cpu_id).view().view().queue;
@@ -359,17 +360,17 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
     reveal(cpu_went_off_eof_transition_framing);
-    cpu_went_off_eof_subsystems_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
-    cpu_went_off_eof_memory_management_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
-    cpu_went_off_eof_process_management_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
-    cpu_went_off_eof_tlb(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs);
+    cpu_went_off_eof_subsystems_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
+    cpu_went_off_eof_memory_management_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
+    cpu_went_off_eof_process_management_inv(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
+    cpu_went_off_eof_tlb(pre, post, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr);
 }
 
 /// The committed offline, between the lock acquisitions that follow the check's start `snapshot` and the releases and the
 /// exit from the kernel step as Off that end the step, gives the went-off fields from `snapshot`.
 pub(super) proof fn cpu_went_off_eof_fields(
     snapshot: KernelK, entry: KernelK, pre: KernelK, mid: KernelK, post: KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr,
-    cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, entry_regs: Registers,
+    cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
 )
     requires
         entry.inv(),
@@ -426,7 +427,8 @@ pub(super) proof fn cpu_went_off_eof_fields(
         },
         pre == (KernelK { pcid_needflush: pre.pcid_needflush, ..entry }),
         pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() == entry.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view(),
-        cpu_went_off_eof_transition_framing(pre, mid, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, mid, cpu_id, ctn_ptr, sched_ptr, cpu_set_ptr, flags_ptr),
+        mid.cpu_op.view().view()[cpu_id as int] is InStep,
         post == (KernelK {
             cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thrd_mp: post.thrd_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp,
             cpu_offline_mp: post.cpu_offline_mp, pcid_needflush: post.pcid_needflush, ..mid
@@ -447,7 +449,7 @@ pub(super) proof fn cpu_went_off_eof_fields(
         post.cpu_offline_mp.unchanged_except(&mid.cpu_offline_mp, flags_ptr),
         cpu_offline_requests_of(post.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(mid.cpu_offline_mp.spec_index(flags_ptr)),
     ensures
-        kernel_cpu_went_off_fields(&snapshot, &post, cpu_id, entry_regs, cpu_offline_check_flushed_default_pcid(entry, cpu_id)),
+        kernel_cpu_went_off_fields(&snapshot, &post, cpu_id, cpu_offline_check_flushed_default_pcid(entry, cpu_id)),
         post.ctn_mp == snapshot.ctn_mp,
 {
     reveal(cpu_went_off_eof_transition_framing);

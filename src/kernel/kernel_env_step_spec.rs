@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 
 verus! {
@@ -200,20 +201,29 @@ pub open spec fn kernel_k_iommu_context_cache_filled(pre: KernelK, post: KernelK
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache().insert(bdf, entry)
 }
 
-/// Cpu `cpu_id` leaves user mode for its trap path at `syscall` or an interrupt gate; nothing else changes.
-pub open spec fn kernel_k_trap_enter(pre: KernelK, post: KernelK, cpu_id: CpuId) -> bool {
+/// Cpu `cpu_id` leaves user mode for its trap path at `syscall` or an interrupt gate: the trap handler saves the cpu's
+/// registers into the frame of its trap-frame slot and runs on with the unconstrained registers `kernel_regs`; nothing else
+/// changes.
+pub open spec fn kernel_k_trap_enter(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers) -> bool {
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view()[cpu_id as int] is User
-    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post == (KernelK { cpu_op: post.cpu_op, cpu_regs: post.cpu_regs, cpu_trap_frame: post.cpu_trap_frame, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view().update(cpu_id as int, kernel_regs)
+    &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom()
+    &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
+    &&& post.cpu_trap_frame.view().view()[cpu_id].addr() == pre.cpu_trap_frame.view().view()[cpu_id].addr()
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == pre.cpu_regs.view().view()[cpu_id as int]
 }
 
-/// Cpu `cpu_id` returns from its trap path to user mode at `sysretq` or `iretq`; nothing else changes.
+/// Cpu `cpu_id` returns from its trap path to user mode at `sysretq` or `iretq`, loading its registers from the frame of its
+/// trap-frame slot; nothing else changes.
 pub open spec fn kernel_k_trap_return(pre: KernelK, post: KernelK, cpu_id: CpuId) -> bool {
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.cpu_op.view().view()[cpu_id as int] is Trap
-    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post == (KernelK { cpu_op: post.cpu_op, cpu_regs: post.cpu_regs, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::User)
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view().update(cpu_id as int, pre.cpu_trap_frame.view().view()[cpu_id].value())
 }
 
 /// Cpu `cpu_id`, marked by a killer, leaves its trap path for its idle loop at `restore_frame`; nothing else changes.
@@ -223,6 +233,26 @@ pub open spec fn kernel_k_trap_divert(pre: KernelK, post: KernelK, cpu_id: CpuId
     &&& pre.cpu_arr.spec_index(cpu_id).view().being_killed()
     &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
     &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
+}
+
+/// User code on cpu `cpu_id`, which runs in user mode, changes the cpu's registers to `regs`; nothing else changes.
+pub open spec fn kernel_k_regs_changed(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is User
+    &&& post == (KernelK { cpu_regs: post.cpu_regs, ..pre })
+    &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view().update(cpu_id as int, regs)
+}
+
+/// The trap glue of cpu `cpu_id` writes a syscall's return values `rax`, `rdx` and `rsi` into the frame of its trap-frame
+/// slot; nothing else changes.
+pub open spec fn kernel_k_trap_return_values_written(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is Trap
+    &&& post == (KernelK { cpu_trap_frame: post.cpu_trap_frame, ..pre })
+    &&& post.cpu_trap_frame.view().view().dom() == pre.cpu_trap_frame.view().view().dom()
+    &&& post.cpu_trap_frame.view().view().remove(cpu_id) == pre.cpu_trap_frame.view().view().remove(cpu_id)
+    &&& post.cpu_trap_frame.view().view()[cpu_id].addr() == pre.cpu_trap_frame.view().view()[cpu_id].addr()
+    &&& post.cpu_trap_frame.view().view()[cpu_id].value() == (Registers { rax, rdx, rsi, ..pre.cpu_trap_frame.view().view()[cpu_id].value() })
 }
 
 /// U step of `kernel_k_cpu_tlb_filled`: CPU `cpu_id` caches `added` under `pcid`.
@@ -312,14 +342,20 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf); };
 }
 
-pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers)
     requires
         pre.inv(),
-        kernel_k_trap_enter(pre, post, cpu_id),
+        kernel_k_trap_enter(pre, post, cpu_id, kernel_regs),
     ensures post.inv(),
 {
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by {
+        let a = pre.cpu_trap_frame.view().view();
+        let b = post.cpu_trap_frame.view().view();
+        reveal(cpu_trap_frame_wf);
+        assert_maps_equal!(b, if a.dom().contains(cpu_id) { a.insert(cpu_id, b[cpu_id]) } else { a }, c => { if c != cpu_id { vstd::map::axiom_map_remove_different(a, c, cpu_id); vstd::map::axiom_map_remove_different(b, c, cpu_id); } });
+    };
 }
 
 pub proof fn kernel_k_trap_return_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
@@ -342,20 +378,45 @@ pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
 }
 
+pub proof fn kernel_k_regs_changed_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers)
+    requires
+        pre.inv(),
+        kernel_k_regs_changed(pre, post, cpu_id, regs),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+}
+
+pub proof fn kernel_k_trap_return_values_written_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64)
+    requires
+        pre.inv(),
+        kernel_k_trap_return_values_written(pre, post, cpu_id, rax, rdx, rsi),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(cpu_trap_frame_wf(post.cpu_trap_frame.view().view(), post.cpu_arr)) by {
+        let a = pre.cpu_trap_frame.view().view();
+        let b = post.cpu_trap_frame.view().view();
+        reveal(cpu_trap_frame_wf);
+        assert_maps_equal!(b, if a.dom().contains(cpu_id) { a.insert(cpu_id, b[cpu_id]) } else { a }, c => { if c != cpu_id { vstd::map::axiom_map_remove_different(a, c, cpu_id); vstd::map::axiom_map_remove_different(b, c, cpu_id); } });
+    };
+}
+
 // Each environment event below happens while a thread is between two of its kernel sections. Its `respects_boundary`
 // lemma shows that the event stays within the step boundary's trusted framing of that thread, given the thread's local
 // context `lctx` aligned with the pre-state; alignment keeps every remote cpu the thread holds outside a kernel step.
 
 /// A trap entry on another cpu stays within the step-boundary framing of a thread between its sections.
-pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, kernel_regs: Registers, lctx: LocalContext)
     requires
         pre.inv(),
-        kernel_k_trap_enter(pre, post, cpu_id),
+        kernel_k_trap_enter(pre, post, cpu_id, kernel_regs),
         typed_lock_maps_aligned(&pre, &lctx),
         cpu_id != lctx.cpu_id(),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
-    assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id); };
+    assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id, kernel_regs); };
+    vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -387,6 +448,38 @@ pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK,
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_trap_divert_preserves_inv(pre, post, cpu_id); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A register change on another cpu stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_regs_changed_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, regs: Registers, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_regs_changed(pre, post, cpu_id, regs),
+        typed_lock_maps_aligned(&pre, &lctx),
+        cpu_id != lctx.cpu_id(),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_regs_changed_preserves_inv(pre, post, cpu_id, regs); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// The trap glue of another cpu writing its return values stays within the step-boundary framing of a thread between its
+/// sections.
+pub proof fn kernel_k_trap_return_values_written_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, rax: u64, rdx: u64, rsi: u64, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_trap_return_values_written(pre, post, cpu_id, rax, rdx, rsi),
+        typed_lock_maps_aligned(&pre, &lctx),
+        cpu_id != lctx.cpu_id(),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_trap_return_values_written_preserves_inv(pre, post, cpu_id, rax, rdx, rsi); };
+    vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), lctx.cpu_id(), cpu_id);
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
     assert(held_owner_rodata_unchanged(pre, post, lctx)) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_process_wf); reveal(container_owned_pages_wf); };
     reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);

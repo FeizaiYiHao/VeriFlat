@@ -112,6 +112,7 @@ pub(super) fn finish_new_endpoint_commit(
         };
         steps.end_kernel_step_new_endpoint(&*krnl, &*lctx, ctn_ptr, thrd_ptr, ep_idx, pg_ptr);
         assert(new_endpoint_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, true)) by {
+            cpu_op_wf_at(finish_k.cpu_op.view().view(), finish_k.cpu_arr, cpu_id);
             kernel_new_endpoint_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, ep_idx, pg_ptr);
             new_endpoint_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, ep_idx, pg_ptr);
             new_endpoint_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx);

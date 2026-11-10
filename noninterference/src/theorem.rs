@@ -42,8 +42,8 @@ pub ghost enum StepLabel {
     AllocQuota1g { alloc_amount: usize }, AllocThreadQuota1g { alloc_amount: usize },
     Merge2m { actual_m: usize },
     Split2m { actual_m: usize },
-    Schedule { entry_regs: Registers, flushed_pcid: Option<Pcid> }, RebalancePull,
-    CpuOfflineRequest { target: CpuId }, CpuOfflineCheckHold, CpuOfflineCheck { regs: Registers, flushed_default_pcid: bool }, CpuOfflineCheckRelease, CpuOnline { target: CpuId },
+    Schedule { flushed_pcid: Option<Pcid> }, RebalancePull,
+    CpuOfflineRequest { target: CpuId }, CpuOfflineCheckHold, CpuOfflineCheck { flushed_default_pcid: bool }, CpuOfflineCheckRelease, CpuOnline { target: CpuId },
     CpuOfflineRequestChild { target: CpuId }, CpuOnlineChild { target: CpuId },
     PciAttach { bus: usize, device: usize, function: usize },
     NewThreadEnter { regs: Registers, endpoint_index: Option<EndpointIdx> }, NewThreadFinish,
@@ -51,10 +51,10 @@ pub ghost enum StepLabel {
     NewProcessEnter { range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool }, NewProcessPublish, NewProcessFinish,
     NewContainerEnter { range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx> }, NewContainerPublish, NewContainerFinish,
     Share4kDirectory, Share4kLeaf,
-    IpcBlock { channel_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool },
+    IpcBlock { channel_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, flushed_default_pcid: bool },
     IpcRendezvous { channel_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad },
-    IpcCallHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcAcceptCall { channel_index: EndpointIdx },
-    IpcReplyHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcReplyDanglingCallerTakenOver { channel_index: EndpointIdx },
+    IpcCallHandoff { channel_index: EndpointIdx, flushed_pcid: Option<Pcid> }, IpcAcceptCall { channel_index: EndpointIdx },
+    IpcReplyHandoff { channel_index: EndpointIdx, flushed_pcid: Option<Pcid> }, IpcReplyDanglingCallerTakenOver { channel_index: EndpointIdx },
     IpcReplyDanglingReclaimed, IpcReplyDanglingCallerReleased,
     IpcEndpointTransit { channel_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx }, IpcEndpointFinish,
     IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { channel_index: EndpointIdx, tables: IpcPagesTables },
@@ -69,7 +69,7 @@ pub ghost enum StepLabel {
     ThreadExitEnter, ThreadExitDescriptorDropped, ThreadExitCallerWoken, ThreadExitCallerTakenOver, ThreadExitDanglingReclaimed, ThreadExitEndpointReleased,
     ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitTableHidden, ThreadExitTlbFlush, ThreadExitFlushed, ThreadExitIommuLeaf,
     ThreadExitRefund, ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
-    TrapEnter, TrapReturn, TrapDivert,
+    TrapEnter, TrapReturn, TrapDivert, RegsChanged { regs: Registers }, TrapReturnValuesWritten { rax: u64, rdx: u64, rsi: u64 },
     CpuTlbFilled { cpu_id: CpuId, pcid: Pcid, added: SingleTLB }, IommuTlbFilled { did: VtdDomainId, added: SingleTLB }, IommuContextCacheFilled,
 }
 
@@ -152,13 +152,13 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::AllocThreadQuota2m { alloc_amount } => alloc_thread_quota_2m_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_2m_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocQuota1g { alloc_amount } => alloc_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocThreadQuota1g { alloc_amount } => alloc_thread_quota_1g_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_1g_step(old_u, new_u, cpu_id, alloc_amount),
-        StepLabel::Schedule { entry_regs, flushed_pcid } => schedule_step_pre(old_u, cpu_id) && schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
+        StepLabel::Schedule { flushed_pcid } => schedule_step_pre(old_u, cpu_id) && schedule_step(old_u, new_u, cpu_id, flushed_pcid),
         StepLabel::Merge2m { actual_m } => merge_2m_step_pre(old_u, cpu_id, actual_m) && merge_2m_step(old_u, new_u, cpu_id, actual_m),
         StepLabel::Split2m { actual_m } => split_2m_step_pre(old_u, cpu_id, actual_m) && split_2m_step(old_u, new_u, cpu_id, actual_m),
         StepLabel::RebalancePull => rebalance_pull_step_pre(old_u, cpu_id) && rebalance_pull_step(old_u, new_u, cpu_id),
         StepLabel::CpuOfflineRequest { target } => cpu_offline_request_step_pre(old_u, cpu_id, target) && cpu_offline_request_step(old_u, new_u, cpu_id, target),
         StepLabel::CpuOfflineCheckHold => cpu_offline_check_hold_step_pre(old_u, cpu_id) && cpu_offline_check_hold_step(old_u, new_u, cpu_id),
-        StepLabel::CpuOfflineCheck { regs, flushed_default_pcid } => cpu_offline_check_step_pre(old_u, cpu_id) && cpu_offline_check_step(old_u, new_u, cpu_id, regs, flushed_default_pcid),
+        StepLabel::CpuOfflineCheck { flushed_default_pcid } => cpu_offline_check_step_pre(old_u, cpu_id) && cpu_offline_check_step(old_u, new_u, cpu_id, flushed_default_pcid),
         StepLabel::CpuOfflineCheckRelease => cpu_offline_check_release_step_pre(old_u, cpu_id) && cpu_offline_check_release_step(old_u, new_u, cpu_id),
         StepLabel::CpuOnline { target } => cpu_online_step_pre(old_u, cpu_id, target) && cpu_online_step(old_u, new_u, cpu_id, target),
         StepLabel::CpuOfflineRequestChild { target } =>
@@ -181,15 +181,15 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::NewContainerFinish => new_container_finish_step_pre(old_u, cpu_id) && new_container_finish_step(old_u, new_u, cpu_id),
         StepLabel::Share4kDirectory => share_4k_directory_step_pre(old_u, cpu_id) && share_4k_directory_step(old_u, new_u, cpu_id),
         StepLabel::Share4kLeaf => share_4k_leaf_step_pre(old_u, cpu_id) && share_4k_leaf_step(old_u, new_u, cpu_id),
-        StepLabel::IpcBlock { channel_index, waiting_state, payload, regs, flushed_default_pcid } => ipc_block_step_pre(old_u, cpu_id, channel_index, waiting_state)
-            && ipc_block_step(old_u, new_u, cpu_id, channel_index, waiting_state, payload, regs, flushed_default_pcid),
+        StepLabel::IpcBlock { channel_index, waiting_state, payload, flushed_default_pcid } => ipc_block_step_pre(old_u, cpu_id, channel_index, waiting_state)
+            && ipc_block_step(old_u, new_u, cpu_id, channel_index, waiting_state, payload, flushed_default_pcid),
         StepLabel::IpcRendezvous { channel_index, waiting_state, payload } => ipc_rendezvous_step_pre(old_u, cpu_id, channel_index, waiting_state, payload)
             && ipc_rendezvous_step(old_u, new_u, cpu_id, channel_index, waiting_state, payload),
-        StepLabel::IpcCallHandoff { channel_index, regs, flushed_pcid } => ipc_call_handoff_step_pre(old_u, cpu_id, channel_index)
-            && ipc_call_handoff_step(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid),
+        StepLabel::IpcCallHandoff { channel_index, flushed_pcid } => ipc_call_handoff_step_pre(old_u, cpu_id, channel_index)
+            && ipc_call_handoff_step(old_u, new_u, cpu_id, channel_index, flushed_pcid),
         StepLabel::IpcAcceptCall { channel_index } => ipc_accept_call_step_pre(old_u, cpu_id, channel_index) && ipc_accept_call_step(old_u, new_u, cpu_id, channel_index),
-        StepLabel::IpcReplyHandoff { channel_index, regs, flushed_pcid } => ipc_reply_handoff_step_pre(old_u, cpu_id, channel_index)
-            && ipc_reply_handoff_step(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid),
+        StepLabel::IpcReplyHandoff { channel_index, flushed_pcid } => ipc_reply_handoff_step_pre(old_u, cpu_id, channel_index)
+            && ipc_reply_handoff_step(old_u, new_u, cpu_id, channel_index, flushed_pcid),
         StepLabel::IpcReplyDanglingCallerTakenOver { channel_index } =>
             ipc_reply_dangling_caller_step_pre(old_u, cpu_id, channel_index) && ipc_reply_dangling_caller_taken_over_step(old_u, new_u, cpu_id),
         StepLabel::IpcReplyDanglingReclaimed => ipc_reply_dangling_caller_held_step_pre(old_u, cpu_id)
@@ -266,6 +266,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::TrapEnter => kernel_u_trap_enter_step_pre(old_u, cpu_id) && kernel_u_trap_enter_step(old_u, new_u, cpu_id),
         StepLabel::TrapReturn => kernel_u_trap_return_step_pre(old_u, cpu_id) && kernel_u_trap_return_step(old_u, new_u, cpu_id),
         StepLabel::TrapDivert => kernel_u_trap_divert_step_pre(old_u, cpu_id) && kernel_u_trap_divert_step(old_u, new_u, cpu_id),
+        StepLabel::RegsChanged { regs } => kernel_u_regs_changed_step_pre(old_u, cpu_id) && kernel_u_regs_changed_step(old_u, new_u, cpu_id, regs),
+        StepLabel::TrapReturnValuesWritten { rax, rdx, rsi } =>
+            kernel_u_trap_return_values_written_step_pre(old_u, cpu_id) && kernel_u_trap_return_values_written_step(old_u, new_u, cpu_id, rax, rdx, rsi),
         StepLabel::CpuTlbFilled { cpu_id: filled_cpu, pcid, added } => kernel_u_cpu_tlb_filled_step(old_u, new_u, filled_cpu, pcid, added),
         StepLabel::IommuTlbFilled { did, added } => kernel_u_iommu_tlb_filled_step(old_u, new_u, did, added),
         StepLabel::IommuContextCacheFilled => kernel_u_iommu_context_cache_filled_step(old_u, new_u),
@@ -413,7 +416,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::AllocThreadQuota2m { alloc_amount } => { alloc_thread_quota_2m_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_2m_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocQuota1g { alloc_amount } => { alloc_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocThreadQuota1g { alloc_amount } => { alloc_thread_quota_1g_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_1g_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
-            StepLabel::Schedule { entry_regs, flushed_pcid } => { schedule_step_lr(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y); schedule_step_iso(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y); },
+            StepLabel::Schedule { flushed_pcid } => { schedule_step_lr(old_u, new_u, cpu_id, flushed_pcid, x, y); schedule_step_iso(old_u, new_u, cpu_id, flushed_pcid, x, y); },
             StepLabel::Merge2m { actual_m } | StepLabel::Split2m { actual_m } => {
                 reveal(kernel_u_cpu_ownership_wf);
                 process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, x); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, y);
@@ -422,9 +425,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::RebalancePull => { rebalance_pull_step_lr(old_u, new_u, cpu_id, x, y); rebalance_pull_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::CpuOfflineRequest { target } => { cpu_offline_request_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::CpuOfflineCheckHold => { cpu_offline_check_hold_step_lr(old_u, new_u, cpu_id, x, y); cpu_offline_check_hold_step_iso(old_u, new_u, cpu_id, x, y); },
-            StepLabel::CpuOfflineCheck { regs, flushed_default_pcid } => {
-                cpu_offline_check_step_lr(old_u, new_u, cpu_id, regs, flushed_default_pcid, x, y); cpu_offline_check_step_iso(old_u, new_u, cpu_id, regs, flushed_default_pcid, x, y);
-            },
+            StepLabel::CpuOfflineCheck { flushed_default_pcid } => { cpu_offline_check_step_lr(old_u, new_u, cpu_id, flushed_default_pcid, x, y); cpu_offline_check_step_iso(old_u, new_u, cpu_id, flushed_default_pcid, x, y); },
             StepLabel::CpuOfflineCheckRelease => { cpu_offline_check_release_step_lr(old_u, new_u, cpu_id, x, y); cpu_offline_check_release_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::CpuOnline { target } => { cpu_online_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_online_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::CpuOfflineRequestChild { target } => { cpu_offline_request_child_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_child_step_iso(old_u, new_u, cpu_id, target, x, y); },
@@ -448,21 +449,17 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::NewContainerFinish => { new_container_finish_step_lr(old_u, new_u, cpu_id, x, y); new_container_finish_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Share4kDirectory => { share_4k_directory_step_lr(old_u, new_u, cpu_id, x, y); share_4k_directory_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Share4kLeaf => { share_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); share_4k_leaf_step_iso(old_u, new_u, cpu_id, progress, source, x, y); },
-            StepLabel::IpcBlock { channel_index, waiting_state, payload, regs, flushed_default_pcid } => {
-                ipc_block_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, payload, regs, flushed_default_pcid, x, y);
-                ipc_block_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, payload, regs, flushed_default_pcid, x, y);
+            StepLabel::IpcBlock { channel_index, waiting_state, payload, flushed_default_pcid } => {
+                ipc_block_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, payload, flushed_default_pcid, x, y);
+                ipc_block_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, payload, flushed_default_pcid, x, y);
             },
             StepLabel::IpcRendezvous { channel_index, waiting_state, payload } => {
                 ipc_rendezvous_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, payload, x, y);
                 ipc_rendezvous_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, payload, x, y);
             },
-            StepLabel::IpcCallHandoff { channel_index, regs, flushed_pcid } => {
-                ipc_call_handoff_step_lr(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y); ipc_call_handoff_step_iso(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y);
-            },
+            StepLabel::IpcCallHandoff { channel_index, flushed_pcid } => { ipc_call_handoff_step_lr(old_u, new_u, cpu_id, channel_index, flushed_pcid, x, y); ipc_call_handoff_step_iso(old_u, new_u, cpu_id, channel_index, flushed_pcid, x, y); },
             StepLabel::IpcAcceptCall { channel_index } => { ipc_accept_call_step_lr(old_u, new_u, cpu_id, channel_index, x, y); ipc_accept_call_step_iso(old_u, new_u, cpu_id, channel_index, x, y); },
-            StepLabel::IpcReplyHandoff { channel_index, regs, flushed_pcid } => {
-                ipc_reply_handoff_step_lr(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y); ipc_reply_handoff_step_iso(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y);
-            },
+            StepLabel::IpcReplyHandoff { channel_index, flushed_pcid } => { ipc_reply_handoff_step_lr(old_u, new_u, cpu_id, channel_index, flushed_pcid, x, y); ipc_reply_handoff_step_iso(old_u, new_u, cpu_id, channel_index, flushed_pcid, x, y); },
             StepLabel::IpcReplyDanglingCallerTakenOver { channel_index } => {
                 ipc_reply_dangling_caller_taken_over_step_lr(old_u, new_u, cpu_id, channel_index, x, y); ipc_reply_dangling_caller_taken_over_step_iso(old_u, new_u, cpu_id, channel_index, x, y);
             },
@@ -547,6 +544,10 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::TrapEnter => { trap_enter_step_lr(old_u, new_u, cpu_id, x, y); trap_enter_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::TrapReturn => { trap_return_step_lr(old_u, new_u, cpu_id, x, y); trap_return_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::TrapDivert => { trap_divert_step_lr(old_u, new_u, cpu_id, x, y); trap_divert_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::RegsChanged { regs } => { regs_changed_step_lr(old_u, new_u, cpu_id, regs, x, y); regs_changed_step_iso(old_u, new_u, cpu_id, regs, x, y); },
+            StepLabel::TrapReturnValuesWritten { rax, rdx, rsi } => {
+                trap_return_values_written_step_lr(old_u, new_u, cpu_id, rax, rdx, rsi, x, y); trap_return_values_written_step_iso(old_u, new_u, cpu_id, rax, rdx, rsi, x, y);
+            },
             StepLabel::CpuTlbFilled { cpu_id: filled_cpu, pcid, added } => { cpu_tlb_filled_step_lr(old_u, new_u, filled_cpu, pcid, added, y); cpu_tlb_filled_step_iso(old_u, new_u, filled_cpu, pcid, added, x, y); },
             StepLabel::IommuTlbFilled { did, added } => { iommu_tlb_filled_step_lr(old_u, new_u, did, added, y); iommu_tlb_filled_step_iso(old_u, new_u, did, added, x, y); },
             StepLabel::IommuContextCacheFilled => { iommu_context_cache_filled_step_lr(old_u, new_u, y); iommu_context_cache_filled_step_iso(old_u, new_u, x, y); },

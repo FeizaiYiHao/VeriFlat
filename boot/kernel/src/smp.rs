@@ -44,7 +44,7 @@ pub unsafe fn start_aps() {
     log::info!("{} CPUs present", count);
 }
 
-/// AP entry from the trampoline, on the AP's kernel stack below its trap-frame slot.
+/// AP entry from the trampoline, on the top of the AP's kernel stack.
 extern "C" fn ap_main(cpu_id: u64) -> ! {
     let cpu_id = cpu_id as usize;
     unsafe {

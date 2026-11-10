@@ -35,9 +35,9 @@ pub(super) proof fn schedule_result_from_k(krnl: &KernelK, cpu_id: CpuId, ret: S
 }
 
 /// The context-switch wrapper's user-view facts are exactly the schedule step on `pre`/`post`.
-pub(super) proof fn schedule_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, next_thread: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>)
+pub(super) proof fn schedule_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, next_thread: RwLockThreadPtr, flushed_pcid: Option<Pcid>)
     requires
-        kernel_u_context_switch_changed(pre, post, cpu_id, next_thread, regs, flushed_pcid),
+        kernel_u_context_switch_changed(pre, post, cpu_id, next_thread, flushed_pcid),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let container = pre.container_map.spec_index(cpu.owning_container);
@@ -70,24 +70,24 @@ pub(super) proof fn schedule_step_from_u(pre: KernelU, post: KernelU, cpu_id: Cp
         },
     ensures
         schedule_step_pre(pre, cpu_id),
-        schedule_step(pre, post, cpu_id, regs, flushed_pcid),
+        schedule_step(pre, post, cpu_id, flushed_pcid),
 { reveal(schedule_step_pre); }
 
 /// The one step pushed since `before` is the complete switching trace.
-pub(super) proof fn schedule_trace_switch_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, flushed_pcid: Option<Pcid>)
+pub(super) proof fn schedule_trace_switch_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, flushed_pcid: Option<Pcid>)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         schedule_step_pre(pre, cpu_id),
-        schedule_step(pre, post, cpu_id, regs, flushed_pcid),
+        schedule_step(pre, post, cpu_id, flushed_pcid),
     ensures
-        schedule_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, regs, true, flushed_pcid),
+        schedule_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, true, flushed_pcid),
 { reveal(schedule_syscall_trace); }
 
 /// A call that does not switch records no step.
-pub(super) proof fn schedule_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, regs: Registers)
+pub(super) proof fn schedule_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId)
     requires
         trace.len() == 0,
     ensures
-        schedule_syscall_trace(trace, pre, pre, cpu_id, regs, false, None),
+        schedule_syscall_trace(trace, pre, pre, cpu_id, false, None),
 { reveal(schedule_syscall_trace); }
 } // verus!

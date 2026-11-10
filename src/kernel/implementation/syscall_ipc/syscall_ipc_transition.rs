@@ -12,7 +12,7 @@ verus! {
     pub(super) fn ipc_block_current(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         prc_ptr: RwLockProcessPtr, current_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
-        waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers, cpu_lock_perm: Tracked<LockPerm>,
+        waiting_state: ThreadState, payload: IPCPayLoad, cpu_lock_perm: Tracked<LockPerm>,
         current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
@@ -28,6 +28,7 @@ verus! {
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
             old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+            old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(ep_idx),
             old(lctx).kernel_view_locking_state() is Acquire,
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -104,9 +105,9 @@ verus! {
             final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
             ipc_block_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state),
             ipc_block_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id,
-                ep_idx, waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id)),
+                ep_idx, waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id)),
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-                kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::CpuIdle),
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, ep_idx, waiting_state, payload, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::CpuIdle),
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -125,11 +126,14 @@ verus! {
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
             }) by { cpu_array_wf_implies_array_inv(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, cpu_id); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, current_thrd_ptr);
             assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.length != usize::MAX) by { endpoint_queue_len_bounded(&*krnl, ep_ptr); };
             assert(krnl.ep_mp.spec_index(ep_ptr).view().queue.view().len() == krnl.ep_mp.spec_index(ep_ptr).view().queue.length) by { endpoint_perms_wf_at(krnl.ep_mp, ep_ptr); krnl.ep_mp.spec_index(ep_ptr).view().queue.wf_implies_view_len_eq_len(); };
         }
 
-        let (endpoint_node_addr, endpoint_node_perm) = ipc_block_thread_on_endpoint(&mut krnl.thrd_mp, Tracked(&*lctx), current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, pt_regs, Tracked(&current_thread_lock_perm));
+        let tracked current_frame = krnl.cpu_trap_frame.borrow_mut().take(&*lctx);
+        let (endpoint_node_addr, endpoint_node_perm) = ipc_block_thread_on_endpoint(&mut krnl.thrd_mp, Tracked(&*lctx), current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, Tracked(current_frame),
+            Tracked(&current_thread_lock_perm));
 
         ipc_enqueue_endpoint_waiter(&mut krnl.ep_mp, Tracked(&*lctx), ep_ptr, current_thrd_ptr, waiting_state, endpoint_node_addr, endpoint_node_perm, Tracked(&endpoint_lock_perm));
 
@@ -147,7 +151,7 @@ verus! {
 
         proof { assert(old(krnl).ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container)) by { container_thread_wf_thread_at(old(krnl).ctn_mp, old(krnl).thrd_mp, current_thrd_ptr); }; }
         ipc_block_current_release_and_end_step(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload, pt_regs,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, payload,
             Ghost(default_cr3), Ghost(*old(krnl)), Ghost(locked_k), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(needflush_perm),
         );
         RetValueType::CpuIdle
@@ -293,9 +297,10 @@ verus! {
         );
         proof {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
-            assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None)) by {
-                broadcast use kernel_process_nonlock_fields_unchanged_transitive;
-                reveal(kernel_ipc_rendezvous_fields);                             };
+            assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None)
+                && krnl.cpu_regs.view().view() == steps.snapshot_k().cpu_regs.view().view() && krnl.cpu_trap_frame.view().view() == steps.snapshot_k().cpu_trap_frame.view().view()) by {
+                broadcast use kernel_process_nonlock_fields_unchanged_transitive; reveal(kernel_ipc_rendezvous_fields);
+            };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)

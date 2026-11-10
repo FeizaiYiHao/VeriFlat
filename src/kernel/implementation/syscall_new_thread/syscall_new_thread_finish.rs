@@ -113,6 +113,7 @@ pub(super) fn finish_new_thread_commit(
         let ghost finish_before = steps.view();
         steps.end_kernel_step_new_thread(&*krnl, &*lctx, prc_ptr, current_thrd_ptr, ctn_ptr, cpu_id, new_thrd_ptr, *initial_regs, None, None);
         assert(new_thread_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None, true)) by {
+            cpu_op_wf_at(finish_k.cpu_op.view().view(), finish_k.cpu_arr, cpu_id);
             kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, new_thrd_ptr, *initial_regs, None, None, None);
             new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, prc_ptr, current_thrd_ptr, ctn_ptr, new_thrd_ptr, None, *initial_regs, None);
             new_thread_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None);

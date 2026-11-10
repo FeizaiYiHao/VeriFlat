@@ -14,6 +14,8 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
     ep_ptr: Option<RwLockEndpointPtr>, container: Option<RwLockContainerPtr>, cpu_set_unlocked: Option<KernelK>,
 )
     requires
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         typed_lock_maps_aligned(post, lctx),
         lctx.cpu_id() == cpu_id,
@@ -117,7 +119,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
                 lock_state: pre.thrd_mp.spec_index(thrd_ptr).lock_state_u(), state: t.state, caller: t.caller, callee: t.callee,
                 owning_container: t.owning_container, owning_proc: t.owning_proc, last_cpu: t.last_cpu, quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g,
                 endpoint_descriptors: t.endpoint_descriptors.view(), blocking_endpoint_ptr: t.blocking_endpoint_ptr, ipc_payload: t.ipc_payload,
-                error_code: t.error_code, trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None },
+                error_code: t.error_code, regs: match t.state { ThreadState::RUNNING { cpu_id } => if pre.cpu_op.view().view()[cpu_id as int] is User { pre.cpu_regs.view().view()[cpu_id as int] } else { pre.cpu_trap_frame.view().view()[cpu_id].value() }, _ => t.trap_frame.view()->Some_0 },
                 syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
             })
             &&& ep_ptr is Some ==> old_u.endpoint_map.spec_index(ep_ptr->Some_0).lock_state == pre.ep_mp.spec_index(ep_ptr->Some_0).lock_state_u()
@@ -183,6 +185,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
     new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers, ep_ptr: Option<RwLockEndpointPtr>, source: RwLockProcessPtr,
 )
     requires
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
@@ -325,6 +329,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     new_thrd_ptr: RwLockThreadPtr, initial_regs: Registers, ep_ptr: Option<RwLockEndpointPtr>, source: RwLockProcessPtr, source_container: RwLockContainerPtr,
 )
     requires
+        (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(post.thrd_mp, post.cpu_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),

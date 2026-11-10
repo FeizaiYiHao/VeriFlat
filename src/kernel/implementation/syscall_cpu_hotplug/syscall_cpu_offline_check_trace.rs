@@ -90,9 +90,9 @@ pub(super) proof fn cpu_offline_check_release_step_from_u(before: &KernelK, afte
 
 /// The went-off wrapper's user-view facts from the decision snapshot `snap`, which write-holds the cpu since the hold step,
 /// are exactly the offline step from `snap` to `post`.
-pub(super) proof fn cpu_offline_check_step_from_u(snap: &KernelK, post: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
+pub(super) proof fn cpu_offline_check_step_from_u(snap: &KernelK, post: KernelU, cpu_id: CpuId, flushed_default_pcid: bool)
     requires
-        kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(*snap), post, cpu_id, regs, flushed_default_pcid),
+        kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(*snap), post, cpu_id, flushed_default_pcid),
         {
             let old_u = kernel_k_to_kernel_u(*snap);
             let cpu = old_u.cpu_array[cpu_id as int];
@@ -102,7 +102,7 @@ pub(super) proof fn cpu_offline_check_step_from_u(snap: &KernelK, post: KernelU,
         },
     ensures
         cpu_offline_check_step_pre(kernel_k_to_kernel_u(*snap), cpu_id),
-        cpu_offline_check_step(kernel_k_to_kernel_u(*snap), post, cpu_id, regs, flushed_default_pcid),
+        cpu_offline_check_step(kernel_k_to_kernel_u(*snap), post, cpu_id, flushed_default_pcid),
 { reveal(cpu_offline_check_step_pre); reveal(kernel_u_cpu_went_off_changed); }
 
 /// The hold step recorded at the boundary after `before` is the one step pushed onto it and the partial trace after
@@ -120,7 +120,7 @@ pub(super) proof fn cpu_offline_check_trace_hold_step(steps: &KernelSteps, befor
 /// The release step recorded after the partial trace after holding from `entry`, which starts at `start`, completes the
 /// continuing trace.
 pub(super) proof fn cpu_offline_check_trace_release_step(
-    steps: &KernelSteps, start: int, before: Seq<KernelStep>, entry: KernelU, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers,
+    steps: &KernelSteps, start: int, before: Seq<KernelStep>, entry: KernelU, pre: KernelU, post: KernelU, cpu_id: CpuId,
 )
     requires
         0 <= start <= before.len(),
@@ -128,7 +128,7 @@ pub(super) proof fn cpu_offline_check_trace_release_step(
         steps.view() == record_user_view_change(before, pre, post),
         cpu_offline_check_release_step_pre(pre, cpu_id),
         cpu_offline_check_release_step(pre, post, cpu_id),
-    ensures cpu_offline_check_entry_trace(steps.view().subrange(start, steps.view().len() as int), entry, post, cpu_id, regs, false, false),
+    ensures cpu_offline_check_entry_trace(steps.view().subrange(start, steps.view().len() as int), entry, post, cpu_id, false, false),
 {
     reveal(cpu_offline_check_release_step_pre); reveal(cpu_offline_check_release_step); reveal(cpu_offline_check_trace_after_hold); reveal(cpu_offline_check_entry_trace);
 }
@@ -136,19 +136,19 @@ pub(super) proof fn cpu_offline_check_trace_release_step(
 /// The offline step pushed after the partial trace after holding from `entry`, which starts at `start`, completes the
 /// went-off trace.
 pub(super) proof fn cpu_offline_check_trace_went_off_step(
-    steps: &KernelSteps, start: int, before: Seq<KernelStep>, entry: KernelU, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool,
+    steps: &KernelSteps, start: int, before: Seq<KernelStep>, entry: KernelU, pre: KernelU, post: KernelU, cpu_id: CpuId, flushed_default_pcid: bool,
 )
     requires
         0 <= start <= before.len(),
         cpu_offline_check_trace_after_hold(before.subrange(start, before.len() as int), entry, cpu_id),
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         cpu_offline_check_step_pre(pre, cpu_id),
-        cpu_offline_check_step(pre, post, cpu_id, regs, flushed_default_pcid),
-    ensures cpu_offline_check_entry_trace(steps.view().subrange(start, steps.view().len() as int), entry, post, cpu_id, regs, true, flushed_default_pcid),
+        cpu_offline_check_step(pre, post, cpu_id, flushed_default_pcid),
+    ensures cpu_offline_check_entry_trace(steps.view().subrange(start, steps.view().len() as int), entry, post, cpu_id, true, flushed_default_pcid),
 { reveal(cpu_offline_check_trace_after_hold); reveal(cpu_offline_check_entry_trace); }
 
 /// A check whose entry cpu is killed or not requested continues before holding and records no step.
-pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl: &KernelK, cpu_id: CpuId, regs: Registers)
+pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl: &KernelK, cpu_id: CpuId)
     requires
         index_valid(NUM_CPUS, cpu_id),
         trace.len() == 0,
@@ -159,7 +159,7 @@ pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl
             &&& !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
             &&& cpu.being_killed() || !requested
         },
-    ensures cpu_offline_check_entry_trace(trace, kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl), cpu_id, regs, false, false),
+    ensures cpu_offline_check_entry_trace(trace, kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl), cpu_id, false, false),
 {
     let c = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
     kernel_cpu_projection_at(krnl, cpu_id);
@@ -171,7 +171,7 @@ pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl
 /// with and changing nothing else from `entry` but the offline flags' lock states, records no step at the release after
 /// `before` and continues before holding.
 pub(super) proof fn cpu_offline_check_trace_stutter_released(
-    steps: &KernelSteps, before: Seq<KernelStep>, entry: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers,
+    steps: &KernelSteps, before: Seq<KernelStep>, entry: &KernelK, post: &KernelK, cpu_id: CpuId,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -190,9 +190,9 @@ pub(super) proof fn cpu_offline_check_trace_stutter_released(
             &&& entry.ctn_mp.dom().contains(c.owning_container)
             &&& !entry.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c.owning_container)).flags.spec_index(cpu_id).view().view().requested
         },
-    ensures cpu_offline_check_entry_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*entry), kernel_k_to_kernel_u(*post), cpu_id, regs, false, false),
+    ensures cpu_offline_check_entry_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*entry), kernel_k_to_kernel_u(*post), cpu_id, false, false),
 {
     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(entry, post);
-    cpu_offline_check_trace_stutter(steps.view().subrange(before.len() as int, steps.view().len() as int), entry, cpu_id, regs);
+    cpu_offline_check_trace_stutter(steps.view().subrange(before.len() as int, steps.view().len() as int), entry, cpu_id);
 }
 } // verus!

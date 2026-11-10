@@ -282,8 +282,9 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
             &&& index_valid(NUM_CPUS, remote)
             &&& remote != old(lctx).cpu_id()
             &&& final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int] == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int]
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, cpu_op: final(krnl).cpu_op, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, cpu_op: final(krnl).cpu_op, cpu_trap_frame: final(krnl).cpu_trap_frame, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(remote as int, CpuOpState::Idle)
+            &&& final(krnl).cpu_trap_frame.view().view() == old(krnl).cpu_trap_frame.view().view().remove(remote)
             &&& forall|c: CpuId| #![trigger final(krnl).cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != remote ==> final(krnl).cpu_arr.spec_index(c) == old(krnl).cpu_arr.spec_index(c)
             &&& final(krnl).cpu_arr.spec_index(remote).value.lock_state_u() == old(krnl).cpu_arr.spec_index(remote).value.lock_state_u()
             &&& final(krnl).cpu_arr.spec_index(remote).value.being_killed() == old(krnl).cpu_arr.spec_index(remote).value.being_killed()
@@ -293,7 +294,9 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
             &&& after_cpu.current_thread is None
             &&& after_cpu.owning_container == old(krnl).cpu_arr.spec_index(remote).value.view().view().owning_container
             &&& final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, victim_ptr)
-            &&& after.view() == (Thread { state: ThreadState::KILLED, ..victim.view() })
+            &&& after.view() == (Thread { state: ThreadState::KILLED, trap_frame: after.view().trap_frame, ..victim.view() })
+            &&& after.view().trap_frame.view()
+                == Some(if old(krnl).cpu_op.view().view()[remote as int] is User { old(krnl).cpu_regs.view().view()[remote as int] } else { old(krnl).cpu_trap_frame.view().view()[remote].value() })
             &&& after.locking_thread() == victim.locking_thread()
             &&& after.being_killed() == victim.being_killed()
             &&& final(krnl).thrd_mp.lock_id_by_key(victim_ptr) == old(krnl).thrd_mp.lock_id_by_key(victim_ptr)
@@ -340,14 +343,16 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
         };
         assert(krnl.cpu_hw_cr3_pcid[remote as int].owner_cpu() == remote) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, remote); };
         assert(krnl.cpu_arr.spec_index(remote).view().view().kernel_call_perm() == Some(remote) && !(krnl.cpu_op.view().view()[remote as int] is InStep)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, remote); };
+        cpu_trap_frame_wf_at(krnl.cpu_trap_frame.view().view(), krnl.cpu_arr, remote); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, victim_ptr);
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
     assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_wf_implies_view_inv(); };
-    krnl.cpu_arr.ipi_remote_running_to_idle(remote, default_cr3, Ghost(killer_info), &mut krnl.cpu_hw_cr3_pcid, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+    let frame = krnl.cpu_arr.ipi_remote_running_to_idle(remote, default_cr3, Ghost(killer_info), &mut krnl.cpu_hw_cr3_pcid, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&mut *lctx),
+        Tracked(&cpu_lock_perm), Tracked(krnl.cpu_regs.borrow()), Tracked(krnl.cpu_trap_frame.borrow_mut()));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {
         let victim = krnl.thrd_mp.borrow_mut_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));
-        victim.running_to_killed();
+        victim.running_to_killed(frame);
     }
     proof {
         assert(kill_cpu_to_idle_eof_transition_framing(pre, *krnl, victim_ptr, remote, default_cr3)) by { reveal(kill_cpu_to_idle_eof_transition_framing); };

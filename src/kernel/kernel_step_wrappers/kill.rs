@@ -86,6 +86,8 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
         after.prc_mp.spec_index(prc_ptr).locking_thread() == before.prc_mp.spec_index(prc_ptr).locking_thread(),
         after.prc_mp.spec_index(prc_ptr).being_killed() == before.prc_mp.spec_index(prc_ptr).being_killed(),
         after.thrd_mp.dom() == before.thrd_mp.dom(),
+        !(before.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
+        !(after.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
         forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)] before.thrd_mp.dom().contains(t) && t != thrd_ptr ==> {
             &&& after.thrd_mp.spec_index(t).view() == before.thrd_mp.spec_index(t).view()
             &&& after.thrd_mp.spec_index(t).locking_thread() == before.thrd_mp.spec_index(t).locking_thread()
@@ -183,6 +185,11 @@ proof fn kernel_thread_left_process_implies_u_thread_map(before: &KernelK, after
     requires
         before.thrd_mp.dom().contains(thrd_ptr),
         after.thrd_mp.dom() == before.thrd_mp.dom(),
+        after.cpu_regs.view().view() == before.cpu_regs.view().view(),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view(),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
+        !(before.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
+        !(after.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
         forall|t: RwLockThreadPtr| #![trigger after.thrd_mp.spec_index(t)] before.thrd_mp.dom().contains(t) && t != thrd_ptr ==> {
             &&& after.thrd_mp.spec_index(t).view() == before.thrd_mp.spec_index(t).view()
             &&& after.thrd_mp.spec_index(t).locking_thread() == before.thrd_mp.spec_index(t).locking_thread()
@@ -227,6 +234,7 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
         scheduler_shards_of(after.sched_mp.spec_index(sched_ptr)) == scheduler_shards_of(before.sched_mp.spec_index(sched_ptr)).update(shard as int, scheduler_shards_of(before.sched_mp.spec_index(sched_ptr))[shard as int].remove_value(thrd_ptr)),
         before.thrd_mp.dom().contains(thrd_ptr),
         !(before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED),
+        !(before.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
         after.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
             state: ThreadState::KILLED, error_code: None, scheduler_linkedlist_node: after.thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node, ..before.thrd_mp.spec_index(thrd_ptr).view()
@@ -284,6 +292,7 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
         after.ep_mp.spec_index(ep_ptr).being_killed() == before.ep_mp.spec_index(ep_ptr).being_killed(),
         before.thrd_mp.dom().contains(thrd_ptr),
         !(before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED),
+        !(before.thrd_mp.spec_index(thrd_ptr).view().state is RUNNING),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
         after.thrd_mp.spec_index(thrd_ptr).view() == (Thread {
             state: ThreadState::KILLED, blocking_endpoint_ptr: None, blocking_endpoint_index: None,
@@ -323,9 +332,11 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
 pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         index_valid(NUM_CPUS, remote),
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_hw_cr3_pcid: after.cpu_hw_cr3_pcid, cpu_op: after.cpu_op, thrd_mp: after.thrd_mp, ..*before }),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_hw_cr3_pcid: after.cpu_hw_cr3_pcid, cpu_op: after.cpu_op, cpu_trap_frame: after.cpu_trap_frame, thrd_mp: after.thrd_mp, ..*before }),
         before.cpu_op.view().view().len() == NUM_CPUS,
         after.cpu_op.view().view() == before.cpu_op.view().view().update(remote as int, CpuOpState::Idle),
+        after.cpu_trap_frame.view().view() == before.cpu_trap_frame.view().view().remove(remote),
+        thread_cpu_wf(before.thrd_mp, before.cpu_arr),
         forall|c: CpuId| #![trigger after.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != remote ==> after.cpu_arr.spec_index(c) == before.cpu_arr.spec_index(c),
         after.cpu_arr.spec_index(remote).value.lock_state_u() == before.cpu_arr.spec_index(remote).value.lock_state_u(),
         after.cpu_arr.spec_index(remote).value.being_killed() == before.cpu_arr.spec_index(remote).value.being_killed(),
@@ -334,9 +345,11 @@ pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, 
         after.cpu_arr.spec_index(remote).value.view().view().current_thread is None,
         after.cpu_arr.spec_index(remote).value.view().view().owning_container == before.cpu_arr.spec_index(remote).value.view().view().owning_container,
         before.thrd_mp.dom().contains(thrd_ptr),
-        !(before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED),
+        before.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id: remote }),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
-        after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { state: ThreadState::KILLED, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
+        after.thrd_mp.spec_index(thrd_ptr).view() == (Thread { state: ThreadState::KILLED, trap_frame: after.thrd_mp.spec_index(thrd_ptr).view().trap_frame, ..before.thrd_mp.spec_index(thrd_ptr).view() }),
+        after.thrd_mp.spec_index(thrd_ptr).view().trap_frame.view()
+            == Some(if before.cpu_op.view().view()[remote as int] is User { before.cpu_regs.view().view()[remote as int] } else { before.cpu_trap_frame.view().view()[remote].value() }),
         after.thrd_mp.spec_index(thrd_ptr).locking_thread() == before.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         after.thrd_mp.spec_index(thrd_ptr).being_killed() == before.thrd_mp.spec_index(thrd_ptr).being_killed(),
     ensures
@@ -354,12 +367,14 @@ pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, 
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr);
+    kernel_thread_projection_at(before, thrd_ptr); kernel_thread_projection_at(after, thrd_ptr); thread_cpu_wf_thread_at(before.thrd_mp, before.cpu_arr, thrd_ptr);
     assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
     });
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[thrd_ptr] }), t => {
-        if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+        let c = before.thrd_mp.spec_index(t).view().state->RUNNING_cpu_id;
+        if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); thread_cpu_wf_thread_at(before.thrd_mp, before.cpu_arr, t); }
+        if c != remote { vstd::map::axiom_map_remove_different(before.cpu_trap_frame.view().view(), c, remote); }
     });
     kernel_container_maps_unchanged_implies_u_container_map(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
     kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);

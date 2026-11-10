@@ -82,24 +82,24 @@ pub proof fn cpu_offline_check_release_step_iso(old_u: KernelU, new_u: KernelU, 
 }
 
 /// A cpu of `a` going Off, requeueing its thread in its own container, leaves the view of `b` unchanged.
-pub proof fn cpu_offline_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn cpu_offline_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         cpu_offline_check_step_pre(old_u, cpu_id),
-        cpu_offline_check_step(old_u, new_u, cpu_id, regs, flushed_default_pcid),
+        cpu_offline_check_step(old_u, new_u, cpu_id, flushed_default_pcid),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(kernel_u_cpu_went_off_changed); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `cpu_offline_check_step_lr` preserves isolation.
-pub proof fn cpu_offline_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn cpu_offline_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, flushed_default_pcid: bool, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         cpu_offline_check_step_pre(old_u, cpu_id),
-        cpu_offline_check_step(old_u, new_u, cpu_id, regs, flushed_default_pcid),
+        cpu_offline_check_step(old_u, new_u, cpu_id, flushed_default_pcid),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_cpu_went_off_changed); reveal(kernel_u_cpu_ownership_wf);

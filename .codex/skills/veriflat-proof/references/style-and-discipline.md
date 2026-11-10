@@ -140,7 +140,8 @@
   outside the explicitly approved page-retype TCB boundary:
   `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
   `retype_page_perm_2m_to_rwlock`, the private `retype_region_perm_to_rwlock`,
-  `split_region_tail_into_node`, `retype_container_page_perm_to_rwlock`,
+  `split_region_tail_into_node`, `split_region_tail_into_trap_frame`,
+  `retype_container_page_perm_to_rwlock`,
   `retype_container_page_tail_to_offline_flags`, and the inverses
   `retype_thread_rwlock_to_4k_page_perm`,
   `retype_process_rwlock_to_4k_page_perm`, and
@@ -152,7 +153,14 @@
   the exact inverse for thread exit, process reclaim, or endpoint release;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
-  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.
+  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`. The
+  user-register model trusts `CpuRegsArray::new_boot` (init only), the
+  trap-handler env events (`kernel_k_trap_enter`, `kernel_k_trap_return`,
+  `kernel_k_trap_divert`, `kernel_k_regs_changed`,
+  `kernel_k_trap_return_values_written`), and
+  `ipi_remote_running_to_idle_raw` returning the target's sealed
+  `TrapFramePerm`; `TrapFramePerm` and `CpuTrapFrameTable` are verified and
+  must stay sealed (no accessor returns the inner `PointsTo<Registers>`).
   Authorized temporary diagnostics must be removed immediately.
 - Treat existing `external_body` contracts, mathematical axioms, and permission
   construction with `Tracked::assume_new()` as trust boundaries. Do not replace

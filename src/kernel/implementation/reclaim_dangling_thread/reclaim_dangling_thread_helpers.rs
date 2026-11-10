@@ -163,6 +163,7 @@ pub(super) fn reclaim_dangling_thread_drain_full_cache(
         kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
+        old(krnl).cpu_trap_frame.view().view().dom().contains(old(lctx).cpu_id()) ==> final(krnl).cpu_trap_frame.view().view().dom().contains(old(lctx).cpu_id()) && final(krnl).cpu_trap_frame.view().view()[old(lctx).cpu_id()] == old(krnl).cpu_trap_frame.view().view()[old(lctx).cpu_id()],
         final(krnl).allc_4k_mp.dom().contains(allc_ptr),
         final(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
         cache_lock_perm.lock_id() == final(krnl).allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,

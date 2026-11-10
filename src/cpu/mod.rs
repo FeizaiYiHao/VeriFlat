@@ -13,6 +13,8 @@ pub mod cpu_offline_flags_map;
 pub mod cpu_offline_flags_lock_t;
 pub mod cpu_ipi;
 pub mod cpu_op;
+pub mod cpu_regs;
+pub mod cpu_trap_frame;
 
 pub use atomic_pcid_cr3::AtomicPcidCr3;
 pub use cpu_def::*;
@@ -24,5 +26,7 @@ pub use cpu_offline_flags::*;
 pub use cpu_offline_flags_lock_t::*;
 pub use cpu_ipi::*;
 pub use cpu_op::*;
+pub use cpu_regs::*;
+pub use cpu_trap_frame::*;
 
 pub mod cpu_tlb_flush;

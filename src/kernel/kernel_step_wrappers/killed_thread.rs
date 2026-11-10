@@ -153,6 +153,7 @@ pub proof fn kernel_dangling_caller_taken_over_implies_u_step(
         before.thrd_mp.dom().contains(dangling_ptr),
         callee_ptr != dangling_ptr,
         *after == (KernelK { thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, ..*before }),
+        !(before.thrd_mp.spec_index(dangling_ptr).view().state is RUNNING),
         match endpoint {
             Some(e) => before.ep_mp.dom().contains(e) && after.ep_mp.unchanged_except(&before.ep_mp, e) && wunlock_ensures(before.ep_mp.spec_index(e), after.ep_mp.spec_index(e)),
             None => after.ep_mp == before.ep_mp,
@@ -197,6 +198,8 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
         *after == (KernelK { cpu_arr: after.cpu_arr, cpu_op: after.cpu_op, thrd_mp: after.thrd_mp, ..*before }),
         after.cpu_arr.entries_unchanged_except(&before.cpu_arr, cpu_id),
         forall|i: CpuId| #![trigger after.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> after.cpu_op.view().view()[i as int] == before.cpu_op.view().view()[i as int],
+        (after.cpu_op.view().view()[cpu_id as int] is User) == (before.cpu_op.view().view()[cpu_id as int] is User),
+        thread_cpu_wf(before.thrd_mp, before.cpu_arr),
         after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         after.cpu_arr.spec_index(cpu_id).value.being_killed() == before.cpu_arr.spec_index(cpu_id).value.being_killed(),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
@@ -218,6 +221,7 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thrd_ptr] }), t => {
         if before.thrd_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+        thread_cpu_wf_thread_at(before.thrd_mp, before.cpu_arr, t);
     });
     assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: after.cpu_op.view().view()[cpu_id as int], ..pre.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
