@@ -102,6 +102,7 @@ impl Merge2mCursorQueue {
                 assert(self.ordered_from(first)) by { broadcast use vstd::arithmetic::div_mod::lemma_fundamental_div_mod; };
                 return;
             }
+            assert((left as int - 1) / 2 == hole as int && (right as int - 1) / 2 == hole as int) by (nonlinear_arith) requires left == 2 * hole + 1, right == left + 1;
             self.swap_cursors(hole, child);
             hole = child;
         }

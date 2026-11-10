@@ -38,6 +38,7 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
                 == merge_2m_cursor_suffix(pre.allc_4k_mp.spec_index(allocator_4k), cursor)
         }),
 {
+    hide(Merge2mCursorQueue::wf);
     let cursors = scanner.queue.cursors.view();
     let before_allocator = pre.allc_4k_mp.spec_index(allocator_4k);
     let after_allocator = post.allc_4k_mp.spec_index(allocator_4k);
@@ -50,7 +51,6 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
     assert(before_sets.fold_left(Set::<PagePtr>::empty(), |pages: Set<PagePtr>, added: Set<PagePtr>| pages.union(added))
         == scanner.unscanned_pages(before_allocator)) by { reveal(Merge2mScanner::unscanned_pages); };
     page_ptr_roundtrip(); page_index_roundtrip();
-
     let cursor = cursors.spec_index(i);
     let before = before_allocator.merge_2m_source_list(cursor.source);
     let after = after_allocator.merge_2m_source_list(cursor.source);
@@ -70,7 +70,6 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
         assert_sets_equal!(after_sets.spec_index(i), before_sets.spec_index(i), pointer => {
             before.view().skip(position).to_set_ensures(); after.view().skip(new_position).to_set_ensures();
             if before.view().skip(position).contains(pointer) {
-                before.view().skip(position).index_of_first_ensures(pointer);
                 let old_index = before.view().skip(position).index_of(pointer);
                 vstd::seq_lib::lemma_seq_skip_index(before.view(), position, old_index);
                 vstd::seq_lib::lemma_seq_skip_contains(before.view(), position, pointer);
@@ -92,7 +91,6 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
                 after.view().skip(new_position).index_of_first_ensures(pointer);
                 let new_index = after.view().skip(new_position).index_of(pointer);
                 vstd::seq_lib::lemma_seq_skip_index(after.view(), new_position, new_index);
-                vstd::seq_lib::lemma_seq_skip_contains(after.view(), new_position, pointer);
                 before.view().index_of_first_ensures(pointer);
                 let old_index = before.view().index_of(pointer);
                 before.view().lemma_index_contains(old_index);
@@ -100,7 +98,6 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
             }
         });
     }
-
     assert(Merge2mScanner::cursor_wf(after_allocator, cursors.spec_index(i))) by {
         let cursor = cursors.spec_index(i);
         if cursor.node is Some {
@@ -126,7 +123,6 @@ pub proof fn merge_2m_commit_eof_implies_scanner_wf(pre: KernelK, post: KernelK,
     ensures
         scanner.wf(post.allc_4k_mp.spec_index(allocator_4k)),
 {
-    hide(KernelK::inv); hide(Merge2mScanner::unscanned_pages); hide(merge_2m_source_pages);
     let cursors = scanner.queue.cursors.view();
     let before_allocator = pre.allc_4k_mp.spec_index(allocator_4k);
     let after_allocator = post.allc_4k_mp.spec_index(allocator_4k);
@@ -134,18 +130,14 @@ pub proof fn merge_2m_commit_eof_implies_scanner_wf(pre: KernelK, post: KernelK,
     let after_suffix = |cursor: Merge2mCursor| merge_2m_cursor_suffix(after_allocator, cursor);
     let before_sets = cursors.map_values(before_suffix);
     let after_sets = cursors.map_values(after_suffix);
-    assert(before_sets.fold_left(Set::<PagePtr>::empty(), |pages: Set<PagePtr>, added: Set<PagePtr>| pages.union(added))
-        == scanner.unscanned_pages(before_allocator)) by { reveal(Merge2mScanner::unscanned_pages); };
     page_ptr_roundtrip(); page_index_roundtrip();
     broadcast use merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchanged;
-
     assert_seqs_equal!(after_sets, before_sets);
     assert(scanner.unscanned_pages(after_allocator) == scanner.unscanned_pages(before_allocator)) by {
         reveal(Merge2mScanner::unscanned_pages);
     };
     assert(scanner.wf(after_allocator)) by {
         broadcast use Seq::to_set_ensures;
-        reveal(merge_2m_source_pages);
         sequence_pointwise_subset_implies_union_fold_subset(Seq::new((NUM_CPUS + 1) as nat, |source: int| before_allocator.merge_2m_source_list(source as usize).view().to_set()),
             Seq::new((NUM_CPUS + 1) as nat, |source: int| after_allocator.merge_2m_source_list(source as usize).view().to_set()));
     };

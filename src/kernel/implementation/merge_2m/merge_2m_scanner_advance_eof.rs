@@ -338,7 +338,6 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
     list.view().lemma_index_contains(position);
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     if cursor.source < NUM_CPUS { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.source, cursor.page); }
-    else { allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cursor.page); }
     assert(post.candidate_prefix_valid(krnl, allocator)) by {
         reveal(Merge2mScanner::candidate_prefix_valid); reveal(allocator_free_4k_pages_wf);
         reveal(allocator_cpu_cache_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf);
@@ -346,7 +345,6 @@ pub proof fn merge_2m_scan_page_eof_implies_candidate_prefix(pre: Merge2mScanner
     assert(post.initial_pages.view() == post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)))) by {
         assert_sets_equal!(post.initial_pages.view(), post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator))));
     };
-
 }
 
 pub broadcast proof fn merge_2m_scan_page_eof_implies_unreturned_page_remains(pre: Merge2mScanner, post: Merge2mScanner, krnl: &KernelK,
@@ -385,7 +383,7 @@ pub broadcast proof fn merge_2m_scan_page_eof_implies_unreturned_page_remains(pr
                 && post.consumed_pages.view().contains(spec_page_index2page_ptr(page))
         }),
 {
-    hide(Merge2mScanner::wf); hide(Merge2mScanner::candidate_prefix_valid); hide(Merge2mCursorQueue::wf);
+    hide(Merge2mScanner::candidate_prefix_valid); hide(Merge2mCursorQueue::wf);
     assert({
         &&& pre.queue.wf()
         &&& pre.queue.cursors.view().map_values(Merge2mCursor::source_value()).no_duplicates()
@@ -396,25 +394,14 @@ pub broadcast proof fn merge_2m_scan_page_eof_implies_unreturned_page_remains(pr
     }) by { reveal(Merge2mScanner::wf); };
     merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, index, next, complete);
     let cursor = pre.queue.cursors.view().spec_index(0);
-    let offset = (page - head) as usize;
-    page_ptr_roundtrip(); page_index_roundtrip();
+    page_ptr_roundtrip();
     let pointer = spec_page_index2page_ptr(page);
-
-    pre.scanner_wf_at(krnl.allc_4k_mp.spec_index(allocator), head, offset);
-
     if head == pre.candidate.head && pre.candidate.sources.len() > 0 {
         let length = pre.candidate.sources.len();
         pre.scanner_wf_at(krnl.allc_4k_mp.spec_index(allocator), head, length);
-        let upcoming = spec_page_index2page_ptr((head + length) as usize);
-        let previous = spec_page_index2page_ptr((head + length - 1) as usize);
-
         pre.candidate_prefix_valid_wf_at(krnl, allocator, (head + length - 1) as usize);
-
-        pre.consumed_unscanned_order_wf_at(krnl.allc_4k_mp.spec_index(allocator), previous, cursor.page);
-
     } else if pointer == cursor.page {
         pre.scanner_wf_at(krnl.allc_4k_mp.spec_index(allocator), head, 0);
-
     }
 }
 
@@ -472,7 +459,7 @@ pub proof fn merge_2m_scan_page_eof_implies_complete_candidate_safety(krnl: &Ker
         forall|page: PageIndex| #![trigger krnl.pg_arr.lock_id_by_index(page)] scanner.candidate.head <= page < scanner.candidate.head + 512 ==>
             krnl.pg_arr.lock_id_by_index(page).major == FREE_PAGE_LOCK_MAJOR,
 {
-    hide(merge_2m_source_pages); hide(Merge2mScanner::unscanned_pages);
+    hide(merge_2m_source_pages);
     scanner.candidate_prefix_valid_wf_at(krnl, allocator, (scanner.candidate.head + 511) as usize);
     reveal(page_array_wf); reveal(LockedArray::lock_id_by_index);
 }
@@ -512,17 +499,15 @@ pub proof fn merge_2m_scan_page_eof_implies_scanner_wf(pre: Merge2mScanner, post
         complete ==> !pre.returned_heads.view().contains(post.candidate.head),
         complete ==> forall|head: PageIndex| #![trigger pre.returned_heads.view().contains(head)] pre.returned_heads.view().contains(head) ==> head < post.candidate.head,
 {
-    hide(KernelK::inv); hide(Merge2mScanner::candidate_prefix_valid); hide(Merge2mScanner::unscanned_pages); hide(merge_2m_source_pages); hide(Merge2mCursorQueue::wf);
+    hide(Merge2mScanner::unscanned_pages); hide(merge_2m_source_pages); hide(Merge2mCursorQueue::wf);
     merge_2m_scan_page_eof_implies_cursor_coverage(pre, post, krnl, allocator, index, next, complete);
     merge_2m_scan_page_eof_implies_candidate_prefix(pre, post, krnl, allocator, index, next, complete);
     assert(post.initial_pages.view() == post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator)))) by {
         assert_sets_equal!(post.initial_pages.view(), post.consumed_pages.view().union(post.unscanned_pages(krnl.allc_4k_mp.spec_index(allocator))));
     };
-
     assert(post.wf(krnl.allc_4k_mp.spec_index(allocator))) by {
         broadcast use merge_2m_scan_page_eof_implies_unreturned_page_remains, merge_2m_scan_page_eof_implies_unreturned_next_page_remains;
     };
-
     if complete { merge_2m_scan_page_eof_implies_complete_candidate_safety(krnl, allocator, post); }
 }
 }

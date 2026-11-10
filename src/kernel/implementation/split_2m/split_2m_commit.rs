@@ -312,7 +312,6 @@ pub fn split_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
         proof { hugepage_2m_wf_tail_forward_at(old(krnl).pg_arr, head, index); page_array_wf_at(old(krnl).pg_arr, index); }
         assert(!krnl.allc_4k_mp.spec_index(allocator_4k).global_pool.view().view().contains(spec_page_index2page_ptr(index))) by {
             allocator_free_4k_pages_wf_global_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, allocator_4k, spec_page_index2page_ptr(index));
-            page_index_roundtrip();
         };
         let tracked child = children.tracked_remove(offset);
         let page = krnl.pg_arr.borrow_mut_typed(index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_perms.tracked_borrow(index)));

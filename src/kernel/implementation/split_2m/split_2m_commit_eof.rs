@@ -46,7 +46,7 @@ pub proof fn split_2m_commit_eof_implies_container_owned_pages_wf(pre: KernelK, 
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing);
         reveal(container_owned_pages_wf);
         container_owned_pages_wf_backward_at(pre.ctn_mp, pre.pg_arr, head);
-        page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid();
+        page_ptr_roundtrip(); page_index_roundtrip();
     };
 }
 

@@ -99,7 +99,6 @@ pub proof fn merge_2m_commit_eof_implies_complete_head_removed(pre: KernelK, pos
         merge_2m_complete_heads(merge_2m_source_pages(post.allc_4k_mp.spec_index(allocator_4k))).len() + 1
             == merge_2m_complete_heads(merge_2m_source_pages(pre.allc_4k_mp.spec_index(allocator_4k))).len(),
 {
-    hide(merge_2m_source_pages);
     merge_2m_commit_eof_implies_source_region_removed(pre, post, thread, allocator_4k, allocator_2m, candidate);
     let before = merge_2m_source_pages(pre.allc_4k_mp.spec_index(allocator_4k));
     let after = merge_2m_source_pages(post.allc_4k_mp.spec_index(allocator_4k));

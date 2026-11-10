@@ -45,8 +45,8 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         merge_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, n, ret.0),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
 {
-    hide(merge_2m_complete_heads); hide(merge_2m_source_pages); hide(Merge2mScanner::unscanned_pages);
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); }
+    hide(Merge2mScanner::unscanned_pages);
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if n > usize::MAX / 512 {
         proof {
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
@@ -249,7 +249,6 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                         let before_business = steps.snapshot_k();
                         let after_business = *krnl;
                         let before_sources = after_business.allc_4k_mp.spec_index(alloc_ptr_4k);
-
                         merge_2m_step_pre_from_k(&before_business, cpu_id, thrd_ptr);
                         merge_2m_step_from_k(&before_business, &after_business, cpu_id, thrd_ptr, 1);
                         krnl.kernel_step_boundary_free_4k_block_merged(&mut *lctx, &mut *steps, thrd_ptr, alloc_ptr_4k, alloc_ptr_2m);
@@ -260,7 +259,6 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                         assert_seqs_equal!(scanner.queue.cursors.view().map_values(|cursor: Merge2mCursor| merge_2m_cursor_suffix(after_sources, cursor)),
                             scanner.queue.cursors.view().map_values(|cursor: Merge2mCursor| merge_2m_cursor_suffix(before_sources, cursor)));
                         assert(scanner.unscanned_pages(after_sources) == scanner.unscanned_pages(before_sources)) by { reveal(Merge2mScanner::unscanned_pages); };
-
                         merge_2m_recorded_step_implies_extended_trace(before_trace, steps.view(), old(steps).view().len() as int,
                             before_business, after_business, cpu_id, n, (m - 1) as usize);
                     }
@@ -271,7 +269,6 @@ pub fn syscall_merge_2m(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             vstd::set_lib::lemma_len_subset(scanner.returned_heads.view(), merge_2m_complete_heads(frozen_pages));
             if !available { assert_sets_equal!(scanner.returned_heads.view(), merge_2m_complete_heads(frozen_pages)); }
         }
-
         thaw_merge_2m_sources(krnl, alloc_ptr_4k, alloc_ptr_2m, Tracked(&mut *lctx), Tracked(source_locks));
         RetValueType::SuccessUsize { value: m }
     };

@@ -306,7 +306,7 @@ impl Merge2mScanner {
                 };
                 next_page
             } else { usize::MAX };
-            proof { list.wf_implies_view_len_eq_len(); seq_no_duplicates_implies_index_of_roundtrip::<usize>(); }
+            proof { list.wf_implies_view_len_eq_len(); }
             self.queue.advance_min(next_page, next);
             self.consumed_pages = Ghost(self.consumed_pages.view().insert(page));
             let index = page_ptr2page_index(page);
@@ -320,7 +320,6 @@ impl Merge2mScanner {
             if complete { self.returned_heads = Ghost(self.returned_heads.view().insert(self.candidate.head)); }
             proof {
                 let replacement = Merge2mCursor { page: next_page, node: next, source: cursor.source };
-
                 merge_2m_scan_page_eof_implies_scanner_wf(before, *self, krnl, allocator, index, replacement, complete);
             }
             if complete { return true; }

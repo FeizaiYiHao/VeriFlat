@@ -199,7 +199,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_4k_pages_wf(pre: KernelK, pos
     ensures
         allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 {
-    assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_4k_pages_wf); };
+    assert(allocator_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_4k_pages_wf); reveal(hugepage_2m_wf); };
 }
 
 pub proof fn split_2m_commit_eof_implies_allocator_2m_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -224,7 +224,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_2m_pages_wf(pre: KernelK, pos
     ensures
         allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 {
-    assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_2m_pages_wf); };
+    assert(allocator_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_2m_pages_wf); reveal(hugepage_2m_wf); };
 }
 
 pub proof fn split_2m_commit_eof_implies_allocator_1g_pages_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -249,7 +249,7 @@ pub proof fn split_2m_commit_eof_implies_allocator_1g_pages_wf(pre: KernelK, pos
     ensures
         allocator_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
 {
-    assert(allocator_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_1g_pages_wf); };
+    assert(allocator_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(allocator_1g_pages_wf); reveal(hugepage_2m_wf); };
 }
 
 pub proof fn split_2m_commit_eof_implies_container_allocator_and_kill_retire_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
@@ -373,7 +373,6 @@ pub proof fn split_2m_commit_eof_implies_allocator_free_1g_pages_wf(pre: KernelK
     assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing);
         reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf);
         reveal(allocator_free_page_ptrs_wf); reveal(hugepage_2m_wf);
-        page_ptr_valid_imply_page_index_valid();
     };
 }
 
