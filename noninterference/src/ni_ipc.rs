@@ -193,6 +193,60 @@ pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
+/// Taking over the dangling thread of the killed caller of a running thread of `a` touches only its cpu, itself, and that
+/// dangling thread, which shares its container, so it leaves the view of `b` unchanged.
+pub proof fn ipc_reply_dangling_caller_taken_over_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_reply_dangling_caller_step_pre(old_u, cpu_id, ep_idx),
+        ipc_reply_dangling_caller_taken_over_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(ipc_reply_dangling_caller_step_pre); reveal(ipc_step_pre); reveal(ipc_reply_dangling_caller_taken_over_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_caller_wf); }
+
+/// The step of `ipc_reply_dangling_caller_taken_over_step_lr` preserves isolation.
+pub proof fn ipc_reply_dangling_caller_taken_over_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_reply_dangling_caller_step_pre(old_u, cpu_id, ep_idx),
+        ipc_reply_dangling_caller_taken_over_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{
+    reveal(ipc_reply_dangling_caller_step_pre); reveal(ipc_step_pre); reveal(ipc_reply_dangling_caller_taken_over_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_caller_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
+/// Releasing the cpu and the running thread of `a` after a reply to a dangling thread touches only those two, so it leaves
+/// the view of `b` unchanged.
+pub proof fn ipc_reply_dangling_caller_released_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_reply_dangling_caller_held_step_pre(old_u, cpu_id),
+        ipc_reply_dangling_caller_released_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(ipc_reply_dangling_caller_held_step_pre); reveal(ipc_reply_dangling_caller_released_step); reveal(kernel_u_cpu_ownership_wf); }
+
+/// The step of `ipc_reply_dangling_caller_released_step_lr` preserves isolation.
+pub proof fn ipc_reply_dangling_caller_released_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_reply_dangling_caller_held_step_pre(old_u, cpu_id),
+        ipc_reply_dangling_caller_released_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{
+    reveal(ipc_reply_dangling_caller_held_step_pre); reveal(ipc_reply_dangling_caller_released_step); reveal(kernel_u_cpu_ownership_wf);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
 /// Moving the queue head of an endpoint a running thread of `a` holds into transit with that thread as its partner locks
 /// only objects of `a` and that head, which is outside `b`.
 pub proof fn ipc_endpoint_transit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)

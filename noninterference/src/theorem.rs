@@ -54,7 +54,7 @@ pub ghost enum StepLabel {
     IpcBlock { channel_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool },
     IpcRendezvous { channel_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad },
     IpcCallHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcAcceptCall { channel_index: EndpointIdx },
-    IpcReplyHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> },
+    IpcReplyHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcReplyDanglingCallerTakenOver { channel_index: EndpointIdx }, IpcReplyDanglingCallerReleased,
     IpcEndpointTransit { channel_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx }, IpcEndpointFinish,
     IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { channel_index: EndpointIdx, tables: IpcPagesTables },
     IpcPagesCheck { channel_index: EndpointIdx }, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish { channel_index: EndpointIdx },
@@ -189,6 +189,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::IpcAcceptCall { channel_index } => ipc_accept_call_step_pre(old_u, cpu_id, channel_index) && ipc_accept_call_step(old_u, new_u, cpu_id, channel_index),
         StepLabel::IpcReplyHandoff { channel_index, regs, flushed_pcid } => ipc_reply_handoff_step_pre(old_u, cpu_id, channel_index)
             && ipc_reply_handoff_step(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid),
+        StepLabel::IpcReplyDanglingCallerTakenOver { channel_index } =>
+            ipc_reply_dangling_caller_step_pre(old_u, cpu_id, channel_index) && ipc_reply_dangling_caller_taken_over_step(old_u, new_u, cpu_id),
+        StepLabel::IpcReplyDanglingCallerReleased => ipc_reply_dangling_caller_held_step_pre(old_u, cpu_id) && ipc_reply_dangling_caller_released_step(old_u, new_u, cpu_id),
         StepLabel::IpcEndpointTransit { channel_index, waiting_state, payload_index } =>
             ipc_endpoint_transit_step_pre(old_u, cpu_id, channel_index, waiting_state, payload_index)
             && ipc_endpoint_transit_step(old_u, new_u, cpu_id, channel_index, waiting_state, payload_index),
@@ -457,6 +460,10 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::IpcReplyHandoff { channel_index, regs, flushed_pcid } => {
                 ipc_reply_handoff_step_lr(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y); ipc_reply_handoff_step_iso(old_u, new_u, cpu_id, channel_index, regs, flushed_pcid, x, y);
             },
+            StepLabel::IpcReplyDanglingCallerTakenOver { channel_index } => {
+                ipc_reply_dangling_caller_taken_over_step_lr(old_u, new_u, cpu_id, channel_index, x, y); ipc_reply_dangling_caller_taken_over_step_iso(old_u, new_u, cpu_id, channel_index, x, y);
+            },
+            StepLabel::IpcReplyDanglingCallerReleased => { ipc_reply_dangling_caller_released_step_lr(old_u, new_u, cpu_id, x, y); ipc_reply_dangling_caller_released_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcEndpointTransit { channel_index, waiting_state, payload_index } => {
                 ipc_endpoint_transit_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, payload_index, x, y);
                 ipc_endpoint_transit_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, payload_index, x, y);
