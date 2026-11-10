@@ -66,7 +66,6 @@ impl AtomicPcidCr3 {
     /// lock its own cpu sees the mark and returns at once, so the wait ends. This cpu then stores the default context in
     /// the target's hardware cr3/pcid word. Sending the IPI uses the target's kernel-call permission `perm`; the target
     /// rests in `Idle` afterwards.
-    // TODO: model the IPI wait as a virtual lock in the lock order.
     #[verifier::external_body]
     pub(super) fn ipi_remote_running_to_idle_raw(
         &mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: Tracked<&KernelCallPerm>,
