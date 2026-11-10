@@ -293,7 +293,6 @@ pub(crate) fn kill_retire_process(
     proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     proof {
-        assert(krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
@@ -302,7 +301,7 @@ pub(crate) fn kill_retire_process(
     let ghost base = steps.snapshot_k();
     let ghost base_lctx = *lctx;
     proof {
-        lemma_container_allocator_4k_quota_bounded(&*krnl, ctn_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
+        lemma_container_allocator_4k_quota_bounded(&*krnl, ctn_ptr);
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
             pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

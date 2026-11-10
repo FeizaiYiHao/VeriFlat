@@ -228,7 +228,6 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, stage, pagetable, iommu_table);
         kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, stage, size, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        process_perms_wf_at(krnl.prc_mp, target);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
 }
@@ -617,7 +616,6 @@ pub(crate) fn kill_reclaim_unlock_table(
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_perm.tracked_unwrap()));
     }
-    proof { process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     proof {
         let unlocked_k = *krnl;
@@ -629,7 +627,6 @@ pub(crate) fn kill_reclaim_unlock_table(
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, target, pagetable, thrd_ptr, false);
         kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thrd_ptr, target, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        process_perms_wf_at(krnl.prc_mp, target);
         kill_trace_push(&*steps, unlock_before, start, pre, before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, ctx);
     }
 }
@@ -721,7 +718,7 @@ pub(crate) fn kill_reclaim_zombify(
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;
-    proof { pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allc_ptr); process_perms_wf_map(krnl.prc_mp); }
+    proof { process_perms_wf_map(krnl.prc_mp); }
     pcid_allocator_map_release(&mut krnl.pcid_allc_mp, pcid_allc_ptr, target, pcid, Tracked(&*lctx), Tracked(&pcid_allocator_perm));
     {
         let tracked target_perm = chain_perms.tracked_borrow(target);

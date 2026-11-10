@@ -135,6 +135,6 @@ pub open spec fn kill_chain_state(
         &&& cpu.container_depth < k.prc_mp.spec_index(chain[i]).view_rodata().view().container_depth
         &&& i == 0 ==> chain[i] == k.ctn_mp.spec_index(scope->Container_container).view().root_process
     }
-    &&& forall|i: int, j: int| #![trigger chain[i], chain[j]] 0 <= i && j == i + 1 && j < chain.len() ==> k.prc_mp.spec_index(chain[j]).view_rodata().view().parent == Some(chain[i])
+    &&& forall|i: int, j: int| #![trigger k.prc_mp.spec_index(chain[j]).view_rodata().view().parent, chain[i]] 0 <= i && j == i + 1 && j < chain.len() ==> k.prc_mp.spec_index(chain[j]).view_rodata().view().parent == Some(chain[i])
 }
 } // verus!

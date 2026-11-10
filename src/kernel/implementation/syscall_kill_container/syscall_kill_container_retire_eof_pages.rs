@@ -212,7 +212,7 @@ pub(crate) proof fn kill_container_retire_eof_mappings_pagetable(
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
     ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf); };
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf); };
@@ -254,7 +254,7 @@ pub(crate) proof fn kill_container_retire_eof_page_owners(
         page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr),
 {
     reveal(kill_container_retire_eof_transition_framing);
-    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr); kill_container_retire_eof_object_pages(pre, ctn_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {

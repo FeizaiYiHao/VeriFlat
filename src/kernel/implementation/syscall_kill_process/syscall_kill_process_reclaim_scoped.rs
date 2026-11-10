@@ -243,7 +243,7 @@ pub(crate) fn kill_reclaim_held_4k_page_scoped(
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
         page_ptr_valid_imply_page_index_valid();
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
+        pagetable_perms_wf_map(krnl.pt_mp); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target);
     }
     let ghost entry_lctx = *lctx;
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));

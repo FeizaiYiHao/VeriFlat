@@ -156,11 +156,10 @@ pub(crate) fn kill_container_retire_commit(
         container_pages_wf_container_at(krnl.ctn_mp, krnl.pg_arr, ctn_ptr);
         container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, ctn_ptr);
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp);
+        allocator_perms_wf_map(krnl.allc_2m_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
         let (ps, hs) = (kill_container_retire_pages_4k(ro), kill_container_retire_heads(ctn_ptr, ro));
         assert(page_perms.dom().contains(hs[0]) && page_perms.dom().contains(hs[1]));
-        assert(page_perms.dom().contains(ps[0]) && page_perms.dom().contains(ps[1]) && page_perms.dom().contains(ps[2]) && page_perms.dom().contains(ps[3]) && page_perms.dom().contains(ps[4]));
     }
     let a4 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_4k;
     let a2 = krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().allocator_ptr_2m;
@@ -198,7 +197,6 @@ pub(crate) fn kill_container_retire_commit(
     let ghost mid = *krnl;
     proof {
         assert(kill_container_retire_eof_transition_framing(entry, mid, ctn_ptr, parent_ptr, owner_ptr)) by { reveal(kill_container_retire_eof_transition_framing); };
-        assert(kill_container_retire_eof_target_empty(entry, ctn_ptr, parent_ptr, owner_ptr));
         kill_container_retire_eof(entry, mid, ctn_ptr, parent_ptr, owner_ptr);
     }
     kill_container_retire_unlock(krnl, Tracked(&mut *lctx), o4, o2, container_head, pcid_head, &pages, Tracked(pools_4k), Tracked(pools_2m), Tracked(quotas_4k),
@@ -354,7 +352,6 @@ fn kill_container_retire_detach(
         container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr); container_perms_wf_implies_parent_node_addr(krnl.ctn_mp, ctn_ptr);
         container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr, owner_ptr); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_linkedlist_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
-        container_perms_wf_at(krnl.ctn_mp, parent_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
         container_scheduler_wf_container_at(krnl.ctn_mp, krnl.sched_mp, ctn_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, ctn_ptr);
@@ -364,7 +361,7 @@ fn kill_container_retire_detach(
         pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, ro.pcid_allocator); cpu_offline_flags_wf_implies_perms_wf(krnl.cpu_offline_mp, krnl.cpu_arr);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_map(krnl.allc_1g_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, ro.allocator_ptr_2m); allocator_perms_wf_at(krnl.allc_1g_mp, ro.allocator_ptr_1g);
-        allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
+        allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
         lemma_container_allocator_quota_eq_total_free_without_users(*krnl, ctn_ptr);
         krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).global_pool.view().linked_list.wf_implies_view_len_eq_len();
@@ -372,7 +369,6 @@ fn kill_container_retire_detach(
         lemma_cache_len_fold_nonneg(krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).cpu_caches.view());
         lemma_cache_len_fold_nonneg(krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).cpu_caches.view());
         lemma_cache_len_fold_nonneg(krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.view());
-        page_array_wf_map(krnl.pg_arr);
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
         allocator_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, ro.allocator_ptr_2m);
         allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, ro.allocator_ptr_1g);

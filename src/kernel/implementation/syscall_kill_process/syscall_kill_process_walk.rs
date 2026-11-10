@@ -112,7 +112,6 @@ pub(crate) fn kill_mark_child(
     let ghost entered_lctx = *lctx;
     proof {
         chain_perms.tracked_insert(child_ptr, child_perm);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         let before_u = kernel_k_to_kernel_u(before);
         kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_mark_child_pre_from_k(&before, target, child_ptr);
@@ -210,7 +209,7 @@ pub(crate) fn kill_first_thread(
     }
     let Tracked(victim_perm) = krnl.wlock_kill_victim_thread(victim_ptr, Tracked(&mut *lctx)).unwrap();
     proof {
-        thread_perms_wf_at(krnl.thrd_mp, victim_ptr); thread_caller_callee_wf_at(krnl.thrd_mp, victim_ptr);
+        thread_perms_wf_at(krnl.thrd_mp, victim_ptr);
         assert(!(before.thrd_mp.spec_index(victim_ptr).view().state is IPC_TRANSIT || before.thrd_mp.spec_index(victim_ptr).view().state is KILLED)) by {
             thread_killed_only_when_wlocked_at(before.thrd_mp, victim_ptr); thread_ipc_transit_wf_at(before.thrd_mp, victim_ptr);
         };
@@ -232,7 +231,6 @@ pub(crate) fn kill_first_thread(
         let ghost dangling_k = *krnl;
         proof {
             kernel_thread_left_process_implies_u_step(&before, &dangling_k, target, victim_ptr);
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             let before_u = kernel_k_to_kernel_u(before);
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_dangling_pre_from_k(&before, target, victim_ptr);
@@ -245,7 +243,6 @@ pub(crate) fn kill_first_thread(
         krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Thread { thread: victim_ptr })), Tracked(&*lctx), Tracked(thread_perm));
         let ghost entered_k = *krnl;
         proof {
-            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
             let before_u = kernel_k_to_kernel_u(before);
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Walk, scope); kill_mark_thread_pre_from_k(&before, target, victim_ptr);
@@ -563,7 +560,6 @@ pub(crate) fn kill_release_victim_caller(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     proof {
-        assert(kernel_steps_prefix_unchanged(before_steps, before_steps)) by { reveal(kernel_steps_prefix_unchanged); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, victim_ptr, Tracked(victim_perm));
@@ -577,7 +573,6 @@ pub(crate) fn kill_release_victim_caller(
         let ghost reclaim_lctx = *lctx;
         let ghost reclaim_before = steps.view();
         let tracked caller_perm = next_perm.tracked_unwrap();
-        proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
         reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, caller_ptr, Tracked(caller_perm));
         proof {
             let victim_container = reclaim_k.thrd_mp.spec_index(caller_ptr).view().owning_container;

@@ -91,7 +91,7 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
     proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        pagetable_perms_wf_map(krnl.pt_mp); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
         assert(!thread_is_dangling(krnl.thrd_mp.spec_index(thrd_ptr)) && krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })) by { thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
