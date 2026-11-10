@@ -86,25 +86,6 @@ pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockS
 }
 
 impl PageTable<PT_TYPE> {
-    /// The owner of the outer LockCell supplies `lock_state`, holders included; the payload has no lock state.
-    pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
-        PageTableU {
-            lock_state,
-            did: None,
-            mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
-            mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
-            mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
-            pagetable_window_locks: Map::empty(),
-        }
-    }
-
-    /// Every 4K, 2M, and 1G leaf is user-present, so the user view shows the whole mapping.
-    pub open spec fn leaves_present(&self) -> bool {
-        &&& forall|va: VAddr| #![trigger self.mapping_4k().dom().contains(va)] self.mapping_4k().dom().contains(va) ==> self.mapping_4k().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger self.mapping_2m().dom().contains(va)] self.mapping_2m().dom().contains(va) ==> self.mapping_2m().spec_index(va).present
-        &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
-    }
-
     pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
         requires
             pei_valid(mem_end_l4_index),
@@ -441,27 +422,6 @@ impl PageTable<PT_TYPE> {
         ensures page_ptr_valid(self.cr3)
     { reveal(PageTable::table_pages_wf); }
 
-    pub proof fn table_pages_wf_l3_at(&self, p: PageMapPtr)
-        requires
-            self.table_pages_wf(),
-            self.l3_tables.view().dom().contains(p),
-        ensures !self.l4_table.view().dom().contains(p),
-    { reveal(PageTable::table_pages_wf); }
-
-    pub proof fn table_pages_wf_l2_at(&self, p: PageMapPtr)
-        requires
-            self.table_pages_wf(),
-            self.l2_tables.view().dom().contains(p),
-        ensures !self.l4_table.view().dom().contains(p),
-    { reveal(PageTable::table_pages_wf); }
-
-    pub proof fn table_pages_wf_l1_at(&self, p: PageMapPtr)
-        requires
-            self.table_pages_wf(),
-            self.l1_tables.view().dom().contains(p),
-        ensures !self.l4_table.view().dom().contains(p),
-    { reveal(PageTable::table_pages_wf); }
-
     pub open spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -595,21 +555,6 @@ impl PageTable<PT_TYPE> {
             }
     }
 
-    pub proof fn wf_mapping_2m_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
-        requires
-            self.wf_mapping_2m(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
-            pei_valid(l3i),
-            pei_valid(l2i),
-        ensures
-            self.mapping_2m.view().dom().contains(spec_index2va((l4i, l3i, l2i, 0))) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
-            self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
-                ==> self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
-                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
-                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
-                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
-    { reveal(PageTable::wf_mapping_2m); }
-
     /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.
     #[verifier::opaque]
     pub open spec fn wf_mapping_1g(&self) -> bool {
@@ -625,20 +570,6 @@ impl PageTable<PT_TYPE> {
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
             }
     }
-
-    pub proof fn wf_mapping_1g_at(&self, l4i: L4Index, l3i: L3Index)
-        requires
-            self.wf_mapping_1g(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
-            pei_valid(l3i),
-        ensures
-            self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) == self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
-            self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
-                ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
-                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
-                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
-                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present,
-    { reveal(PageTable::wf_mapping_1g); }
 
     /// Every L3, L2 and L1 page is linked from the user part of the root along the path its reverse map stores.
     #[verifier::opaque]
