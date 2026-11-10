@@ -402,10 +402,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let pcid_needflush = PcidNeedFlushArray::from_token_cells(Tracked::assume_new());
 
     // 5. Default page table and the per-cpu hardware cr3/pcid words.
-    let default_pagetable = ReadOnlyNode::new(
-        PageTable::new(Some(KERNEL_DEFAULT_PCID), Ghost::assume_new(), kernel_pml4, Tracked::assume_new(), KERNEL_MEM_END_L4INDEX, 0),
-        Ghost::assume_new(),
-    );
+    let default_pagetable = ReadOnlyNode::new(PageTable::new(Some(KERNEL_DEFAULT_PCID), Ghost::assume_new(), kernel_pml4, Tracked::assume_new(), KERNEL_MEM_END_L4INDEX, 0));
     let cpu_hw_cr3_pcid: CpuHwCr3PcidArray = core::array::from_fn(|cpu_id| AtomicPcidCr3::new(cpu_id, kernel_pml4, KERNEL_DEFAULT_PCID));
 
     // 6. The root thread's first frame.

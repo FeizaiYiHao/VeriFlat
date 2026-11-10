@@ -746,7 +746,6 @@ pub open spec fn boot_kernel_state(
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().root_process == layout.root_process
     &&& !krnl.ctn_mp.spec_index(layout.root_container).view().zombie
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().owned_pages.view() == owned_pages
-    &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().owner_addr() == layout.root_container
     &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view() == (ContainerRO {
         parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
         allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
@@ -831,7 +830,6 @@ pub open spec fn boot_kernel_state(
     &&& krnl.prc_mp.spec_index(layout.root_process).view().children.view() == Seq::<RwLockProcessPtr>::empty()
     &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.view() =~= seq![layout.root_thread]
     &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.map() =~= Map::<usize, RwLockThreadPtr>::empty().insert(process_node_addr, layout.root_thread)
-    &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().owner_addr() == layout.root_process
     &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().view() == (ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0, pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3,
         iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
@@ -1111,12 +1109,12 @@ pub fn finish_init_from_boot(
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,
         pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3, iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table),
         pcid: 1,
-    }, Ghost(layout.root_process));
+    });
     let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions };
     let container_rodata = ReadOnlyNode::new(ContainerRO {
         parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
         allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
-    }, Ghost(layout.root_container));
+    });
     let ghost root_threads = Set::<RwLockThreadPtr>::empty().insert(layout.root_thread);
     let container_ghost = ContainerGhost { subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
         owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),

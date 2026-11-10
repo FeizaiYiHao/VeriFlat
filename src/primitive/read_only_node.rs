@@ -3,20 +3,15 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-pub struct ReadOnlyNode<V> {
-    value: V,
-    owner_ptr: Ghost<usize>
-}
+pub struct ReadOnlyNode<V> { value: V }
 
 impl<V> ReadOnlyNode<V> {
     pub closed spec fn view(&self) -> V { self.value }
-    pub closed spec fn owner_addr(&self) -> usize { self.owner_ptr.view() }
-    pub fn new(v: V, owner_addr: Ghost<usize>) -> (ret: Self)
+    pub fn new(v: V) -> (ret: Self)
         ensures
-            ret.view() == v,
-            ret.owner_addr() == owner_addr.view()
+            ret.view() == v
     {
-        Self { value: v, owner_ptr: owner_addr }
+        Self { value: v }
     }
     pub fn borrow(&self) -> (ret: &V)
         ensures

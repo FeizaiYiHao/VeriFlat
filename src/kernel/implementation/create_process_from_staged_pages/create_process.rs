@@ -222,7 +222,7 @@ pub fn create_process_from_staged_pages(
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: ctn_ptr, container_depth: krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
         pagetable: pagetable_pg_ptr, cr3, iommu_cr3: None, iommu_table_ptr: None, pcid,
-    }, Ghost(process_pg_ptr));
+    });
     let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, process_pg_idx,

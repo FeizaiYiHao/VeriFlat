@@ -411,13 +411,10 @@ pub(super) fn publish_staged_container_root_mutation(
     let mut container_value = Container::new_staged(child_ctn_ptr, child_prc_ptr, child_depth, parent_node);
     container_value.owned_pages = Ghost(moved_pages);
     container_value.uppertree_seq = Ghost(child_uppers);
-    let container_rodata = ReadOnlyNode::new(
-        ContainerRO {
-            parent: Some(parent_ctn_ptr), depth: child_depth, scheduler: child_sched_ptr, pcid_allocator: child_pcid_allc_ptr,
-            cpu_set: child_cpu_set_ptr, allocator_ptr_4k: child_allocator_4k_ptr, allocator_ptr_2m: child_allocator_2m_ptr, allocator_ptr_1g: child_allocator_1g_ptr,
-        },
-        Ghost(child_ctn_ptr),
-    );
+    let container_rodata = ReadOnlyNode::new(ContainerRO {
+        parent: Some(parent_ctn_ptr), depth: child_depth, scheduler: child_sched_ptr, pcid_allocator: child_pcid_allc_ptr,
+        cpu_set: child_cpu_set_ptr, allocator_ptr_4k: child_allocator_4k_ptr, allocator_ptr_2m: child_allocator_2m_ptr, allocator_ptr_1g: child_allocator_1g_ptr,
+    });
     let container_ghost = ContainerGhost { subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_prc_ptr)),
         owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty()),
     };

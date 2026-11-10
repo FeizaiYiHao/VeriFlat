@@ -196,13 +196,10 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let Tracked(pagetable_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_pagetable_ptr, Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE }, Ghost(l4_page_locks), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_index), mode: TypedLockMode::Write });
     let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(child_pagetable_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_perm), Tracked(&mut *lctx));
-    let process_rodata = ReadOnlyNode::new(
-        ProcessRO {
-            owning_container: child_ctn_ptr, container_depth: child_depth, parent: None, depth: 0, pagetable: child_pagetable_ptr,
-            cr3: l4_ptr, iommu_cr3: None, iommu_table_ptr: None, pcid: root_pcid,
-        },
-        Ghost(child_prc_ptr),
-    );
+    let process_rodata = ReadOnlyNode::new(ProcessRO {
+        owning_container: child_ctn_ptr, container_depth: child_depth, parent: None, depth: 0, pagetable: child_pagetable_ptr,
+        cr3: l4_ptr, iommu_cr3: None, iommu_table_ptr: None, pcid: root_pcid,
+    });
     let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_prc_ptr, Allocated4KPageState::AsProcess, Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let ghost process_page_locks = pagetable_page_locks.insert(process_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(process_index), mode: TypedLockMode::Write });
