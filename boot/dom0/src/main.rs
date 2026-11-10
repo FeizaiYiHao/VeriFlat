@@ -1902,6 +1902,50 @@ fn time_mmap_1g() {
         map[mid], unmap[mid], both[mid], MMAP1G_ROUNDS, both[0], both[MMAP1G_ROUNDS - 1]);
 }
 
+// ---- 8b. faults in ring 3 ----
+
+/// dom0's descriptor for the endpoint the faulting threads hold in descriptor 0.
+const FAULT_ENDPOINT: usize = 9;
+/// Unmapped in dom0 throughout: the page-faulting thread reads it.
+const FAULT_VA: usize = TEST_VA + 0x30_0000;
+/// Shared by the faulting threads, one at a time.
+static mut FAULT_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
+
+/// Serves one call on descriptor 0, then executes `ud2`: the kernel ends the thread as if it had
+/// called `thread_exit`, which fails that call with ErrorIpcCalleeExited.
+extern "C" fn invalid_opcode_thread() -> ! {
+    quiet("invalid-opcode thread receive_call", unsafe { sys_receive_call(0) });
+    unsafe { core::arch::asm!("ud2", options(noreturn)) }
+}
+
+/// `invalid_opcode_thread` with a read of an unmapped page in place of `ud2`.
+extern "C" fn page_fault_thread() -> ! {
+    quiet("page-fault thread receive_call", unsafe { sys_receive_call(0) });
+    let value = unsafe { (FAULT_VA as *const u64).read_volatile() };
+    log::error!("the page-fault thread read {:#x} at unmapped {:#x}", value, FAULT_VA);
+    unsafe { sys_debug_exit(1) }
+}
+
+/// A thread that executes `ud2` and one that reads an unmapped page end without taking the machine
+/// down: each fails dom0's call with ErrorIpcCalleeExited, and no thread receives on their endpoint
+/// afterwards.
+fn test_user_faults() {
+    check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(3) });
+    check("alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(3) });
+    check("new_endpoint (faulting threads)", unsafe { sys_new_endpoint(FAULT_ENDPOINT) });
+    let sp = stack_top(&raw const FAULT_STACK);
+    let threads: [(&str, &str, extern "C" fn() -> !); 2] = [
+        ("new_thread_with_endpoint (ud2)", "call to the ud2 thread", invalid_opcode_thread),
+        ("new_thread_with_endpoint (unmapped read)", "call to the unmapped-read thread", page_fault_thread),
+    ];
+    for (create, call, thread) in threads {
+        check(create, unsafe { sys_new_thread_with_endpoint(FAULT_ENDPOINT, entry(thread), sp) });
+        expect_error(call, unsafe { sys_call(FAULT_ENDPOINT) }, "ErrorIpcCalleeExited");
+        expect_error("send_empty_no_block after the fault", unsafe { sys_send_empty_no_block(FAULT_ENDPOINT) }, "ErrorIpcNoPeer");
+    }
+    log::info!("faulting threads exited; the suite continues");
+}
+
 // ---- 9. kill_process ----
 
 /// Set once dom0 retires its helper threads: each then serves one call and exits.
@@ -2686,6 +2730,9 @@ pub extern "C" fn _start() -> ! {
         unsafe { sys_debug_exit(1) };
     }
     log::info!("the register spinner kept rcx, r11, and rflags across its preemptions");
+
+    // 8b. A ud2 and an unmapped read in ring 3 end only the faulting thread.
+    test_user_faults();
 
     // 9. kill_process: dom0's children and a zombie, a running child killed through running-to-idle
     // IPIs, and the leak loop over victim subtrees; the helper threads exit on the way.

@@ -171,10 +171,6 @@ macro_rules! wrap_nmi {
 pub type TrampolineHandlerFunc = unsafe extern "C" fn(TrampolineMarker);
 
 /// Logs a fatal exception and exits QEMU with status 3.
-///
-/// TODO: a fault in ring 3 (`regs.cs & 3 == 3`) is the faulting thread's problem, not the
-/// machine's. It should end only that thread (or deliver to its container) instead of exiting;
-/// today any user thread can take the whole machine down.
 fn fatal_exception(name: &str, regs: &Registers) -> ! {
     let cr2: u64;
     unsafe { asm!("mov {}, cr2", out(reg) cr2) };
@@ -192,34 +188,49 @@ fn fatal_exception(name: &str, regs: &Registers) -> ! {
     unsafe { crate::boot::exit_qemu(3) }
 }
 
-macro_rules! fatal_handlers {
-    ($($name:ident => $msg:expr),* $(,)?) => {
+/// A fault in ring 3 ends only the faulting thread, as if it had called `thread_exit`
+/// (`syscalls::exit_faulting_thread`); a fault in the kernel is fatal.
+fn user_or_fatal_exception(name: &str, regs: &Registers) -> ! {
+    if regs.cs & 3 == 3 {
+        crate::syscalls::exit_faulting_thread(name, regs)
+    }
+    fatal_exception(name, regs)
+}
+
+macro_rules! exception_handlers {
+    ($action:ident: $($name:ident => $msg:expr),* $(,)?) => {
         $(
             unsafe extern "C" fn $name(regs: &mut Registers) {
-                fatal_exception($msg, regs)
+                $action($msg, regs)
             }
         )*
     };
 }
 
-fatal_handlers! {
+exception_handlers! {
+    user_or_fatal_exception:
     divide_by_zero => "Divide Error",
     debug => "Debug",
     overflow => "Overflow",
     bound_range_exceeded => "Bound Range Exceeded",
     invalid_opcode => "Invalid Opcode",
     device_not_available => "Device Not Available",
-    double_fault => "Double Fault",
     invalid_tss => "Invalid TSS",
     segment_not_present => "Segment Not Present",
     stack_segment_fault => "Stack Segment Fault",
     general_protection_fault => "General Protection Fault",
     x87_floating_point => "x87 Floating-Point",
     alignment_check => "Alignment Check",
-    machine_check => "Machine Check",
     simd_floating_point => "SIMD Floating-Point",
     virtualization => "Virtualization",
     security_exception => "Security",
+}
+
+// Fatal in every mode.
+exception_handlers! {
+    fatal_exception:
+    double_fault => "Double Fault",
+    machine_check => "Machine Check",
 }
 
 /// Breakpoint handler.
@@ -227,11 +238,12 @@ unsafe extern "C" fn breakpoint(regs: &mut Registers) {
     log::warn!("CPU {}: Breakpoint: {:#x?}", crate::cpu::get_cpu_id(), regs);
 }
 
-/// Page fault: a fault of the user-memory copy resumes at the copy's exit; any other is fatal.
+/// Page fault: a fault of the user-memory copy resumes at the copy's exit; a fault in ring 3 ends
+/// the faulting thread; any other is fatal.
 unsafe extern "C" fn page_fault(regs: &mut Registers) {
     match crate::syscalls::user_copy_fixup(regs) {
         Some(rip) => regs.rip = rip,
-        None => fatal_exception("Page Fault", regs),
+        None => user_or_fatal_exception("Page Fault", regs),
     }
 }
 
