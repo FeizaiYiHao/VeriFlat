@@ -7,7 +7,8 @@ use core::arch::naked_asm;
 /// any size. The hot callers copy 168-byte trap frames: every IPC call and reply moves the caller's
 /// and the callee's `Registers` between the CPU's frame slot and the threads (`TrapFrameOption::
 /// set_self`, `set_dst`). Up to 256 bytes it copies qwords in a loop, then the remaining bytes;
-/// longer copies take one `rep movsb`. Regions must not overlap, as for any `memcpy`.
+/// longer copies take `rep movsq` for the qwords and the same byte loop for the rest,
+/// so no size depends on ERMS or FSRM. Regions must not overlap, as for any `memcpy`.
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn memcpy(dst: *mut u8, src: *const u8, len: usize) -> *mut u8 {
@@ -41,7 +42,10 @@ pub unsafe extern "C" fn memcpy(dst: *mut u8, src: *const u8, len: usize) -> *mu
         "ret",
         "4:",
         "mov rcx, rdx",
-        "rep movsb",
+        "shr rcx, 3",
+        "rep movsq",
+        "and edx, 7",
+        "jnz 5b",
         "ret",
     );
 }

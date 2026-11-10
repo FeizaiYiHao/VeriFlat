@@ -297,33 +297,41 @@ unsafe extern "C" fn enter_frame(frame: *const Registers) -> ! {
 /// Ends the current thread after a fault in ring 3, exactly as if it had made the `thread_exit`
 /// syscall. The exception trampoline has done what `sys_entry` does (`swapgs`, `cld`, the complete
 /// frame, interrupts on), but the frame lies on the exception IST stack, which the next exception
-/// reuses: it moves to the frame slot of the kernel stack, where `sys_entry` builds it (free while
-/// the CPU ran in ring 3), with `rax = NR_THREAD_EXIT`, and [`dispatch_frame`] continues on that
-/// stack as `sys_entry` does. `syscall_thread_exit` returns `CpuIdle` and the idle loop picks the next
-/// thread; any other result (a kill or lock-order conflict in progress) goes back to the faulting
-/// instruction, which faults again and retries.
+/// reuses: it moves unchanged to the frame slot of the kernel stack, where `sys_entry` builds it
+/// (free while the CPU ran in ring 3), and [`fault_exit_frame`] continues on that stack.
 pub(crate) fn exit_faulting_thread(name: &str, regs: &Registers) -> ! {
     log::warn!("CPU {}: {} in ring 3 at rip {:#x}; the thread exits", cpu::get_cpu_id(), name, regs.rip);
     unsafe {
         let frame = cpu::top_frame();
-        frame.write(Registers { rax: vsys::NR_THREAD_EXIT as u64, ..*regs });
-        dispatch_frame(frame)
+        frame.write(*regs);
+        fault_exit_frame(frame)
     }
 }
 
-/// Dispatches the syscall in the frame slot `frame` of the current CPU's kernel stack on that stack
+/// Runs [`fault_exit`] on the frame slot `frame` of the current CPU's kernel stack, on that stack,
 /// and returns through [`restore_frame`], like the tail of `sys_entry`.
 #[unsafe(naked)]
-unsafe extern "C" fn dispatch_frame(frame: *mut Registers) -> ! {
+unsafe extern "C" fn fault_exit_frame(frame: *mut Registers) -> ! {
     naked_asm!(
         "mov rsp, rdi",
         "sub rsp, 8", // the slot is 8 off the 16-byte call alignment, as in sys_entry
-        "call {dispatch}",
+        "call {fault_exit}",
         "add rsp, 8",
         "jmp {restore}",
-        dispatch = sym syscall_dispatch,
+        fault_exit = sym fault_exit,
         restore = sym restore_frame,
     );
+}
+
+/// The `thread_exit` of a faulting thread. On `CpuIdle` the thread is gone and the idle loop leaves
+/// the next thread's frame in `regs`, as `syscall_dispatch` does. Any other result (a kill or
+/// lock-order conflict in progress) leaves the saved frame untouched: the thread re-runs the faulting
+/// instruction with its own registers, faults again, and retries.
+extern "C" fn fault_exit(regs: &mut Registers) {
+    let ret = syscall_thread_exit(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu::get_cpu_id());
+    if let RetValueType::CpuIdle = ret {
+        run_idle(regs);
+    }
 }
 
 /// Abandons the current thread for the idle loop: restarts on this CPU's kernel stack below the
