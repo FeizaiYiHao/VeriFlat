@@ -139,7 +139,8 @@
 - Do not add `#[verifier::external_body]`
   outside the explicitly approved page-retype TCB boundary:
   `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
-  `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`,
+  `retype_page_perm_2m_to_rwlock`, the private `retype_region_perm_to_rwlock`,
+  `split_region_tail_into_node`, `retype_container_page_perm_to_rwlock`,
   `retype_container_page_tail_to_offline_flags`, and the inverses
   `retype_thread_rwlock_to_4k_page_perm`,
   `retype_process_rwlock_to_4k_page_perm`, and

@@ -1819,7 +1819,7 @@ ContainerLockOrderConflict (R9), ProcessKilled, ThreadKilled, PeerKilled (a kill
 its lock is tried after `T`'s).
 
 Trusted primitive: `retype_thread_rwlock_to_4k_page_perm` (external_body;
-authorized TCB), the inverse of the `retype_page_perm_to_rwlock` mint that
+authorized TCB), the inverse of the `retype_thread_region_and_insert` mint that
 creates a thread: it retires the removed, write-locked thread object, returns
 its page as a raw 4K page permission, and drops `T`'s lock from `lctx`.
 

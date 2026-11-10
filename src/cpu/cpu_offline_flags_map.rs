@@ -4,10 +4,10 @@ use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-/// TCB: consume the owned second 4K returned by the container-page retype and initialize its flags table. The tail permission is transferred by value so a second initialization needs another owned region.
+/// TCB: consume the container retype's second 4K by value and init its flags table; only that retype mints `CpuOfflineFlagsRegionPerm`, which ties the table, and so the reverse 2M retype, to a real container retype.
 #[verifier::external_body]
 fn retype_container_page_tail_to_offline_flags(ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags,
-    Tracked(tail_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
+    Tracked(tail_perm): Tracked<CpuOfflineFlagsRegionPerm>) -> (ret: Tracked<PointsTo<CpuOfflineFlags>>)
     requires
         page_ptr_2m_valid(ctn_ptr),
         tail_perm.is_init(),
@@ -24,7 +24,7 @@ fn retype_container_page_tail_to_offline_flags(ctn_ptr: RwLockContainerPtr, flag
 
 impl UnLockedMap<usize, CpuOfflineFlags> {
     pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, ctn_ptr: RwLockContainerPtr, flags: CpuOfflineFlags,
-        Tracked(tail_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
+        Tracked(tail_perm): Tracked<CpuOfflineFlagsRegionPerm>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
             container_map.dom().contains(ctn_ptr),

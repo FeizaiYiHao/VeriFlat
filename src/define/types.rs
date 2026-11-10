@@ -19,6 +19,9 @@ pub type ThreadRegionPerm = PointsTo<[u8; PAGE_SZ_4K_LESS_3_NODE_SLOTS]>;
 pub type ProcessRegionPerm = PointsTo<[u8; PAGE_SZ_4K_LESS_1_NODE_SLOT]>;
 /// A container 2M page without its parent-list node slot.
 pub type ContainerRegionPerm = PointsTo<[u8; PAGE_SZ_2M_LESS_1_NODE_SLOT]>;
+/// The still-raw second 4K page of a container's 2M page, minted only by `retype_container_page_perm_to_rwlock` and consumed only by the offline-flags retype.
+pub struct CpuOfflineFlagsRegion { _bytes: [u8; PAGE_SZ_4K] }
+pub type CpuOfflineFlagsRegionPerm = PointsTo<CpuOfflineFlagsRegion>;
 pub type VAddr = usize;
 pub type PAddr = usize;
 pub type PageMapPtr = usize;

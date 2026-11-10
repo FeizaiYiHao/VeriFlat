@@ -199,13 +199,13 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
-/// TCB: consume one owned 2M container page less its tail node slot, initialize its first-4K lock object, and transfer the untouched second 4K as owned raw bytes. `ASSERT_CONTAINER_LOCK_FITS_4K` proves these returned regions do not overlap.
+/// TCB: consume a 2M container page less its tail node slot, init its first-4K lock object, and hand out the raw second 4K as the `CpuOfflineFlagsRegionPerm` only this retype mints; `ASSERT_CONTAINER_LOCK_FITS_4K` proves the returned regions disjoint.
 #[verifier::external_body]
 pub fn retype_container_page_perm_to_rwlock(
     ctn_ptr: RwLockContainerPtr, value: Container, rodata: ReadOnlyNode<ContainerRO>, Ghost(ghost): Ghost<ContainerGhost>,
     Tracked(page_perm): Tracked<ContainerRegionPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<LockObjPerm<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>,
-    Tracked<LockPerm>, Tracked<PagePerm4k>))
+    Tracked<LockPerm>, Tracked<CpuOfflineFlagsRegionPerm>))
     requires
         page_ptr_2m_valid(ctn_ptr),
         page_perm.is_init(),
