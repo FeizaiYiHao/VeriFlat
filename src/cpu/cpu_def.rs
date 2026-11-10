@@ -790,6 +790,47 @@ impl CpuLockedArray {
             switch_to_thread_eof(*old(self), *self, *old(needflush), *needflush, *old(hw_cr3_pcid), *hw_cr3_pcid, cpu_id, cr3, pcid);
         }
     }
+
+    /// Run `thrd_ptr`, a thread of the process this running CPU already runs: only the current thread changes. The page
+    /// table, CR3, PCID, depth, dirty bitmap, the PCID's flush flag, and the published hardware cr3/pcid word stay as they
+    /// are, so no TLB entry is flushed.
+    pub fn switch_to_thread_same_process(&mut self, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
+        requires
+            old(self).inv(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == old(lctx).cpu_id(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+            old(self).typed_lock_map_aligned(old(lctx).cpu_lock_map(), old(lctx).thread_id()),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            old(self).spec_index(cpu_id).view().is_init(),
+            old(self).spec_index(cpu_id).view().view().wf(),
+            old(self).spec_index(cpu_id).view().view().view().state is Running,
+            cpu_lock_perm.view().state() is WriteLock,
+            cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            cpu_lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            old(lctx).cpu_lock_map().index(cpu_id).lock_id == old(self).spec_index(cpu_id).lock_id(),
+            final(self).inv(),
+            final(self).entries_unchanged_except(old(self), cpu_id),
+            final(self).spec_index(cpu_id).view().is_init(),
+            final(self).spec_index(cpu_id).view().view().wf(),
+            final(self).spec_index(cpu_id).view().locking_thread() == old(self).spec_index(cpu_id).view().locking_thread(),
+            final(self).spec_index(cpu_id).view().being_killed() == old(self).spec_index(cpu_id).view().being_killed(),
+            final(self).spec_index(cpu_id).view().killer_info() == old(self).spec_index(cpu_id).view().killer_info(),
+            final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
+            final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
+            final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
+            final(self).spec_index(cpu_id).view().view().view() == (CpuView { current_thread: Some(thrd_ptr), ..old(self).spec_index(cpu_id).view().view().view() }),
+            final(self).spec_index(cpu_id).view().view().kernel_call_perm() == old(self).spec_index(cpu_id).view().view().kernel_call_perm(),
+    {
+        proof { lctx.enter_kernel_view_release(); }
+        let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
+        cpu.current_thread = Some(thrd_ptr);
+    }
 }
 
 impl LockInvTrait for Cpu {

@@ -87,6 +87,7 @@ verus! {
             caller_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(caller_ptr).locking_thread()->Write_lock_id,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().owning_proc == prc_ptr,
@@ -162,24 +163,46 @@ verus! {
             &&& krnl.prc_mp.view().spec_index(next_process).is_init()
             &&& krnl.prc_mp.view().spec_index(next_process).addr() == next_process
         }) by { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, caller_ptr); process_perms_wf_at(krnl.prc_mp, next_process); };
-        let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
-        let next_pagetable = process.pagetable;
-        let cr3 = process.cr3;
-        let pcid = process.pcid;
-        let depth = process.depth;
-        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().higher.cr3 == cr3) by {
-            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
-            krnl.pt_mp.spec_index(next_pagetable).view().higher.table_pages_wf_cr3_at();
+        let ghost mut before_switch = *krnl;
+        let tracked mut needflush_perm: Option<LockPerm> = None;
+        let switched_pcid = if next_process == prc_ptr {
+            proof {
+                assert({
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
+                }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+                assert(pcid_valid(krnl.prc_mp.spec_index(next_process).view_rodata().view().pcid)) by {
+                    process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
+                };
+                pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id);
+                kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal(&*old(krnl), &before_switch); kernel_endpoint_nonlock_fields_unchanged_for_equal(old(krnl).ep_mp, before_switch.ep_mp);
+                kernel_container_nonlock_fields_and_quotas_unchanged_for_equal(&*old(krnl), &before_switch);
+            }
+            krnl.cpu_arr.switch_to_thread_same_process(cpu_id, caller_ptr, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+            None
+        } else {
+            let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
+            let next_pagetable = process.pagetable;
+            let cr3 = process.cr3;
+            let pcid = process.pcid;
+            let depth = process.depth;
+            assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().higher.cr3 == cr3) by {
+                process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
+                krnl.pt_mp.spec_index(next_pagetable).view().higher.table_pages_wf_cr3_at();
+            };
+            let Tracked(perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
+            proof {
+                needflush_perm = Some(perm);
+                before_switch = *krnl;
+                assert({
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
+                }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            }
+            krnl.cpu_arr.switch_to_thread(cpu_id, next_process, caller_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid,
+                Ghost(before_switch), Tracked(needflush_perm.tracked_borrow()), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+            Some(pcid)
         };
-        let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
-        let ghost before_switch = *krnl;
-        proof {
-            assert({
-                &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
-                &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
-            }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
-        }
-        krnl.cpu_arr.switch_to_thread(cpu_id, next_process, caller_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Ghost(before_switch), Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), before_switch.cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
         let callee = krnl.thrd_mp.borrow_mut_typed(callee_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&callee_lock_perm));
         callee.release_caller();
@@ -195,7 +218,7 @@ verus! {
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before_switch, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
         ipc_reply_handoff_release_and_end_step(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pcid, callee_ptr, ep_ptr, ep_idx, caller_ptr, &*pt_regs, Ghost(*old(pt_regs)),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, switched_pcid, callee_ptr, ep_ptr, ep_idx, caller_ptr, &*pt_regs, Ghost(*old(pt_regs)),
             Ghost(*old(krnl)), Ghost(*old(lctx)), Ghost(before_switch), Tracked(cpu_lock_perm), Tracked(callee_lock_perm), Tracked(endpoint_lock_perm),
             Tracked(caller_lock_perm), Tracked(needflush_perm),
         );
@@ -344,7 +367,7 @@ verus! {
                 &&& ipc_reply_dangling_caller_step_pre(trace[n].old_u, cpu_id, ep_idx)
                 &&& ipc_reply_dangling_caller_taken_over_step(trace[n].old_u, trace[n].new_u, cpu_id)
                 &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
-                    && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[n].old_u.thread_map[trace[n].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
+                    && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[j].old_u.thread_map[trace[j].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
                 &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
                 &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, trace[last].new_u, cpu_id)
                 &&& trace[last].new_u == kernel_k_to_kernel_u(*final(krnl))
@@ -488,6 +511,7 @@ verus! {
             caller_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(caller_ptr).locking_thread()->Write_lock_id,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
             old(krnl).thrd_mp.spec_index(callee_ptr).view().owning_proc == prc_ptr,

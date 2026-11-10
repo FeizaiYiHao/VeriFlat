@@ -18,8 +18,8 @@ pub open spec fn schedule_syscall_result(pre: KernelU, cpu_id: CpuId) -> Schedul
     else { ScheduleResult::Continue }
 }
 
-/// Switches the CPU to the head of its scheduler shard, optionally requeues the
-/// previous thread there, and updates the affected PCID publication and TLB state.
+/// Switches the CPU to the head of its scheduler shard and optionally requeues the previous thread there; a head of
+/// another process than the CPU's current one also updates the affected PCID publication and TLB state.
 #[verifier::opaque]
 pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
@@ -31,8 +31,9 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
     let pcid = target.pcid;
     let dirty = cpu_before.view().tlb_dirty_bitmap().spec_index(pcid);
-    let flush = pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
-        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable));
+    let same = old_cpu.current_process == Some(next_process);
+    let flush = !same && (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
+        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)));
     let scheduler_before = pre.sched_mp.spec_index(sched_ptr);
     let scheduler_after = post.sched_mp.spec_index(sched_ptr);
     let shard_before = scheduler_before.shards.spec_index(cpu_id).view();
@@ -51,15 +52,19 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
-    &&& new_cpu == (CpuView {
-        state: CpuState::Running, current_process: Some(next_process),
-        current_thread: Some(next_thread), current_pagetable: Some(target.pagetable),
-        current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
-        tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
-    })
+    &&& new_cpu == if same { CpuView { current_thread: Some(next_thread), ..old_cpu } } else {
+        CpuView {
+            state: CpuState::Running, current_process: Some(next_process),
+            current_thread: Some(next_thread), current_pagetable: Some(target.pagetable),
+            current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
+            tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
+        }
+    }
     &&& cpu_after.view().wf()
     &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
-    &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    &&& cpu_after.view().tlb_dirty_bitmap() == if same { cpu_before.view().tlb_dirty_bitmap() } else {
+        cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    }
     &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
     &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(ptr)] #![trigger post.thrd_mp.spec_index(ptr)] pre.thrd_mp.dom().contains(ptr) ==> {
         let before = pre.thrd_mp.spec_index(ptr);
@@ -110,11 +115,11 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     &&& needflush_after.view_ghost() == needflush_before.view_ghost()
     &&& needflush_after.being_killed() == needflush_before.being_killed()
     &&& needflush_after.locking_thread() == needflush_before.locking_thread()
-    &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
+    &&& needflush_after.view() == (PcidNeedFlush { needflush: same && needflush_before.view().needflush, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
-    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == if same { pre.cpu_hw_cr3_pcid[cpu_id as int].view() } else { (target.cr3, pcid) }
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
     &&& post.cpu_tlb.structure_caches.view() == if flush { pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))) } else { pre.cpu_tlb.structure_caches.view() }

@@ -274,14 +274,14 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
         &&& ipc_reply_handoff_step(pre, post, cpu_id, ep_idx, regs, flushed_pcid)
     } else if ret is ErrorIpcCallerKilled {
         let last = trace.len() - 1;
-        let container = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0].owning_container;
         // take over + at least one reclaim step + release
         &&& trace.len() >= 3
         &&& trace[0].old_u == pre
         &&& ipc_reply_dangling_caller_step_pre(pre, cpu_id, ep_idx)
         &&& ipc_reply_dangling_caller_taken_over_step(pre, trace[0].new_u, cpu_id)
         &&& forall|j: int| #![trigger trace[j]] 0 < j < last
-            ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, container)
+            ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
+                && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[j].old_u.thread_map[trace[j].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
         &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
         &&& trace[last].new_u == post
         &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, post, cpu_id)
@@ -291,8 +291,9 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
     }
 }
 
-/// Dequeues the receive-call callee, switches `cpu_id` to its process, records the caller on it, parks the
-/// caller waiting for the reply with `entry_regs`, and updates the affected PCID publication and TLB state.
+/// Dequeues the receive-call callee, runs it on `cpu_id`, records the caller on it, and parks the caller waiting for
+/// the reply with `entry_regs`; a callee of another process also switches `cpu_id` to that process and updates the
+/// affected PCID publication and TLB state.
 #[verifier::opaque]
 pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
@@ -304,8 +305,9 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
     let pcid = target.pcid;
     let dirty = cpu_before.view().tlb_dirty_bitmap().spec_index(pcid);
-    let flush = pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
-        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable));
+    let same = old_cpu.current_process == Some(next_process);
+    let flush = !same && (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
+        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)));
     let callee_node = callee.endpoint_linkedlist_node.addr();
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
@@ -321,14 +323,18 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
-    &&& new_cpu == (CpuView {
-        state: CpuState::Running, current_process: Some(next_process),
-        current_thread: Some(callee_ptr), current_pagetable: Some(target.pagetable),
-        current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
-        tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
-    })
+    &&& new_cpu == if same { CpuView { current_thread: Some(callee_ptr), ..old_cpu } } else {
+        CpuView {
+            state: CpuState::Running, current_process: Some(next_process),
+            current_thread: Some(callee_ptr), current_pagetable: Some(target.pagetable),
+            current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
+            tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
+        }
+    }
     &&& cpu_after.view().wf()
-    &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    &&& cpu_after.view().tlb_dirty_bitmap() == if same { cpu_before.view().tlb_dirty_bitmap() } else {
+        cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    }
     &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
     &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(ptr)] #![trigger post.thrd_mp.spec_index(ptr)] pre.thrd_mp.dom().contains(ptr) ==> {
         let before = pre.thrd_mp.spec_index(ptr);
@@ -388,11 +394,11 @@ pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, po
     &&& needflush_after.view_ghost() == needflush_before.view_ghost()
     &&& needflush_after.being_killed() == needflush_before.being_killed()
     &&& needflush_after.locking_thread() == needflush_before.locking_thread()
-    &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
+    &&& needflush_after.view() == (PcidNeedFlush { needflush: same && needflush_before.view().needflush, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
-    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == if same { pre.cpu_hw_cr3_pcid[cpu_id as int].view() } else { (target.cr3, pcid) }
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
     &&& post.cpu_tlb.structure_caches.view() == if flush { pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))) } else { pre.cpu_tlb.structure_caches.view() }
@@ -460,9 +466,9 @@ pub(super) open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, pos
     &&& endpoint_after.view().queue.dom() == endpoint_before.view().queue.dom().remove(caller_node)
 }
 
-/// Switches `cpu_id` to the recorded caller's process and resumes it, parks the replying callee with
-/// `entry_regs` at the endpoint tail as a receive-call waiter, and updates the affected PCID publication and
-/// TLB state.
+/// Resumes the recorded caller on `cpu_id` and parks the replying callee with `entry_regs` at the endpoint tail as a
+/// receive-call waiter; a caller of another process also switches `cpu_id` to that process and updates the affected
+/// PCID publication and TLB state.
 #[verifier::opaque]
 pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
@@ -475,8 +481,9 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
     let pcid = target.pcid;
     let dirty = cpu_before.view().tlb_dirty_bitmap().spec_index(pcid);
-    let flush = pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
-        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable));
+    let same = old_cpu.current_process == Some(next_process);
+    let flush = !same && (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
+        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)));
     let callee_node = callee.endpoint_linkedlist_node.addr();
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
@@ -492,14 +499,18 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
-    &&& new_cpu == (CpuView {
-        state: CpuState::Running, current_process: Some(next_process),
-        current_thread: Some(caller_ptr), current_pagetable: Some(target.pagetable),
-        current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
-        tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
-    })
+    &&& new_cpu == if same { CpuView { current_thread: Some(caller_ptr), ..old_cpu } } else {
+        CpuView {
+            state: CpuState::Running, current_process: Some(next_process),
+            current_thread: Some(caller_ptr), current_pagetable: Some(target.pagetable),
+            current_cr3: target.cr3, current_pcid: pcid, process_depth: target.depth,
+            tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
+        }
+    }
     &&& cpu_after.view().wf()
-    &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    &&& cpu_after.view().tlb_dirty_bitmap() == if same { cpu_before.view().tlb_dirty_bitmap() } else {
+        cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
+    }
     &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
     &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(ptr)] #![trigger post.thrd_mp.spec_index(ptr)] pre.thrd_mp.dom().contains(ptr) ==> {
         let before = pre.thrd_mp.spec_index(ptr);
@@ -560,11 +571,11 @@ pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, p
     &&& needflush_after.view_ghost() == needflush_before.view_ghost()
     &&& needflush_after.being_killed() == needflush_before.being_killed()
     &&& needflush_after.locking_thread() == needflush_before.locking_thread()
-    &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
+    &&& needflush_after.view() == (PcidNeedFlush { needflush: same && needflush_before.view().needflush, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
-    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == if same { pre.cpu_hw_cr3_pcid[cpu_id as int].view() } else { (target.cr3, pcid) }
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
     &&& post.cpu_tlb.structure_caches.view() == if flush { pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))) } else { pre.cpu_tlb.structure_caches.view() }

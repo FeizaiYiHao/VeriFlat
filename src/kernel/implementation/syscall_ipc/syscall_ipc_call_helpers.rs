@@ -4,15 +4,15 @@ use super::syscall_ipc_call_spec::*;
 use super::syscall_ipc_call_trace::*;
 
 verus! {
-/// Releases the caller-pcid needflush, caller, callee, endpoint, and cpu locks after the reply handoff `locked_k` → `*old(krnl)`
-/// summarized by `ipc_reply_handoff_eof_transition_framing`, where `locked_k` is `entry_k` with that needflush entry write-locked,
-/// and records the reply-handoff step from `steps.snapshot_k()`.
+/// Releases the caller-pcid needflush (when the handoff switched to the caller's PCID `switched_pcid`), caller, callee, endpoint,
+/// and cpu locks after the reply handoff `locked_k` → `*old(krnl)` summarized by `ipc_reply_handoff_eof_transition_framing`,
+/// where `locked_k` is `entry_k` with that needflush entry write-locked, and records the reply-handoff step from `steps.snapshot_k()`.
 pub(super) fn ipc_reply_handoff_release_and_end_step(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pcid: Pcid,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, switched_pcid: Option<Pcid>,
     callee_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx, caller_ptr: RwLockThreadPtr, pt_regs: &Registers,
     Ghost(entry_regs): Ghost<Registers>, Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>, Ghost(locked_k): Ghost<KernelK>,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(callee_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
-    Tracked(caller_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<LockPerm>,
+    Tracked(caller_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<Option<LockPerm>>,
 )
     requires
         entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, cpu_op: entry_k.cpu_op, thrd_mp: entry_k.thrd_mp, ep_mp: entry_k.ep_mp, ..old(steps).snapshot_k() }),
@@ -81,12 +81,12 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         entry_k.thrd_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
         entry_k.thrd_mp.spec_index(caller_ptr).view().owning_container == entry_k.thrd_mp.spec_index(callee_ptr).view().owning_container,
         entry_k.prc_mp.dom().contains(entry_k.thrd_mp.spec_index(caller_ptr).view().owning_proc),
-        pcid == entry_k.prc_mp.spec_index(entry_k.thrd_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid,
-        pcid_valid(pcid),
+        (switched_pcid is None) == (entry_k.thrd_mp.spec_index(caller_ptr).view().owning_proc == entry_k.thrd_mp.spec_index(callee_ptr).view().owning_proc),
+        switched_pcid matches Some(pcid) ==> pcid == entry_k.prc_mp.spec_index(entry_k.thrd_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid && pcid_valid(pcid),
         locked_k == (KernelK { pcid_needflush: locked_k.pcid_needflush, ..entry_k }),
         forall|c: CpuId, p: Pcid| #![trigger locked_k.pcid_needflush.spec_index(c, p)] #![trigger entry_k.pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) ==> {
             &&& locked_k.pcid_needflush.spec_index(c, p).view() == entry_k.pcid_needflush.spec_index(c, p).view()
-            &&& ((c != cpu_id || p != pcid) ==> locked_k.pcid_needflush.spec_index(c, p) == entry_k.pcid_needflush.spec_index(c, p))
+            &&& ((c != cpu_id || switched_pcid != Some(p)) ==> locked_k.pcid_needflush.spec_index(c, p) == entry_k.pcid_needflush.spec_index(c, p))
         },
         kernel_cpu_process_thread_nonlock_fields_unchanged(&entry_k, &locked_k),
         kernel_endpoint_nonlock_fields_unchanged(entry_k.ep_mp, locked_k.ep_mp),
@@ -104,7 +104,7 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        switched_pcid matches Some(pcid) ==> old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).thrd_mp.dom().contains(callee_ptr),
         old(krnl).thrd_mp.spec_index(callee_ptr).being_killed() == false,
@@ -137,10 +137,11 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         endpoint_lock_perm.state() is WriteLock,
         endpoint_lock_perm.thread_id() == old(lctx).thread_id(),
         endpoint_lock_perm.lock_id() == old(krnl).ep_mp.spec_index(ep_ptr).locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
-        needflush_perm.state() is WriteLock,
-        needflush_perm.thread_id() == old(lctx).thread_id(),
-        needflush_perm.lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+        switched_pcid matches Some(pcid) ==> {
+            &&& typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)
+            &&& needflush_perm matches Some(perm) && perm.state() is WriteLock && perm.thread_id() == old(lctx).thread_id()
+            &&& needflush_perm.unwrap().lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id
+        },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
@@ -164,7 +165,7 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
-        old(lctx).pcid_needflush_lock_map().dom() =~= set![(cpu_id, pcid)],
+        old(lctx).pcid_needflush_lock_map().dom() =~= match switched_pcid { Some(pcid) => set![(cpu_id, pcid)], None => Set::empty() },
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -180,7 +181,10 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         *pt_regs == *old(steps).snapshot_k().thrd_mp.spec_index(caller_ptr).view().trap_frame.get_some_0(),
 {
-    krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
+    if let Some(pcid) = switched_pcid {
+        let tracked perm = needflush_perm.tracked_unwrap();
+        krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(perm));
+    }
     krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
     krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
     krnl.wunlock_endpoint(ep_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));

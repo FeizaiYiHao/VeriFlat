@@ -2,14 +2,17 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Switching `cpu_id` to `next_thread` flushes the `(cpu_id, pcid)` TLB entry of its process's PCID when a flush is pending or
-/// the entry is dirty for another process or page table.
+/// Switching `cpu_id` to `next_thread` of the cpu's current process flushes nothing; switching it to another process flushes
+/// the `(cpu_id, pcid)` TLB entry of that process's PCID when a flush is pending or the entry is dirty for another process
+/// or page table.
 pub open spec fn context_switch_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr) -> Option<Pcid> {
     let next_process = pre.thrd_mp.spec_index(next_thread).view().owning_proc;
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
     let pcid = target.pcid;
     let dirty = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-    if pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)) { Some(pcid) } else { None }
+    if pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(next_process) { None }
+    else if pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)) { Some(pcid) }
+    else { None }
 }
 
 #[verifier::opaque]

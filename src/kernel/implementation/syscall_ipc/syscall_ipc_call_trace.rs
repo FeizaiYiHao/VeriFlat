@@ -162,13 +162,14 @@ pub(super) proof fn ipc_reply_dangling_caller_held_step_pre_from_k(krnl: &Kernel
         ipc_reply_dangling_caller_held_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).value.view().view().state,
+        kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].owning_container == krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container,
 {
     reveal(ipc_reply_dangling_caller_held_step_pre);
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr);
 }
 
-/// Reclaim steps recorded from `start` that keep the cpu and its running thread of `entry` are reclaim steps of a reply to a dangling
-/// caller within `container`.
+/// Reclaim steps recorded from `start` within `container`, the container of the running thread of `entry`, that keep the cpu and that
+/// running thread are reclaim steps of a reply to a dangling caller within the container of each step's running thread.
 pub(super) proof fn reclaim_steps_keep_running_thread_implies_dangling_held_reclaim_steps(trace: Seq<KernelStep>, start: int, entry: KernelU, cpu_id: CpuId, container: RwLockContainerPtr)
     requires
         forall|j: int| #![trigger trace[j]] start <= j < trace.len() ==> {
@@ -179,9 +180,10 @@ pub(super) proof fn reclaim_steps_keep_running_thread_implies_dangling_held_recl
             &&& trace[j].old_u.thread_map[cur] == entry.thread_map[cur]
         },
         ipc_reply_dangling_caller_held_step_pre(entry, cpu_id),
+        entry.thread_map[entry.cpu_array[cpu_id as int].current_thread->Some_0].owning_container == container,
     ensures
-        forall|j: int| #![trigger trace[j]] start <= j < trace.len()
-            ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id) && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, container),
+        forall|j: int| #![trigger trace[j]] start <= j < trace.len() ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
+            && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[j].old_u.thread_map[trace[j].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
 { reveal(ipc_reply_dangling_caller_held_step_pre); }
 
 /// Clearing the running thread's progress and then releasing the cpu and the running thread is the released step of a reply to a dangling
@@ -216,7 +218,7 @@ pub(super) proof fn ipc_reply_and_receive_trace_from_dangling(
             &&& ipc_reply_dangling_caller_step_pre(trace[n].old_u, cpu_id, ep_idx)
             &&& ipc_reply_dangling_caller_taken_over_step(trace[n].old_u, trace[n].new_u, cpu_id)
             &&& forall|j: int| #![trigger trace[j]] n < j < last ==> ipc_reply_dangling_caller_held_step_pre(trace[j].old_u, cpu_id)
-                && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
+                && killed_thread_reclaim_within_container(trace[j].old_u, trace[j].new_u, cpu_id, trace[j].old_u.thread_map[trace[j].old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container)
             &&& ipc_reply_dangling_caller_held_step_pre(trace[last].old_u, cpu_id)
             &&& ipc_reply_dangling_caller_released_step(trace[last].old_u, trace[last].new_u, cpu_id)
             &&& trace[last].new_u == post

@@ -211,10 +211,15 @@ Stutters: CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoQu
 
 Status: conforms (focused run #27374).
 
-- Arguments: entry `regs`. K-internal label: `flushed_pcid`.
+- Arguments: entry `regs`. K-internal label: `flushed_pcid`
+  (`context_switch_flushed_pcid`): `None` when `next` belongs to the cpu's
+  current process, which keeps its page table, PCID, and flush flag;
+  otherwise `next`'s PCID when its flush is pending or its dirty slot names
+  another process or page table.
 - U locks acquired and released in the step: `cpu`, the current process and
   thread when present, and the next thread. Non-U: shard `cpu_id` of the
-  container scheduler and the PCID-needflush entry.
+  container scheduler and, when `next` belongs to another process, the
+  PCID-needflush entry.
 
 **Step**
 
@@ -1128,7 +1133,9 @@ callers, RECEIVE for queued receivers and receive-callers).
 
 Locks: `cpu`, then the current thread, then `E(i)`, then the peer (the head
 or the recorded caller; a WAITING_REPLY caller is locked under its callee's
-thread lock), then `pcid_needflush` for a handoff. No process lock.
+thread lock), then `pcid_needflush` for a handoff to another process (a
+handoff within the cpu's current process takes no needflush lock and flushes
+nothing). No process lock.
 
 ## 12. IPC endpoint — transit, finish
 

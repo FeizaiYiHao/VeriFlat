@@ -120,6 +120,7 @@ fn schedule_switch_to_queue_head(
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.view().state() is WriteLock,
         cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -225,11 +226,16 @@ fn schedule_switch_to_queue_head(
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     proof { kernel_scheduler_shards_projection_at(old(krnl).sched_mp.spec_index(sched_ptr), cpu_id); }
     let (next_process, next_pagetable, cr3, pcid, depth) = schedule_switch_read_target(&*krnl, Tracked(&*lctx), cpu_id, sched_ptr, next_thread, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm));
-    let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
+    let same = match current_process { Some(prc_ptr) => prc_ptr == next_process, None => false };
+    let tracked mut needflush_perm: Option<LockPerm> = None;
+    if !same {
+        let Tracked(perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
+        proof { needflush_perm = Some(perm); }
+    }
     let ghost before_switch = *krnl;
     let syscall_return = schedule_switch_commit(krnl, Tracked(&mut *lctx), cpu_id, pt_regs, sched_ptr, next_thread, current_thread, next_process, next_pagetable, cr3, pcid, depth,
-        &current_thread_lock_perm, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm), Tracked(&cpu_lock_perm), Tracked(&needflush_perm));
-    schedule_switch_unlock_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid,
+        same, &current_thread_lock_perm, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm), Tracked(&cpu_lock_perm), Tracked(&needflush_perm));
+    schedule_switch_unlock_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid, same,
         process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm),
         Ghost(*old(krnl)), Ghost(before_switch), Ghost(*old(pt_regs)));
     syscall_return

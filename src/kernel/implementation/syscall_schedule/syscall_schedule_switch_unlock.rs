@@ -2,13 +2,13 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// With the `(cpu_id, pcid)` needflush cell, `next_thread`, shard `cpu_id` of `sched_ptr`, the live `current_thread` and
+/// With the `(cpu_id, pcid)` needflush cell unless `same`, `next_thread`, shard `cpu_id` of `sched_ptr`, the live `current_thread` and
 /// `current_process`, if any, and `cpu_id` write-held after the context switch: releases them all in that order.
 pub(super) fn schedule_switch_release_locks(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
-    current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid, process_lock_perm: Option<Tracked<LockPerm>>,
+    current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid, same: bool, process_lock_perm: Option<Tracked<LockPerm>>,
     current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>, Tracked(next_lock_perm): Tracked<LockPerm>,
-    Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<LockPerm>,
+    Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<Option<LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -19,8 +19,8 @@ pub(super) fn schedule_switch_release_locks(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).sched_mp.dom().contains(sched_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        !same ==> old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).thrd_mp.dom().contains(next_thread),
         !old(krnl).thrd_mp.spec_index(next_thread).being_killed(),
         old(krnl).thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
@@ -49,7 +49,7 @@ pub(super) fn schedule_switch_release_locks(
         },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
-        old(lctx).pcid_needflush_lock_map().dom() =~= set![(cpu_id, pcid)],
+        old(lctx).pcid_needflush_lock_map().dom() =~= if same { Set::empty() } else { set![(cpu_id, pcid)] },
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= match current_process {
             Some(ptr) => set![ptr],
@@ -81,10 +81,11 @@ pub(super) fn schedule_switch_release_locks(
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
-        needflush_perm.state() is WriteLock,
-        needflush_perm.thread_id() == old(lctx).thread_id(),
-        needflush_perm.lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+        !same ==> {
+            &&& typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)
+            &&& needflush_perm matches Some(perm) && perm.state() is WriteLock && perm.thread_id() == old(lctx).thread_id()
+            &&& needflush_perm.unwrap().lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id
+        },
         current_process is Some ==> {
             let prc_ptr = current_process.unwrap();
             let perm = process_lock_perm.unwrap().view();
@@ -142,7 +143,10 @@ pub(super) fn schedule_switch_release_locks(
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
-    krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
+    if !same {
+        let tracked perm = needflush_perm.tracked_unwrap();
+        krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(perm));
+    }
     krnl.wunlock_thread(next_thread, Tracked(&mut *lctx), Tracked(next_lock_perm));
     krnl.wunlock_scheduler_shard(sched_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     if let Some(perm) = current_thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }

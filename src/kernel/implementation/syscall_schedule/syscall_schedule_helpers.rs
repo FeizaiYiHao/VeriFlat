@@ -8,13 +8,13 @@ use super::syscall_schedule_eof::scheduler_context_switch_eof;
 
 verus! {
 /// Finish of the switch to the shard head `next_thread` on `cpu_id` once the cpu, shard, and threads are committed from
-/// `switch_k`, which is `entry_k` with the `(cpu_id, pcid)` needflush cell write-locked: close the kernel invariant,
+/// `switch_k`, which is `entry_k` with the `(cpu_id, pcid)` needflush cell write-locked unless `same`: close the kernel invariant,
 /// release every lock, and record the context-switch step that starts at the snapshot of `steps`.
 pub(super) fn schedule_switch_unlock_and_record(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, sched_ptr: RwLockSchedulerPtr,
-    next_thread: RwLockThreadPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid,
+    next_thread: RwLockThreadPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, pcid: Pcid, same: bool,
     process_lock_perm: Option<Tracked<LockPerm>>, current_thread_lock_perm: Option<Tracked<LockPerm>>, Tracked(scheduler_lock_perm): Tracked<LockPerm>,
-    Tracked(next_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<LockPerm>,
+    Tracked(next_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<Option<LockPerm>>,
     Ghost(entry_k): Ghost<KernelK>, Ghost(switch_k): Ghost<KernelK>, Ghost(entry_regs): Ghost<Registers>,
 )
     requires
@@ -101,8 +101,8 @@ pub(super) fn schedule_switch_unlock_and_record(
         old(krnl).thrd_mp.dom() == entry_k.thrd_mp.dom(),
         old(krnl).sched_mp.dom().contains(sched_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        !same ==> old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         !old(krnl).thrd_mp.spec_index(next_thread).being_killed(),
         old(krnl).thrd_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thrd_mp.spec_index(next_thread).view().free_quota_pending_clean(),
@@ -122,7 +122,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
-        old(lctx).pcid_needflush_lock_map().dom() =~= set![(cpu_id, pcid)],
+        old(lctx).pcid_needflush_lock_map().dom() =~= if same { Set::empty() } else { set![(cpu_id, pcid)] },
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= match current_process {
             Some(ptr) => set![ptr],
@@ -154,10 +154,11 @@ pub(super) fn schedule_switch_unlock_and_record(
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
-        needflush_perm.state() is WriteLock,
-        needflush_perm.thread_id() == old(lctx).thread_id(),
-        needflush_perm.lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+        !same ==> {
+            &&& typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)
+            &&& needflush_perm matches Some(perm) && perm.state() is WriteLock && perm.thread_id() == old(lctx).thread_id()
+            &&& needflush_perm.unwrap().lock_id() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id
+        },
         current_process is Some ==> {
             let prc_ptr = current_process.unwrap();
             let perm = process_lock_perm.unwrap().view();
@@ -222,7 +223,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         kernel_scheduler_shards_projection_at(entry_k.sched_mp.spec_index(sched_ptr), cpu_id);
         scheduler_context_switch_eof(switch_k, *krnl, cpu_id, sched_ptr, next_thread, entry_regs);
     }
-    schedule_switch_release_locks(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid, process_lock_perm,
+    schedule_switch_release_locks(krnl, Tracked(&mut *lctx), cpu_id, sched_ptr, next_thread, current_process, current_thread, pcid, same, process_lock_perm,
         current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm));
     proof {
         let ghost flushed_pcid = context_switch_flushed_pcid(entry_k, cpu_id, next_thread);
