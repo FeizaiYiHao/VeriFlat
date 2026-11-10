@@ -93,9 +93,10 @@ impl LockInvTrait for Process {
     open spec fn inv(&self) -> bool { self.wf() }
 }
 impl Process {
-    pub fn new_boot_root(prc_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, root_thread: RwLockThreadPtr,
+    pub fn new_boot_root(parent_linkedlist_node: ExternalNode<RwLockProcessPtr>, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, root_thread: RwLockThreadPtr,
         thread_node_addr: usize, thread_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>) -> (ret: Self)
         requires
+            parent_linkedlist_node.is_init(),
             pagetable != iommu_table,
             thread_node_perm.view().is_init(),
             thread_node_perm.view().addr() == thread_node_addr,
@@ -113,20 +114,22 @@ impl Process {
             ret.quota_2m == 0,
             ret.quota_1g == 0,
             ret.parent_linkedlist_node.is_init(),
+            ret.parent_linkedlist_node == parent_linkedlist_node,
             ret.children.view() == Seq::<RwLockProcessPtr>::empty(),
             ret.owned_threads.view() =~= seq![root_thread],
             ret.owned_threads.map() =~= Map::<usize, RwLockThreadPtr>::empty().insert(thread_node_addr, root_thread),
     {
-        let mut ret = Self::new_fresh(prc_ptr, 1, pagetable, 0, 0);
+        let mut ret = Self::new_fresh(parent_linkedlist_node, 1, pagetable, 0, 0);
         ret.iommu_table = Some(iommu_table);
         ret.owned_threads.push_tail(thread_node_addr, thread_node_perm);
         ret.state = Ghost(ProcessState::Running);
         ret
     }
 
-    pub fn new_fresh(prc_ptr: RwLockProcessPtr, pcid: Pcid, pagetable: RwLockPageTableRoot, container_depth: usize, depth: usize) -> (ret: Self)
+    pub fn new_fresh(parent_linkedlist_node: ExternalNode<RwLockProcessPtr>, pcid: Pcid, pagetable: RwLockPageTableRoot, container_depth: usize, depth: usize) -> (ret: Self)
         requires
             pcid != KERNEL_DEFAULT_PCID,
+            parent_linkedlist_node.is_init(),
         ensures
             ret.inv(),
             ret.uppertree_seq.view() == Seq::<RwLockProcessPtr>::empty(),
@@ -140,12 +143,12 @@ impl Process {
             ret.quota_2m == 0,
             ret.quota_1g == 0,
             ret.parent_linkedlist_node.is_init(),
+            ret.parent_linkedlist_node == parent_linkedlist_node,
             ret.children.view() == Seq::<RwLockProcessPtr>::empty(),
             ret.owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
             ret.owned_threads.map() == Map::<usize, RwLockThreadPtr>::empty(),
             ret.owned_threads.length == 0,
     {
-        let parent_linkedlist_node = ExternalNode::new(prc_ptr);
         let children = LinkedList::new(Some(container_depth), Some(depth));
         let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
         Self { uppertree_seq: Ghost(Seq::empty()), pci_cleared: Ghost(false), zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None,

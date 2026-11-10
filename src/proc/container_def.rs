@@ -80,7 +80,9 @@ impl LockInvTrait for Container {
 }
 
 impl Container {
-    pub fn new_boot_root(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
+    pub fn new_boot_root(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>, parent_linkedlist_node: ExternalNode<RwLockContainerPtr>) -> (ret: Self)
+        requires
+            parent_linkedlist_node.is_init(),
         ensures
             ret.inv(),
             ret.uppertree_seq.view() == Seq::<RwLockContainerPtr>::empty(),
@@ -88,17 +90,20 @@ impl Container {
             !ret.root_process_removed.view(),
             !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
+            ret.parent_linkedlist_node == parent_linkedlist_node,
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
             ret.owned_pages == owned_pages,
     {
-        let mut ret = Self::new_staged(ctn_ptr, root_process, 0);
+        let mut ret = Self::new_staged(ctn_ptr, root_process, 0, parent_linkedlist_node);
         ret.owned_pages = owned_pages;
         ret
     }
 
-    pub fn new_staged(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
+    pub fn new_staged(ctn_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize, parent_linkedlist_node: ExternalNode<RwLockContainerPtr>) -> (ret: Self)
+        requires
+            parent_linkedlist_node.is_init(),
         ensures
             ret.inv(),
             ret.uppertree_seq.view() == Seq::<RwLockContainerPtr>::empty(),
@@ -106,12 +111,13 @@ impl Container {
             !ret.root_process_removed.view(),
             !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
+            ret.parent_linkedlist_node == parent_linkedlist_node,
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
-        Self { uppertree_seq: Ghost(Seq::empty()), retire_ready: Ghost(false), root_process_removed: Ghost(false), zombie: false, parent_linkedlist_node: ExternalNode::new(ctn_ptr),
+        Self { uppertree_seq: Ghost(Seq::empty()), retire_ready: Ghost(false), root_process_removed: Ghost(false), zombie: false, parent_linkedlist_node,
             children: LinkedList::new(Some(depth), Some(ctn_ptr)), root_process, owned_pages: Ghost(Set::empty()) }
     }
 

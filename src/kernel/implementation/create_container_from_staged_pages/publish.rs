@@ -407,7 +407,8 @@ pub(super) fn publish_staged_container_root_mutation(
     let (Tracked(child_cpu_set_lock_perm), Ghost(cpu_set_page_locks)) = publish_new_container_cpu_set(
         krnl, child_ctn_ptr, child_cpu_set_ptr, cpu_set_page, cpu_set_value, Ghost(scheduler_page_locks), Tracked(&mut *lctx), Tracked(cpu_set_page_lock_perm),
     );
-    let mut container_value = Container::new_staged(child_ctn_ptr, child_prc_ptr, child_depth);
+    let (Tracked(container_region_perm), parent_node) = split_container_page_node_slot(child_ctn_ptr, Tracked(container_perm));
+    let mut container_value = Container::new_staged(child_ctn_ptr, child_prc_ptr, child_depth, parent_node);
     container_value.owned_pages = Ghost(moved_pages);
     container_value.uppertree_seq = Ghost(child_uppers);
     let container_rodata = ReadOnlyNode::new(
@@ -433,7 +434,7 @@ pub(super) fn publish_staged_container_root_mutation(
         krnl, child_pcid_allc_ptr, pcid_allocator_value, child_ctn_ptr, container_value, container_rodata, container_ghost,
         Ghost(allocator_4k_page), Ghost(allocator_2m_page), Ghost(allocator_1g_page), Ghost(scheduler_page), Ghost(cpu_set_page), Ghost(child_prc_ptr),
         Ghost(child_pagetable_ptr), Ghost(l4_page), Ghost(bootstrap_seq), Ghost(funding_pages), Ghost(funding_indices), Ghost(pool_page_locks),
-        Ghost(cpu_set_page_locks), Tracked(&mut *lctx), Tracked(pcid_allocator_perm), Tracked(container_perm),
+        Ghost(cpu_set_page_locks), Tracked(&mut *lctx), Tracked(pcid_allocator_perm), Tracked(container_region_perm),
     );
     proof {
         assert(lctx.container_lock_map().dom().contains(parent_ctn_ptr));

@@ -804,7 +804,7 @@ pub fn process_subsystem_create_scheduled_thread(
     ctn_mp: &ContainerLockedMap, prc_mp: &mut ProcessLockedMap, thrd_mp: &mut ThreadLockedMap,
     sched_mp: &mut SchedulerUnLockedMap, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr,
     staging_thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
-    thread_value: Thread, initial_regs: &Registers, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>,
+    thread_value: Thread, initial_regs: &Registers, Tracked(page_perm): Tracked<ThreadRegionPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(process_lock_perm): Tracked<&LockPerm>, Tracked(staging_thread_lock_perm): Tracked<&LockPerm>, Tracked(shard_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (Tracked<LockPerm>, usize, usize))
     requires
@@ -957,8 +957,8 @@ pub fn process_subsystem_create_scheduled_thread(
         assert(!lctx.thread_lock_map().dom().contains(pg_ptr)
             && lctx.typed_lock_entry(KernelObjId::Thread(pg_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
-    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    let Tracked(thread_lock_perm) = thrd_mp.retype_4k_and_insert(pg_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)));
+    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    let Tracked(thread_lock_perm) = thrd_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS>(pg_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)));
     let ghost fresh_lock_id = thrd_mp.lock_id_by_key(pg_ptr);
     proof { assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thrd_mp.borrow_mut_typed(pg_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));

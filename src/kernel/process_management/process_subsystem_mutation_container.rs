@@ -201,7 +201,7 @@ pub proof fn remove_thread_from_container_sets(
 
 pub fn container_map_insert_new_2m(
     ctn_mp: &mut ContainerLockedMap, ctn_ptr: RwLockContainerPtr, container_value: Container,
-    container_rodata: ReadOnlyNode<ContainerRO>, container_ghost: ContainerGhost, Tracked(page_perm): Tracked<PagePerm2m>,
+    container_rodata: ReadOnlyNode<ContainerRO>, container_ghost: ContainerGhost, Tracked(page_perm): Tracked<ContainerRegionPerm>,
     Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<LockPerm>, Tracked<PagePerm4k>))
     requires

@@ -235,7 +235,12 @@ impl UserViewHasKillState for ThreadU {
 impl Thread {
     /// Boot-only fresh root thread: RUNNING on CPU 0 with endpoint 0 set. The
     /// caller retypes it into its page before taking any intrusive node.
-    pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, ep_ptr: RwLockEndpointPtr) -> (ret: Self)
+    pub fn new_boot_root(owning_container: RwLockContainerPtr, owning_proc: RwLockProcessPtr, proc_pagetable_ptr: RwLockPageTableRoot, ep_ptr: RwLockEndpointPtr,
+        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>) -> (ret: Self)
+        requires
+            scheduler_linkedlist_node.is_init(),
+            proc_linkedlist_node.is_init(),
+            endpoint_linkedlist_node.is_init(),
         ensures
             ret.inv(),
             !ret.exited.view(),
@@ -266,8 +271,11 @@ impl Thread {
             ret.endpoint_linkedlist_node.is_init(),
             ret.scheduler_linkedlist_node.is_init(),
             ret.proc_linkedlist_node.is_init(),
+            ret.scheduler_linkedlist_node == scheduler_linkedlist_node,
+            ret.proc_linkedlist_node == proc_linkedlist_node,
+            ret.endpoint_linkedlist_node == endpoint_linkedlist_node,
     {
-        let mut thread = Self::new_fresh(owning_container, 0, owning_proc, 0, proc_pagetable_ptr, Ghost(Seq::empty()));
+        let mut thread = Self::new_fresh(owning_container, 0, owning_proc, 0, proc_pagetable_ptr, Ghost(Seq::empty()), scheduler_linkedlist_node, proc_linkedlist_node, endpoint_linkedlist_node);
         thread.endpoint_descriptors.set(0, Some(ep_ptr));
         thread
     }
@@ -331,9 +339,13 @@ impl Thread {
     /// State is RUNNING{cpu_id: 0} (not waiting, not SCHEDULED).
     /// All endpoint fields are None/empty, all pending quotas are 0,
     /// caller/callee are None, linkedlist nodes are init, trap_frame is None.
-    pub fn new_fresh(owning_container: RwLockContainerPtr, container_depth: usize, owning_proc: RwLockProcessPtr, process_depth: usize, proc_pagetable_ptr: RwLockPageTableRoot, upper_container_seq: Ghost<Seq<RwLockContainerPtr>>) -> (ret: Self)
+    pub fn new_fresh(owning_container: RwLockContainerPtr, container_depth: usize, owning_proc: RwLockProcessPtr, process_depth: usize, proc_pagetable_ptr: RwLockPageTableRoot, upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
+        scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>, proc_linkedlist_node: ExternalNode<RwLockThreadPtr>, endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>) -> (ret: Self)
         requires
             upper_container_seq.view().len() == container_depth,
+            scheduler_linkedlist_node.is_init(),
+            proc_linkedlist_node.is_init(),
+            endpoint_linkedlist_node.is_init(),
         ensures
             ret.inv(),
             !ret.exited.view(),
@@ -353,6 +365,9 @@ impl Thread {
             ret.callee is None,
             ret.proc_linkedlist_node.is_init(),
             ret.scheduler_linkedlist_node.is_init(),
+            ret.scheduler_linkedlist_node == scheduler_linkedlist_node,
+            ret.proc_linkedlist_node == proc_linkedlist_node,
+            ret.endpoint_linkedlist_node == endpoint_linkedlist_node,
             ret.blocking_endpoint_ptr is None,
             ret.blocking_endpoint_index is None,
             forall|ep_idx: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(ep_idx)] edp_idx_valid(ep_idx) ==> ret.endpoint_descriptors.spec_index(ep_idx) is None,
@@ -372,10 +387,10 @@ impl Thread {
         let ret = Self {
             exited: Ghost(false),
             state: ThreadState::RUNNING { cpu_id: 0 }, caller: None, callee: None, call_depth: Ghost(0), owning_container, container_depth,
-            scheduler_linkedlist_node: ExternalNode::new(0), last_cpu: 0, owning_proc, process_depth, proc_pagetable_ptr,
-            proc_linkedlist_node: ExternalNode::new(0), quota_4k: 0, quota_2m: 0, quota_1g: 0, temp_alloc_cache_4k: Ghost(Set::empty()),
+            scheduler_linkedlist_node, last_cpu: 0, owning_proc, process_depth, proc_pagetable_ptr,
+            proc_linkedlist_node, quota_4k: 0, quota_2m: 0, quota_1g: 0, temp_alloc_cache_4k: Ghost(Set::empty()),
             temp_alloc_cache_2m: Ghost(Set::empty()), temp_alloc_cache_1g: Ghost(Set::empty()), endpoint_descriptors, blocking_endpoint_ptr: None,
-            blocking_endpoint_index: None, endpoint_linkedlist_node: ExternalNode::new(0), ipc_payload: IPCPayLoad::Empty, error_code: None,
+            blocking_endpoint_index: None, endpoint_linkedlist_node, ipc_payload: IPCPayLoad::Empty, error_code: None,
             trap_frame: TrapFrameOption::zeroed_none(), upper_container_seq, direct_free_quota_pending_4k: Ghost(0), direct_free_quota_pending_2m: Ghost(0),
             direct_free_quota_pending_1g: Ghost(0), indirect_free_quota_pending_4k: Ghost(Seq::new(container_depth as nat, |i: int| 0usize)),
             indirect_free_quota_pending_2m: Ghost(Seq::new(container_depth as nat, |i: int| 0usize)),

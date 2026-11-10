@@ -9,10 +9,10 @@ pub struct Node<T> {
     pub prev: Option<usize>,
 }
 
+/// A list-node slot: the node lives at `addr` outside the value, and `perm` parks its permission while the node is unlinked.
 pub struct ExternalNode<T> {
-    storage: Node<T>,
-    is_init: Ghost<bool>,
-    addr: Ghost<usize>,
+    addr: usize,
+    perm: Tracked<Option<PointsTo<Node<T>>>>,
 }
 
 impl<T> Node<T> {
@@ -20,30 +20,33 @@ impl<T> Node<T> {
 }
 
 impl<T> ExternalNode<T> {
-    pub closed spec fn spec_addr(&self) -> usize { self.addr.view() }
-    pub closed spec fn is_init(&self) -> bool { self.is_init.view() }
+    pub closed spec fn spec_addr(&self) -> usize { self.addr }
+    pub closed spec fn is_init(&self) -> bool {
+        &&& self.perm.view() is Some
+        &&& self.perm.view()->Some_0.addr() == self.addr
+        &&& self.perm.view()->Some_0.is_init()
+    }
 
-    /// Create a fresh (init) ExternalNode with a dummy value.
-    /// The address is determined by where this node is placed in memory.
-    /// Used for constructing initial Thread values for retype operations.
-    #[verifier(external_body)]
-    pub fn new(value: T) -> (ret: Self)
+    /// Park the permission of the initialized node at `addr`.
+    pub fn new_parked(addr: usize, Tracked(perm): Tracked<PointsTo<Node<T>>>) -> (ret: Self)
+        requires
+            perm.addr() == addr,
+            perm.is_init(),
         ensures
             ret.is_init(),
+            ret.addr() == addr,
     {
-        Self { storage: Node { value, next: None, prev: None }, is_init: Ghost(true), addr: Ghost(0) }
+        Self { addr, perm: Tracked(Some(perm)) }
     }
 
     #[verifier(when_used_as_spec(spec_addr))]
-    #[verifier(external_body)]
     pub fn addr(&self) -> (ret: usize)
         ensures
             ret == self.addr()
     {
-        &self.storage as *const Node<T> as usize
+        self.addr
     }
 
-    #[verifier(external_body)]
     pub fn take(&mut self) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).is_init(),
@@ -54,9 +57,10 @@ impl<T> ExternalNode<T> {
             ret.1.view().is_init(),
             ret.1.view().addr() == final(self).addr(),
     {
-        (&self.storage as *const Node<T> as usize, Tracked::assume_new())
+        let tracked perm = self.perm.borrow_mut().tracked_take();
+        (self.addr, Tracked(perm))
     }
-    #[verifier(external_body)]
+
     pub fn put(&mut self, perm: Tracked<PointsTo<Node<T>>>)
         requires
             old(self).is_init() == false,
@@ -66,6 +70,8 @@ impl<T> ExternalNode<T> {
             final(self).is_init() == true,
             final(self).addr() == old(self).addr(),
     {
+        let Tracked(perm) = perm;
+        self.perm = Tracked(Some(perm));
     }
 }
 

@@ -194,13 +194,14 @@ pub fn create_thread_from_staged_page_merged(
     let process_ro = process_rodata.borrow();
     let process_depth = process_ro.depth;
     let proc_pagetable = process_ro.pagetable;
-    let thread_value = Thread::new_fresh(ctn_ptr, container_depth, prc_ptr, process_depth, proc_pagetable, Ghost(uppers));
     let pg_idx = page_ptr2page_index(pg_ptr);
     let ghost page_locks = lctx.page_lock_map();
     let Tracked(page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsThread }, Ghost(page_locks), Tracked(&*lctx), Tracked(page_lock_perm));
+    let (Tracked(thread_region_perm), sched_node, proc_node, endpoint_node) = split_thread_page_node_slots(pg_ptr, Tracked(page_perm));
+    let thread_value = Thread::new_fresh(ctn_ptr, container_depth, prc_ptr, process_depth, proc_pagetable, Ghost(uppers), sched_node, proc_node, endpoint_node);
     let (Tracked(thread_perm), sched_node_addr, node_addr) = process_subsystem_create_scheduled_thread(
         &krnl.ctn_mp, &mut krnl.prc_mp, &mut krnl.thrd_mp, &mut krnl.sched_mp, pg_ptr, prc_ptr,
-        staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, thread_value, initial_regs, Tracked(page_perm),
+        staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, thread_value, initial_regs, Tracked(thread_region_perm),
         Tracked(&mut *lctx), Tracked(process_lock_perm), Tracked(staging_thread_lock_perm), Tracked(scheduler_lock_perm),
     );
     proof {

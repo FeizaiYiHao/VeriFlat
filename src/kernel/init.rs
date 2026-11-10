@@ -1068,15 +1068,18 @@ pub fn finish_init_from_boot(
         });
     };
     let iommu_table = IommuTable::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
-    let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint);
+    let (Tracked(thread_region_perm), thread_sched_node, thread_proc_node, thread_endpoint_node) = split_thread_page_node_slots(layout.root_thread, Tracked(thread_page_perm));
+    let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint, thread_sched_node, thread_proc_node, thread_endpoint_node);
     let mut thrd_mp = ThreadLockedMap::new_empty();
-    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_page_perm));
-    let process = Process::new_boot_root(layout.root_process, layout.cpu_pagetable, layout.iommu_table, layout.root_thread, process_node_addr, process_node_perm);
+    let (scheduler_node_addr, scheduler_node_perm, process_node_addr, process_node_perm) = retype_boot_root_thread(&mut thrd_mp, layout.root_thread, thread, initial_regs, Tracked(thread_region_perm));
+    let (Tracked(process_region_perm), process_parent_node) = split_process_page_node_slot(layout.root_process, Tracked(process_page_perm));
+    let process = Process::new_boot_root(process_parent_node, layout.cpu_pagetable, layout.iommu_table, layout.root_thread, process_node_addr, process_node_perm);
     let scheduler = Scheduler::new_boot_root(layout.root_container, layout.root_thread, scheduler_node_addr, scheduler_node_perm);
     let endpoint = Endpoint::new_root(layout.root_endpoint, layout.root_container, layout.root_thread);
     let cpu_set = CpuSet::new_root(layout.root_container);
     let pcid_allocator = PcidAllocator::new_boot_root(layout.root_container, layout.root_process);
-    let container = Container::new_boot_root(layout.root_container, layout.root_process, owned_pages);
+    let (Tracked(container_region_perm), container_parent_node) = split_container_page_node_slot(layout.root_container, Tracked(container_page_perm));
+    let container = Container::new_boot_root(layout.root_container, layout.root_process, owned_pages, container_parent_node);
     let quota_4k = free_4k_pool.length;
     let quota_2m = free_2m_pool.length;
     let quota_1g = free_1g_pool.length;
@@ -1133,7 +1136,7 @@ pub fn finish_init_from_boot(
     let tracked mut root_retype_lctx = LocalContext::new_bootstrap(0);
     proof { assert(ctn_mp.typed_lock_map_aligned(root_retype_lctx.container_lock_map(), root_retype_lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let (root_container_lock_perm, Tracked(container_tail_perm)) = container_map_insert_new_2m(
-        &mut ctn_mp, layout.root_container, container, container_rodata, container_ghost, Tracked(container_page_perm), Tracked(&mut root_retype_lctx));
+        &mut ctn_mp, layout.root_container, container, container_rodata, container_ghost, Tracked(container_region_perm), Tracked(&mut root_retype_lctx));
     ctn_mp.dynamic_wunlock(layout.root_container, Tracked(&mut root_retype_lctx), root_container_lock_perm, Ghost(KernelObjId::Container(layout.root_container)));
     let tracked boot_lctx = LocalContext::new_bootstrap(0);
     sched_mp.retype_page_to_scheduler_and_insert(layout.scheduler, scheduler, Tracked(scheduler_page_perm), Tracked(&boot_lctx));
@@ -1141,8 +1144,8 @@ pub fn finish_init_from_boot(
     pcid_allc_mp.retype_2m_as_unlocked_singleton(layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)));
     proof { assert(vstd::layout::size_of::<CpuSetRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<CpuSetRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_CpuSetRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     cpu_set_mp.retype_4k_as_unlocked_singleton(layout.cpu_set, cpu_set, (), Ghost(()), Tracked(cpu_set_page_perm), 0, Ghost(KernelObjId::CpuSet(layout.cpu_set)));
-    proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    prc_mp.retype_4k_as_unlocked_singleton(layout.root_process, process, process_rodata, Ghost(process_ghost), Tracked(process_page_perm), 0, Ghost(KernelObjId::Process(layout.root_process)));
+    proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K_LESS_1_NODE_SLOT && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    prc_mp.retype_region_as_unlocked_singleton::<PAGE_SZ_4K_LESS_1_NODE_SLOT>(layout.root_process, process, process_rodata, Ghost(process_ghost), Tracked(process_region_perm), 0, Ghost(KernelObjId::Process(layout.root_process)));
     proof { assert(vstd::layout::size_of::<EndpointRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<EndpointRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_EndpointRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     ep_mp.retype_4k_as_unlocked_singleton(layout.root_endpoint, endpoint, (), Ghost(()), Tracked(endpoint_page_perm), 0, Ghost(KernelObjId::Endpoint(layout.root_endpoint)));
     allc_4k_mp.retype_page_to_allocator_and_insert(layout.allocator_4k, allocator_4k, Tracked(allocator_4k_page_perm), Tracked(&boot_lctx));

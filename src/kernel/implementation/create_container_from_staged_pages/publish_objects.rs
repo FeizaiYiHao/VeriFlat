@@ -195,8 +195,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let Tracked(pagetable_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_pagetable_ptr, Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE }, Ghost(l4_page_locks), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_index), mode: TypedLockMode::Write });
     let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(child_pagetable_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_perm), Tracked(&mut *lctx));
-    let mut process_value = Process::new_fresh(child_prc_ptr, root_pcid, child_pagetable_ptr, child_depth, 0);
-    process_value.quota_4k = process_quota_4k;
     let process_rodata = ReadOnlyNode::new(
         ProcessRO {
             owning_container: child_ctn_ptr, container_depth: child_depth, parent: None, depth: 0, pagetable: child_pagetable_ptr,
@@ -207,8 +205,11 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_ctn_ptr, child_prc_ptr, Allocated4KPageState::AsProcess, Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let ghost process_page_locks = pagetable_page_locks.insert(process_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(process_index), mode: TypedLockMode::Write });
+    let (Tracked(process_region_perm), parent_node) = split_process_page_node_slot(child_prc_ptr, Tracked(process_perm));
+    let mut process_value = Process::new_fresh(parent_node, root_pcid, child_pagetable_ptr, child_depth, 0);
+    process_value.quota_4k = process_quota_4k;
     let Tracked(child_process_lock_perm) =
-        krnl.retype_page_to_process_and_insert(child_prc_ptr, process_value, process_rodata, process_ghost, Tracked(process_perm), Tracked(&mut *lctx),);
+        krnl.retype_page_to_process_and_insert(child_prc_ptr, process_value, process_rodata, process_ghost, Tracked(process_region_perm), Tracked(&mut *lctx),);
     (Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Ghost(process_page_locks))
 }
 
@@ -580,7 +581,7 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     Ghost(cpu_set_page): Ghost<PagePtr>, Ghost(child_prc_ptr): Ghost<PagePtr>, Ghost(child_pagetable_ptr): Ghost<PagePtr>, Ghost(l4_page): Ghost<PagePtr>,
     Ghost(bootstrap_seq): Ghost<Seq<PagePtr>>, Ghost(funding_pages): Ghost<Seq<PagePtr>>, Ghost(funding_indices): Ghost<Set<PageIndex>>,
     Ghost(pool_page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Ghost(cpu_set_page_locks): Ghost<Map<PageIndex, TypedHeldLock>>,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pcid_allocator_perm): Tracked<PagePerm2m>, Tracked(container_perm): Tracked<PagePerm2m>,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pcid_allocator_perm): Tracked<PagePerm2m>, Tracked(container_perm): Tracked<ContainerRegionPerm>,
 ) -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         pcid_allocator_perms_wf(old(krnl).pcid_allc_mp),

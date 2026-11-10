@@ -303,16 +303,17 @@ pub fn create_process_with_iommu_from_staged_pages(
 
     let parent_depth = krnl.prc_mp.borrow_rodata(parent_ptr).borrow().depth;
     let cr3 = l4_ptr;
-    let mut process_value = Process::new_fresh(process_pg_ptr, pcid, pagetable_pg_ptr, krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent_depth + 1);
-    process_value.iommu_table = Some(iommu_table_pg_ptr);
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: ctn_ptr, container_depth: krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
         pagetable: pagetable_pg_ptr, cr3, iommu_cr3: Some(iommu_l4_pg_ptr), iommu_table_ptr: Some(iommu_table_pg_ptr), pcid,
     }, Ghost(process_pg_ptr));
-    process_value.uppertree_seq = Ghost(ancestors);
     let process_ghost = ProcessGhost { subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     let Tracked(process_page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, process_pg_idx, PageState::Allocated4k { state: Allocated4KPageState::AsProcess }, Ghost(iommu_table_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
-    let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_pg_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
+    let (Tracked(process_region_perm), parent_node) = split_process_page_node_slot(process_pg_ptr, Tracked(process_page_perm));
+    let mut process_value = Process::new_fresh(parent_node, pcid, pagetable_pg_ptr, krnl.ctn_mp.borrow_rodata(ctn_ptr).borrow().depth, parent_depth + 1);
+    process_value.iommu_table = Some(iommu_table_pg_ptr);
+    process_value.uppertree_seq = Ghost(ancestors);
+    let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_pg_ptr, process_value, process_rodata, process_ghost, Tracked(process_region_perm), Tracked(&mut *lctx));
 
     process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_pg_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
     proof { container_map_add_owned_process(&mut krnl.ctn_mp, ctn_ptr, process_pg_ptr, lctx.container_lock_map(), lctx.thread_id()); }

@@ -13,6 +13,12 @@ pub type PageIndex = usize;
 pub type PagePerm4k = PointsTo<[u8; PAGE_SZ_4K]>;
 pub type PagePerm2m = PointsTo<[u8; PAGE_SZ_2M]>;
 pub type PagePerm1g = PointsTo<[u8; PAGE_SZ_1G]>;
+/// A thread page without its scheduler, process-list and endpoint node slots.
+pub type ThreadRegionPerm = PointsTo<[u8; PAGE_SZ_4K_LESS_3_NODE_SLOTS]>;
+/// A process page without its parent-list node slot.
+pub type ProcessRegionPerm = PointsTo<[u8; PAGE_SZ_4K_LESS_1_NODE_SLOT]>;
+/// A container 2M page without its parent-list node slot.
+pub type ContainerRegionPerm = PointsTo<[u8; PAGE_SZ_2M_LESS_1_NODE_SLOT]>;
 pub type VAddr = usize;
 pub type PAddr = usize;
 pub type PageMapPtr = usize;

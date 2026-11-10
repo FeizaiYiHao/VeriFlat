@@ -12,6 +12,12 @@ pub const NUM_PAGES: usize = 512 * 1024;
 pub const PAGE_SZ_4K: usize = 1usize << 12;
 pub const PAGE_SZ_2M: usize = 1usize << 21;
 pub const PAGE_SZ_1G: usize = 1usize << 30;
+/// One list-node slot carved off the tail of an object's page.
+pub const NODE_SLOT_SZ: usize = 64;
+pub const PAGE_SZ_4K_LESS_1_NODE_SLOT: usize = 4096 - NODE_SLOT_SZ;
+pub const PAGE_SZ_4K_LESS_2_NODE_SLOTS: usize = 4096 - 2 * NODE_SLOT_SZ;
+pub const PAGE_SZ_4K_LESS_3_NODE_SLOTS: usize = 4096 - 3 * NODE_SLOT_SZ;
+pub const PAGE_SZ_2M_LESS_1_NODE_SLOT: usize = 0x200000 - NODE_SLOT_SZ;
 pub const PCID_MAX: usize = 4096;
 pub const KERNEL_DEFAULT_PCID: Pcid = 0;
 
@@ -68,3 +74,6 @@ pub const THREAD_HAS_KILL_STATE: bool = HAS_KILL_STATE;
 pub const ENDPOINT_HAS_KILL_STATE: bool = NO_KILL_STATE;
 // -------------------- End of Const --------------------
 }
+
+// The node-slot region sizes are spelled with literal page sizes so the verifier sees their values.
+const _: () = assert!(PAGE_SZ_4K == 4096 && PAGE_SZ_2M == 0x200000);

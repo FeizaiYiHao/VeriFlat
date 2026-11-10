@@ -49,7 +49,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         final(pt_mp).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
 {
     proof { assert(vstd::layout::size_of::<PageTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<PageTableRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_PageTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
+    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableBigLocked<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots, PAGE_SZ_4K>(
         pg_ptr, PageTableBigLocked { higher: higher_value, lower_backup: Ghost(lower_value) }, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pg_ptr)));
     pt_mp.insert_with_perm(pg_ptr, Tracked(pagetable_rwlock_perm));
     proof {

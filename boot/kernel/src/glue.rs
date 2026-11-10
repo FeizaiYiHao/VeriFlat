@@ -91,6 +91,10 @@ struct KernelSlot(MaybeUninit<KernelK>);
 
 static mut KERNEL: KernelSlot = KernelSlot(MaybeUninit::uninit());
 
+/// Storage of every page's free-list node, outside its page lock cell: node `i` belongs to page `i`. It lives in the
+/// identity-mapped kernel image, and each node's permission is created exactly once, when boot parks it in its page.
+static mut PAGE_FREE_LIST_NODES: MaybeUninit<[Node<PageIndex>; NUM_PAGES]> = MaybeUninit::uninit();
+
 /// The verified kernel object; valid after [`init_kernel`].
 pub fn kernel() -> &'static mut KernelK {
     unsafe { (*(&raw mut KERNEL)).0.assume_init_mut() }
@@ -245,7 +249,7 @@ fn singleton_state(layout: &BootKernelLayout, addr: usize) -> Option<PageState> 
     }
 }
 
-fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: usize) -> Page {
+fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: usize, free_list_node_storage: ExternalNode<PageIndex>) -> Page {
     Page {
         addr,
         state,
@@ -254,7 +258,7 @@ fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: u
         owning_container,
         mappings: Ghost::assume_new(),
         iommu_mappings: Ghost::assume_new(),
-        free_list_node_storage: ExternalNode::new(0),
+        free_list_node_storage,
         free_list: 0,
         perm_4k: Tracked::assume_new(),
         perm_2m: Tracked::assume_new(),
@@ -336,8 +340,9 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         kinds[head + 1..head + PAGES_PER_2M].fill(Kind::Merged2m);
     }
 
-    // 3. Page lock cells, written in place at their final address so free-page node addresses stay valid.
+    // 3. Page lock cells, written in place at their final address, each holding its page's parked free-list node.
     let page_base = page_cells_base();
+    let node_base = (&raw mut PAGE_FREE_LIST_NODES) as usize;
     let page_value_offset = size_of::<SpinWord>().next_multiple_of(align_of::<Page>());
     let mut free_4k_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_2m_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
@@ -363,7 +368,10 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             Kind::DomainSpare => unreachable!(),
         };
         let lock_ptr = (page_base + i * size_of::<PageLock>()) as *mut PageLock;
-        ptr::write(lock_ptr, LockCell::new_unlocked(new_page(addr, state, ref_count, root_container), (), Ghost::assume_new()));
+        let node_addr = node_base + i * size_of::<Node<PageIndex>>();
+        ptr::write(node_addr as *mut Node<PageIndex>, Node { value: 0, next: None, prev: None });
+        let node = ExternalNode::new_parked(node_addr, Tracked::assume_new());
+        ptr::write(lock_ptr, LockCell::new_unlocked(new_page(addr, state, ref_count, root_container, node), (), Ghost::assume_new()));
         if matches!(kinds[i], Kind::Free | Kind::Free2m | Kind::Free1g) {
             let page = &mut *((lock_ptr as usize + page_value_offset) as *mut Page);
             assert!(page.addr == addr, "LockCell value offset mismatch");

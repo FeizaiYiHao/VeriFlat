@@ -204,7 +204,7 @@ impl KernelK {
             final(self).it_mp.typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
     {
         proof { assert(vstd::layout::size_of::<IommuTableRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<IommuTableRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_IommuTableRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE, SpinWord>(
+        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<IommuTable, (), (), PAGE_TABLE_HAS_KILL_STATE, SpinWord, PAGE_SZ_4K>(
             pg_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(pg_ptr)));
         self.it_mp.insert_with_perm(pg_ptr, Tracked(iommu_table_rwlock_perm));
         proof { assert(self.it_mp.typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
