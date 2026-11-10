@@ -193,7 +193,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
     let ghost proc_node_addr = krnl.thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr();
     proof {
         thread_perms_wf_map(krnl.thrd_mp);
-        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr);
+        thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, thrd_ptr);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, prc_ptr);

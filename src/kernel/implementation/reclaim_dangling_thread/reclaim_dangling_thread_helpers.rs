@@ -86,7 +86,7 @@ pub(super) fn reclaim_dangling_thread_commit(
             uppers.to_set_ensures(); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         };
         thread_perms_wf_map(krnl.thrd_mp);
-        thread_perms_wf_at(krnl.thrd_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
+        thread_perms_wf_at(krnl.thrd_mp, dangling_ptr); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);

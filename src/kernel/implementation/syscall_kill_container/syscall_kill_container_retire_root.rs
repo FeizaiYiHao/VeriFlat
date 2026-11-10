@@ -499,7 +499,7 @@ pub(crate) fn kill_container_retire_root_unlink(
 {
     proof {
         let tree = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target);
+        process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_perms_wf_implies_parent_node_addr(krnl.prc_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr);
         process_root_wf_at(target, tree, krnl.prc_mp, target);
         container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);

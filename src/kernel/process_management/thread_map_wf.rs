@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The thread map's permissions are well formed, every thread satisfies its own invariant, and the per-thread state that
+/// The thread map's permissions are well formed, every thread satisfies its own invariant and keeps its list nodes in its page's tail slots, and the per-thread state that
 /// only a holder may set (pending free quota, temporary allocations, KILLED, syscall progress, exited, IPC transit) is
 /// present only on write-held threads.
 #[verifier::opaque]
@@ -10,7 +10,12 @@ pub open spec fn thread_perms_wf(thrd_mp: ThreadLockedMap) -> bool {
     &&& thrd_mp.perms_wf()
     &&& forall|t: RwLockThreadPtr|
         #![trigger thrd_mp.dom().contains(t)]
-        thrd_mp.dom().contains(t) ==> thrd_mp.spec_index(t).inv()
+        thrd_mp.dom().contains(t) ==> {
+            &&& thrd_mp.spec_index(t).inv()
+            &&& thrd_mp.spec_index(t).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(t)
+            &&& thrd_mp.spec_index(t).view().proc_linkedlist_node.addr() == thread_proc_node_addr(t)
+            &&& thrd_mp.spec_index(t).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(t)
+        }
     &&& thread_free_quota_pending_empty_unless_wlocked(thrd_mp)
     &&& thread_temp_alloc_empty_unless_wlocked(thrd_mp)
     &&& thread_killed_only_when_wlocked(thrd_mp)
@@ -34,6 +39,16 @@ pub proof fn thread_perms_wf_at(thrd_mp: ThreadLockedMap, thrd_ptr: RwLockThread
         thrd_mp.spec_index(thrd_ptr).inv(),
         thrd_mp.spec_index(thrd_ptr).is_init(),
         thrd_mp.spec_index(thrd_ptr).view().inv(),
+{ reveal(thread_perms_wf); }
+
+pub proof fn thread_perms_wf_implies_node_slot_addrs(thrd_mp: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
+    requires
+        thread_perms_wf(thrd_mp),
+        thrd_mp.dom().contains(thrd_ptr),
+    ensures
+        thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
+        thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
+        thrd_mp.spec_index(thrd_ptr).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
 { reveal(thread_perms_wf); }
 
 /// A killed thread is write-held.

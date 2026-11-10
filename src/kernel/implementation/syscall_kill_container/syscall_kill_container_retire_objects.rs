@@ -349,6 +349,7 @@ pub(crate) fn kill_container_retire_container_object(
         old(krnl).ctn_mp.spec_index(ctn_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(ctn_ptr).view().children.view().len() == 0,
         parent_node_perm.is_init(),
+        old(krnl).ctn_mp.spec_index(ctn_ptr).view().parent_linkedlist_node.addr() == container_parent_node_addr(ctn_ptr),
         parent_node_perm.addr() == old(krnl).ctn_mp.spec_index(ctn_ptr).view().parent_linkedlist_node.addr(),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write),
         lock_perm.state() is WriteLock,

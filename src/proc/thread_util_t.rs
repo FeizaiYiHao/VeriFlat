@@ -14,9 +14,9 @@ use vstd::simple_pptr::*;
 /// The `thread_map` domain growth is done separately by
 /// `LockedMap::insert_with_perm`; the page-state flip and process unstage
 /// stay in verified code.
-/// TCB assumption: the owned region starts its 4K page, and the `requires` layout bound makes the written `LockCell<T, ..>` fit the region and its alignment.
+/// TCB assumption: the region starts its 4K page, the layout `requires` make the `LockCell<T, ..>` fit it, and module privacy limits shrunken regions to the thread and process entry points below, whose reverse retypes require their node slots back.
 #[verifier::external_body]
-pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner, const REGION: usize>(
+fn retype_region_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner, const REGION: usize>(
     pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PointsTo<[u8; REGION]>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
 ) -> (ret: (Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked<LockPerm>))
     requires
@@ -53,6 +53,44 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
+/// Retype one owned 4K page into a fresh write-locked lock object of any type.
+pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
+    pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
+) -> (ret: (Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked<LockPerm>))
+    requires
+        !(rodata.container_source() is Dynamic),
+        !(rodata.process_source() is Dynamic),
+        vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
+        vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
+        page_perm.is_init(),
+        page_perm.addr() == pg_ptr,
+        value.inv(),
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        ret.0.view().addr() == pg_ptr,
+        ret.0.view().is_init(),
+        ret.0.view().value().is_init(),
+        ret.0.view().value().view() == value,
+        ret.0.view().value().view_rodata() == rodata,
+        ret.0.view().value().view_ghost() == ghost,
+        ret.0.view().value().control() == LockControl::Clear,
+        ret.0.view().value().locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
+        ret.1.view().state() is WriteLock,
+        ret.1.view().thread_id() == final(lctx).thread_id(),
+        ret.1.view().ordering_lock_id() == (LockId {
+            container: match rodata.container_source() { OwnerSource::Payload => value.container_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+            process: match rodata.process_source() { OwnerSource::Payload => value.process_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+            major: value.current_lock_major(), minor: seq![pg_ptr],
+        }),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+        typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
+{
+    proof { assert(PAGE_SZ_4K == 4096) by (compute); }
+    retype_region_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I, PAGE_SZ_4K>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id)
+}
+
 /// TCB: split the last `NODE_SLOT_SZ` bytes off an owned region starting a page and initialize them as an unlinked `Node<usize>`.
 #[verifier::external_body]
 pub fn split_region_tail_into_node<const N: usize, const M: usize>(base: usize, Tracked(perm): Tracked<PointsTo<[u8; N]>>)
@@ -82,6 +120,7 @@ pub fn split_region_tail_into_node<const N: usize, const M: usize>(base: usize, 
 /// release phase, its process list returned the in-page process node, and its
 /// other in-page nodes are not linked anywhere, so no other thread can reach or
 /// wait on the lock. The held lock disappears from `lctx` with the object.
+/// TCB assumption: `ExternalNode::is_init()` means the slot holds the initialized node permission at `addr()`, and the address `requires` make the three slots this page's own tail slots, so the parked and passed node permissions plus the lock object cover exactly the returned page.
 #[verifier::external_body]
 pub fn retype_thread_rwlock_to_4k_page_perm(
     thrd_ptr: RwLockThreadPtr, Tracked(thread_perm): Tracked<PointsTo<ThreadRwLock>>, Tracked(proc_node_perm): Tracked<PointsTo<Node<RwLockThreadPtr>>>,
@@ -93,6 +132,9 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
         thread_perm.value().is_init(),
         thread_perm.value().view().scheduler_linkedlist_node.is_init(),
         thread_perm.value().view().endpoint_linkedlist_node.is_init(),
+        thread_perm.value().view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
+        thread_perm.value().view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
+        thread_perm.value().view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
         proc_node_perm.is_init(),
         proc_node_perm.addr() == thread_perm.value().view().proc_linkedlist_node.addr(),
         thread_perm.value().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: lock_perm.lock_id() }),
@@ -241,14 +283,13 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: final(self).lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
     {
-        proof { assert(PAGE_SZ_4K == 4096) by (compute); }
-        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I, PAGE_SZ_4K>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
         self.insert_with_perm(pg_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
     }
 
-    /// `retype_4k_and_insert` for an owned region that starts the page `pg_ptr`.
-    pub fn retype_region_and_insert<const REGION: usize>(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PointsTo<[u8; REGION]>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    /// `retype_4k_and_insert` for an owned region that starts the page `pg_ptr`; module-private, reached only through the thread and process entry points.
+    fn retype_region_and_insert<const REGION: usize>(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PointsTo<[u8; REGION]>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
             !(rodata.container_source() is Dynamic),
             !(rodata.process_source() is Dynamic),
@@ -292,7 +333,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: final(self).lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
     {
-        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I, REGION>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_region_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I, REGION>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
         self.insert_with_perm(pg_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
     }
@@ -439,35 +480,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         self.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
-    /// `retype_4k_as_unlocked_singleton` for an owned region that starts the page `pg_ptr`.
-    pub fn retype_region_as_unlocked_singleton<const REGION: usize>(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PointsTo<[u8; REGION]>>, cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>)
-        requires
-            !(rodata.container_source() is Dynamic),
-            !(rodata.process_source() is Dynamic),
-            old(self).perms_wf(),
-            old(self).dom().is_empty(),
-            vstd::layout::size_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= REGION,
-            vstd::layout::align_of::<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>() <= PAGE_SZ_4K,
-            page_perm.is_init(),
-            page_perm.addr() == pg_ptr,
-            value.inv(),
-            index_valid(NUM_CPUS, cpu_id),
-        ensures
-            final(self).perms_wf(),
-            final(self).dom() =~= set![pg_ptr],
-            final(self).spec_index(pg_ptr).view() == value,
-            final(self).spec_index(pg_ptr).view_rodata() == rodata,
-            final(self).spec_index(pg_ptr).view_ghost() == ghost,
-            final(self).spec_index(pg_ptr).is_init(),
-            final(self).spec_index(pg_ptr).inv(),
-            !final(self).spec_index(pg_ptr).being_killed(),
-            final(self).spec_index(pg_ptr).locking_thread() is None,
-    {
-        let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
-        let Tracked(lock_perm) = self.retype_region_and_insert::<REGION>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id));
-        self.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
-    }
-
     /// Boot-only: retype a dynamic lock held under the concrete owner `requested`, then release it.
     pub fn retype_2m_as_unlocked_singleton(&mut self, pg_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>,
         cpu_id: CpuId, Ghost(obj_id): Ghost<KernelObjId>, requested: LockOwnerId)
@@ -500,6 +512,75 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     }
 }
 
+/// Retype an owned thread page less its three node slots into a fresh write-locked thread and insert it into `thrd_mp`.
+pub fn retype_thread_region_and_insert(thrd_mp: &mut ThreadLockedMap, pg_ptr: PagePtr, value: Thread, Ghost(ghost): Ghost<ThreadGhost>, Tracked(page_perm): Tracked<ThreadRegionPerm>,
+    Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+    requires
+        old(thrd_mp).perms_wf(),
+        !old(thrd_mp).dom().contains(pg_ptr),
+        page_perm.is_init(),
+        page_perm.addr() == pg_ptr,
+        value.inv(),
+        old(lctx).typed_lock_entry(KernelObjId::Thread(pg_ptr)) is None,
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() =~= old(thrd_mp).dom().insert(pg_ptr),
+        final(thrd_mp).dom().contains(pg_ptr),
+        forall|ptr: usize|
+            #![trigger old(thrd_mp).dom().contains(ptr)]
+            old(thrd_mp).dom().contains(ptr) ==> {
+                &&& final(thrd_mp).dom().contains(ptr)
+                &&& final(thrd_mp).spec_index(ptr) == old(thrd_mp).spec_index(ptr)
+            },
+        final(thrd_mp).spec_index(pg_ptr).view() == value,
+        final(thrd_mp).spec_index(pg_ptr).view_rodata() == (),
+        final(thrd_mp).spec_index(pg_ptr).view_ghost() == ghost,
+        final(thrd_mp).spec_index(pg_ptr).is_init(),
+        final(thrd_mp).spec_index(pg_ptr).inv(),
+        final(thrd_mp).spec_index(pg_ptr).control() == LockControl::Clear,
+        final(thrd_mp).lock_id_by_key(pg_ptr) == (LockId { container: value.container_depth(), process: value.process_depth(), major: value.current_lock_major(), minor: seq![pg_ptr] }),
+        final(thrd_mp).spec_index(pg_ptr).wlocked_by(final(lctx)),
+        final(thrd_mp).spec_index(pg_ptr).write_lock_perm_match(&ret.view()),
+        ret.view().state() is WriteLock,
+        ret.view().thread_id() == final(lctx).thread_id(),
+        ret.view().ordering_lock_id() == final(thrd_mp).lock_id_by_key(pg_ptr),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+        typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(pg_ptr), TypedHeldLock { lock_id: final(thrd_mp).lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
+{
+    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    thrd_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS>(pg_ptr, value, (), Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)))
+}
+
+/// Boot-only: retype an owned process page less its node slot into the only, unlocked entry of `prc_mp`.
+pub fn retype_process_region_as_unlocked_singleton(prc_mp: &mut ProcessLockedMap, pg_ptr: PagePtr, value: Process, rodata: ReadOnlyNode<ProcessRO>, Ghost(ghost): Ghost<ProcessGhost>,
+    Tracked(page_perm): Tracked<ProcessRegionPerm>, cpu_id: CpuId)
+    requires
+        old(prc_mp).perms_wf(),
+        old(prc_mp).dom().is_empty(),
+        page_perm.is_init(),
+        page_perm.addr() == pg_ptr,
+        value.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+    ensures
+        final(prc_mp).perms_wf(),
+        final(prc_mp).dom() =~= set![pg_ptr],
+        final(prc_mp).spec_index(pg_ptr).view() == value,
+        final(prc_mp).spec_index(pg_ptr).view_rodata() == rodata,
+        final(prc_mp).spec_index(pg_ptr).view_ghost() == ghost,
+        final(prc_mp).spec_index(pg_ptr).is_init(),
+        final(prc_mp).spec_index(pg_ptr).inv(),
+        !final(prc_mp).spec_index(pg_ptr).being_killed(),
+        final(prc_mp).spec_index(pg_ptr).locking_thread() is None,
+{
+    proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K_LESS_1_NODE_SLOT && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+    let tracked mut lctx = LocalContext::new_bootstrap(cpu_id);
+    let Tracked(lock_perm) = prc_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_1_NODE_SLOT>(pg_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Process(pg_ptr)));
+    prc_mp.wunlock(pg_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(KernelObjId::Process(pg_ptr)));
+}
+
 /// Boot-only: retype the root thread page in place, then schedule it on CPU 0 so
 /// both intrusive nodes take their final in-page addresses before any list uses them.
 pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, thread_value: Thread, initial_regs: &Registers,
@@ -514,6 +595,9 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         thread_value.state is RUNNING,
         thread_value.scheduler_linkedlist_node.is_init(),
         thread_value.proc_linkedlist_node.is_init(),
+        thread_value.scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
+        thread_value.proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
+        thread_value.endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
         0 < NUM_CPUS,
     ensures
         final(thread_map).perms_wf(),
@@ -528,6 +612,8 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         *final(thread_map).spec_index(thrd_ptr).view().trap_frame.get_some_0() == *initial_regs,
         !final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node.is_init(),
         !final(thread_map).spec_index(thrd_ptr).view().proc_linkedlist_node.is_init(),
+        final(thread_map).spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
+        final(thread_map).spec_index(thrd_ptr).view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
         final(thread_map).spec_index(thrd_ptr).is_init(),
         final(thread_map).spec_index(thrd_ptr).inv(),
         !final(thread_map).spec_index(thrd_ptr).being_killed(),
@@ -543,8 +629,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
         ret.3.view().value().view() == thrd_ptr,
 {
     let tracked mut lctx = LocalContext::new_bootstrap(0);
-    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    let Tracked(lock_perm) = thread_map.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS>(thrd_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thrd_ptr)));
+    let Tracked(lock_perm) = retype_thread_region_and_insert(thread_map, thrd_ptr, thread_value, Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut lctx));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thrd_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thread_map.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(&lctx), Tracked(&lock_perm));
@@ -555,6 +640,90 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thrd_ptr: RwLoc
 }
 
 impl KernelK {
+    /// Retype an owned process page less its node slot into a fresh write-locked process and insert it into `prc_mp`.
+    pub fn retype_page_to_process_and_insert(&mut self, pg_ptr: PagePtr, process_value: Process, rodata: ReadOnlyNode<ProcessRO>, process_ghost: ProcessGhost, Tracked(page_perm): Tracked<ProcessRegionPerm>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).prc_mp.perms_wf(),
+            !old(self).prc_mp.dom().contains(pg_ptr),
+            page_perm.is_init(),
+            page_perm.addr() == pg_ptr,
+            process_value.inv(),
+            !process_value.pci_cleared.view(),
+            process_value.parent_linkedlist_node.addr() == process_parent_node_addr(pg_ptr),
+            process_value.children.view().no_duplicates(),
+            !process_value.children.view().contains(pg_ptr),
+            process_value.uppertree_seq.view().no_duplicates(),
+            process_value.uppertree_seq.view().len() == rodata.view().depth,
+            old(self).prc_mp.typed_lock_map_aligned(old(lctx).process_lock_map(), old(lctx).thread_id()),
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(self).pt_mp == old(self).pt_mp,
+            final(self).pt_lower == old(self).pt_lower,
+            final(self).it_mp == old(self).it_mp,
+            final(self).irt == old(self).irt,
+            final(self).pg_arr == old(self).pg_arr,
+            final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_hw_cr3_pcid == old(self).cpu_hw_cr3_pcid,
+            final(self).cpu_op == old(self).cpu_op,
+            final(self).ctn_mp == old(self).ctn_mp,
+            final(self).sched_mp == old(self).sched_mp,
+            final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+            final(self).cpu_set_mp == old(self).cpu_set_mp,
+            final(self).thrd_mp == old(self).thrd_mp,
+            final(self).ep_mp == old(self).ep_mp,
+            final(self).allc_4k_mp == old(self).allc_4k_mp,
+            final(self).allc_2m_mp == old(self).allc_2m_mp,
+            final(self).allc_1g_mp == old(self).allc_1g_mp,
+            final(self).cpu_offline_mp == old(self).cpu_offline_mp,
+            final(self).cpu_tlb == old(self).cpu_tlb,
+            final(self).iommu_tlb == old(self).iommu_tlb,
+            final(self).rt_ctn == old(self).rt_ctn,
+            final(self).dflt_pt == old(self).dflt_pt,
+            final(self).prc_mp.perms_wf(),
+            process_perms_wf(old(self).prc_mp) ==> process_perms_wf(final(self).prc_mp),
+            final(self).prc_mp.dom() =~= old(self).prc_mp.dom().insert(pg_ptr),
+            forall|ptr: RwLockProcessPtr|
+                #![trigger final(self).prc_mp.spec_index(ptr)]
+                #![trigger old(self).prc_mp.spec_index(ptr)]
+                #![trigger old(self).prc_mp.dom().contains(ptr)]
+                #![trigger final(self).prc_mp.dom().contains(ptr)]
+                old(self).prc_mp.dom().contains(ptr) ==> {
+                    &&& final(self).prc_mp.dom().contains(ptr)
+                    &&& final(self).prc_mp.spec_index(ptr) == old(self).prc_mp.spec_index(ptr)
+                },
+            forall|ptr: RwLockProcessPtr|
+                #![trigger old(self).prc_mp.lock_id_by_key(ptr)]
+                #![trigger final(self).prc_mp.lock_id_by_key(ptr)]
+                old(self).prc_mp.dom().contains(ptr) ==> final(self).prc_mp.lock_id_by_key(ptr) == old(self).prc_mp.lock_id_by_key(ptr),
+            final(self).prc_mp.spec_index(pg_ptr).is_init(),
+            final(self).prc_mp.spec_index(pg_ptr).view() == process_value,
+            final(self).prc_mp.spec_index(pg_ptr).view_rodata() == rodata,
+            final(self).prc_mp.spec_index(pg_ptr).view_ghost() == process_ghost,
+            !final(self).prc_mp.spec_index(pg_ptr).being_killed(),
+            typed_lock_map_contains_mode(final(lctx).process_lock_map(), pg_ptr, TypedLockMode::Write),
+            ret.view().state() is WriteLock,
+            ret.view().thread_id() == final(lctx).thread_id(),
+            ret.view().ordering_lock_id() == final(self).prc_mp.lock_id_by_key(pg_ptr),
+            final(self).prc_mp.lock_id_by_key(pg_ptr) == (LockId { container: rodata.container_depth(), process: rodata.process_depth(), major: process_value.current_lock_major(), minor: seq![pg_ptr] }),
+            final(self).prc_mp.spec_index(pg_ptr).write_lock_perm_match(&ret.view()),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(pg_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(pg_ptr), mode: TypedLockMode::Write }),
+            final(self).prc_mp.typed_lock_map_aligned(final(lctx).process_lock_map(), final(lctx).thread_id()),
+    {
+        proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K_LESS_1_NODE_SLOT && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
+        let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_region_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE, SpinWord, PAGE_SZ_4K_LESS_1_NODE_SLOT>(
+            pg_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(pg_ptr)));
+        self.prc_mp.insert_with_perm(pg_ptr, Tracked(process_rwlock_perm));
+        proof {
+            super::process_util_t_eof::retype_page_to_process_and_insert_eof(old(self).prc_mp, self.prc_mp, pg_ptr, process_value, rodata, process_ghost);
+            assert(self.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+        }
+        Tracked(process_perm)
+    }
+
     /// Remove a write-locked thread from `thrd_mp` and reclaim its page memory together with the
     /// process node its process list returned.
     pub fn remove_thread_and_reclaim_4k_page_perm(
@@ -567,6 +736,9 @@ impl KernelK {
             old(self).thrd_mp.spec_index(thrd_ptr).is_init(),
             old(self).thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.is_init(),
             old(self).thrd_mp.spec_index(thrd_ptr).view().endpoint_linkedlist_node.is_init(),
+            old(self).thrd_mp.spec_index(thrd_ptr).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(thrd_ptr),
+            old(self).thrd_mp.spec_index(thrd_ptr).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(thrd_ptr),
+            old(self).thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr() == thread_proc_node_addr(thrd_ptr),
             proc_node_perm.is_init(),
             proc_node_perm.addr() == old(self).thrd_mp.spec_index(thrd_ptr).view().proc_linkedlist_node.addr(),
             lock_perm.state() is WriteLock,

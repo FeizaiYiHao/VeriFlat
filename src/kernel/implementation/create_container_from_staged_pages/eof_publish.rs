@@ -204,6 +204,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().allocator_ptr_1g == allocator_1g_page
     &&& post.ctn_mp.spec_index(container_page).view().children.view().len() == 0
     &&& !post.ctn_mp.spec_index(container_page).view().parent_linkedlist_node.is_init()
+    &&& post.ctn_mp.spec_index(container_page).view().parent_linkedlist_node.addr() == container_parent_node_addr(container_page)
     &&& post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == child_uppers
     &&& post.ctn_mp.spec_index(container_page).view_ghost().subtree_set.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view().is_empty()
@@ -225,6 +226,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page).view().children.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view().owned_threads.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view().parent_linkedlist_node.is_init()
+    &&& post.prc_mp.spec_index(process_page).view().parent_linkedlist_node.addr() == process_parent_node_addr(process_page)
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().owning_container == container_page
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().parent is None

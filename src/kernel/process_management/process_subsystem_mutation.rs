@@ -843,6 +843,9 @@ pub fn process_subsystem_create_scheduled_thread(
         thread_value.state is RUNNING,
         thread_value.scheduler_linkedlist_node.is_init(),
         thread_value.proc_linkedlist_node.is_init(),
+        thread_value.scheduler_linkedlist_node.addr() == thread_sched_node_addr(pg_ptr),
+        thread_value.proc_linkedlist_node.addr() == thread_proc_node_addr(pg_ptr),
+        thread_value.endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(pg_ptr),
         thread_value.owning_container == ctn_ptr,
         thread_value.container_depth == ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth,
         thread_value.container_depth == old(prc_mp).spec_index(prc_ptr).view_rodata().view().container_depth,
@@ -957,8 +960,7 @@ pub fn process_subsystem_create_scheduled_thread(
         assert(!lctx.thread_lock_map().dom().contains(pg_ptr)
             && lctx.typed_lock_entry(KernelObjId::Thread(pg_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
-    proof { assert(vstd::layout::size_of::<ThreadRwLock>() <= PAGE_SZ_4K_LESS_3_NODE_SLOTS && vstd::layout::align_of::<ThreadRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ThreadRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    let Tracked(thread_lock_perm) = thrd_mp.retype_region_and_insert::<PAGE_SZ_4K_LESS_3_NODE_SLOTS>(pg_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(pg_ptr)));
+    let Tracked(thread_lock_perm) = retype_thread_region_and_insert(thrd_mp, pg_ptr, thread_value, Ghost(ThreadGhost { chain_end: None }), Tracked(page_perm), Tracked(&mut *lctx));
     let ghost fresh_lock_id = thrd_mp.lock_id_by_key(pg_ptr);
     proof { assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thrd_mp.borrow_mut_typed(pg_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));

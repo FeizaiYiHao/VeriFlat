@@ -6,7 +6,7 @@ verus! {
 // Container tree ghost fields: `children` is the direct child list; `uppertree_seq` lists the ancestors from the root,
 // indexed by depth; `subtree_set` holds all descendants; `parent_linkedlist_node` is the node in the parent's child list.
 
-/// The container map's permissions are well formed, every container satisfies its own invariant, and its tree fields are well formed.
+/// The container map's permissions are well formed, every container satisfies its own invariant and keeps its parent node in its page's tail slot, and its tree fields are well formed.
 #[verifier::opaque]
 pub open spec fn container_perms_wf(ctn_mp: ContainerLockedMap) -> bool {
     &&& ctn_mp.perms_wf()
@@ -16,6 +16,7 @@ pub open spec fn container_perms_wf(ctn_mp: ContainerLockedMap) -> bool {
         ctn_mp.dom().contains(c) ==> {
             &&& ctn_mp.spec_index(c).inv()
             &&& ctn_mp.spec_index(c).view().root_process_removed.view() ==> ctn_mp.spec_index(c).being_killed()
+            &&& ctn_mp.spec_index(c).view().parent_linkedlist_node.addr() == container_parent_node_addr(c)
         }
     &&& container_tree_fields_wf(ctn_mp)
 }
@@ -37,6 +38,13 @@ pub proof fn container_perms_wf_at(ctn_mp: ContainerLockedMap, ctn_ptr: RwLockCo
         ctn_mp.spec_index(ctn_ptr).view().children.view().no_duplicates(),
         !ctn_mp.spec_index(ctn_ptr).view().children.view().contains(ctn_ptr),
 { reveal(container_perms_wf); reveal(container_tree_fields_wf); }
+
+pub proof fn container_perms_wf_implies_parent_node_addr(ctn_mp: ContainerLockedMap, ctn_ptr: RwLockContainerPtr)
+    requires
+        container_perms_wf(ctn_mp),
+        ctn_mp.dom().contains(ctn_ptr),
+    ensures ctn_mp.spec_index(ctn_ptr).view().parent_linkedlist_node.addr() == container_parent_node_addr(ctn_ptr),
+{ reveal(container_perms_wf); }
 
 pub proof fn container_perms_wf_map(ctn_mp: ContainerLockedMap)
     requires container_perms_wf(ctn_mp)

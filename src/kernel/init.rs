@@ -740,6 +740,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.ctn_mp.spec_index(layout.root_container).locking_thread() is None
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().inv()
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().parent_linkedlist_node.is_init()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().parent_linkedlist_node.addr() == container_parent_node_addr(layout.root_container)
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().children.view() == Seq::<RwLockContainerPtr>::empty()
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().children.map() == Map::<usize, RwLockContainerPtr>::empty()
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().root_process == layout.root_process
@@ -826,6 +827,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.prc_mp.spec_index(layout.root_process).view().quota_2m == 0
     &&& krnl.prc_mp.spec_index(layout.root_process).view().quota_1g == 0
     &&& krnl.prc_mp.spec_index(layout.root_process).view().parent_linkedlist_node.is_init()
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().parent_linkedlist_node.addr() == process_parent_node_addr(layout.root_process)
     &&& krnl.prc_mp.spec_index(layout.root_process).view().children.view() == Seq::<RwLockProcessPtr>::empty()
     &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.view() =~= seq![layout.root_thread]
     &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.map() =~= Map::<usize, RwLockThreadPtr>::empty().insert(process_node_addr, layout.root_thread)
@@ -877,6 +879,9 @@ pub open spec fn boot_kernel_state(
     &&& !krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init()
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr
     &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == thread_sched_node_addr(layout.root_thread)
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == thread_proc_node_addr(layout.root_thread)
+    &&& krnl.thrd_mp.spec_index(layout.root_thread).view().endpoint_linkedlist_node.addr() == thread_endpoint_node_addr(layout.root_thread)
     // Root endpoint.
     &&& krnl.ep_mp.perms_wf()
     &&& krnl.ep_mp.dom() =~= set![layout.root_endpoint]
@@ -1144,8 +1149,7 @@ pub fn finish_init_from_boot(
     pcid_allc_mp.retype_2m_as_unlocked_singleton(layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)));
     proof { assert(vstd::layout::size_of::<CpuSetRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<CpuSetRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_CpuSetRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     cpu_set_mp.retype_4k_as_unlocked_singleton(layout.cpu_set, cpu_set, (), Ghost(()), Tracked(cpu_set_page_perm), 0, Ghost(KernelObjId::CpuSet(layout.cpu_set)));
-    proof { assert(vstd::layout::size_of::<ProcessRwLock>() <= PAGE_SZ_4K_LESS_1_NODE_SLOT && vstd::layout::align_of::<ProcessRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_ProcessRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
-    prc_mp.retype_region_as_unlocked_singleton::<PAGE_SZ_4K_LESS_1_NODE_SLOT>(layout.root_process, process, process_rodata, Ghost(process_ghost), Tracked(process_region_perm), 0, Ghost(KernelObjId::Process(layout.root_process)));
+    retype_process_region_as_unlocked_singleton(&mut prc_mp, layout.root_process, process, process_rodata, Ghost(process_ghost), Tracked(process_region_perm), 0);
     proof { assert(vstd::layout::size_of::<EndpointRwLock>() <= PAGE_SZ_4K && vstd::layout::align_of::<EndpointRwLock>() <= PAGE_SZ_4K) by { broadcast use crate::VERUS_layout_of_EndpointRwLock; assert(PAGE_SZ_4K == 4096) by (compute); }; }
     ep_mp.retype_4k_as_unlocked_singleton(layout.root_endpoint, endpoint, (), Ghost(()), Tracked(endpoint_page_perm), 0, Ghost(KernelObjId::Endpoint(layout.root_endpoint)));
     allc_4k_mp.retype_page_to_allocator_and_insert(layout.allocator_4k, allocator_4k, Tracked(allocator_4k_page_perm), Tracked(&boot_lctx));

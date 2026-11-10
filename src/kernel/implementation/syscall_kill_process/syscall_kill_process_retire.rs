@@ -720,7 +720,7 @@ pub(crate) fn kill_retire_unlink_process(
     proof {
         let root = krnl.ctn_mp.spec_index(ctn_ptr).view().root_process;
         let tree = krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
+        process_perms_wf_at(krnl.prc_mp, target); process_perms_wf_implies_parent_node_addr(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, ctn_ptr);
         assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, ctn_ptr); };
         assert(root != target && tree.contains(root)) by { process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target); };
         assert(krnl.prc_mp.spec_index(target).view().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom()) && krnl.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr)) by {

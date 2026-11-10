@@ -130,6 +130,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().children.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().owned_threads.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().parent_linkedlist_node.is_init(),
+        final(krnl).prc_mp.spec_index(child_prc_ptr).view().parent_linkedlist_node.addr() == process_parent_node_addr(child_prc_ptr),
         final(krnl).prc_mp.spec_index(child_prc_ptr).view().uppertree_seq.view().len() == 0,
         final(krnl).prc_mp.spec_index(child_prc_ptr).view_ghost().subtree_set.view().is_empty(),
         final(krnl).pt_mp.dom() =~= old(krnl).pt_mp.dom().insert(child_pagetable_ptr),
@@ -818,6 +819,7 @@ pub(super) fn link_new_container_into_tree(
         final(containers).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id(),),
         final(containers).spec_index(child_ctn_ptr).view().children.view() == Seq::<RwLockContainerPtr>::empty(),
         !final(containers).spec_index(child_ctn_ptr).view().parent_linkedlist_node.is_init(),
+        final(containers).spec_index(child_ctn_ptr).view().parent_linkedlist_node.addr() == old(containers).spec_index(child_ctn_ptr).view().parent_linkedlist_node.addr(),
         final(containers).spec_index(child_ctn_ptr).view_ghost().subtree_set.view() == Set::<RwLockContainerPtr>::empty(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(containers).spec_index(ptr).view().uppertree_seq]

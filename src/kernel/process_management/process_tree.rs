@@ -5,7 +5,7 @@ verus! {
 // Process tree ghost fields: `children` is the direct child list; `uppertree_seq` lists the ancestors from the root,
 // indexed by depth; `subtree_set` holds all descendants; `parent_linkedlist_node` is the node in the parent's child list.
 
-/// The process map's permissions are well formed, every process satisfies its own invariant, and its tree fields are well formed.
+/// The process map's permissions are well formed, every process satisfies its own invariant and keeps its parent node in its page's tail slot, and its tree fields are well formed.
 #[verifier::opaque]
 pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
     &&& prc_mp.perms_wf()
@@ -19,6 +19,9 @@ pub open spec fn process_perms_wf(prc_mp: ProcessLockedMap) -> bool {
                 &&& prc_mp.spec_index(p).view().owned_threads.view().len() == 0
             }
         }
+    &&& forall|p: RwLockProcessPtr|
+        #![trigger prc_mp.dom().contains(p)]
+        prc_mp.dom().contains(p) ==> prc_mp.spec_index(p).view().parent_linkedlist_node.addr() == process_parent_node_addr(p)
 }
 
 pub proof fn process_perms_wf_map(prc_mp: ProcessLockedMap)
@@ -44,6 +47,13 @@ pub proof fn process_perms_wf_at(prc_mp: ProcessLockedMap, prc_ptr: RwLockProces
         !prc_mp.spec_index(prc_ptr).view().children.view().contains(prc_ptr),
         prc_mp.spec_index(prc_ptr).view().uppertree_seq.view().len() == prc_mp.spec_index(prc_ptr).view_rodata().view().depth,
 { reveal(process_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); }
+
+pub proof fn process_perms_wf_implies_parent_node_addr(prc_mp: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
+    requires
+        process_perms_wf(prc_mp),
+        prc_mp.dom().contains(prc_ptr),
+    ensures prc_mp.spec_index(prc_ptr).view().parent_linkedlist_node.addr() == process_parent_node_addr(prc_ptr),
+{ reveal(process_perms_wf); }
 
 /// Each process's child list and upper-tree sequence are duplicate-free, it is not its own child, and its depth is the
 /// length of its upper-tree sequence.

@@ -179,6 +179,7 @@ pub(super) proof fn process_map_link_new_child_eof_process_perms_wf(pre: Process
         forall|ptr: RwLockProcessPtr| #![trigger post.spec_index(ptr)] pre.dom().contains(ptr) && ptr != parent_ptr && ptr != child_ptr ==> post.spec_index(ptr) == pre.spec_index(ptr),
         post.spec_index(child_ptr).inv(),
         post.spec_index(child_ptr).view() == (Process { parent_linkedlist_node: post.spec_index(child_ptr).view().parent_linkedlist_node, ..pre.spec_index(child_ptr).view() }),
+        post.spec_index(child_ptr).view().parent_linkedlist_node.addr() == pre.spec_index(child_ptr).view().parent_linkedlist_node.addr(),
         post.spec_index(child_ptr).view_rodata() == pre.spec_index(child_ptr).view_rodata(),
         post.spec_index(child_ptr).killer_info() == pre.spec_index(child_ptr).killer_info(),
         post.spec_index(child_ptr).view_ghost() == pre.spec_index(child_ptr).view_ghost(),
@@ -308,6 +309,7 @@ pub(super) proof fn container_map_unlink_child_eof_container_perms_wf(pre: Conta
         post.spec_index(parent_ptr).inv(),
         post.spec_index(parent_ptr).view().children.view() == pre.spec_index(parent_ptr).view().children.view().remove_value(child_ptr),
         post.spec_index(parent_ptr).view().children.view().no_duplicates(),
+        post.spec_index(parent_ptr).view().parent_linkedlist_node.addr() == pre.spec_index(parent_ptr).view().parent_linkedlist_node.addr(),
     ensures container_perms_wf(post),
 { reveal(container_perms_wf); reveal(container_tree_fields_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); }
 

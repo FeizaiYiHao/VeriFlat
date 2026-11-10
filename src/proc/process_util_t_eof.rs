@@ -11,6 +11,7 @@ pub(super) proof fn retype_page_to_process_and_insert_eof(pre: ProcessLockedMap,
         !process_value.children.view().contains(pg_ptr),
         process_value.uppertree_seq.view().no_duplicates(),
         process_value.uppertree_seq.view().len() == rodata.view().depth,
+        process_value.parent_linkedlist_node.addr() == process_parent_node_addr(pg_ptr),
         post.perms_wf(),
         post.dom() =~= pre.dom().insert(pg_ptr),
         forall|ptr: RwLockProcessPtr|

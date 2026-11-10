@@ -351,7 +351,7 @@ fn kill_container_retire_detach(
     let ghost owner_ro = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view();
     let ghost ancestors = krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, ctn_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr); container_perms_wf_implies_parent_node_addr(krnl.ctn_mp, ctn_ptr);
         container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr, owner_ptr); container_uppertree_seq_wf_implies_ancestors_in_dom(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr); container_linkedlist_wf_at(krnl.rt_ctn, krnl.ctn_mp, ctn_ptr);
         container_perms_wf_at(krnl.ctn_mp, parent_ptr);

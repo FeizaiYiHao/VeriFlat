@@ -148,6 +148,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_pg_ptr).view().quota_2m == 0
     &&& post.prc_mp.spec_index(process_pg_ptr).view().quota_1g == 0
     &&& !post.prc_mp.spec_index(process_pg_ptr).view().parent_linkedlist_node.is_init()
+    &&& post.prc_mp.spec_index(process_pg_ptr).view().parent_linkedlist_node.addr() == process_parent_node_addr(process_pg_ptr)
     &&& post.prc_mp.spec_index(process_pg_ptr).view().children.view() == Seq::<RwLockProcessPtr>::empty()
     &&& post.prc_mp.spec_index(process_pg_ptr).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty()
     &&& post.prc_mp.spec_index(process_pg_ptr).view_rodata().view().owning_container == ctn_ptr
