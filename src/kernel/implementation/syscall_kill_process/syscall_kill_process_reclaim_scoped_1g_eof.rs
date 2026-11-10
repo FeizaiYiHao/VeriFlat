@@ -185,9 +185,56 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_page_relations(
     kill_reclaim_held_1g_page_scoped_eof_mapped_1g_pages(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+    kill_reclaim_held_1g_page_scoped_eof_process_pagetable(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
+}
+
+/// The process-to-page-table relation closes after the held 1G leaf `va` of `pagetable` is cleared.
+proof fn kill_reclaim_held_1g_page_scoped_eof_process_pagetable(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, node_addr: usize,
+)
+    requires
+        pre.inv(),
+        kill_reclaim_held_1g_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr),
+    ensures
+        process_pagetable_wf(post.prc_mp, post.pt_mp),
+{
+    reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+}
+
+/// The 1G global-pool relation closes after `pg_ptr` enters the head of the global pool of the owner allocator `allc_ptr`.
+proof fn kill_reclaim_held_1g_page_scoped_eof_global_pool_1g_pages(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, node_addr: usize, owner: RwLockContainerPtr,
+)
+    requires
+        pre.inv(),
+        kill_reclaim_held_1g_page_scoped_eof_transition_framing(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr),
+        ({
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view();
+            &&& page_ptr_valid(pg_ptr)
+            &&& old_page.state is Mapped1g
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& pre.allc_1g_mp.dom().contains(allc_ptr)
+            &&& !pre.allc_1g_mp.spec_index(allc_ptr).global_pool.view().map().dom().contains(node_addr)
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_1g == allc_ptr
+        }),
+        post.subsystems_inv(),
+        forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(a).global_pool.view().view()] #![trigger pre.allc_1g_mp.spec_index(a).global_pool.view().view()]
+            pre.allc_1g_mp.dom().contains(a) && a != allc_ptr ==> post.allc_1g_mp.spec_index(a).global_pool.view().view() == pre.allc_1g_mp.spec_index(a).global_pool.view().view(),
+    ensures
+        allocator_global_pool_1g_pages_wf(post.allc_1g_mp, post.pg_arr),
+{
+    reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(allocator_global_pool_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by {
+        reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
+        seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
+    };
 }
 
 /// The 1G allocator relations close after `pg_ptr` enters the head of the owner allocator's global pool.
@@ -222,10 +269,7 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_free_1g_pages(
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
     assert(allocator_cpu_cache_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(allocator_free_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(allocator_global_pool_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by {
-        reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
-        seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
-    };
+    kill_reclaim_held_1g_page_scoped_eof_global_pool_1g_pages(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr, owner);
     reveal(allocator_free_1g_pages_wf);
 }
 

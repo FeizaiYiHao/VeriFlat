@@ -1114,6 +1114,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             WholePageTable::hide_1g_leaf_eof(pre, post, target_l4i, target_l3i, l4_entry.addr);
             WholePageTable::hide_1g_leaf_eof_resolve(pre, post, target_l4i, target_l3i, l4_entry.addr);
             WholePageTable::hide_1g_leaf_eof_held_chain(pre, post, target_l4i, target_l3i, l4_entry.addr);
+            WholePageTable::hide_1g_leaf_eof_held_lower_chain(pre, post, target_l4i, target_l3i, l4_entry.addr);
         }
     }
 

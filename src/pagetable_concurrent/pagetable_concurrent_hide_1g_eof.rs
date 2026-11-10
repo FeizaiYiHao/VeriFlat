@@ -155,7 +155,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
     }
 
-    /// EOF closure of `hide_1g_leaf`: the held chain through the changed entry and every unchanged held entry.
+    /// EOF closure of `hide_1g_leaf`: the held root and L3 entries through the changed entry and every unchanged one.
     pub(super) proof fn hide_1g_leaf_eof_held_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
         requires
             pre.wf(),
@@ -171,6 +171,17 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
             post.spec_held_1g_l3(target_l4i, target_l3i) == Some(PageEntry { perm: PageEntryPerm { present: false, ..pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i)->0.perm }, ..pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i)->0 }),
+    {
+        reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
+    }
+
+    /// EOF closure of `hide_1g_leaf`: every held entry below an L3 entry, whose held L3 walk is unchanged, over the unchanged lower half.
+    pub(super) proof fn hide_1g_leaf_eof_held_lower_chain(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            Self::hide_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
+        ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
@@ -179,7 +190,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
     {
         reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
-        reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4);
     }
 
     /// Operation-state summary of `clear_held_1g_leaf`: entry `target_l3i` of the L3 page `target_l3_p`, which held a 1G leaf, is cleared and the leaf leaves `mapping_1g`; every other field is unchanged.
