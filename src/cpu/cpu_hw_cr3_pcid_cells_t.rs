@@ -39,7 +39,9 @@ impl TrustedAtomicUsize {
     }
 
     /// TCB: the returned snapshot of cell `cpu_id` linearizes at the atomic load. The kernel caller closes Acquire before
-    /// permitting another shared-state observation.
+    /// permitting another shared-state observation. Acquire is enough because every flusher loads the word while it holds
+    /// the `(cpu_id, pcid)` needflush entry it flushes, and every store that enters a flushable PCID happens inside that
+    /// same entry's critical section (see `store`), so the entry lock orders each such store before or after the load.
     #[verifier::external_body]
     pub fn load(&self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: usize)
         requires
@@ -53,11 +55,17 @@ impl TrustedAtomicUsize {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
     {
-        CPU_HW_CR3_PCID_CELLS[cpu_id].0.load(Ordering::SeqCst)
+        CPU_HW_CR3_PCID_CELLS[cpu_id].0.load(Ordering::Acquire)
     }
 
     /// TCB: publish `value` in cell `cpu_id`, from cpu `cpu_id` itself or from the running-to-idle IPI it acknowledged.
-    /// This does not write CR3 or change the separately modeled hardware context.
+    /// This does not write CR3 or change the separately modeled hardware context. Release is enough: a store that enters
+    /// a non-default PCID (`switch_to_thread`) runs inside the `(cpu_id, pcid)` needflush entry's critical section, so a
+    /// flusher holding that entry either runs first and leaves its flag for the switch to flush, or runs after and loads
+    /// the new word; a store that leaves a PCID (`block_current`, the running-to-idle IPI, which only enter the default
+    /// PCID that no flusher loads for) can at worst make a flusher load a stale word and send one spurious extra flush.
+    /// A future store that enters a non-default PCID outside its needflush entry lock would lose flushes and needs
+    /// sequentially consistent ordering on both the store and the flusher's mark-then-load.
     #[verifier::external_body]
     pub fn store(&mut self, cpu_id: CpuId, value: usize, Tracked(lctx): Tracked<&LocalContext>)
         requires
@@ -68,7 +76,7 @@ impl TrustedAtomicUsize {
             final(self).view() == value,
             final(self).owner_cpu() == old(self).owner_cpu(),
     {
-        CPU_HW_CR3_PCID_CELLS[cpu_id].0.store(value, Ordering::SeqCst);
+        CPU_HW_CR3_PCID_CELLS[cpu_id].0.store(value, Ordering::Release);
         self.value = Ghost(value);
     }
 }
