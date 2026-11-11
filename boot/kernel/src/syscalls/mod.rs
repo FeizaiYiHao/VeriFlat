@@ -26,7 +26,8 @@
 //! else (ring 3, the trampolines, the idle loop, an Off CPU) they are on. `syscall` and the
 //! interrupt gates clear IF in hardware; `sys_entry` and the interrupt trampolines (for frames from
 //! ring 3) execute `sti` once the frame is saved in the thread's slot and `rsp` is on the kernel
-//! stack, and [`resume_current_frame`] and [`restore_frame`] execute `cli` first, so `rsp` never
+//! stack, and [`resume_current_frame`] and [`restore_frame`] execute `cli` first (the former then
+//! enters the latter just after its `cli`), so `rsp` never
 //! points into a thread page while interrupts are on, and the last check and the return to ring 3
 //! are one step. An interrupt taken in the kernel keeps IF
 //! clear in its handler, which only acknowledges, re-arms the timer, or sets a flag.
@@ -168,8 +169,8 @@ pub unsafe fn init_cpu() {
 /// - Trap: the trampoline without this CPU's own lock, interrupts on. User to Trap at `sys_entry`
 ///   and the interrupt gates, which clear IF until the trampoline's `sti` after the frame is saved in
 ///   the running thread's slot (the trap entry: the user registers become that frame);
-///   Trap to User at the `sysretq`/`iretq` of [`restore_frame`], whose `cli` makes its check and
-///   the return one step; Trap to Idle when [`restore_frame`] diverts on `running_to_idle_pending`,
+///   Trap to User at the `sysretq`/`iretq` of [`restore_frame`], whose `cli` (on the path from
+///   [`resume_current_frame`], that function's `cli`) makes its check and the return one step; Trap to Idle when [`restore_frame`] diverts on `running_to_idle_pending`,
 ///   or when a syscall returns CpuIdle into [`run_idle`]. A running-to-idle IPI is acknowledged
 ///   only there, in [`run_idle`], once the trap path is left.
 /// - InStep: the verified kernel holds this CPU's own lock, interrupts off, from its `wlock_cpu` of
@@ -237,16 +238,21 @@ unsafe extern "C" fn sys_entry() -> ! {
 /// non-canonical address faults in ring 0 after the user `rsp` is already loaded. The first
 /// instruction turns interrupts off, and `sysretq`/`iretq` turn them on again from the user
 /// `rflags`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks. The
-/// frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
+/// frame is always a ring 3 frame, so both returns `swapgs` unconditionally. The exception and IRQ
+/// trampolines enter at the top with interrupts on; [`resume_current_frame`], which has already
+/// turned them off, enters at `veriflat_restore_frame_after_cli`, just after the `cli`.
 ///
 /// A CPU forced from running to idle goes to the idle loop instead, which acknowledges the IPI.
 /// Interrupts are off from the check to the return, so a running-to-idle IPI that arrives after the
 /// check stays pending until the CPU is back in ring 3, takes it there, and comes back here through
 /// the trampoline. The check is the only running-to-idle work on this path.
 #[unsafe(naked)]
+#[allow(named_asm_labels)]
 pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     naked_asm!(
         "cli",
+        ".globl veriflat_restore_frame_after_cli",
+        "veriflat_restore_frame_after_cli:",
         "cmp byte ptr gs:[{running_to_idle_pending}], 0",
         "jne {running_to_idle}",
         // ZF = 1 selects sysretq. pop leaves the flags alone.
@@ -309,16 +315,16 @@ pub(crate) unsafe extern "C" fn restore_frame() -> ! {
 /// [`sync_current_frame`] keeps on the current thread's slot. The tail of every path to ring 3; a
 /// pending running-to-idle request diverts it before the frame is read. Interrupts go off before
 /// `rsp` moves into the thread's page: an interrupt taken there would push into the thread object.
+/// That `cli` is the only one on this path: the jump enters [`restore_frame`] just after its own.
 #[unsafe(naked)]
 pub(crate) unsafe extern "C" fn resume_current_frame() -> ! {
     naked_asm!(
         "cli",
         "mov rsp, gs:{frame_top_offset}",
         "sub rsp, {frame_size}",
-        "jmp {restore}",
+        "jmp veriflat_restore_frame_after_cli",
         frame_top_offset = const offset_of!(Cpu, frame_top),
         frame_size = const size_of::<Registers>(),
-        restore = sym restore_frame,
     );
 }
 
@@ -339,7 +345,7 @@ fn sync_current_frame() -> Option<*mut Registers> {
     let cpu = cpu::get_current();
     if cpu.frame_top != top {
         cpu.frame_top = top;
-        cpu.tss.set_rsp(Ring::Ring0, top);
+        cpu.tss.rsp[0] = top;
     }
     Some((top as usize - size_of::<Registers>()) as *mut Registers)
 }
