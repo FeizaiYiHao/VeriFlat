@@ -28,7 +28,7 @@ pub proof fn page_iommu_table_wf_preserved_for_process_fields_except_quota()
                 ==> page_iommu_table_wf(container_map, post, iommu_table_map, page_array),
 { reveal(page_iommu_table_wf); }
 
-pub proof fn lemma_page_iommu_table_wf_preserved_for_container_invariant_fields_forall()
+pub proof fn container_invariant_fields_unchanged_implies_page_iommu_table_wf_preserved_forall()
     ensures
         forall|pre: ContainerLockedMap, post: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray|
             #![trigger page_iommu_table_wf(pre, process_map, iommu_table_map, page_array), page_iommu_table_wf(post, process_map, iommu_table_map, page_array)]

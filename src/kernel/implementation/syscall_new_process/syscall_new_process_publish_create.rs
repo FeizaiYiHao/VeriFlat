@@ -196,7 +196,7 @@ pub(super) fn create_and_release_staged_process(
                 let tree = krnl.ctn_mp.spec_index(c).view_ghost().owned_processes.view();
                 container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, c, parent_ptr);
                 per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, c); process_uppertree_seq_wf_implies_ancestors_in_dom(krnl.ctn_mp.spec_index(c).view().root_process, tree, krnl.prc_mp, parent_ptr);
-                lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
+                distinct_process_or_thread_ptrs_implies_seq_len_le_num_pages(&*krnl, uppers);
             };
         };
         assert(page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(pagetable_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(l4_pg_ptr)

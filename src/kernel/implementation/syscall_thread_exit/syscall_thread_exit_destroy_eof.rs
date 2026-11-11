@@ -277,7 +277,7 @@ proof fn thread_exit_destroy_eof_allocator_quota_wf(
     reveal(thread_exit_destroy_eof_transition_framing);
     thread_perms_wf_at(pre.thrd_mp, thrd_ptr);
     process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
-    lemma_container_process_thread_quota_folds_remove_thread_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, thrd_ptr, prc_ptr);
+    thread_quota_moved_to_process_implies_container_quota_fold_sums_unchanged_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, thrd_ptr, prc_ptr);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); };
@@ -344,7 +344,7 @@ proof fn thread_exit_destroy_eof_process_relations(
     reveal(thread_exit_destroy_eof_transition_framing);
     process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
     process_perms_wf_at(pre.prc_mp, prc_ptr);
-    lemma_seq_remove_value_membership::<RwLockThreadPtr>();
+    no_duplicates_implies_remove_value_removes_only_that_value::<RwLockThreadPtr>();
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -427,7 +427,7 @@ proof fn thread_exit_destroy_eof_thread_relations(
     let uppers = pre.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view();
     process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
     process_perms_wf_at(pre.prc_mp, prc_ptr);
-    lemma_seq_remove_value_membership::<RwLockThreadPtr>();
+    no_duplicates_implies_remove_value_removes_only_that_value::<RwLockThreadPtr>();
     assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by {
         reveal(process_emptied_threads_wf);
         assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| post.prc_mp.dom().contains(p_ptr) && post.prc_mp.spec_index(p_ptr).view().state.view() is TablesEmptied && #[trigger] post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)

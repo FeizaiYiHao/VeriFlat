@@ -31,7 +31,7 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, prc_ptr: RwL
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
-        assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
+        assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
         assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
         assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
@@ -49,7 +49,7 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, prc_ptr: RwL
             &&& container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)
             &&& container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)
         }) by {
-            lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, victim_ptr, dp4k, dp2m, dp1g, -dp4k, -dp2m, -dp1g);
+            one_process_and_thread_changed_implies_container_quota_fold_sums_changed_by_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, victim_ptr, dp4k, dp2m, dp1g, -dp4k, -dp2m, -dp1g);
             reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
         };
     };
@@ -71,11 +71,11 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, prc_ptr: Rw
 {
     reveal(kill_leave_process_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, prc_ptr);
-    lemma_seq_remove_value_membership::<RwLockThreadPtr>();
+    no_duplicates_implies_remove_value_removes_only_that_value::<RwLockThreadPtr>();
     assert(post.process_management_inv()) by {
-        assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
+        assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { process_rodata_unchanged_implies_container_process_wf_preserved_forall(); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
-        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
+        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall(); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
         assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
@@ -366,7 +366,7 @@ pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
     let before = pre.sched_mp.spec_index(sched_ptr).shard(shard).queue;
     scheduler_perms_wf_at(pre.sched_mp, sched_ptr);
     assert(before.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
-    lemma_seq_remove_value_membership::<RwLockThreadPtr>();
+    no_duplicates_implies_remove_value_removes_only_that_value::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thrd_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
@@ -414,7 +414,7 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
     let before = pre.ep_mp.spec_index(ep_ptr).view().queue;
     endpoint_perms_wf_at(pre.ep_mp, ep_ptr);
     assert(before.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
-    lemma_seq_remove_value_membership::<RwLockThreadPtr>();
+    no_duplicates_implies_remove_value_removes_only_that_value::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thrd_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);

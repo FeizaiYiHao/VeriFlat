@@ -18,7 +18,7 @@ pub(crate) proof fn kill_container_retire_eof_container_perms(
         post.ctn_mp.spec_index(parent_ptr).view().children.view().no_duplicates(),
     ensures container_perms_wf(post.ctn_mp),
 {
-    reveal(kill_container_retire_eof_transition_framing); reveal(container_perms_wf); reveal(container_tree_fields_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>();
+    reveal(kill_container_retire_eof_transition_framing); reveal(container_perms_wf); reveal(container_tree_fields_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockContainerPtr>();
 }
 
 /// Retiring the childless container, a leaf below `parent_ptr` with an empty subtree, keeps the container tree well
@@ -40,8 +40,8 @@ pub(crate) proof fn kill_container_retire_eof_container_tree(
     assert(ctn_ptr != pre.rt_ctn && pre.ctn_mp.dom().contains(pre.rt_ctn)) by { reveal(container_root_wf); };
     container_linkedlist_wf_at(pre.rt_ctn, pre.ctn_mp, ctn_ptr); container_perms_wf_at(pre.ctn_mp, parent_ptr);
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
-    assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
-    assert(container_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_linkedlist_wf); reveal(container_children_parent_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); };
+    assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockContainerPtr>(); };
+    assert(container_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_linkedlist_wf); reveal(container_children_parent_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockContainerPtr>(); };
     assert(container_uppertree_seq_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_parent_wf); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); };
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_wf); broadcast use kill_container_retire_eof_subtree_empty; };

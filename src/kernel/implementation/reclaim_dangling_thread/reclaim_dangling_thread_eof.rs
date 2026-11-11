@@ -172,7 +172,7 @@ proof fn reclaim_dangling_thread_eof_allocator_quota_wf(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     thread_perms_wf_at(pre.thrd_mp, dangling_ptr);
-    lemma_container_thread_quota_folds_remove_empty_thread_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, pre.thrd_mp.spec_index(dangling_ptr).view().owning_container, dangling_ptr);
+    zero_quota_thread_remove_implies_container_thread_quota_fold_sums_unchanged_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.thrd_mp, post.thrd_mp, pre.thrd_mp.spec_index(dangling_ptr).view().owning_container, dangling_ptr);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); };

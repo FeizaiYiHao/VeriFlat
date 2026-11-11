@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-proof fn lemma_iset_fold_int_sum_congruence<A>(s: ISet<A>, lhs: spec_fn(A) -> int, rhs: spec_fn(A) -> int)
+proof fn equal_values_implies_iset_fold_int_sum_eq<A>(s: ISet<A>, lhs: spec_fn(A) -> int, rhs: spec_fn(A) -> int)
     requires
         s.finite(),
         forall|a: A| #![trigger s.contains(a)] s.contains(a) ==> lhs(a) == rhs(a),
@@ -26,14 +26,14 @@ proof fn lemma_iset_fold_int_sum_congruence<A>(s: ISet<A>, lhs: spec_fn(A) -> in
     vstd::iset::fold::lemma_finite_set_induct(s, pred);
 }
 
-pub proof fn lemma_set_fold_int_sum_congruence<A>(s: Set<A>, lhs: spec_fn(A) -> int, rhs: spec_fn(A) -> int)
+pub proof fn equal_values_implies_set_fold_int_sum_eq<A>(s: Set<A>, lhs: spec_fn(A) -> int, rhs: spec_fn(A) -> int)
     requires
         forall|a: A| #![trigger s.contains(a)] s.contains(a) ==> lhs(a) == rhs(a),
     ensures
         s.fold(0int, |sum: int, a: A| sum + lhs(a)) == s.fold(0int, |sum: int, a: A| sum + rhs(a)),
-{ vstd::set::lemma_to_iset_finite(s); lemma_iset_fold_int_sum_congruence(s.to_iset(), lhs, rhs); }
+{ vstd::set::lemma_to_iset_finite(s); equal_values_implies_iset_fold_int_sum_eq(s.to_iset(), lhs, rhs); }
 
-pub proof fn lemma_set_fold_int_sum_empty<A>(s: Set<A>, value: spec_fn(A) -> int)
+pub proof fn empty_set_implies_set_fold_int_sum_zero<A>(s: Set<A>, value: spec_fn(A) -> int)
     requires
         s =~= Set::<A>::empty(),
     ensures
@@ -44,7 +44,7 @@ pub proof fn lemma_set_fold_int_sum_empty<A>(s: Set<A>, value: spec_fn(A) -> int
     assert(s.to_iset() =~= ISet::<A>::empty());
 }
 
-pub proof fn lemma_set_fold_int_sum_singleton<A>(s: Set<A>, member: A, value: spec_fn(A) -> int)
+pub proof fn singleton_set_implies_set_fold_int_sum_eq_member<A>(s: Set<A>, member: A, value: spec_fn(A) -> int)
     requires
         s =~= Set::<A>::empty().insert(member),
     ensures
@@ -56,7 +56,7 @@ pub proof fn lemma_set_fold_int_sum_singleton<A>(s: Set<A>, member: A, value: sp
     assert(s.to_iset() =~= ISet::<A>::empty().insert(member));
 }
 
-proof fn lemma_iset_fold_int_sum_nonneg<A>(s: ISet<A>, value: spec_fn(A) -> int)
+proof fn nonneg_values_implies_iset_fold_int_sum_nonneg<A>(s: ISet<A>, value: spec_fn(A) -> int)
     requires
         s.finite(),
         forall|a: A| #![trigger s.contains(a)] s.contains(a) ==> value(a) >= 0,
@@ -73,14 +73,14 @@ proof fn lemma_iset_fold_int_sum_nonneg<A>(s: ISet<A>, value: spec_fn(A) -> int)
     vstd::iset::fold::lemma_finite_set_induct(s, pred);
 }
 
-pub proof fn lemma_set_fold_int_sum_nonneg<A>(s: Set<A>, value: spec_fn(A) -> int)
+pub proof fn nonneg_values_implies_set_fold_int_sum_nonneg<A>(s: Set<A>, value: spec_fn(A) -> int)
     requires
         forall|a: A| #![trigger s.contains(a)] s.contains(a) ==> value(a) >= 0,
     ensures
         s.fold(0int, |sum: int, a: A| sum + value(a)) >= 0,
-{ vstd::set::lemma_to_iset_finite(s); lemma_iset_fold_int_sum_nonneg(s.to_iset(), value); }
+{ vstd::set::lemma_to_iset_finite(s); nonneg_values_implies_iset_fold_int_sum_nonneg(s.to_iset(), value); }
 
-pub proof fn lemma_set_fold_int_sum_ge_member<A>(s: Set<A>, value: spec_fn(A) -> int, member: A)
+pub proof fn nonneg_values_implies_set_fold_int_sum_ge_member<A>(s: Set<A>, value: spec_fn(A) -> int, member: A)
     requires
         s.contains(member),
         forall|a: A| #![trigger s.contains(a)] s.contains(a) ==> value(a) >= 0,
@@ -91,11 +91,11 @@ pub proof fn lemma_set_fold_int_sum_ge_member<A>(s: Set<A>, value: spec_fn(A) ->
     let rest = is.remove(member);
     let fold = |sum: int, a: A| sum + value(a);
     vstd::set::lemma_to_iset_finite(s);
-    lemma_iset_fold_int_sum_nonneg(rest, value);
+    nonneg_values_implies_iset_fold_int_sum_nonneg(rest, value);
     vstd::iset::fold::lemma_fold_insert(rest, 0int, fold, member);
 }
 
-pub proof fn lemma_set_fold_int_sum_change_by<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, changed: A, delta: int)
+pub proof fn one_value_changed_implies_set_fold_int_sum_changed_by<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, changed: A, delta: int)
     requires
         s.contains(changed),
         post(changed) == pre(changed) + delta,
@@ -109,12 +109,12 @@ pub proof fn lemma_set_fold_int_sum_change_by<A>(s: Set<A>, pre: spec_fn(A) -> i
     let post_fold = |sum: int, a: A| sum + post(a);
     vstd::set::lemma_to_iset_finite(s);
     vstd::iset::lemma_iset_remove_finite(is, changed);
-    lemma_iset_fold_int_sum_congruence(rest, pre, post);
+    equal_values_implies_iset_fold_int_sum_eq(rest, pre, post);
     vstd::iset::fold::lemma_fold_insert(rest, 0int, pre_fold, changed);
     vstd::iset::fold::lemma_fold_insert(rest, 0int, post_fold, changed);
 }
 
-pub proof fn lemma_set_fold_int_sum_insert_zero<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, inserted: A)
+pub proof fn zero_value_insert_implies_set_fold_int_sum_unchanged<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, inserted: A)
     requires
         !s.contains(inserted),
         post(inserted) == 0,
@@ -123,12 +123,12 @@ pub proof fn lemma_set_fold_int_sum_insert_zero<A>(s: Set<A>, pre: spec_fn(A) ->
         s.insert(inserted).fold(0int, |sum: int, a: A| sum + post(a)) == s.fold(0int, |sum: int, a: A| sum + pre(a)),
 {
     let post_fold = |sum: int, a: A| sum + post(a);
-    lemma_set_fold_int_sum_congruence(s, post, pre);
+    equal_values_implies_set_fold_int_sum_eq(s, post, pre);
     vstd::iset::fold::lemma_fold_insert(s.to_iset(), 0int, post_fold, inserted);
     assert(s.insert(inserted).to_iset() =~= s.to_iset().insert(inserted));
 }
 
-pub proof fn lemma_set_fold_int_sum_remove<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, removed: A)
+pub proof fn member_remove_implies_set_fold_int_sum_minus_member<A>(s: Set<A>, pre: spec_fn(A) -> int, post: spec_fn(A) -> int, removed: A)
     requires
         s.contains(removed),
         forall|a: A| #![trigger s.contains(a)] s.contains(a) && a != removed ==> post(a) == pre(a),
@@ -137,7 +137,7 @@ pub proof fn lemma_set_fold_int_sum_remove<A>(s: Set<A>, pre: spec_fn(A) -> int,
 {
     let rest = s.remove(removed);
     let pre_fold = |sum: int, a: A| sum + pre(a);
-    lemma_set_fold_int_sum_congruence(rest, post, pre);
+    equal_values_implies_set_fold_int_sum_eq(rest, post, pre);
     vstd::set::lemma_to_iset_finite(rest);
     vstd::iset::fold::lemma_fold_insert(rest.to_iset(), 0int, pre_fold, removed);
     assert(s.to_iset() =~= rest.to_iset().insert(removed));

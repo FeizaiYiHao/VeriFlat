@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::super::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use super::super::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 #[cfg(verus_keep_ghost)]
 use super::allocate_free_1g_page_lemmas::{allocator_free_1g_pages_wf_at, kernel_inv_implies_container_allocator_1g_quota_bounded};
 #[cfg(verus_keep_ghost)]
@@ -117,10 +117,10 @@ pub fn kill_container_move_free_page_1g(
         assert(krnl.allc_1g_mp.spec_index(src_allocator).global_pool.view().view().contains(pg_ptr));
         container_owned_1g_head_implies_owned_pages_contain_all_ptrs(&*krnl, pg_idx, src);
         page_1g_all_ptrs_contains_head(pg_idx);
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, src);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, src);
         kernel_inv_implies_container_allocator_1g_quota_bounded(&*krnl, dst);
         assert(krnl.allc_1g_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates()) by { reveal(LinkedList::value_list_unique); };
-        assert(0 < krnl.allc_1g_mp.spec_index(src_allocator).quota.view().value) by { lemma_cache_len_fold_nonneg(krnl.allc_1g_mp.spec_index(src_allocator).cpu_caches.view()); };
+        assert(0 < krnl.allc_1g_mp.spec_index(src_allocator).quota.view().value) by { cache_len_fold_implies_nonneg(krnl.allc_1g_mp.spec_index(src_allocator).cpu_caches.view()); };
     }
     let (node_addr, Tracked(node_perm)) = krnl.allc_1g_mp.pop_global_pool_page_typed(src_allocator, Ghost(lctx.allocator_quota_1g_lock_map()),
         Ghost(lctx.allocator_cache_1g_lock_map()), Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(src_pool_perm));

@@ -88,7 +88,7 @@ pub(super) fn reclaim_dangling_thread_commit(
         thread_perms_wf_map(krnl.thrd_mp);
         thread_perms_wf_at(krnl.thrd_mp, dangling_ptr); thread_perms_wf_implies_node_slot_addrs(krnl.thrd_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, pg_idx);
         krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(dangling_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, dangling_ptr); };
         lctx.enter_kernel_view_release();

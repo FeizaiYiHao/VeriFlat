@@ -141,8 +141,8 @@ proof fn release_endpoint_eof_allocator_quota_wf(
     };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf);
-        lemma_thread_effective_quota_1g_fold_sum_eq_forall();
-        lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+        unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall();
+        unchanged_thread_pending_1g_implies_per_container_pending_1g_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
 }
 

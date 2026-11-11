@@ -262,7 +262,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(parent_ancestors.to_set().subset_of(process_tree_dom)) by { parent_ancestors.to_set_ensures(); process_uppertree_seq_wf_implies_ancestors_in_dom(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); };
         assert(!parent_ancestors.contains(parent_ptr)) by { process_uppertree_seq_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, parent_ptr); };
         assert(!krnl.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_pg_ptr)) by { process_children_parent_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, process_pg_ptr); };
-        assert(parent_children.len() <= NUM_PAGES) by { process_children_parent_wf_implies_children_in_tree(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children); };
+        assert(parent_children.len() <= NUM_PAGES) by { process_children_parent_wf_implies_children_in_tree(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); distinct_process_or_thread_ptrs_implies_seq_len_le_num_pages(&*krnl, parent_children); };
         assert(krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().process_is_unallocated(process_pg_ptr)) by { process_pcid_allocator_wf_unallocated_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, pcid_allc_ptr, process_pg_ptr); };
     }
     let ghost page_locks = lctx.page_lock_map();

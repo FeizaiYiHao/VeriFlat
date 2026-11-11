@@ -23,7 +23,7 @@ pub proof fn allocator_free_page_ptrs_wf_implies_free_count_fold_bounded<const S
         };
         assert(allocators.spec_index(allocator).cpu_caches.view().fold_left(0int,
             |sum: int, cache: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
-            lemma_cache_len_fold_upper_bound(allocators.spec_index(allocator).cpu_caches);
+            cache_inv_implies_cache_len_fold_bounded(allocators.spec_index(allocator).cpu_caches);
         };
     };
 }

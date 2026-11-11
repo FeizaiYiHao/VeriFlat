@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::KillTraceCtx;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 use super::syscall_kill_container_pages_lock::kill_container_pages_unlock;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
@@ -102,8 +102,8 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         let a4_caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
         let a2_caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2);
-        a4_caches.view_index_eq_element_value(); lemma_cache_len_fold_all_zero(a4_caches.view()); a2_caches.view_index_eq_element_value(); lemma_cache_len_fold_all_zero(a2_caches.view());
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, ctn_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
+        a4_caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(a4_caches.view()); a2_caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(a2_caches.view());
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     }
     let ghost drained = *krnl;
     proof {

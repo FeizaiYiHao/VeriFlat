@@ -210,7 +210,7 @@ pub proof fn seq_insert_head_absent_implies_no_duplicates_and_index_of_zero<A>()
     }
 }
 
-pub proof fn lemma_seq_remove_value_membership<A>()
+pub proof fn no_duplicates_implies_remove_value_removes_only_that_value<A>()
     ensures
         forall|s: Seq<A>, v: A, x: A| x != v && s.no_duplicates() ==> s.remove_value(x).contains(v) == s.contains(v),
         forall|s: Seq<A>, v: A| #![auto] s.no_duplicates() ==> s.remove_value(v).contains(v) == false,

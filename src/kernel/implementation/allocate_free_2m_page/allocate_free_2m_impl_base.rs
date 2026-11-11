@@ -217,7 +217,7 @@ verus! {
             // so total_free_pages >= 1 and hence pool.len() >= 1.
             assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().len() > 0) by {
                 assert(krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view().contains(thrd_ptr)) by { container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); };
-                lemma_scan_fail_pool_nonempty(krnl, ctn_ptr, alloc_ptr_2m, thrd_ptr);
+                empty_cpu_caches_and_thread_quota_2m_implies_global_pool_nonempty(krnl, ctn_ptr, alloc_ptr_2m, thrd_ptr);
                 allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().wf_implies_view_len_eq_len();
             };
@@ -683,7 +683,7 @@ verus! {
 /// total free-page count equals the pool length (all cache summands are zero),
 /// and that total is at least the held thread's `thread_effective_quota_2m >= 1`
 /// because every other conservation summand is non-negative.
-pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, ctn_ptr: RwLockContainerPtr, alloc_ptr_2m: RwLockPageAllocatorPtr, thrd_ptr: RwLockThreadPtr)
+pub proof fn empty_cpu_caches_and_thread_quota_2m_implies_global_pool_nonempty(k: &KernelK, ctn_ptr: RwLockContainerPtr, alloc_ptr_2m: RwLockPageAllocatorPtr, thrd_ptr: RwLockThreadPtr)
     requires
         k.inv(),
         k.ctn_mp.dom().contains(ctn_ptr),
@@ -698,10 +698,10 @@ pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, ctn_ptr: RwLockContainer
     let owned_threads = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view();
     assert(k.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().view().len() > 0) by {
         reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_process_allocator_quota_2m_wf); reveal(thread_perms_wf);
-        lemma_process_effective_quota_2m_fold_nonneg(owned_processes, k.prc_mp);
-        lemma_thread_effective_quota_2m_fold_ge_member(owned_threads, k.thrd_mp, thrd_ptr);
-        lemma_thread_direct_pending_2m_fold_nonneg(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view(), k.thrd_mp);
-        lemma_thread_indirect_pending_2m_fold_nonneg(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view(), k.thrd_mp, k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth as int);
+        nonneg_members_implies_process_effective_quota_2m_fold_sum_nonneg(owned_processes, k.prc_mp);
+        nonneg_members_implies_thread_effective_quota_2m_fold_sum_ge_member(owned_threads, k.thrd_mp, thrd_ptr);
+        thread_direct_pending_2m_fold_sum_implies_nonneg(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view(), k.thrd_mp);
+        thread_indirect_pending_2m_fold_sum_at_depth_implies_nonneg(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view(), k.thrd_mp, k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth as int);
     };
 }
 }

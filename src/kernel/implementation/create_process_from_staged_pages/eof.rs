@@ -672,21 +672,21 @@ pub(crate) proof fn create_process_from_staged_pages_eof_allocator_quota_wf(
     reveal(create_process_from_staged_pages_eof_transition_framing);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.allc_4k_mp)) by {
         let old_target_owned = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        reveal(container_process_wf); lemma_process_effective_quota_folds_insert_zero(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
-        lemma_process_effective_quota_4k_fold_sum_eq_forall(); reveal(container_process_allocator_quota_4k_wf);
+        reveal(container_process_wf); zero_member_insert_implies_process_effective_quota_fold_sums_unchanged(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
+        unchanged_members_implies_process_effective_quota_4k_fold_sum_eq_forall(); reveal(container_process_allocator_quota_4k_wf);
     };
     assert(container_thread_wf(post.ctn_mp, pre.thrd_mp)) by { reveal(container_thread_wf); };
     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp);
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.allc_2m_mp)) by {
         let old_target_owned = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        reveal(container_process_wf); lemma_process_effective_quota_folds_insert_zero(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
-        lemma_process_effective_quota_2m_fold_sum_eq_forall(); reveal(container_process_allocator_quota_2m_wf);
+        reveal(container_process_wf); zero_member_insert_implies_process_effective_quota_fold_sums_unchanged(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
+        unchanged_members_implies_process_effective_quota_2m_fold_sum_eq_forall(); reveal(container_process_allocator_quota_2m_wf);
     };
     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.allc_1g_mp)) by {
         let old_target_owned = pre.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
-        reveal(container_process_wf); lemma_process_effective_quota_folds_insert_zero(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
-        lemma_process_effective_quota_1g_fold_sum_eq_forall(); reveal(container_process_allocator_quota_1g_wf);
+        reveal(container_process_wf); zero_member_insert_implies_process_effective_quota_fold_sums_unchanged(old_target_owned, pre.prc_mp, post.prc_mp, process_pg_ptr);
+        unchanged_members_implies_process_effective_quota_1g_fold_sum_eq_forall(); reveal(container_process_allocator_quota_1g_wf);
     };
     container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
 }

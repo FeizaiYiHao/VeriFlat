@@ -94,7 +94,7 @@ fn reclaim_hidden_l1_page_to_cache(
         page_array_wf_at(krnl.pg_arr, pg_idx);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(l1_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, l1_ptr); };
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(indices.0, indices.1);

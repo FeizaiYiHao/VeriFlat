@@ -20,18 +20,18 @@ proof fn take_over_dangling_caller_eof_memory_management_inv(pre: KernelK, post:
         assert(thread_staged_1g_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_1g_pages_wf); };
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
             container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_4k_mp); reveal(container_thread_wf); reveal(container_process_wf);
-            lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-            lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+            unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
+            unchanged_thread_pending_4k_implies_per_container_pending_4k_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
         };
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
             container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); reveal(container_thread_wf); reveal(container_process_wf);
-            lemma_thread_effective_quota_2m_fold_sum_eq_forall();
-            lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+            unchanged_members_implies_thread_effective_quota_2m_fold_sum_eq_forall();
+            unchanged_thread_pending_2m_implies_per_container_pending_2m_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
         };
         assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
             reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf); reveal(container_process_wf);
-            lemma_thread_effective_quota_1g_fold_sum_eq_forall();
-            lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+            unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall();
+            unchanged_thread_pending_1g_implies_per_container_pending_1g_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
         };
     };
 }

@@ -27,7 +27,7 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(
 /// A duplicate-free sequence drawn from the process/thread object maps is
 /// bounded by the finite physical-page domain backing both object families.
 #[verifier::external_body]
-pub proof fn lemma_kernel_object_ptr_seq_len_bounded(krnl: &KernelK, ptrs: Seq<PagePtr>)
+pub proof fn distinct_process_or_thread_ptrs_implies_seq_len_le_num_pages(krnl: &KernelK, ptrs: Seq<PagePtr>)
     requires
         krnl.inv(),
         ptrs.no_duplicates(),

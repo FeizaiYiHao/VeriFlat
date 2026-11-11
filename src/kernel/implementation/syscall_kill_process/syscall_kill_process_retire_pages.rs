@@ -869,9 +869,9 @@ pub(crate) fn kill_retire_table_page_to_cache(
         allocator_perms_wf_map(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(pg_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, pg_ptr); };
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *direct as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by {
-            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); lemma_thread_pending_4k_quota_bounded(&*krnl, thrd_ptr, owner, krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth);
+            container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, thrd_ptr); kernel_inv_implies_allocator_4k_quota_plus_thread_pending_le_total_free_pages(&*krnl, thrd_ptr, owner, krnl.thrd_mp.spec_index(thrd_ptr).view().container_depth);
         };
         process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, krnl.pg_arr, target);
         if iommu {

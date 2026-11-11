@@ -181,18 +181,17 @@
 - Do not add `assert forall`. Fix the producer trigger/contract instead.
   Exceptions are the approved linked-list/fold patterns and the existing
   quantified lift in
-  `lemma_memory_management_inv_preserved_for_page_invariant_fields_forall`.
+  `page_invariant_fields_unchanged_implies_memory_management_inv_preserved_forall`.
 - Approved folds are
-  `lemma_{process,thread}_effective_quota_4k_fold_{sum_eq,change_by}_forall`,
-  `lemma_process_effective_quota_{2m,1g}_fold_sum_eq_forall`,
-  `lemma_thread_effective_quota_2m_fold_{sum_eq,change_by}_forall`,
-  `lemma_thread_effective_quota_1g_fold_sum_eq_forall`,
-  `lemma_thread_pending_{4k,2m,1g}_folds_eq_forall`,
-  `lemma_thread_pending_4k_folds_change_by_forall`,
-  `lemma_container_process_thread_quota_folds_insert_zero_forall`, and the closure
-  bridges `lemma_process_effective_quota_folds_singleton`,
-  `lemma_thread_quota_folds_empty`, and
-  `lemma_process_effective_quota_folds_insert_zero` (they absorb the
+  `unchanged_members_implies_{process,thread}_effective_quota_{4k,2m,1g}_fold_sum_eq_forall`,
+  `one_member_changed_implies_{process_effective_quota_4k,thread_effective_quota_{4k,2m}}_fold_sum_changed_by_forall`,
+  `unchanged_thread_pending_{4k,2m,1g}_implies_per_container_pending_{4k,2m,1g}_fold_sums_eq_forall`
+  (matching sizes),
+  `one_member_changed_implies_thread_pending_4k_fold_sums_changed_by_forall`,
+  `zero_quota_thread_insert_implies_container_quota_fold_sums_unchanged_forall`, and
+  the closure bridges `singleton_set_implies_process_effective_quota_fold_sums_eq_member`,
+  `empty_set_implies_thread_quota_fold_sums_zero`, and
+  `zero_member_insert_implies_process_effective_quota_fold_sums_unchanged` (they absorb the
   `value_fold =~= direct_fold` extensionality step once). Keep them inside the
   consuming scoped assertion.
 - Do not leave bare lemma calls that seed later solver context. Do not add

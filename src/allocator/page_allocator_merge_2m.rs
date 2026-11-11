@@ -145,10 +145,10 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
         proof {
             if (source as usize) < NUM_CPUS {
                 self.typed_cache_lock_map_aligned_wf_at(cache_locks, lctx.thread_id(), allocator, source as usize);
-                lemma_cache_len_fold_ge_elem(self.spec_index(allocator).cpu_caches.view(), source as int);
+                cache_len_fold_implies_ge_cache_len_at_index(self.spec_index(allocator).cpu_caches.view(), source as int);
             } else {
                 self.typed_global_pool_lock_map_aligned_wf_at(pool_locks, lctx.thread_id(), allocator);
-                lemma_cache_len_fold_nonneg(self.spec_index(allocator).cpu_caches.view());
+                cache_len_fold_implies_nonneg(self.spec_index(allocator).cpu_caches.view());
             }
             self.spec_index(allocator).merge_2m_source_list(source as usize).wf_implies_view_len_eq_len();
         }

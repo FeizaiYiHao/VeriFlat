@@ -106,7 +106,7 @@ pub fn release_endpoint_last_reference(
         container_perms_wf_map(krnl.ctn_mp);
         assert(krnl.ctn_mp.dom().contains(endpoint_owner)) by { container_endpoint_wf_endpoint_at(krnl.ctn_mp, krnl.ep_mp, ep_ptr); };
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).global_pool.view().view().contains(ep_ptr)) by {
             allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, ep_ptr); page_ptr_roundtrip();
         };

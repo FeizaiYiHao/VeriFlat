@@ -50,7 +50,7 @@ pub proof fn allocator_pages_wf_preserved_for_allocator_fields_except_quota()
             allocator_pages_wf(pre, allocator_2m_map, allocator_1g_map, page_array) && allocator_invariant_fields_except_quota_unchanged(pre, post) ==> allocator_pages_wf(post, allocator_2m_map, allocator_1g_map, page_array),
 { reveal(allocator_4k_pages_wf); }
 
-pub proof fn lemma_process_pages_wf_preserved_for_process_domain_eq_forall()
+pub proof fn process_domain_unchanged_implies_process_pages_wf_preserved_forall()
     ensures
         forall|page_array: PageLockedArray, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger process_pages_wf(pre, page_array), process_pages_wf(post, page_array)]
@@ -65,7 +65,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_process_fields_ex
                 ==> container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array),
 { reveal(container_process_page_pagetable_wf); }
 
-pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall<const SIZE: usize>()
+pub proof fn global_pool_and_cpu_caches_unchanged_implies_allocator_free_page_ptrs_wf_preserved_forall<const SIZE: usize>()
     ensures
         forall|pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>|
             #![trigger allocator_free_page_ptrs_wf(pre), allocator_free_page_ptrs_wf(post)]
@@ -81,7 +81,7 @@ pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_cont
                 }) ==> allocator_free_page_ptrs_wf(post),
 { reveal(allocator_free_page_ptrs_wf); }
 
-pub proof fn lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall()
+pub proof fn process_pagetable_fields_unchanged_implies_process_pagetable_wf_preserved_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, pagetable_map: PageTableLockedMap|
             #![trigger process_pagetable_wf(pre, pagetable_map), process_pagetable_wf(post, pagetable_map)]
@@ -96,7 +96,7 @@ pub proof fn lemma_process_pagetable_match_preserved_for_process_pagetable_field
                 }) ==> process_pagetable_wf(post, pagetable_map),
 { reveal(process_pagetable_wf); }
 
-pub proof fn lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall()
+pub proof fn process_iommu_table_fields_unchanged_implies_process_iommu_table_wf_preserved_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap|
             #![trigger process_iommu_table_wf(pre, iommu_table_map), process_iommu_table_wf(post, iommu_table_map)]
@@ -132,7 +132,7 @@ pub proof fn iommu_tlb_wf_spec_preserved_for_process_fields_except_quota()
                 ==> iommu_tlb_wf(iommu_tlb, root_table, post, iommu_table_map),
 { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); }
 
-pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
+pub proof fn process_rodata_unchanged_implies_container_process_wf_preserved_forall()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger container_process_wf(container_map, pre), container_process_wf(container_map, post)]
@@ -187,7 +187,7 @@ pub proof fn container_allocator_wf_preserved_for_owner_depth_eq(
         container_allocator_wf(new_container_map, new_allocator_4k_map, new_allocator_2m_map, new_allocator_1g_map),
 { reveal(container_allocator_wf); }
 
-pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall()
+pub proof fn thread_invariant_fields_unchanged_implies_thread_staged_pages_wf_preserved_forall()
     ensures
         forall|pre: ThreadLockedMap, post: ThreadLockedMap, page_array: PageLockedArray|
             #![trigger thread_staged_pages_wf(pre, page_array), thread_staged_pages_wf(post, page_array)]
@@ -201,7 +201,7 @@ pub proof fn per_container_process_tree_wf_preserved_for_process_fields_except_q
             per_container_process_tree_wf(container_map, pre) && container_process_wf(container_map, pre) && process_invariant_fields_except_quota_unchanged(pre, post) ==> per_container_process_tree_wf(container_map, post),
 { reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall(); }
 
-pub proof fn lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall()
+pub proof fn process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, cpu_array: CpuLockedArray|
             #![trigger process_cpu_wf(pre, cpu_array), process_cpu_wf(post, cpu_array)]
@@ -216,7 +216,7 @@ pub proof fn lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(
                 }) ==> process_cpu_wf(post, cpu_array),
 { reveal(process_cpu_wf); }
 
-pub proof fn lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall()
+pub proof fn process_thread_membership_fields_unchanged_implies_process_thread_wf_preserved_forall()
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, thread_map: ThreadLockedMap|
             #![trigger process_thread_wf(pre, thread_map), process_thread_wf(post, thread_map)]

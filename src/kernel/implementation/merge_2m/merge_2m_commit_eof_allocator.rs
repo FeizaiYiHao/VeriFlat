@@ -105,24 +105,24 @@ pub proof fn merge_2m_commit_eof_implies_allocator_quota_wf(pre: KernelK, post: 
         allocator_free_page_ptrs_wf_implies_free_count_fold_bounded(pre.allc_2m_mp, allocator_2m);
         reveal(container_thread_wf); reveal(container_process_wf); reveal(thread_perms_wf); reveal(process_perms_wf);
         reveal(container_allocator_wf); reveal(container_process_allocator_quota_2m_wf);
-        lemma_process_effective_quota_2m_fold_nonneg(processes, pre.prc_mp);
-        lemma_thread_effective_quota_2m_fold_ge_member(threads, pre.thrd_mp, thread);
-        lemma_thread_direct_pending_2m_fold_nonneg(threads, pre.thrd_mp);
-        lemma_thread_indirect_pending_2m_fold_nonneg(indirect, pre.thrd_mp, depth);
+        nonneg_members_implies_process_effective_quota_2m_fold_sum_nonneg(processes, pre.prc_mp);
+        nonneg_members_implies_thread_effective_quota_2m_fold_sum_ge_member(threads, pre.thrd_mp, thread);
+        thread_direct_pending_2m_fold_sum_implies_nonneg(threads, pre.thrd_mp);
+        thread_indirect_pending_2m_fold_sum_at_depth_implies_nonneg(indirect, pre.thrd_mp, depth);
     };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
-        lemma_thread_effective_quota_4k_fold_change_by_forall(thread, -512); lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-        lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+        one_member_changed_implies_thread_effective_quota_4k_fold_sum_changed_by_forall(thread, -512); unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
+        unchanged_thread_pending_4k_implies_per_container_pending_4k_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
         reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
-        lemma_thread_effective_quota_2m_fold_change_by_forall(thread, 1); lemma_thread_effective_quota_2m_fold_sum_eq_forall();
-        lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+        one_member_changed_implies_thread_effective_quota_2m_fold_sum_changed_by_forall(thread, 1); unchanged_members_implies_thread_effective_quota_2m_fold_sum_eq_forall();
+        unchanged_thread_pending_2m_implies_per_container_pending_2m_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf);
-        lemma_thread_effective_quota_1g_fold_sum_eq_forall(); lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
+        unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall(); unchanged_thread_pending_1g_implies_per_container_pending_1g_fold_sums_eq_forall(post.ctn_mp, pre.thrd_mp, post.thrd_mp);
     };
 }
 

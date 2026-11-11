@@ -55,7 +55,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
 {
     assert(container_owned_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_container_invariant_fields_forall(); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { container_invariant_fields_unchanged_implies_page_iommu_table_wf_preserved_forall(); };
     assert(container_pages_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_pages_wf); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
@@ -86,7 +86,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
         post.process_management_inv(),
 {
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { container_pcid_allocator_wf_preserved_for_container_fields(); };
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_container_invariant_fields_forall(); };
+    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { container_invariant_fields_unchanged_implies_process_pcid_allocator_wf_preserved_forall(); };
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert({
         &&& pre.ctn_mp.dom().contains(pre.rt_ctn)

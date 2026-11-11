@@ -55,8 +55,8 @@ proof fn return_free_quota_4k_eof_memory_quota_4k(pre: KernelK, post: KernelK, t
 {
     reveal(return_free_quota_4k_eof_transition_framing);
     reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
-    lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-    lemma_thread_pending_4k_folds_change_by_forall(thrd_ptr, if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int },
+    unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
+    one_member_changed_implies_thread_pending_4k_fold_sums_changed_by_forall(thrd_ptr, if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int },
         depth as int, if depth < pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int });
 }
 

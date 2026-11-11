@@ -6,7 +6,7 @@ use super::syscall_kill_process_retire_spec::*;
 verus! {
 /// Removing the process `removed`, which holds no quota, from the folded set keeps the process quota folds when every
 /// other member keeps its quotas.
-pub(crate) proof fn lemma_process_effective_quota_folds_remove_zero(s: Set<RwLockProcessPtr>, pre_map: ProcessLockedMap, post_map: ProcessLockedMap, removed: RwLockProcessPtr)
+pub(crate) proof fn zero_member_remove_implies_process_effective_quota_fold_sums_unchanged(s: Set<RwLockProcessPtr>, pre_map: ProcessLockedMap, post_map: ProcessLockedMap, removed: RwLockProcessPtr)
     requires
         s.contains(removed),
         process_effective_quota_4k(pre_map.spec_index(removed)) == 0,
@@ -27,19 +27,19 @@ pub(crate) proof fn lemma_process_effective_quota_folds_remove_zero(s: Set<RwLoc
     assert((|sum: int, p: RwLockProcessPtr| sum + pre_4k(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(pre_map.spec_index(p)))
         && (|sum: int, p: RwLockProcessPtr| sum + post_4k(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(post_map.spec_index(p)))
         && s.remove(removed).fold(0int, |sum: int, p: RwLockProcessPtr| sum + post_4k(p)) == s.fold(0int, |sum: int, p: RwLockProcessPtr| sum + pre_4k(p)) - pre_4k(removed))
-        by { lemma_set_fold_int_sum_remove(s, pre_4k, post_4k, removed); };
+        by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_4k, post_4k, removed); };
     let pre_2m = |p: RwLockProcessPtr| process_effective_quota_2m(pre_map.spec_index(p));
     let post_2m = |p: RwLockProcessPtr| process_effective_quota_2m(post_map.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + pre_2m(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(pre_map.spec_index(p)))
         && (|sum: int, p: RwLockProcessPtr| sum + post_2m(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(post_map.spec_index(p)))
         && s.remove(removed).fold(0int, |sum: int, p: RwLockProcessPtr| sum + post_2m(p)) == s.fold(0int, |sum: int, p: RwLockProcessPtr| sum + pre_2m(p)) - pre_2m(removed))
-        by { lemma_set_fold_int_sum_remove(s, pre_2m, post_2m, removed); };
+        by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_2m, post_2m, removed); };
     let pre_1g = |p: RwLockProcessPtr| process_effective_quota_1g(pre_map.spec_index(p));
     let post_1g = |p: RwLockProcessPtr| process_effective_quota_1g(post_map.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + pre_1g(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(pre_map.spec_index(p)))
         && (|sum: int, p: RwLockProcessPtr| sum + post_1g(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(post_map.spec_index(p)))
         && s.remove(removed).fold(0int, |sum: int, p: RwLockProcessPtr| sum + post_1g(p)) == s.fold(0int, |sum: int, p: RwLockProcessPtr| sum + pre_1g(p)) - pre_1g(removed))
-        by { lemma_set_fold_int_sum_remove(s, pre_1g, post_1g, removed); };
+        by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_1g, post_1g, removed); };
 }
 
 proof fn kill_retire_eof_subsystems(
@@ -662,10 +662,12 @@ proof fn kill_retire_eof_quota(
         &&& process_effective_quota_4k_fold_sum(owned.remove(target), post.prc_mp) == process_effective_quota_4k_fold_sum(owned, pre.prc_mp)
         &&& process_effective_quota_2m_fold_sum(owned.remove(target), post.prc_mp) == process_effective_quota_2m_fold_sum(owned, pre.prc_mp)
         &&& process_effective_quota_1g_fold_sum(owned.remove(target), post.prc_mp) == process_effective_quota_1g_fold_sum(owned, pre.prc_mp)
-    }) by { reveal(container_process_wf); process_perms_wf_at(pre.prc_mp, target); lemma_process_effective_quota_folds_remove_zero(owned, pre.prc_mp, post.prc_mp, target); };
-    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf); lemma_process_effective_quota_4k_fold_sum_eq_forall(); };
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); lemma_process_effective_quota_2m_fold_sum_eq_forall(); };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); lemma_process_effective_quota_1g_fold_sum_eq_forall(); };
+    }) by { reveal(container_process_wf); process_perms_wf_at(pre.prc_mp, target); zero_member_remove_implies_process_effective_quota_fold_sums_unchanged(owned, pre.prc_mp, post.prc_mp, target); };
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf); unchanged_members_implies_process_effective_quota_4k_fold_sum_eq_forall();
+    };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); unchanged_members_implies_process_effective_quota_2m_fold_sum_eq_forall(); };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); unchanged_members_implies_process_effective_quota_1g_fold_sum_eq_forall(); };
 }
 
 /// Retiring the empty zombie `target` and returning its pages to shard `cpu_id` of its container's 4K allocator keeps the

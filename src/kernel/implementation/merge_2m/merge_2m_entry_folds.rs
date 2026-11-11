@@ -33,10 +33,10 @@ pub proof fn container_thread_and_perms_wf_implies_2m_fold_sum_ge_thread_quota(
         + thread_direct_pending_2m_fold_sum(owned_threads, threads) + thread_indirect_pending_2m_fold_sum_at_depth(indirect_threads, threads, depth as int)
         >= threads.spec_index(thread).view().quota_2m) by {
         reveal(container_thread_wf); reveal(thread_perms_wf);
-        lemma_process_effective_quota_2m_fold_nonneg(owned_processes, processes);
-        lemma_thread_effective_quota_2m_fold_ge_member(owned_threads, threads, thread);
-        lemma_thread_direct_pending_2m_fold_nonneg(owned_threads, threads);
-        lemma_thread_indirect_pending_2m_fold_nonneg(indirect_threads, threads, depth as int);
+        nonneg_members_implies_process_effective_quota_2m_fold_sum_nonneg(owned_processes, processes);
+        nonneg_members_implies_thread_effective_quota_2m_fold_sum_ge_member(owned_threads, threads, thread);
+        thread_direct_pending_2m_fold_sum_implies_nonneg(owned_threads, threads);
+        thread_indirect_pending_2m_fold_sum_at_depth_implies_nonneg(indirect_threads, threads, depth as int);
     };
 }
 }

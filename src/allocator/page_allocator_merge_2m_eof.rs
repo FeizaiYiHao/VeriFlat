@@ -36,7 +36,7 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
         if (source as usize) < NUM_CPUS {
             assert(after.total_free_pages_wf()) by {
                 before.cpu_caches.view_index_eq_element_value(); after.cpu_caches.view_index_eq_element_value();
-                lemma_cache_len_fold_congruence(before.cpu_caches.view(), after.cpu_caches.view());
+                equal_cache_lens_implies_cache_len_fold_eq(before.cpu_caches.view(), after.cpu_caches.view());
             };
         }
         assert(post.typed_quota_lock_map_aligned(quota_locks, thread)
@@ -117,9 +117,9 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
                 before.merge_2m_source_list(source as usize).wf_and_equal_values_implies_equal_addrs(key, node);
             }
         });
-        lemma_seq_remove_value_membership::<PagePtr>();
+        no_duplicates_implies_remove_value_removes_only_that_value::<PagePtr>();
         if (source as usize) < NUM_CPUS {
-            assert(after.total_free_pages_wf()) by { lemma_cache_len_fold_change_one_array(before.cpu_caches, after.cpu_caches, source as usize); };
+            assert(after.total_free_pages_wf()) by { one_array_cache_one_longer_implies_cache_len_fold_one_larger(before.cpu_caches, after.cpu_caches, source as usize); };
         }
         if LinkedList::<PagePtr, 233>::values_sorted(before.merge_2m_source_list(source as usize).view()) {
             assert(LinkedList::<PagePtr, 233>::values_sorted(after.merge_2m_source_list(source as usize).view())) by {

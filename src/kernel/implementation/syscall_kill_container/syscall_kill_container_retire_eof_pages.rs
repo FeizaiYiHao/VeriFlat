@@ -7,9 +7,9 @@ use super::syscall_kill_container_retire_eof::kill_container_retire_eof_transiti
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_retire_eof_entry::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::lemma_container_allocator_2m_quota_bounded;
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::lemma_container_allocator_2m_quota_bounded;
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded;
 
 verus! {
 /// After the retire a merged tail or a page the retired container did not own is unchanged; any other page it owned is an object page now free on a global list of `owner_ptr`, which owns it.
@@ -410,7 +410,7 @@ pub(crate) proof fn kill_container_retire_eof_allocator_quotas(
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
     reveal(kill_container_retire_eof_transition_framing);
-    lemma_container_allocator_4k_quota_bounded(&pre, owner_ptr); lemma_container_allocator_2m_quota_bounded(&pre, owner_ptr);
+    kernel_inv_implies_container_allocator_4k_quota_bounded(&pre, owner_ptr); kernel_inv_implies_container_allocator_2m_quota_bounded(&pre, owner_ptr);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); };

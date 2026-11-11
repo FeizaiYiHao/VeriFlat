@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::{lemma_container_allocator_quota_eq_total_free_without_users, lemma_container_allocator_2m_quota_bounded};
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::{container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages, kernel_inv_implies_container_allocator_2m_quota_bounded};
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::{lemma_container_allocator_quota_eq_total_free_without_users, lemma_container_allocator_2m_quota_bounded};
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::{container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages, kernel_inv_implies_container_allocator_2m_quota_bounded};
 use super::syscall_kill_container_retire_objects::*;
 use super::syscall_kill_container_retire_free::{kill_container_retire_pages_4k_to_pool, kill_container_retire_head_2m_to_pool};
 use super::super::syscall_kill_process::syscall_kill_process_retire_pages_lock::wunlock_kill_retire_pages;
@@ -137,7 +137,7 @@ pub(crate) fn kill_container_retire_commit(
     let ghost owner_ro = krnl.ctn_mp.spec_index(owner_ptr).view_rodata().view();
     proof {
         container_kill_retire_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner_ptr); lemma_container_allocator_2m_quota_bounded(&*krnl, owner_ptr);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner_ptr); kernel_inv_implies_container_allocator_2m_quota_bounded(&*krnl, owner_ptr);
         page_array_wf_map(krnl.pg_arr); page_ptr_roundtrip();
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
         allocator_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, ro.allocator_ptr_2m);
@@ -362,13 +362,13 @@ fn kill_container_retire_detach(
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_map(krnl.allc_1g_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, ro.allocator_ptr_2m); allocator_perms_wf_at(krnl.allc_1g_mp, ro.allocator_ptr_1g);
         allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, ctn_ptr);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, ctn_ptr);
         krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).global_pool.view().linked_list.wf_implies_view_len_eq_len();
-        lemma_cache_len_fold_nonneg(krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).cpu_caches.view());
-        lemma_cache_len_fold_nonneg(krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).cpu_caches.view());
-        lemma_cache_len_fold_nonneg(krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.view());
+        cache_len_fold_implies_nonneg(krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).cpu_caches.view());
+        cache_len_fold_implies_nonneg(krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).cpu_caches.view());
+        cache_len_fold_implies_nonneg(krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.view());
         scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, ro.scheduler); cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, ro.cpu_set);
         allocator_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, ro.allocator_ptr_4k); allocator_2m_pages_wf_at(krnl.allc_2m_mp, krnl.pg_arr, ro.allocator_ptr_2m);
         allocator_1g_pages_wf_at(krnl.allc_1g_mp, krnl.pg_arr, ro.allocator_ptr_1g);

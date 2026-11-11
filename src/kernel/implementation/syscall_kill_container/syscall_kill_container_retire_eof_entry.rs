@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_retire_spec::*;
 
@@ -176,7 +176,7 @@ proof fn kill_container_retire_eof_no_free_4k_page_at(pre: KernelK, ctn_ptr: RwL
 {
     let page = pre.pg_arr.spec_index(i).view().view();
     if page.state is Free4k {
-        lemma_container_allocator_quota_eq_total_free_without_users(pre, ctn_ptr);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(pre, ctn_ptr);
         allocator_free_4k_pages_wf_at(pre.allc_4k_mp, pre.pg_arr, i);
         let a = page.state->Free4k_allocator_ptr.view();
         assert(pre.allc_4k_mp.dom().contains(a) && pre.allc_4k_mp.spec_index(a).owning_container == ctn_ptr);
@@ -185,10 +185,10 @@ proof fn kill_container_retire_eof_no_free_4k_page_at(pre: KernelK, ctn_ptr: RwL
         allocator_perms_wf_at(pre.allc_4k_mp, a);
         if page.state->Free4k_state is PreCpuCache {
             let cpu = page.state->Free4k_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.view_index_eq_element_value(); cache_len_fold_implies_ge_cache_len_at_index(allocator.cpu_caches.view(), cpu as int);
             allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
+            cache_len_fold_implies_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }
@@ -209,7 +209,7 @@ proof fn kill_container_retire_eof_no_free_2m_page_at(pre: KernelK, ctn_ptr: RwL
 {
     let page = pre.pg_arr.spec_index(i).view().view();
     if page.state is Free2m {
-        lemma_container_allocator_quota_eq_total_free_without_users(pre, ctn_ptr);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(pre, ctn_ptr);
         allocator_free_2m_pages_wf_at(pre.allc_2m_mp, pre.pg_arr, i);
         let a = page.state->Free2m_allocator_ptr.view();
         assert(pre.allc_2m_mp.dom().contains(a) && pre.allc_2m_mp.spec_index(a).owning_container == ctn_ptr);
@@ -218,10 +218,10 @@ proof fn kill_container_retire_eof_no_free_2m_page_at(pre: KernelK, ctn_ptr: RwL
         allocator_perms_wf_at(pre.allc_2m_mp, a);
         if page.state->Free2m_state is PreCpuCache {
             let cpu = page.state->Free2m_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.view_index_eq_element_value(); cache_len_fold_implies_ge_cache_len_at_index(allocator.cpu_caches.view(), cpu as int);
             allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
+            cache_len_fold_implies_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }
@@ -242,7 +242,7 @@ proof fn kill_container_retire_eof_no_free_1g_page_at(pre: KernelK, ctn_ptr: RwL
 {
     let page = pre.pg_arr.spec_index(i).view().view();
     if page.state is Free1g {
-        lemma_container_allocator_quota_eq_total_free_without_users(pre, ctn_ptr);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(pre, ctn_ptr);
         let a = page.state->Free1g_allocator_ptr.view();
         let ptr = page_index2page_ptr(i);
         if page.state->Free1g_state is PreCpuCache {
@@ -261,10 +261,10 @@ proof fn kill_container_retire_eof_no_free_1g_page_at(pre: KernelK, ctn_ptr: RwL
         allocator_perms_wf_at(pre.allc_1g_mp, a);
         if page.state->Free1g_state is PreCpuCache {
             let cpu = page.state->Free1g_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.view_index_eq_element_value(); cache_len_fold_implies_ge_cache_len_at_index(allocator.cpu_caches.view(), cpu as int);
             allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
+            cache_len_fold_implies_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }

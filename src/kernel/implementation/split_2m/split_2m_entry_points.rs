@@ -29,10 +29,10 @@ pub proof fn thread_quota_4k_implies_split_quota_capacity(krnl: &KernelK,
         reveal(container_thread_wf); reveal(thread_perms_wf); reveal(container_allocator_wf);
         reveal(container_process_allocator_quota_4k_wf);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator);
-        lemma_process_effective_quota_4k_fold_nonneg(processes, krnl.prc_mp);
-        lemma_thread_effective_quota_4k_fold_ge_member(threads, krnl.thrd_mp, thread);
-        lemma_thread_direct_pending_4k_fold_nonneg(threads, krnl.thrd_mp);
-        lemma_thread_indirect_pending_4k_fold_nonneg(indirect, krnl.thrd_mp, depth as int);
+        nonneg_members_implies_process_effective_quota_4k_fold_sum_nonneg(processes, krnl.prc_mp);
+        nonneg_members_implies_thread_effective_quota_4k_fold_sum_ge_member(threads, krnl.thrd_mp, thread);
+        thread_direct_pending_4k_fold_sum_implies_nonneg(threads, krnl.thrd_mp);
+        thread_indirect_pending_4k_fold_sum_at_depth_implies_nonneg(indirect, krnl.thrd_mp, depth as int);
     };
 }
 

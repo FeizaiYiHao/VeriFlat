@@ -88,7 +88,7 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
+    assert(thread_staged_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_invariant_fields_unchanged_implies_thread_staged_pages_wf_preserved_forall(); };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by {
         reveal(page_object_owner_wf); reveal(thread_staged_4k_pages_wf); reveal(thread_staged_2m_pages_wf); reveal(thread_staged_1g_pages_wf);
         broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
@@ -134,7 +134,7 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
         thread_quota_4k_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
         container_process_allocator_quota_4k_wf(container_map, process_map, post_thread_map, allocator_map),
-{ reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); lemma_thread_effective_quota_4k_fold_sum_eq_forall(); lemma_thread_pending_4k_folds_eq_forall(container_map, pre_thread_map, post_thread_map); }
+{ reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall(); unchanged_thread_pending_4k_implies_per_container_pending_4k_fold_sums_eq_forall(container_map, pre_thread_map, post_thread_map); }
 
 pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>)
     requires
@@ -143,7 +143,7 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
         thread_quota_2m_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
         container_process_allocator_quota_2m_wf(container_map, process_map, post_thread_map, allocator_map),
-{ reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); lemma_thread_effective_quota_2m_fold_sum_eq_forall(); lemma_thread_pending_2m_folds_eq_forall(container_map, pre_thread_map, post_thread_map); }
+{ reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); unchanged_members_implies_thread_effective_quota_2m_fold_sum_eq_forall(); unchanged_thread_pending_2m_implies_per_container_pending_2m_fold_sums_eq_forall(container_map, pre_thread_map, post_thread_map); }
 
 pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>)
     requires
@@ -152,5 +152,5 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
         thread_quota_1g_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
         container_process_allocator_quota_1g_wf(container_map, process_map, post_thread_map, allocator_map),
-{ reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf); lemma_thread_effective_quota_1g_fold_sum_eq_forall(); lemma_thread_pending_1g_folds_eq_forall(container_map, pre_thread_map, post_thread_map); }
+{ reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf); unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall(); unchanged_thread_pending_1g_implies_per_container_pending_1g_fold_sums_eq_forall(container_map, pre_thread_map, post_thread_map); }
 }

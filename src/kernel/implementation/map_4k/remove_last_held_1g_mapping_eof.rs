@@ -328,7 +328,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_allocator_quota_wf(
     reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(thread_perms_wf);
-        lemma_thread_effective_quota_1g_fold_sum_eq_forall();
+        unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall();
         thread_pending_1g_change_at_one_thread_implies_folds_change_by(thrd_ptr, if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int }, depth as int,
             if depth < pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { 1int } else { 0int });
     };

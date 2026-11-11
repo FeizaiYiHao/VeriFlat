@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 /// A container without processes, threads, and indirect threads holds every free page of each of its allocators as
 /// quota.
-pub proof fn lemma_container_allocator_quota_eq_total_free_without_users(k: KernelK, ctn_ptr: RwLockContainerPtr)
+pub proof fn container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(k: KernelK, ctn_ptr: RwLockContainerPtr)
     requires
         k.inv(),
         k.ctn_mp.dom().contains(ctn_ptr),
@@ -25,23 +25,23 @@ pub proof fn lemma_container_allocator_quota_eq_total_free_without_users(k: Kern
     let processes = k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view();
     let depth = k.ctn_mp.spec_index(ctn_ptr).view_rodata().view().depth as int;
     container_allocator_wf_at(k.ctn_mp, k.allc_4k_mp, k.allc_2m_mp, k.allc_1g_mp, ctn_ptr);
-    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view(), k.thrd_mp, depth);
-    lemma_thread_quota_folds_empty(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view(), k.thrd_mp, depth);
+    empty_set_implies_thread_quota_fold_sums_zero(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_threads.view(), k.thrd_mp, depth);
+    empty_set_implies_thread_quota_fold_sums_zero(k.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_indirect_threads.view(), k.thrd_mp, depth);
     let value_4k = |p: RwLockProcessPtr| process_effective_quota_4k(k.prc_mp.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + value_4k(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(k.prc_mp.spec_index(p)))
-        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_4k(p)) == 0) by { lemma_set_fold_int_sum_empty(processes, value_4k); };
+        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_4k(p)) == 0) by { empty_set_implies_set_fold_int_sum_zero(processes, value_4k); };
     let value_2m = |p: RwLockProcessPtr| process_effective_quota_2m(k.prc_mp.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + value_2m(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(k.prc_mp.spec_index(p)))
-        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_2m(p)) == 0) by { lemma_set_fold_int_sum_empty(processes, value_2m); };
+        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_2m(p)) == 0) by { empty_set_implies_set_fold_int_sum_zero(processes, value_2m); };
     let value_1g = |p: RwLockProcessPtr| process_effective_quota_1g(k.prc_mp.spec_index(p));
     assert((|sum: int, p: RwLockProcessPtr| sum + value_1g(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(k.prc_mp.spec_index(p)))
-        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_1g(p)) == 0) by { lemma_set_fold_int_sum_empty(processes, value_1g); };
+        && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + value_1g(p)) == 0) by { empty_set_implies_set_fold_int_sum_zero(processes, value_1g); };
     reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf);
 }
 
-/// The 2M twin of `lemma_container_allocator_4k_quota_bounded`: a container's 2M quota is within its 2M allocator's free
+/// The 2M twin of `kernel_inv_implies_container_allocator_4k_quota_bounded`: a container's 2M quota is within its 2M allocator's free
 /// pages, which stay below `usize::MAX`.
-pub proof fn lemma_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: RwLockContainerPtr)
+pub proof fn kernel_inv_implies_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: RwLockContainerPtr)
     requires
         krnl.inv(),
         krnl.ctn_mp.dom().contains(owner),
@@ -57,12 +57,12 @@ pub proof fn lemma_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: R
     reveal(container_allocator_wf);
     assert(allocator.quota.view().value <= allocator.total_free_pages.view()) by {
         reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
-        lemma_process_effective_quota_2m_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
+        nonneg_members_implies_process_effective_quota_2m_fold_sum_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
         let effective = |t: RwLockThreadPtr| thread_effective_quota_2m(krnl.thrd_mp.spec_index(t));
         assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thrd_mp.spec_index(t)))
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, effective); };
-        lemma_thread_direct_pending_2m_fold_nonneg(threads, krnl.thrd_mp);
-        lemma_thread_indirect_pending_2m_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thrd_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(threads, effective); };
+        thread_direct_pending_2m_fold_sum_implies_nonneg(threads, krnl.thrd_mp);
+        thread_indirect_pending_2m_fold_sum_at_depth_implies_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thrd_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
     };
     assert(allocator.total_free_pages.view() <= NUM_PAGES * 4096 + NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
         allocator_perms_wf_at(krnl.allc_2m_mp, allc_ptr);
@@ -71,7 +71,9 @@ pub proof fn lemma_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: R
             reveal(LinkedList::value_list_unique); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
             seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
         };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
+        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
+            cache_inv_implies_cache_len_fold_bounded(allocator.cpu_caches);
+        };
     };
 }
 } // verus!

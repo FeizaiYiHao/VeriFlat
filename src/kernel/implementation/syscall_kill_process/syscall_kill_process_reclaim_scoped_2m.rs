@@ -14,9 +14,9 @@ use veriflat_alloc_page::free_2m_page::drain_2m_cache_batch;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_2m_page::drain_2m_cache_batch;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::lemma_container_allocator_2m_quota_bounded;
+use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::lemma_container_allocator_2m_quota_bounded;
+use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_scoped_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -190,7 +190,7 @@ fn kill_reclaim_last_held_2m_mapping_scoped_to_cache(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
 {
-    proof { lemma_container_allocator_2m_quota_bounded(krnl, owner); }
+    proof { kernel_inv_implies_container_allocator_2m_quota_bounded(krnl, owner); }
     let pg_idx = page_ptr2page_index(pg_ptr);
     let indices = va2index(va);
     proof {

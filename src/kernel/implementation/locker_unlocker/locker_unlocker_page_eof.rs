@@ -14,9 +14,9 @@ pub(super) proof fn page_lock_op_eof(pre: KernelK, post: KernelK, pg_idx: PageIn
     ensures
         post.inv(),
 {
-    assert(page_array_wf(post.pg_arr)) by { lemma_page_array_wf_preserved_for_lock_op_forall(); };
+    assert(page_array_wf(post.pg_arr)) by { lock_op_implies_page_array_wf_preserved_forall(); };
     assert(page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr)) by { page_lock_op_preserves_invariant_fields(pre.pg_arr, post.pg_arr, pg_idx); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(post.memory_management_inv()) by { lemma_memory_management_inv_preserved_for_page_invariant_fields_forall(); };
+    assert(post.memory_management_inv()) by { page_invariant_fields_unchanged_implies_memory_management_inv_preserved_forall(); };
 }
 } // verus!

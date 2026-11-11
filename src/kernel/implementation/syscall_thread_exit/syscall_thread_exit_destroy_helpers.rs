@@ -206,7 +206,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         assert(page_ptr_valid(thrd_ptr) && krnl.pg_arr.spec_index(pg_idx).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thrd_mp, krnl.pg_arr, thrd_ptr); };
         page_array_wf_at(krnl.pg_arr, pg_idx);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };
-        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allc_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thrd_ptr)) by { allocator_free_4k_pages_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allc_ptr, cpu_id, thrd_ptr); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(ctn_ptr)) by {

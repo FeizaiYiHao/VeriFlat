@@ -57,7 +57,7 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, owner
         *final(krnl) == (KernelK { thrd_mp: final(krnl).thrd_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         kernel_container_quota_4k_changed(old(krnl), final(krnl), owner, *old(counter) as int),
 {
-    assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by { lemma_thread_pending_4k_quota_bounded(krnl, thrd_ptr, owner, depth); };
+    assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_allocator_4k_quota_plus_thread_pending_le_total_free_pages(krnl, thrd_ptr, owner, depth); };
     let amount = *counter;
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.dom().contains(allc_ptr)) by { allocator_perms_wf_map(krnl.allc_4k_mp); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); };
     thread_map_clear_free_quota_pending_4k(&mut krnl.thrd_mp, thrd_ptr, depth, counter, Tracked(&*lctx), thread_perm);

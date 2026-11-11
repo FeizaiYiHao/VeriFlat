@@ -104,7 +104,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped_to_cache(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
 {
-    proof { lemma_container_allocator_4k_quota_bounded(krnl, owner); }
+    proof { kernel_inv_implies_container_allocator_4k_quota_bounded(krnl, owner); }
     let pg_idx = page_ptr2page_index(pg_ptr);
     let indices = va2index(va);
     proof {
@@ -352,7 +352,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
 {
-    proof { lemma_container_allocator_4k_quota_bounded(krnl, owner); }
+    proof { kernel_inv_implies_container_allocator_4k_quota_bounded(krnl, owner); }
     let pg_idx = page_ptr2page_index(pg_ptr);
     let iova = index2va(indices);
     proof { iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table); }

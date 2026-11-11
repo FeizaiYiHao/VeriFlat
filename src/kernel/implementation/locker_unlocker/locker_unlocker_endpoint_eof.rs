@@ -15,12 +15,12 @@ pub(super) proof fn endpoint_lock_op_eof(pre: KernelK, post: KernelK, ep_ptr: Rw
     ensures
         post.inv(),
 {
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); lemma_endpoint_perms_wf_preserved_for_lock_op_forall(); };
-    assert(post.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); lock_op_implies_endpoint_perms_wf_preserved_forall(); };
+    assert(post.memory_management_inv()) by { endpoint_invariant_fields_unchanged_implies_endpoint_pages_wf_preserved_forall(); };
     assert(post.process_management_inv()) by {
-        lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
+        endpoint_invariant_fields_unchanged_implies_container_endpoint_wf_preserved_forall();
         thread_endpoint_ref_counter_wf_preserved_for_endpoint_fields();
-        lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
+        endpoint_invariant_fields_unchanged_implies_thread_endpoint_queue_wf_preserved_forall();
         container_thread_endpoint_wf_preserved_for_endpoint_fields();
     };
 }

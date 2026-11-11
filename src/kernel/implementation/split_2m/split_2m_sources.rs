@@ -119,7 +119,7 @@ pub fn split_2m_select_source(krnl: &KernelK, allocator: RwLockPageAllocatorPtr,
             assert(krnl.allc_2m_mp.spec_index(allocator).global_pool.view().linked_list.length > 0) by {
                 allocator_perms_wf_at(krnl.allc_2m_mp, allocator);
                 krnl.allc_2m_mp.spec_index(allocator).cpu_caches.view_index_eq_element_value();
-                lemma_cache_len_fold_all_zero(krnl.allc_2m_mp.spec_index(allocator).cpu_caches.view());
+                empty_caches_implies_cache_len_fold_zero(krnl.allc_2m_mp.spec_index(allocator).cpu_caches.view());
                 krnl.allc_2m_mp.spec_index(allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
             };
         }

@@ -83,7 +83,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     };
 }
 
-pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_forall()
+pub proof fn page_invariant_fields_unchanged_implies_memory_management_inv_preserved_forall()
     ensures
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
@@ -122,7 +122,7 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
     implies post.memory_management_inv() by { memory_management_inv_preserved_for_page_invariant_fields(pre, post); };
 }
 
-pub proof fn lemma_page_array_wf_preserved_for_lock_op_forall()
+pub proof fn lock_op_implies_page_array_wf_preserved_forall()
     ensures
         forall|pre: PageLockedArray, post: PageLockedArray, changed: PageIndex|
             #![trigger page_array_wf(pre), page_array_wf(post), post.spec_index(changed)]

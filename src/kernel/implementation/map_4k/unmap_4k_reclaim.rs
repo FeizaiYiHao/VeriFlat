@@ -116,8 +116,8 @@ pub fn remove_last_4k_mapping_to_allocator(
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
-    assert(krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { lemma_container_allocator_4k_quota_bounded(krnl, owner); };
-    assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by { lemma_thread_pending_4k_quota_bounded(krnl, thrd_ptr, owner, depth); };
+    assert(krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { kernel_inv_implies_container_allocator_4k_quota_bounded(krnl, owner); };
+    assert(krnl.allc_4k_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_allocator_4k_quota_plus_thread_pending_le_total_free_pages(krnl, thrd_ptr, owner, depth); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     let indices = va2index(va);
     assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };

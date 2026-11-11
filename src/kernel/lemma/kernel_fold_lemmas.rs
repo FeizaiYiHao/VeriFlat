@@ -19,7 +19,7 @@ verus! {
 
 /// The sum-fold of `process_effective_quota_4k` over a set is preserved when
 /// each process's effective quota is preserved.
-pub proof fn lemma_process_effective_quota_4k_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
+pub proof fn unchanged_members_implies_process_effective_quota_4k_fold_sum_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
         forall|p: RwLockProcessPtr| #![trigger process_effective_quota_4k(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)),
     ensures
@@ -31,10 +31,10 @@ pub proof fn lemma_process_effective_quota_4k_fold_eq(s: Set<RwLockProcessPtr>, 
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p));
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_process_effective_quota_2m_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
+pub proof fn unchanged_members_implies_process_effective_quota_2m_fold_sum_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
         forall|p: RwLockProcessPtr| #![trigger process_effective_quota_2m(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_2m(post.spec_index(p)) == process_effective_quota_2m(pre.spec_index(p)),
     ensures
@@ -46,10 +46,10 @@ pub proof fn lemma_process_effective_quota_2m_fold_eq(s: Set<RwLockProcessPtr>, 
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p));
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_process_effective_quota_1g_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
+pub proof fn unchanged_members_implies_process_effective_quota_1g_fold_sum_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
         forall|p: RwLockProcessPtr| #![trigger process_effective_quota_1g(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)),
     ensures
@@ -61,13 +61,13 @@ pub proof fn lemma_process_effective_quota_1g_fold_eq(s: Set<RwLockProcessPtr>, 
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p));
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
 /// When exactly one process's effective quota changes by
 /// `x` (e.g. its `quota_4k` shifts by `x` with `temp_alloc_cache_4k`
 /// unchanged), the fold sum shifts by the same `x`.
-pub proof fn lemma_process_effective_quota_4k_fold_change_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
+pub proof fn one_member_changed_implies_process_effective_quota_4k_fold_sum_changed_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
     requires
         s.contains(mod_p),
         process_effective_quota_4k(post.spec_index(mod_p)) == process_effective_quota_4k(pre.spec_index(mod_p)) + x,
@@ -81,11 +81,11 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_by(s: Set<RwLockProces
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p));
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_p, x); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { one_value_changed_implies_set_fold_int_sum_changed_by(s, pre_value, post_value, mod_p, x); };
 }
 
 /// When exactly one process's effective 2M quota (its `quota_2m`) changes by `x`, the fold sum shifts by the same `x`.
-pub proof fn lemma_process_effective_quota_2m_fold_change_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
+pub proof fn one_member_changed_implies_process_effective_quota_2m_fold_sum_changed_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
     requires
         s.contains(mod_p),
         process_effective_quota_2m(post.spec_index(mod_p)) == process_effective_quota_2m(pre.spec_index(mod_p)) + x,
@@ -99,11 +99,11 @@ pub proof fn lemma_process_effective_quota_2m_fold_change_by(s: Set<RwLockProces
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p));
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_p, x); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { one_value_changed_implies_set_fold_int_sum_changed_by(s, pre_value, post_value, mod_p, x); };
 }
 
 /// When exactly one process's effective 1G quota (its `quota_1g`) changes by `x`, the fold sum shifts by the same `x`.
-pub proof fn lemma_process_effective_quota_1g_fold_change_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
+pub proof fn one_member_changed_implies_process_effective_quota_1g_fold_sum_changed_by(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap, mod_p: RwLockProcessPtr, x: int)
     requires
         s.contains(mod_p),
         process_effective_quota_1g(post.spec_index(mod_p)) == process_effective_quota_1g(pre.spec_index(mod_p)) + x,
@@ -117,10 +117,10 @@ pub proof fn lemma_process_effective_quota_1g_fold_change_by(s: Set<RwLockProces
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p));
     let direct_post_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_p, x); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { one_value_changed_implies_set_fold_int_sum_changed_by(s, pre_value, post_value, mod_p, x); };
 }
 
-pub proof fn lemma_process_effective_quota_4k_fold_nonneg(s: Set<RwLockProcessPtr>, process_map: ProcessLockedMap)
+pub proof fn nonneg_members_implies_process_effective_quota_4k_fold_sum_nonneg(s: Set<RwLockProcessPtr>, process_map: ProcessLockedMap)
     requires
         forall|p: RwLockProcessPtr| #![trigger process_effective_quota_4k(process_map.spec_index(p))] s.contains(p) ==> process_effective_quota_4k(process_map.spec_index(p)) >= 0,
     ensures
@@ -129,12 +129,12 @@ pub proof fn lemma_process_effective_quota_4k_fold_nonneg(s: Set<RwLockProcessPt
     let value = |p: RwLockProcessPtr| process_effective_quota_4k(process_map.spec_index(p));
     let fold = |sum: int, p: RwLockProcessPtr| sum + value(p);
     let direct_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(process_map.spec_index(p));
-    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 
 /// Fold facts for the independent per-thread quota tier. These have
 /// the same finite-set semantics as the process-quota fold facts above.
-pub proof fn lemma_thread_effective_quota_4k_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
     ensures
@@ -146,10 +146,10 @@ pub proof fn lemma_thread_effective_quota_4k_fold_eq(s: Set<RwLockThreadPtr>, pr
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(post.spec_index(t));
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(pre.spec_index(t));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_effective_quota_2m_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_effective_quota_2m_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_2m(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
     ensures
@@ -161,10 +161,10 @@ pub proof fn lemma_thread_effective_quota_2m_fold_eq(s: Set<RwLockThreadPtr>, pr
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(post.spec_index(t));
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(pre.spec_index(t));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_effective_quota_1g_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_1g(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
     ensures
@@ -176,10 +176,10 @@ pub proof fn lemma_thread_effective_quota_1g_fold_eq(s: Set<RwLockThreadPtr>, pr
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(post.spec_index(t));
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(pre.spec_index(t));
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_effective_quota_4k_fold_change_by(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, mod_t: RwLockThreadPtr, x: int)
+pub proof fn one_member_changed_implies_thread_effective_quota_4k_fold_sum_changed_by(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, mod_t: RwLockThreadPtr, x: int)
     requires
         s.contains(mod_t),
         thread_effective_quota_4k(post.spec_index(mod_t)) == thread_effective_quota_4k(pre.spec_index(mod_t)) + x,
@@ -193,10 +193,10 @@ pub proof fn lemma_thread_effective_quota_4k_fold_change_by(s: Set<RwLockThreadP
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_t, x); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold) + x) by { one_value_changed_implies_set_fold_int_sum_changed_by(s, pre_value, post_value, mod_t, x); };
 }
 
-pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, mem: RwLockThreadPtr)
+pub proof fn nonneg_members_implies_thread_effective_quota_4k_fold_sum_ge_member(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, mem: RwLockThreadPtr)
     requires
         s.contains(mem),
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(thread_map.spec_index(t))] s.contains(t) ==> thread_effective_quota_4k(thread_map.spec_index(t)) >= 0,
@@ -206,10 +206,10 @@ pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(s: Set<RwLockThreadP
     let value = |t: RwLockThreadPtr| thread_effective_quota_4k(thread_map.spec_index(t));
     let fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(thread_map.spec_index(t));
-    assert(fold =~= direct_fold && s.fold(0int, fold) >= value(mem)) by { lemma_set_fold_int_sum_ge_member(s, value, mem); };
+    assert(fold =~= direct_fold && s.fold(0int, fold) >= value(mem)) by { nonneg_values_implies_set_fold_int_sum_ge_member(s, value, mem); };
 }
 
-pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_effective_quota_4k_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         thread_effective_quota_4k(post.spec_index(new_t)) == 0,
@@ -223,10 +223,10 @@ pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(s: Set<RwLockThrea
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_effective_quota_2m_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         thread_effective_quota_2m(post.spec_index(new_t)) == 0,
@@ -240,10 +240,10 @@ pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(s: Set<RwLockThrea
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_effective_quota_1g_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         thread_effective_quota_1g(post.spec_index(new_t)) == 0,
@@ -257,11 +257,11 @@ pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(s: Set<RwLockThrea
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
 /// Removing `removed` from the folded set drops its effective 4K quota from the fold sum.
-pub proof fn lemma_thread_effective_quota_4k_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
+pub proof fn member_remove_implies_thread_effective_quota_4k_fold_sum_minus_member(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
@@ -274,11 +274,11 @@ pub proof fn lemma_thread_effective_quota_4k_fold_remove(s: Set<RwLockThreadPtr>
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { lemma_set_fold_int_sum_remove(s, pre_value, post_value, removed); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_value, post_value, removed); };
 }
 
 /// Removing `removed` from the folded set drops its effective 2M quota from the fold sum.
-pub proof fn lemma_thread_effective_quota_2m_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
+pub proof fn member_remove_implies_thread_effective_quota_2m_fold_sum_minus_member(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_2m(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
@@ -291,11 +291,11 @@ pub proof fn lemma_thread_effective_quota_2m_fold_remove(s: Set<RwLockThreadPtr>
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { lemma_set_fold_int_sum_remove(s, pre_value, post_value, removed); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_value, post_value, removed); };
 }
 
 /// Removing `removed` from the folded set drops its effective 1G quota from the fold sum.
-pub proof fn lemma_thread_effective_quota_1g_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
+pub proof fn member_remove_implies_thread_effective_quota_1g_fold_sum_minus_member(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
         forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_1g(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
@@ -308,12 +308,12 @@ pub proof fn lemma_thread_effective_quota_1g_fold_remove(s: Set<RwLockThreadPtr>
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(pre.spec_index(t));
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(post.spec_index(t));
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { lemma_set_fold_int_sum_remove(s, pre_value, post_value, removed); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.remove(removed).fold(0int, post_fold) == s.fold(0int, pre_fold) - pre_value(removed)) by { member_remove_implies_set_fold_int_sum_minus_member(s, pre_value, post_value, removed); };
 }
 
 /// The thread direct free-quota-pending fold is preserved when per-thread
 /// values are unchanged.
-pub proof fn lemma_thread_direct_pending_4k_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_direct_pending_4k_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().direct_free_quota_pending_4k]
@@ -327,10 +327,10 @@ pub proof fn lemma_thread_direct_pending_4k_fold_eq(s: Set<RwLockThreadPtr>, pre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_4k.view();
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_4k.view();
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_direct_pending_2m_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_direct_pending_2m_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().direct_free_quota_pending_2m]
@@ -344,10 +344,10 @@ pub proof fn lemma_thread_direct_pending_2m_fold_eq(s: Set<RwLockThreadPtr>, pre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_2m.view();
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_2m.view();
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_direct_pending_1g_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
+pub proof fn unchanged_members_implies_thread_direct_pending_1g_fold_sum_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().direct_free_quota_pending_1g]
@@ -361,12 +361,12 @@ pub proof fn lemma_thread_direct_pending_1g_fold_eq(s: Set<RwLockThreadPtr>, pre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_1g.view();
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_1g.view();
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
 /// The indirect free-quota-pending fold at a specific depth is preserved
 /// when per-thread values at that depth are unchanged.
-pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
+pub proof fn unchanged_members_implies_thread_indirect_pending_4k_fold_sum_at_depth_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().indirect_free_quota_pending_4k]
@@ -380,10 +380,10 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(s: Set<RwLockThre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
+pub proof fn unchanged_members_implies_thread_indirect_pending_2m_fold_sum_at_depth_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().indirect_free_quota_pending_2m]
@@ -397,10 +397,10 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(s: Set<RwLockThre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
-pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
+pub proof fn unchanged_members_implies_thread_indirect_pending_1g_fold_sum_at_depth_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int)
     requires
         forall|t: RwLockThreadPtr|
             #![trigger pre.spec_index(t).view().indirect_free_quota_pending_1g]
@@ -414,16 +414,16 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(s: Set<RwLockThre
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
-    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); };
+    assert(post_fold =~= direct_post_fold && pre_fold =~= direct_pre_fold && s.fold(0int, post_fold) == s.fold(0int, pre_fold)) by { equal_values_implies_set_fold_int_sum_eq(s, post_value, pre_value); };
 }
 
 /// Direct free-quota-pending fold when a fresh thread
 /// `new_t` with zero direct pending is inserted into the folded set. The new
 /// element contributes `0`; every pre-existing element's value is preserved;
 /// so the fold sum is unchanged. The set-growth twin of
-/// `lemma_thread_direct_pending_4k_fold_eq`, for the thread-create case where
+/// `unchanged_members_implies_thread_direct_pending_4k_fold_sum_eq`, for the thread-create case where
 /// a container's `owned_threads` gains the fresh thread.
-pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_direct_pending_4k_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().direct_free_quota_pending_4k.view() == 0,
@@ -439,10 +439,10 @@ pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(s: Set<RwLockThread
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_4k.view();
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_4k.view();
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_direct_pending_2m_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().direct_free_quota_pending_2m.view() == 0,
@@ -458,10 +458,10 @@ pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(s: Set<RwLockThread
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_2m.view();
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_2m.view();
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
+pub proof fn zero_member_insert_implies_thread_direct_pending_1g_fold_sum_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().direct_free_quota_pending_1g.view() == 0,
@@ -477,16 +477,16 @@ pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(s: Set<RwLockThread
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_1g.view();
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_1g.view();
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
 /// Indirect free-quota-pending fold (at a fixed container
 /// depth) when a fresh thread `new_t` with zero indirect pending at that depth
 /// is inserted into the folded set. The set-growth twin of
-/// `lemma_thread_indirect_pending_4k_fold_eq_at_depth`, for the thread-create
+/// `unchanged_members_implies_thread_indirect_pending_4k_fold_sum_at_depth_eq`, for the thread-create
 /// case where an ancestor container's `owned_indirect_threads` gains the fresh
 /// thread.
-pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
+pub proof fn zero_member_insert_implies_thread_indirect_pending_4k_fold_sum_at_depth_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().indirect_free_quota_pending_4k.view().spec_index(depth) == 0,
@@ -502,10 +502,10 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(s: Set<R
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
+pub proof fn zero_member_insert_implies_thread_indirect_pending_2m_fold_sum_at_depth_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().indirect_free_quota_pending_2m.view().spec_index(depth) == 0,
@@ -521,10 +521,10 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(s: Set<R
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
-pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
+pub proof fn zero_member_insert_implies_thread_indirect_pending_1g_fold_sum_at_depth_unchanged(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, new_t: RwLockThreadPtr, depth: int)
     requires
         s.contains(new_t) == false,
         post.spec_index(new_t).view().indirect_free_quota_pending_1g.view().spec_index(depth) == 0,
@@ -540,31 +540,31 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(s: Set<R
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
-    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t); };
+    assert(pre_fold =~= direct_pre_fold && post_fold =~= direct_post_fold && s.insert(new_t).fold(0int, post_fold) == s.fold(0int, pre_fold)) by { zero_value_insert_implies_set_fold_int_sum_unchanged(s, pre_value, post_value, new_t); };
 }
 
 /// The direct-thread-pending fold in the container conservation law is
 /// non-negative because every summand is a `usize`.
-pub proof fn lemma_thread_direct_pending_4k_fold_nonneg(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap)
+pub proof fn thread_direct_pending_4k_fold_sum_implies_nonneg(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap)
     ensures
         thread_direct_pending_4k_fold_sum(s, thread_map) >= 0,
 {
     let value = |t: RwLockThreadPtr| thread_map.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
     let fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_map.spec_index(t).view().direct_free_quota_pending_4k.view();
-    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 
 /// The indirect-thread-pending fold at a fixed container depth is
 /// non-negative because every summand is a `usize`.
-pub proof fn lemma_thread_indirect_pending_4k_fold_nonneg(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, depth: int)
+pub proof fn thread_indirect_pending_4k_fold_sum_at_depth_implies_nonneg(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, depth: int)
     ensures
         thread_indirect_pending_4k_fold_sum_at_depth(s, thread_map, depth) >= 0,
 {
     let value = |t: RwLockThreadPtr| thread_map.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
     let fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_map.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
-    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(fold =~= direct_fold && s.fold(0int, fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 
 /// A change by `x` of thread `mod_t`'s effective 1G quota, with every other member unchanged, changes the 1G fold over any set holding `mod_t` by `x`.
@@ -581,7 +581,7 @@ pub proof fn thread_effective_quota_1g_change_at_one_thread_implies_fold_change_
         (s.subset_of(pre.dom()) && post.dom() == pre.dom() && s.contains(mod_t) && thread_effective_quota_1g(post.spec_index(mod_t)) == thread_effective_quota_1g(pre.spec_index(mod_t)) + x
             && forall|t: RwLockThreadPtr| #![auto] s.contains(t) && t != mod_t ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)))
         implies thread_effective_quota_1g_fold_sum(s, post) == thread_effective_quota_1g_fold_sum(s, pre) + x
-    by { lemma_thread_effective_quota_1g_fold_change_by(s, pre, post, mod_t, x); };
+    by { one_member_changed_implies_thread_effective_quota_1g_fold_sum_changed_by(s, pre, post, mod_t, x); };
 }
 
 pub proof fn process_effective_quota_1g_nonneg_implies_fold_nonneg(s: Set<RwLockProcessPtr>, process_map: ProcessLockedMap)
@@ -593,7 +593,7 @@ pub proof fn process_effective_quota_1g_nonneg_implies_fold_nonneg(s: Set<RwLock
     let value = |p: RwLockProcessPtr| process_effective_quota_1g(process_map.spec_index(p));
     let value_fold = |sum: int, p: RwLockProcessPtr| sum + value(p);
     let direct_fold = |sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(process_map.spec_index(p));
-    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 
 pub proof fn thread_effective_quota_1g_nonneg_implies_fold_ge_member(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, member: RwLockThreadPtr)
@@ -606,7 +606,7 @@ pub proof fn thread_effective_quota_1g_nonneg_implies_fold_ge_member(s: Set<RwLo
     let value = |t: RwLockThreadPtr| thread_effective_quota_1g(thread_map.spec_index(t));
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(thread_map.spec_index(t));
-    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= value(member)) by { lemma_set_fold_int_sum_ge_member(s, value, member); };
+    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= value(member)) by { nonneg_values_implies_set_fold_int_sum_ge_member(s, value, member); };
 }
 
 pub proof fn thread_direct_pending_1g_nat_implies_fold_nonneg(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap)
@@ -616,7 +616,7 @@ pub proof fn thread_direct_pending_1g_nat_implies_fold_nonneg(s: Set<RwLockThrea
     let value = |t: RwLockThreadPtr| thread_map.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_map.spec_index(t).view().direct_free_quota_pending_1g.view();
-    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 
 pub proof fn thread_indirect_pending_1g_nat_implies_fold_nonneg_at_depth(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, depth: int)
@@ -626,6 +626,6 @@ pub proof fn thread_indirect_pending_1g_nat_implies_fold_nonneg_at_depth(s: Set<
     let value = |t: RwLockThreadPtr| thread_map.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr| sum + thread_map.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
-    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
+    assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(s, value); };
 }
 }

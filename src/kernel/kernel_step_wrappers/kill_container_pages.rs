@@ -242,6 +242,6 @@ pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, ctn_ptr: Rw
     assert(forall|i: CpuId| #![trigger allocator.cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i) ==> allocator.cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0) by {
         reveal(allocator_1g_cpu_caches_empty_wf);
     };
-    allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_all_zero(allocator.cpu_caches.view());
+    allocator.cpu_caches.view_index_eq_element_value(); empty_caches_implies_cache_len_fold_zero(allocator.cpu_caches.view());
 }
 } // verus!

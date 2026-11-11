@@ -177,7 +177,7 @@ pub fn create_thread_from_staged_page_merged(
         }) by {
             let threads = krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view();
             process_thread_wf_implies_owned_threads_in_map(krnl.prc_mp, krnl.thrd_mp, prc_ptr);
-            lemma_kernel_object_ptr_seq_len_bounded(&*krnl, threads);
+            distinct_process_or_thread_ptrs_implies_seq_len_le_num_pages(&*krnl, threads);
         };
         assert({
             &&& !krnl.sched_mp.spec_index(sched_ptr).shard(cpu_id).queue.view().contains(pg_ptr)

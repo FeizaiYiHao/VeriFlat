@@ -181,8 +181,8 @@ proof fn kill_retire_table_page_eof_allocator_quota_wf(
     let depth = pre.thrd_mp.spec_index(thrd_ptr).view().container_depth;
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf);
-        lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-        lemma_thread_pending_4k_folds_change_by_forall(thrd_ptr, 1int, depth as int, 0int);
+        unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
+        one_member_changed_implies_thread_pending_4k_fold_sums_changed_by_forall(thrd_ptr, 1int, depth as int, 0int);
     };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };

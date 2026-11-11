@@ -125,7 +125,7 @@ impl<const N: usize> ArraySet<N> {
             final(self).view() == old(self).view().insert(v),
             final(self).closed_view() == old(self).closed_view(),
     {
-        proof { Self::lemma_set_missing_element_size(self.set.view(), v, N); }
+        proof { Self::missing_element_below_bound_implies_set_len_lt_bound(self.set.view(), v, N); }
 
         self.data.set(v, true);
         self.closed.set(v, false);
@@ -146,7 +146,7 @@ impl<const N: usize> ArraySet<N> {
             final(self).closed.view() == old(self).closed.view().update(v as int, true),
             final(self).len as int == old(self).len as int + 1,
     {
-        proof { Self::lemma_set_missing_element_size(self.set.view(), v, N); }
+        proof { Self::missing_element_below_bound_implies_set_len_lt_bound(self.set.view(), v, N); }
         self.data.set(v, true);
         self.closed.set(v, true);
         self.set = Ghost(self.set.view().insert(v));
@@ -200,7 +200,7 @@ impl<const N: usize> ArraySet<N> {
         self.closed_set = Ghost(self.closed_set.view().remove(v));
     }
 
-    proof fn lemma_finite_set_bounded_size(s: Set<usize>, m: usize)
+    proof fn elements_below_bound_implies_set_len_le_bound(s: Set<usize>, m: usize)
         requires
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < m,
         ensures
@@ -209,7 +209,7 @@ impl<const N: usize> ArraySet<N> {
         lemma_len_subset(s, Set::<usize>::range(0, m));
     }
 
-    proof fn lemma_set_missing_element_size(s: Set<usize>, v: usize, n: usize)
+    proof fn missing_element_below_bound_implies_set_len_lt_bound(s: Set<usize>, v: usize, n: usize)
         requires
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < n,
             0 <= v < n,
@@ -218,7 +218,7 @@ impl<const N: usize> ArraySet<N> {
         ensures
             s.len() < n,
     {
-        Self::lemma_finite_set_bounded_size(s.insert(v), n);
+        Self::elements_below_bound_implies_set_len_le_bound(s.insert(v), n);
     }
 }
 }

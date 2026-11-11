@@ -55,7 +55,7 @@ proof fn return_free_quota_2m_eof_memory_quota_2m(pre: KernelK, post: KernelK, t
 {
     reveal(return_free_quota_2m_eof_transition_framing);
     reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
-    lemma_thread_effective_quota_2m_fold_sum_eq_forall();
+    unchanged_members_implies_thread_effective_quota_2m_fold_sum_eq_forall();
     thread_pending_2m_change_at_one_thread_implies_folds_change_by(thrd_ptr, if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int },
         depth as int, if depth < pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int });
 }

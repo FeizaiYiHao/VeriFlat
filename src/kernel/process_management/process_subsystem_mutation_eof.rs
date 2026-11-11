@@ -206,7 +206,7 @@ pub(super) proof fn process_map_unlink_child_eof_process_perms_wf(pre: ProcessLo
         post.spec_index(parent_ptr).killer_info() == pre.spec_index(parent_ptr).killer_info(),
         post.spec_index(parent_ptr).view_ghost() == pre.spec_index(parent_ptr).view_ghost(),
     ensures process_perms_wf(post),
-{ reveal(process_perms_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>(); }
+{ reveal(process_perms_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockProcessPtr>(); }
 
 pub(super) proof fn scheduler_map_enqueue_scheduled_thread_eof_scheduler_perms_wf(pre: SchedulerUnLockedMap, post: SchedulerUnLockedMap, sched_ptr: RwLockSchedulerPtr)
     requires
@@ -311,7 +311,7 @@ pub(super) proof fn container_map_unlink_child_eof_container_perms_wf(pre: Conta
         post.spec_index(parent_ptr).view().children.view().no_duplicates(),
         post.spec_index(parent_ptr).view().parent_linkedlist_node.addr() == pre.spec_index(parent_ptr).view().parent_linkedlist_node.addr(),
     ensures container_perms_wf(post),
-{ reveal(container_perms_wf); reveal(container_tree_fields_wf); lemma_seq_remove_value_membership::<RwLockContainerPtr>(); }
+{ reveal(container_perms_wf); reveal(container_tree_fields_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockContainerPtr>(); }
 
 pub(super) proof fn process_subsystem_create_scheduled_thread_eof_process_thread_wf(
     pre_process: ProcessLockedMap, post_process: ProcessLockedMap, pre_thread: ThreadLockedMap,

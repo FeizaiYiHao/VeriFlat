@@ -10,7 +10,7 @@ pub proof fn container_pcid_allocator_wf_preserved_for_container_fields()
             container_pcid_allocator_wf(pre, pcid_allocator_map) && container_invariant_fields_unchanged(pre, post) ==> container_pcid_allocator_wf(post, pcid_allocator_map),
 { reveal(container_pcid_allocator_wf); }
 
-pub proof fn lemma_process_pcid_allocator_wf_preserved_for_container_invariant_fields_forall()
+pub proof fn container_invariant_fields_unchanged_implies_process_pcid_allocator_wf_preserved_forall()
     ensures
         forall|pre: ContainerLockedMap, post: ContainerLockedMap, process_map: ProcessLockedMap, pcid_allocator_map: PcidAllocatorLockedMap|
             #![trigger process_pcid_allocator_wf(pre, process_map, pcid_allocator_map), process_pcid_allocator_wf(post, process_map, pcid_allocator_map)]

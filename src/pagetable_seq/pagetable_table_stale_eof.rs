@@ -84,7 +84,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
     table_stale_cpus_update_eof_table_wf(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), whole_pagetable(post.pt_mp, post.pt_lower.view(), root));
-    assert(pagetable_perms_wf(post.pt_mp)) by { lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); };
+    assert(pagetable_perms_wf(post.pt_mp)) by { lock_op_implies_pagetable_perms_wf_preserved_forall(); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); };

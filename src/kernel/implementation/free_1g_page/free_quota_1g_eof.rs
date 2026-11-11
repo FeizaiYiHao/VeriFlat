@@ -55,7 +55,7 @@ proof fn return_free_quota_1g_eof_memory_quota_1g(pre: KernelK, post: KernelK, t
 {
     reveal(return_free_quota_1g_eof_transition_framing);
     reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
-    lemma_thread_effective_quota_1g_fold_sum_eq_forall();
+    unchanged_members_implies_thread_effective_quota_1g_fold_sum_eq_forall();
     thread_pending_1g_change_at_one_thread_implies_folds_change_by(thrd_ptr, if depth == pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int },
         depth as int, if depth < pre.thrd_mp.spec_index(thrd_ptr).view().container_depth { -(amount as int) } else { 0int });
 }
@@ -92,7 +92,7 @@ proof fn return_free_quota_1g_eof_memory(pre: KernelK, post: KernelK, thrd_ptr: 
             reveal(container_kill_retire_wf); reveal(container_allocator_wf);
         };
         assert(allocator_free_page_ptrs_wf(post.allc_4k_mp) && allocator_free_page_ptrs_wf(post.allc_1g_mp) && allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-        assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre, post); };
+        assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { lock_op_implies_allocator_free_1g_pages_wf_preserved(pre, post); };
         assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
         assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
         assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };

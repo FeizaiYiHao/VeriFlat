@@ -391,10 +391,10 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(krnl: &KernelK, layo
         &&& owned_threads.fold(0int, direct_pending_fold_4k) == 0
         &&& owned_indirect_threads.fold(0int, indirect_pending_fold_4k) == 0
     }) by {
-        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_4k);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_4k);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_4k);
-        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_4k);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_processes, layout.root_process, process_value_4k);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, thread_value_4k);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, direct_pending_value_4k);
+        empty_set_implies_set_fold_int_sum_zero(owned_indirect_threads, indirect_pending_value_4k);
     };
     reveal(container_process_allocator_quota_4k_wf);
 }
@@ -439,10 +439,10 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(krnl: &KernelK, layo
         &&& owned_threads.fold(0int, direct_pending_fold_2m) == 0
         &&& owned_indirect_threads.fold(0int, indirect_pending_fold_2m) == 0
     }) by {
-        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_2m);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_2m);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_2m);
-        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_2m);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_processes, layout.root_process, process_value_2m);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, thread_value_2m);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, direct_pending_value_2m);
+        empty_set_implies_set_fold_int_sum_zero(owned_indirect_threads, indirect_pending_value_2m);
     };
     reveal(container_process_allocator_quota_2m_wf);
 }
@@ -487,10 +487,10 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layo
         &&& owned_threads.fold(0int, direct_pending_fold_1g) == 0
         &&& owned_indirect_threads.fold(0int, indirect_pending_fold_1g) == 0
     }) by {
-        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_1g);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_1g);
-        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_1g);
-        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_1g);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_processes, layout.root_process, process_value_1g);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, thread_value_1g);
+        singleton_set_implies_set_fold_int_sum_eq_member(owned_threads, layout.root_thread, direct_pending_value_1g);
+        empty_set_implies_set_fold_int_sum_zero(owned_indirect_threads, indirect_pending_value_1g);
     };
     reveal(container_process_allocator_quota_1g_wf);
 }

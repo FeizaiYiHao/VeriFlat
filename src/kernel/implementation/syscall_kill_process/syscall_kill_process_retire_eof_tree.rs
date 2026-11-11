@@ -242,9 +242,9 @@ pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
         reveal(process_linkedlist_wf);
     };
     assert(process_root_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_root_wf); };
-    assert(process_children_parent_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_children_parent_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>(); };
+    assert(process_children_parent_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_children_parent_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockProcessPtr>(); };
     assert(process_linkedlist_wf(root_process, new_tree_dom, post.prc_mp)) by {
-        reveal(process_root_wf); reveal(process_linkedlist_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>();
+        reveal(process_root_wf); reveal(process_linkedlist_wf); no_duplicates_implies_remove_value_removes_only_that_value::<RwLockProcessPtr>();
     };
     assert(process_uppertree_seq_parent_wf(root_process, new_tree_dom, post.prc_mp)) by { reveal(process_uppertree_seq_parent_wf); };
 }

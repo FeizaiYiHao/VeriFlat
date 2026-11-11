@@ -4,8 +4,8 @@
 //! runs with IF=1. `Off` is the hardware Off state: the cpu halts in `wait_until_online`; it is written at the step
 //! exit that published Off and left by the wake IPI of `ipi_wake`. `Idle` is the idle loop, which halts with a plain
 //! `hlt`; `User` is ring 3; `Trap` is the IF=1 kernel segment running without the own cpu lock (User to Trap at
-//! `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when `restore_frame` diverts on
-//! `running_to_idle_pending` or CpuIdle); `InStep` is a cpu that write-holds its own cpu lock with its own
+//! `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when the trap exit diverts after a
+//! running-to-idle IPI or a syscall returns CpuIdle); `InStep` is a cpu that write-holds its own cpu lock with its own
 //! `KernelCallPerm` in its `LocalContext`. `CpuLockedArray::wlock_own_cpu_enter_step` enters it, clearing IF when the
 //! lock is granted, and `CpuLockedArray::exit_step_wunlock_own_cpu` leaves it, setting IF after the release; they are
 //! called by `KernelK::wlock_own_cpu` and `KernelK::wunlock_own_cpu`. The only writers are that enter and exit,

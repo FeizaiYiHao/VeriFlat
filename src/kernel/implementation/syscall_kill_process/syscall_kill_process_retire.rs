@@ -301,7 +301,7 @@ pub(crate) fn kill_retire_process(
     let ghost base = steps.snapshot_k();
     let ghost base_lctx = *lctx;
     proof {
-        lemma_container_allocator_4k_quota_bounded(&*krnl, ctn_ptr);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, ctn_ptr);
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
             pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);

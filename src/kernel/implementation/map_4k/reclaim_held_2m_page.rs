@@ -484,7 +484,7 @@ fn remove_last_held_2m_mapping_to_allocator(
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
-    assert(krnl.allc_2m_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { kill_container_quota_fold::lemma_container_allocator_2m_quota_bounded(krnl, owner); };
+    assert(krnl.allc_2m_mp.spec_index(allc_ptr).total_free_pages.view() < usize::MAX) by { kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded(krnl, owner); };
     assert(krnl.allc_2m_mp.spec_index(allc_ptr).quota.view().value as int + *counter as int <= krnl.allc_2m_mp.spec_index(allc_ptr).total_free_pages.view()) by { kernel_inv_implies_thread_pending_2m_quota_bounded(krnl, thrd_ptr, owner, depth); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     let indices = va2index(va);

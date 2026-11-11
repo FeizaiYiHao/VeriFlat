@@ -120,13 +120,16 @@ proof fn thread_exit_quota_eof_memory_quota(
     let dt1g = if size is SZ1g { -(thread.quota_1g as int) } else { 0int };
     assert(pre.prc_mp.perms_wf() && pre.thrd_mp.perms_wf() && pre.thrd_mp.spec_index(thrd_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by {
-        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
+        one_process_and_thread_changed_implies_container_quota_fold_sums_changed_by_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g);
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
     };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
-        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf);
+        one_process_and_thread_changed_implies_container_quota_fold_sums_changed_by_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g);
+        reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf);
     };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
-        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
+        one_process_and_thread_changed_implies_container_quota_fold_sums_changed_by_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, ctn_ptr, prc_ptr, thrd_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g);
+        reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
     };
 }
 
@@ -168,7 +171,7 @@ pub(super) proof fn thread_exit_quota_eof_memory(
         assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by { allocator_pages_wf_preserved_for_allocator_fields_except_quota(); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { container_process_page_pagetable_wf_preserved_for_process_fields_except_quota(); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_process_fields_except_quota(); };
-        assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
+        assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
         assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr); };
         assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
@@ -177,19 +180,19 @@ pub(super) proof fn thread_exit_quota_eof_memory(
             thread_staged_2m_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
             thread_staged_1g_pages_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thrd_mp, post.thrd_mp, pre.pg_arr, post.pg_arr);
         };
-        assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
-        assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
+        assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_fields_unchanged_implies_process_pagetable_wf_preserved_forall(); };
+        assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { process_iommu_table_fields_unchanged_implies_process_iommu_table_wf_preserved_forall(); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
         assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
         assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); reveal(container_allocator_wf); };
         assert(allocator_free_page_ptrs_wf(post.allc_4k_mp) && allocator_free_page_ptrs_wf(post.allc_2m_mp) && allocator_free_page_ptrs_wf(post.allc_1g_mp)) by {
-            lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall::<ALLOCATOR_SIZE_4K>(); lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall::<ALLOCATOR_SIZE_2M>();
-            lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall::<ALLOCATOR_SIZE_1G>();
+            global_pool_and_cpu_caches_unchanged_implies_allocator_free_page_ptrs_wf_preserved_forall::<ALLOCATOR_SIZE_4K>(); global_pool_and_cpu_caches_unchanged_implies_allocator_free_page_ptrs_wf_preserved_forall::<ALLOCATOR_SIZE_2M>();
+            global_pool_and_cpu_caches_unchanged_implies_allocator_free_page_ptrs_wf_preserved_forall::<ALLOCATOR_SIZE_1G>();
         };
-        assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(pre, post); };
-        assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre, post); };
-        assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre, post); };
+        assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { lock_op_implies_allocator_free_4k_pages_wf_preserved(pre, post); };
+        assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { lock_op_implies_allocator_free_2m_pages_wf_preserved(pre, post); };
+        assert(allocator_free_1g_pages_wf(post.allc_1g_mp, post.pg_arr)) by { lock_op_implies_allocator_free_1g_pages_wf_preserved(pre, post); };
         assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(allocator_1g_cpu_caches_empty_wf); };
     };
 }
@@ -227,12 +230,12 @@ pub(super) proof fn thread_exit_quota_eof_process(
     assert(pre.prc_mp.perms_wf() && pre.thrd_mp.perms_wf() && pre.thrd_mp.spec_index(thrd_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
     assert(post.process_management_inv()) by {
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { process_pcid_allocator_wf_preserved_for_process_fields_except_quota(); };
-        assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
+        assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { process_rodata_unchanged_implies_container_process_wf_preserved_forall(); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_process_fields_except_quota(); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
         assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
-        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
+        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall(); };
         assert(thread_caller_callee_wf(post.thrd_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp); };
         assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thrd_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp, post.ep_mp); };
@@ -242,7 +245,7 @@ pub(super) proof fn thread_exit_quota_eof_process(
         assert(container_thread_wf(post.ctn_mp, post.thrd_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thrd_mp, post.thrd_mp); };
         assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by {
             process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp);
-            lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
+            process_thread_membership_fields_unchanged_implies_process_thread_wf_preserved_forall();
         };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         process_emptied_threads_wf_preserved_for_state_owned_threads_exited_eq(pre.prc_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp);

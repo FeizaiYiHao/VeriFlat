@@ -44,7 +44,7 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
         allocator_free_1g_pages_wf(allocator_map, post),
 { reveal(allocator_free_1g_pages_wf); reveal(allocator_global_pool_1g_pages_wf); reveal(allocator_cpu_cache_1g_pages_wf); reveal(allocator_free_page_ptrs_wf); }
 
-pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(pre: KernelK, post: KernelK)
+pub proof fn lock_op_implies_allocator_free_4k_pages_wf_preserved(pre: KernelK, post: KernelK)
     requires
         allocator_free_4k_pages_wf(pre.allc_4k_mp, pre.pg_arr),
         post.pg_arr == pre.pg_arr,
@@ -61,7 +61,7 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(pre
         allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr),
 { reveal(allocator_free_4k_pages_wf); reveal(allocator_global_pool_4k_pages_wf); reveal(allocator_cpu_cache_4k_pages_wf); }
 
-pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre: KernelK, post: KernelK)
+pub proof fn lock_op_implies_allocator_free_2m_pages_wf_preserved(pre: KernelK, post: KernelK)
     requires
         allocator_free_2m_pages_wf(pre.allc_2m_mp, pre.pg_arr),
         post.pg_arr == pre.pg_arr,
@@ -78,7 +78,7 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre
         allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr),
 { reveal(allocator_free_2m_pages_wf); reveal(allocator_global_pool_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); }
 
-pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre: KernelK, post: KernelK)
+pub proof fn lock_op_implies_allocator_free_1g_pages_wf_preserved(pre: KernelK, post: KernelK)
     requires
         allocator_free_1g_pages_wf(pre.allc_1g_mp, pre.pg_arr),
         post.pg_arr == pre.pg_arr,

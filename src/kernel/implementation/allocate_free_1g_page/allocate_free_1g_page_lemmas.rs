@@ -98,7 +98,7 @@ pub proof fn kernel_inv_implies_container_allocator_1g_quota_bounded(krnl: &Kern
         process_effective_quota_1g_nonneg_implies_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
         let effective = |t: RwLockThreadPtr| thread_effective_quota_1g(krnl.thrd_mp.spec_index(t));
         assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thrd_mp.spec_index(t)))
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, effective); };
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { nonneg_values_implies_set_fold_int_sum_nonneg(threads, effective); };
         thread_direct_pending_1g_nat_implies_fold_nonneg(threads, krnl.thrd_mp);
         thread_indirect_pending_1g_nat_implies_fold_nonneg_at_depth(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thrd_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
     };
@@ -109,7 +109,9 @@ pub proof fn kernel_inv_implies_container_allocator_1g_quota_bounded(krnl: &Kern
             reveal(LinkedList::value_list_unique); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
             seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
         };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
+        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
+            cache_inv_implies_cache_len_fold_bounded(allocator.cpu_caches);
+        };
     };
 }
 }

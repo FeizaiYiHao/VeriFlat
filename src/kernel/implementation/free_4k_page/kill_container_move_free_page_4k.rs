@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use super::kill_container_quota_fold::container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages;
 #[cfg(verus_keep_ghost)]
 use super::kill_container_move_free_page_4k_eof::{kill_container_move_free_page_4k_eof, kill_container_move_free_page_4k_eof_transition_framing};
 
@@ -112,13 +112,13 @@ pub fn kill_container_move_free_page_4k(
         allocator_free_4k_pages_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, dst_allocator, pg_ptr);
         allocator_free_4k_pages_wf_at(krnl.allc_4k_mp, krnl.pg_arr, pg_idx);
         container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx);
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, src);
-        lemma_container_allocator_4k_quota_bounded(&*krnl, dst);
+        container_without_processes_or_threads_implies_allocator_quotas_eq_total_free_pages(*krnl, src);
+        kernel_inv_implies_container_allocator_4k_quota_bounded(&*krnl, dst);
         krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         assert(krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().contains(pg_ptr));
         assert(krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates()) by { reveal(LinkedList::value_list_unique); };
         assert(0 < krnl.allc_4k_mp.spec_index(src_allocator).quota.view().value) by {
-            allocator_perms_wf_at(krnl.allc_4k_mp, src_allocator); lemma_cache_len_fold_nonneg(krnl.allc_4k_mp.spec_index(src_allocator).cpu_caches.view());
+            allocator_perms_wf_at(krnl.allc_4k_mp, src_allocator); cache_len_fold_implies_nonneg(krnl.allc_4k_mp.spec_index(src_allocator).cpu_caches.view());
         };
     }
     let (node_addr, Tracked(node_perm)) = krnl.allc_4k_mp.pop_global_pool_page_typed(src_allocator, Ghost(lctx.allocator_quota_4k_lock_map()),
