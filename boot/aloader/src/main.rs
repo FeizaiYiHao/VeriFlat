@@ -34,7 +34,8 @@ use core::slice;
 use x86::cpuid::cpuid;
 
 use aelf::ElfHandle;
-use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES};
+use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES, PCI_BAR_WINDOW_BASE};
+use astd::heapless::Vec as ArrayVec;
 use astd::io::{Cursor, Read, Seek, SeekFrom};
 use astd::memory::{USERSPACE_BASE, USERSPACE_PAYLOAD_BASE};
 
@@ -44,19 +45,19 @@ use memory::{
 use core::ptr;
 
 // The reservations below are sized from the "Loader memory use" and "Kernel boot stack
-// high-water" lines the boot prints (2026-11, 2 GiB page array: kernel image 114 MiB, boot stack 16 MiB,
-// dom0 17 MiB, loader stack 8 MiB) with headroom; `memory::ALLOCATOR_SIZE` must cover the kernel and dom0
+// high-water" lines the boot prints (2026-11, 4 GiB page array: kernel image 186 MiB, boot stack 16 MiB,
+// dom0 17 MiB, loader stack 16 MiB) with headroom; `memory::ALLOCATOR_SIZE` must cover the kernel and dom0
 // reservations, and both stay below 1 GiB so that [1 GiB, 2 GiB) can be the free 1G block.
 
 /// Kernel image (`KernelK` lives in its .bss) + kernel stack.
-const KERNEL_RESERVATION: usize = 256 * 1024 * 1024;
+const KERNEL_RESERVATION: usize = 320 * 1024 * 1024;
 /// The kernel builds `KernelK` (~60 MiB) by value on this stack before moving it into place.
 const KERNEL_STACK_SIZE: usize = 96 * 1024 * 1024;
 /// dom0 image, its stack, and the payload; also the span of dom0's initial user mapping.
 const DOM0_RESERVATION: usize = 64 * 1024 * 1024;
 const DOM0_STACK_SIZE: u64 = 16 * 1024 * 1024;
 
-/// MMIO pages the kernel needs identity mapped (not part of the page array).
+/// MMIO pages the kernel needs identity mapped with PCD (Unavailable pages of the page array).
 const LAPIC_BASE: u64 = 0xFEE0_0000;
 const IOAPIC_BASE: u64 = 0xFEC0_0000;
 
@@ -89,7 +90,11 @@ pub extern "C" fn main() -> ! {
     // ACPI tables sit at the top of RAM, which the final page tables may not cover: read them now.
     let iommu_units = acpi::probe_iommu();
     let apic_ids = acpi::probe_cpus();
-    let dma_test_device = pci::probe_dma_test_device();
+    let mmconfig = acpi::probe_mmconfig();
+    let e820: ArrayVec<(u64, u64), 100> =
+        memory::get_physical_memory_map().regions.iter().map(|(r, _)| (r.base(), r.size())).collect();
+    let pci_devices = pci::probe_devices(&e820, &mmconfig);
+    let dma_test_device = pci::dma_test_device(&pci_devices);
     unsafe {
         kernel_space.map(bootstrap_allocator, LAPIC_BASE, LAPIC_BASE, false, false, true);
         kernel_space.map(bootstrap_allocator, IOAPIC_BASE, IOAPIC_BASE, false, false, true);
@@ -150,6 +155,7 @@ pub extern "C" fn main() -> ! {
     boot_info.dom0_pml4 = dom0_space.pml4();
     boot_info.iommu_units = iommu_units;
     boot_info.dma_test_device = dma_test_device;
+    boot_info.pci_devices = pci_devices;
     boot_info.apic_ids = apic_ids;
     log::info!("Processors (APIC IDs): {:?}", boot_info.apic_ids);
 
@@ -224,6 +230,21 @@ pub extern "C" fn main() -> ! {
         Err(e) => {
             log::warn!("No valid Dom0: {:?}", e);
         }
+    }
+
+    // Every recorded BAR0 page in dom0's BAR0 window: user, writable, execute-disabled, no PCD (the MTRRs make it UC).
+    for device in boot_info.pci_devices.iter() {
+        let (base, pages) = (device.bar0_base, device.bar0_pages);
+        unsafe {
+            for page in 0..pages {
+                let paddr = base + page * PAGE_SIZE as u64;
+                dom0_space.map_user_mmio(bootstrap_allocator, PCI_BAR_WINDOW_BASE + paddr, paddr);
+            }
+        }
+        log::info!(
+            "dom0 BAR0 window: 00:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} pages)",
+            device.bdf >> 3, device.bdf & 7, PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + pages * PAGE_SIZE as u64, base, pages
+        );
     }
 
     log::info!("Physical memory map after loading:");

@@ -38,6 +38,10 @@ pub const NR_DEBUG_DMA_DEVICE: usize = 28;
 pub const NR_DEBUG_DMA_PROBE: usize = 29;
 /// Returns 0 at once; with a nonzero argument the return goes through `iretq` instead of `sysretq`.
 pub const NR_DEBUG_NULL: usize = 36;
+/// Reads the loader's PCI record of bus 0 (see `sys_pci_info`).
+pub const NR_PCI_INFO: usize = 55;
+/// dom0 sees a recorded BAR0 page at physical address `p` at virtual address `PCI_BAR_WINDOW_BASE + p`.
+pub const PCI_BAR_WINDOW_BASE: usize = 0xd0_0000_0000;
 // ---- verified entries (SystemCalls.md section 14) ----
 pub const NR_ALLOC_QUOTA_4K: usize = 2;
 pub const NR_SCHEDULE: usize = 3;
@@ -442,6 +446,15 @@ pub unsafe fn sys_debug_dma_probe() -> isize {
 /// Writes the eight bytes last read into EDU's device buffer to the fixed probe IOVA.
 pub unsafe fn sys_debug_dma_write_probe() -> isize {
     syscall1(NR_DEBUG_DMA_PROBE, 1).rax
+}
+
+/// Looks up the loader's record of PCI function `bus:dev.fun`. Returns `(rax, rdx, rsi)`: `rax` is
+/// `(class << 48) | (subclass << 40) | (vendor << 16) | device` for a recorded function, or
+/// `ERR_INVALID_ARGUMENT` when it is not recorded; `rdx` is the BAR0 physical base and `rsi` its page
+/// count (both 0 on error). dom0 sees the BAR0 pages at `PCI_BAR_WINDOW_BASE + base`.
+pub unsafe fn sys_pci_info(bus: usize, dev: usize, fun: usize) -> (isize, usize, usize) {
+    let r = syscall3(NR_PCI_INFO, bus, dev, fun);
+    (r.rax, r.rdx, r.rsi)
 }
 
 pub unsafe fn sys_debug_null(force_iret: bool) -> isize {

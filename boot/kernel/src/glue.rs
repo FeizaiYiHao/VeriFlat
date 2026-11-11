@@ -30,14 +30,14 @@ const BOOT_FREE_2M_BLOCKS: usize = match option_env!("VERIFLAT_BOOT_2M_BLOCKS") 
 };
 
 /// Free 1G blocks handed to the 1G allocator, the root container's 1G quota: 0 or 1, the block
-/// [1 GiB, 2 GiB), the upper half of the managed memory. `VERIFLAT_BOOT_1G_BLOCKS` of the kernel build
+/// [1 GiB, 2 GiB), the second GiB of the managed memory. `VERIFLAT_BOOT_1G_BLOCKS` of the kernel build
 /// sets it (default 1). Without 1G page support (CPUID 8000_0001h EDX[26]) or with any of its pages
 /// unavailable, boot hands out no 1G block and those pages become ordinary free 4K pages.
 const BOOT_FREE_1G_BLOCKS: usize = match option_env!("VERIFLAT_BOOT_1G_BLOCKS") {
     Some(blocks) => parse_decimal(blocks),
     None => 1,
 };
-const _: () = assert!(BOOT_FREE_1G_BLOCKS <= 1 && 2 * PAGES_PER_1G == NUM_PAGES);
+const _: () = assert!(BOOT_FREE_1G_BLOCKS <= 1 && 4 * PAGES_PER_1G == NUM_PAGES);
 
 /// The value of the decimal number `text`, at compile time.
 const fn parse_decimal(text: &str) -> usize {
@@ -70,6 +70,10 @@ enum Kind {
     Dom0Table,
     /// A dom0 user page.
     Dom0Leaf,
+    /// A page of a recorded PCI function's BAR0 that dom0's page table does not map (yet).
+    IoUnmapped,
+    /// A BAR0 page mapped in dom0's BAR0 window: an io page of the root container.
+    IoLeaf,
     /// Taken for a boot singleton; its state is set explicitly.
     Singleton,
     /// The head of a free 2M block in the global 2M pool.
@@ -157,8 +161,11 @@ unsafe fn walk_dom0(dom0_pml4: usize) -> (usize, usize) {
                     let leaf = e1 & PTE_ADDR_MASK;
                     let kinds = kinds();
                     let i = index_of(leaf);
-                    assert!(kinds[i] == Kind::DomainSpare, "dom0 leaf {:#x} is {:?}", leaf, kinds[i]);
-                    kinds[i] = Kind::Dom0Leaf;
+                    kinds[i] = match kinds[i] {
+                        Kind::DomainSpare => Kind::Dom0Leaf,
+                        Kind::IoUnmapped => Kind::IoLeaf,
+                        k => panic!("dom0 leaf {:#x} is {:?}", leaf, k),
+                    };
                     leaves += 1;
                 }
             }
@@ -249,11 +256,13 @@ fn singleton_state(layout: &BootKernelLayout, addr: usize) -> Option<PageState> 
     }
 }
 
-fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: usize, free_list_node_storage: ExternalNode<PageIndex>) -> Page {
+fn new_page(
+    addr: usize, state: PageState, is_io_page: bool, ref_count: usize, owning_container: usize, free_list_node_storage: ExternalNode<PageIndex>,
+) -> Page {
     Page {
         addr,
         state,
-        is_io_page: false,
+        is_io_page,
         ref_count,
         owning_container,
         mappings: Ghost::assume_new(),
@@ -301,8 +310,19 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             _ => Kind::Unavailable,
         };
     }
+    // BAR0 pages of the recorded PCI functions: above RAM, so the loader typed them Reserved.
+    let mut io_pages = 0usize;
+    for device in boot_info.pci_devices.iter() {
+        for page in 0..device.bar0_pages as usize {
+            let i = index_of(device.bar0_base + (page * PAGE_SIZE) as u64);
+            assert!(kinds[i] == Kind::Unavailable, "BAR0 page {:#x} is {:?}", i * PAGE_SIZE, kinds[i]);
+            kinds[i] = Kind::IoUnmapped;
+            io_pages += 1;
+        }
+    }
     let dom0_pml4 = boot_info.dom0_pml4 as usize;
     let (tables, leaves) = walk_dom0(dom0_pml4);
+    assert!(!kinds.contains(&Kind::IoUnmapped), "a BAR0 page is not mapped in dom0's BAR0 window");
     for k in kinds.iter_mut() {
         if *k == Kind::DomainSpare {
             *k = Kind::Free;
@@ -374,15 +394,16 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
                 },
                 0,
             ),
-            Kind::Dom0Leaf => (PageState::Mapped4k, 1),
+            Kind::Dom0Leaf | Kind::IoLeaf => (PageState::Mapped4k, 1),
             Kind::Singleton => (singleton_state(&layout, addr).expect("unclassified singleton page"), 0),
-            Kind::DomainSpare => unreachable!(),
+            Kind::DomainSpare | Kind::IoUnmapped => unreachable!(),
         };
         let lock_ptr = (page_base + i * size_of::<PageLock>()) as *mut PageLock;
         let node_addr = node_base + i * size_of::<Node<PageIndex>>();
         ptr::write(node_addr as *mut Node<PageIndex>, Node { value: 0, next: None, prev: None });
         let node = ExternalNode::new_parked(node_addr, Tracked::assume_new());
-        ptr::write(lock_ptr, LockCell::new_unlocked(new_page(addr, state, ref_count, root_container, node), (), Ghost::assume_new()));
+        let page = new_page(addr, state, kinds[i] == Kind::IoLeaf, ref_count, root_container, node);
+        ptr::write(lock_ptr, LockCell::new_unlocked(page, (), Ghost::assume_new()));
         if matches!(kinds[i], Kind::Free | Kind::Free2m | Kind::Free1g) {
             let page = &mut *((lock_ptr as usize + page_value_offset) as *mut Page);
             assert!(page.addr == addr, "LockCell value offset mismatch");
@@ -400,8 +421,8 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     }
     let page_array = PageLockedArray::from_token_cells(TokenCells { perms: Tracked::assume_new() });
     log::info!(
-        "pages: {} free, {} free 2M blocks, {} free 1G blocks, {} dom0 tables, {} dom0 leaves",
-        free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves
+        "pages: {} free, {} free 2M blocks, {} free 1G blocks, {} dom0 tables, {} dom0 leaves ({} io pages)",
+        free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves, io_pages
     );
 
     // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.

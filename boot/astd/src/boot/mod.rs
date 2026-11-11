@@ -8,13 +8,20 @@ use crate::string::ArrayString;
 
 /// The number of 4K pages the kernel manages. Must equal `veriflat_monolith::NUM_PAGES`;
 /// the kernel asserts this at build time.
-pub const MAX_PAGES: usize = 512 * 1024;
+pub const MAX_PAGES: usize = 1024 * 1024;
 
 /// The most processors the loader reports. Must equal `veriflat_monolith::NUM_CPUS`.
 pub const MAX_CPUS: usize = 32;
 
 /// The most VT-d remapping units (DMAR DRHD entries) the loader reports.
 pub const MAX_IOMMU_UNITS: usize = 8;
+
+/// The most PCI functions with a device BAR0 the loader records.
+pub const MAX_PCI_DEVICES: usize = 16;
+
+/// Virtual base of dom0's BAR0 window: the loader maps BAR0 page `p` of every recorded function at
+/// `PCI_BAR_WINDOW_BASE + p` in dom0's initial page table.
+pub const PCI_BAR_WINDOW_BASE: u64 = 0xd0_0000_0000;
 
 /// The type of physical memory.
 ///
@@ -73,6 +80,9 @@ pub struct BootInfo {
     /// The PCI device the kernel's DMA self-test drives, if present.
     pub dma_test_device: Option<DmaTestDevice>,
 
+    /// The PCI functions of bus 0 whose BAR0 dom0 sees through its BAR0 window, in B/D/F order.
+    pub pci_devices: ArrayVec<PciDevice, MAX_PCI_DEVICES>,
+
     /// Base of the zeroed stack CPU 0 runs the kernel's initialization on; the kernel reports how
     /// much of it was used so the loader's reservation can be sized.
     pub kernel_stack_base: u64,
@@ -90,6 +100,27 @@ pub struct DmaTestDevice {
 
     /// Physical (= kernel virtual) base of BAR0.
     pub mmio: u64,
+}
+
+/// A PCI function of bus 0 whose memory BAR0 the loader enabled, placed below 4 GiB, checked to be
+/// uncacheable under the MTRRs, and mapped into dom0 at `PCI_BAR_WINDOW_BASE + bar0_base`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PciDevice {
+    /// `(bus << 8) | (device << 3) | function`.
+    pub bdf: u16,
+    /// PCI vendor ID.
+    pub vendor: u16,
+    /// PCI device ID.
+    pub device: u16,
+    /// PCI base class code.
+    pub class: u8,
+    /// PCI subclass code.
+    pub subclass: u8,
+    /// Physical base of BAR0, page aligned and below 4 GiB.
+    pub bar0_base: u64,
+    /// Number of 4K pages of BAR0.
+    pub bar0_pages: u64,
 }
 
 /// A loaded domain.
@@ -142,6 +173,7 @@ impl BootInfo {
             iommu_units: ArrayVec::new(),
             apic_ids: ArrayVec::new(),
             dma_test_device: None,
+            pci_devices: ArrayVec::new(),
             kernel_stack_base: 0,
             kernel_stack_size: 0,
         }

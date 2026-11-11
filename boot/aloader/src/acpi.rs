@@ -6,6 +6,7 @@ use core::mem;
 use acpi::{AcpiTables, AcpiTable, PhysicalMapping};
 use acpi::handler::AcpiHandler;
 use acpi::madt::{Madt, MadtEntry};
+use acpi::mcfg::Mcfg;
 use acpi::sdt::{Signature, SdtHeader};
 use astd::boot::{MAX_CPUS, MAX_IOMMU_UNITS};
 use astd::heapless::Vec as ArrayVec;
@@ -173,4 +174,22 @@ pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
     }
     assert!(!units.is_empty(), "DMAR has no DRHD entry: VeriFlat needs VT-d DMA remapping");
     units
+}
+
+/// The PCI ECAM (MMCONFIG) windows of the MCFG table as `(base, size)`; empty without an MCFG.
+pub fn probe_mmconfig() -> ArrayVec<(u64, u64), 8> {
+    let handler = NullAcpiHandler::new();
+    let acpi = unsafe {
+        AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP")
+    };
+    let mut windows = ArrayVec::new();
+    if let Ok(mcfg) = acpi.find_table::<Mcfg>() {
+        for entry in mcfg.get().entries() {
+            let (base, start, end) = (entry.base_address, entry.bus_number_start, entry.bus_number_end);
+            let size = (end as u64 - start as u64 + 1) << 20;
+            log::info!("MMCONFIG {:#x}..{:#x} (buses {}..={})", base, base + size, start, end);
+            windows.push((base, size)).expect("more than 8 MCFG entries");
+        }
+    }
+    windows
 }

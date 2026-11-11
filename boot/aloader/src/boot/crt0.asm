@@ -257,7 +257,7 @@ p2_tables:
     resb 4096 * 4
 
 stack_bottom:
-    resb 1024 * 1024 * 16 ; the loader uses about 8 MiB (BootInfo and its 2 GiB page list live here)
+    resb 1024 * 1024 * 32 ; the loader uses about 16 MiB (BootInfo and its 4 GiB page list live here)
 stack_top:
 
 bootinfo:

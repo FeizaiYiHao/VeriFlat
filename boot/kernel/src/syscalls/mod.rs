@@ -628,6 +628,23 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             regs.rax = crate::iommu::dma_test_device().map_or(vsys::ERR_INVALID_SYSCALL, |bdf| bdf as isize) as u64;
             return;
         }
+        vsys::NR_PCI_INFO => {
+            // Reads the loader's PCI record only, outside any kernel step.
+            let bdf = (a1 < 256 && a2 < 32 && a3 < 8).then(|| ((a1 << 8) | (a2 << 3) | a3) as u16);
+            let found = bdf.and_then(|bdf| crate::boot::get_boot_info().pci_devices.iter().find(|d| d.bdf == bdf));
+            match found {
+                Some(d) => {
+                    regs.rax = (d.class as u64) << 48 | (d.subclass as u64) << 40 | (d.vendor as u64) << 16 | d.device as u64;
+                    regs.rdx = d.bar0_base;
+                    regs.rsi = d.bar0_pages;
+                }
+                None => {
+                    set_trap_error(regs, vsys::ERR_INVALID_ARGUMENT);
+                    (regs.rdx, regs.rsi) = (0, 0);
+                }
+            }
+            return;
+        }
         vsys::NR_DEBUG_DMA_PROBE => {
             let result = match a1 {
                 0 => crate::iommu::dma_probe(),

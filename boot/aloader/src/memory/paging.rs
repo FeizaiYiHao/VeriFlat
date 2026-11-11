@@ -80,6 +80,26 @@ impl AddressSpace {
         huge: bool,
         cache_disable: bool,
     ) {
+        self.map_entry(allocator, vaddr, paddr, user, huge, cache_disable, false);
+    }
+
+    /// Maps a 4K user page, writable and execute-disabled, for device registers. No PCD: the
+    /// caller checks that the MTRRs make the page uncacheable.
+    pub unsafe fn map_user_mmio(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64) {
+        self.map_entry(allocator, vaddr, paddr, true, false, false, true);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn map_entry(
+        &mut self,
+        allocator: &mut impl PhysicalAllocator,
+        vaddr: u64,
+        paddr: u64,
+        user: bool,
+        huge: bool,
+        cache_disable: bool,
+        execute_disable: bool,
+    ) {
         //log::info!("Mapping VA 0x{:x} -> PA 0x{:x}", vaddr, paddr);
 
         let mut cur = self.pml4;
@@ -123,6 +143,7 @@ impl AddressSpace {
             .with_address(paddr)
             .with_page_size_bit(huge)
             .with_cache_disable(cache_disable)
+            .with_execute_disable(execute_disable)
             .with_user(user)
             .with_kernel_present(true);
 
@@ -220,6 +241,11 @@ impl Entry {
 
     fn with_page_size_bit(mut self, page_size: bool) -> Self {
         self.0.set_bit(7, page_size);
+        self
+    }
+
+    fn with_execute_disable(mut self, execute_disable: bool) -> Self {
+        self.0.set_bit(63, execute_disable);
         self
     }
 
