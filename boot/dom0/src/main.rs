@@ -40,6 +40,8 @@ const WAIT_LIMIT: u64 = 20_000_000_000;
 static mut CHILD_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 /// `bus << 8 | device << 3 | function` of the kernel's DMA test device.
 static DMA_BDF: AtomicUsize = AtomicUsize::new(0);
+/// Whether the kernel has a DMA test device (QEMU's `edu`); without one the DMA tests are skipped.
+static HAS_DMA_DEVICE: AtomicBool = AtomicBool::new(false);
 static CHILD_MAY_ATTACH: AtomicBool = AtomicBool::new(false);
 static CHILD_ATTACHED: AtomicBool = AtomicBool::new(false);
 
@@ -195,16 +197,18 @@ fn expect_dma_fault(when: &str, reason: isize) {
 }
 
 /// First thread of the child process, which shares dom0's image: takes the DMA test device over
-/// the root endpoint and attaches it to its own IOMMU table.
+/// the root endpoint and attaches it to its own IOMMU table. Without the device it only yields.
 extern "C" fn child_process() -> ! {
-    let (bus, dev, fun) = dma_bdf();
-    check("child receive_pci", unsafe { sys_receive_pci(ENDPOINT, bus, dev, fun) });
-    // dom0 first checks that the transfer detached the function.
-    while !CHILD_MAY_ATTACH.load(Ordering::SeqCst) {
-        unsafe { sys_schedule() };
+    if HAS_DMA_DEVICE.load(Ordering::SeqCst) {
+        let (bus, dev, fun) = dma_bdf();
+        check("child receive_pci", unsafe { sys_receive_pci(ENDPOINT, bus, dev, fun) });
+        // dom0 first checks that the transfer detached the function.
+        while !CHILD_MAY_ATTACH.load(Ordering::SeqCst) {
+            unsafe { sys_schedule() };
+        }
+        check("child pci_attach_dma", unsafe { sys_pci_attach_dma(bus, dev, fun) });
+        CHILD_ATTACHED.store(true, Ordering::SeqCst);
     }
-    check("child pci_attach_dma", unsafe { sys_pci_attach_dma(bus, dev, fun) });
-    CHILD_ATTACHED.store(true, Ordering::SeqCst);
     loop {
         unsafe { sys_schedule() };
     }
@@ -2242,12 +2246,19 @@ extern "C" fn kill_driver() -> ! {
 /// page.
 fn test_kill_process(image: usize, pages: usize) {
     let (bus, dev, fun) = dma_bdf();
+    let has_dma_device = HAS_DMA_DEVICE.load(Ordering::SeqCst);
     expect_error("kill_process past the children", unsafe { sys_kill_process(3) }, "ErrorInvalidChild");
-    expect_error("pci_attach_dma before the kill", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+    if has_dma_device {
+        expect_error("pci_attach_dma before the kill", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+    }
     check("kill_process(0) (IOMMU child)", unsafe { sys_kill_process(0) });
-    expect_dma_fault("after the kill", FAULT_CONTEXT_NOT_PRESENT);
-    check("pci_attach_dma of the reassigned function", unsafe { sys_pci_attach_dma(bus, dev, fun) });
-    expect_dma_fault("after dom0 attached it again", FAULT_READ_NOT_PRESENT);
+    if has_dma_device {
+        expect_dma_fault("after the kill", FAULT_CONTEXT_NOT_PRESENT);
+        check("pci_attach_dma of the reassigned function", unsafe { sys_pci_attach_dma(bus, dev, fun) });
+        expect_dma_fault("after dom0 attached it again", FAULT_READ_NOT_PRESENT);
+    } else {
+        log::info!("DMA checks of the kill skipped: no DMA test device");
+    }
     check("kill_process(1) (peer child)", unsafe { sys_kill_process(1) });
     check("kill_process(0) (plain child)", unsafe { sys_kill_process(0) });
     expect_error("kill_process(0) without children", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
@@ -2342,8 +2353,13 @@ fn test_dma_write_revocation() {
         log::info!("DMA device->RAM {} completed, fault reason {} (expected {})", when, reason, expected);
         if reason != expected { unsafe { sys_debug_exit(1) }; }
     }
-    let bdf = check("DMA write device", unsafe { sys_debug_dma_device() });
-    DMA_BDF.store(bdf, Ordering::SeqCst);
+    let bdf = unsafe { sys_debug_dma_device() };
+    if bdf < 0 {
+        log::info!("DMA write regression skipped: no DMA test device");
+        return;
+    }
+    DMA_BDF.store(bdf as usize, Ordering::SeqCst);
+    HAS_DMA_DEVICE.store(true, Ordering::SeqCst);
     let (bus, dev, fun) = dma_bdf();
     write_probe("before attach", FAULT_CONTEXT_NOT_PRESENT);
     check("DMA write attach", unsafe { sys_pci_attach_dma(bus, dev, fun) });
@@ -2626,14 +2642,22 @@ pub extern "C" fn _start() -> ! {
     // 4. VT-d: DMA of an unattached function faults at its context entry; once attached it
     // faults inside dom0's empty IOMMU table. Sending the function to a child process detaches it
     // (the context-cache invalidation must drop the stale entry) until the child attaches it.
+    // Without the DMA test device only the IOMMU child is created, which the kill tests count on.
     let bdf = unsafe { sys_debug_dma_device() };
-    check("debug_dma_device", bdf);
-    DMA_BDF.store(bdf as usize, Ordering::SeqCst);
+    let has_dma_device = bdf >= 0;
+    HAS_DMA_DEVICE.store(has_dma_device, Ordering::SeqCst);
+    if has_dma_device {
+        DMA_BDF.store(bdf as usize, Ordering::SeqCst);
+    } else {
+        log::info!("VT-d DMA tests skipped: no DMA test device");
+    }
     let (bus, dev, fun) = dma_bdf();
-    expect_dma_fault("before attach", FAULT_CONTEXT_NOT_PRESENT);
-    check("pci_attach_dma", unsafe { sys_pci_attach_dma(bus, dev, fun) });
-    expect_dma_fault("after attach", FAULT_READ_NOT_PRESENT);
-    expect_error("pci_attach_dma again", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciAlreadyAttached");
+    if has_dma_device {
+        expect_dma_fault("before attach", FAULT_CONTEXT_NOT_PRESENT);
+        check("pci_attach_dma", unsafe { sys_pci_attach_dma(bus, dev, fun) });
+        expect_dma_fault("after attach", FAULT_READ_NOT_PRESENT);
+        expect_error("pci_attach_dma again", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciAlreadyAttached");
+    }
 
     let (image, pages) = image_range();
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(6 + 3 * pages) });
@@ -2641,12 +2665,14 @@ pub extern "C" fn _start() -> ! {
     let sp = (&raw const CHILD_STACK) as usize + 64 * 1024 - 8;
     let child = unsafe { sys_new_process_with_iommu_and_endpoint(image, pages, ENDPOINT, child_process as *const () as usize, sp) };
     check("new_process_with_iommu_and_endpoint", child);
-    check("send_pci", unsafe { sys_send_pci(ENDPOINT, bus, dev, fun) });
-    expect_dma_fault("after the transfer", FAULT_CONTEXT_NOT_PRESENT);
-    expect_error("pci_attach_dma by the old owner", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
-    CHILD_MAY_ATTACH.store(true, Ordering::SeqCst);
-    wait_for("the child to attach", || CHILD_ATTACHED.load(Ordering::SeqCst));
-    expect_dma_fault("after the child attached", FAULT_READ_NOT_PRESENT);
+    if has_dma_device {
+        check("send_pci", unsafe { sys_send_pci(ENDPOINT, bus, dev, fun) });
+        expect_dma_fault("after the transfer", FAULT_CONTEXT_NOT_PRESENT);
+        expect_error("pci_attach_dma by the old owner", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+        CHILD_MAY_ATTACH.store(true, Ordering::SeqCst);
+        wait_for("the child to attach", || CHILD_ATTACHED.load(Ordering::SeqCst));
+        expect_dma_fault("after the child attached", FAULT_READ_NOT_PRESENT);
+    }
 
     // 5. The remaining payloads inside dom0's container: a plain child process, then a child
     // sharing the root endpoint that receives it again, sends a page of the image back, and

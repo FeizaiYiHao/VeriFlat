@@ -23,6 +23,13 @@ pub unsafe fn early_init() {
     serial.init();
 }
 
+/// Moves the console to the 16550 UART at I/O port `base`, as the boot option `serial=` asks.
+pub unsafe fn use_port(base: usize) {
+    let mut serial = SERIAL.lock();
+    *serial = PioSerial::new(base);
+    serial.init();
+}
+
 /// Initializes the serial console.
 pub unsafe fn init() {
     let mut serial = SERIAL.lock();

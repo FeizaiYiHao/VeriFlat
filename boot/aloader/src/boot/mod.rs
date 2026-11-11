@@ -7,10 +7,15 @@ use core::ptr;
 
 use crate::memory::init_physical_memory_map;
 use crate::memory::{AcpiMemoryType, MemoryRange};
+use astd::string::ArrayString;
 use astd::sync::Mutex;
 
 /// The kernel image passed by the bootloader.
 static KERNEL_IMAGE: Mutex<Option<MemoryRange>> = Mutex::new(None);
+
+/// The `serial=` option of the boot command line, if any: the loader's console uses it and passes it on as the
+/// kernel's command line.
+static SERIAL_OPTION: Mutex<Option<ArrayString<16>>> = Mutex::new(None);
 
 #[cfg(not(test))]
 //#[link(name = "crt0")]
@@ -42,6 +47,11 @@ enum Bootloader {
 }
 
 trait StartInfo {
+    /// The boot command line; empty when the bootloader passes none.
+    fn command_line(&self) -> &str {
+        ""
+    }
+
     /// Creates an iterator through all memory regions.
     fn iter_memory_regions(
         &self,
@@ -99,6 +109,11 @@ pub fn get_loader_image_range() -> MemoryRange {
     MemoryRange::new(start, size)
 }
 
+/// The kernel command line: the `serial=` option of the boot command line, or empty.
+pub fn get_kernel_command_line() -> ArrayString<4096> {
+    SERIAL_OPTION.lock().as_ref().and_then(|s| ArrayString::new(s.as_str())).unwrap_or(ArrayString::empty())
+}
+
 /// Returns the range of the kernel image.
 pub fn get_kernel_image_range() -> Option<MemoryRange> {
     KERNEL_IMAGE.lock().clone()
@@ -114,6 +129,19 @@ pub unsafe fn init() {
     );
 
     fn consume_start_info<S: StartInfo>(start_info: S) {
+        log::info!("Boot command line {:?}", start_info.command_line());
+        if let Some(option) = start_info.command_line().split_ascii_whitespace().find(|c| c.starts_with("serial=")) {
+            let port = match option {
+                "serial=com1" => 0x3f8,
+                "serial=com2" => 0x2f8,
+                "serial=com3" => 0x3e8,
+                "serial=com4" => 0x2e8,
+                _ => panic!("unknown boot option {:?}: serial= takes com1, com2, com3 or com4", option),
+            };
+            unsafe { crate::console::use_port(port) };
+            log::info!("Console on {}", option);
+            *SERIAL_OPTION.lock() = ArrayString::new(option);
+        }
         start_info.dump_memmap();
         start_info.dump_modlist();
 

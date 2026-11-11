@@ -80,7 +80,7 @@ pub struct BootInfo {
     /// The PCI device the kernel's DMA self-test drives, if present.
     pub dma_test_device: Option<DmaTestDevice>,
 
-    /// The PCI functions of bus 0 whose BAR0 dom0 sees through its BAR0 window, in B/D/F order.
+    /// The PCI functions of bus 0 and of the buses behind its bridges whose BAR0 dom0 sees through its BAR0 window, in B/D/F order.
     pub pci_devices: ArrayVec<PciDevice, MAX_PCI_DEVICES>,
 
     /// Base of the zeroed stack CPU 0 runs the kernel's initialization on; the kernel reports how
@@ -102,8 +102,8 @@ pub struct DmaTestDevice {
     pub mmio: u64,
 }
 
-/// A PCI function of bus 0 whose memory BAR0 the loader enabled, placed below 4 GiB, checked to be
-/// uncacheable under the MTRRs, and mapped into dom0 at `PCI_BAR_WINDOW_BASE + bar0_base`.
+/// A PCI function of bus 0 or of a bus behind its PCI-to-PCI bridges whose memory BAR0 the loader enabled, placed
+/// below 4 GiB, checked to be uncacheable under the MTRRs, and mapped into dom0 at `PCI_BAR_WINDOW_BASE + bar0_base`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciDevice {

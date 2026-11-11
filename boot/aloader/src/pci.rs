@@ -1,5 +1,5 @@
-//! PCI configuration space access (legacy 0xCF8/0xCFC mechanism): the bus 0 scan that records the
-//! functions whose BAR0 dom0 drives, and the DMA test device.
+//! PCI configuration space access (legacy 0xCF8/0xCFC mechanism): the scan of bus 0 and of every bus behind its
+//! PCI-to-PCI bridges that records the functions whose BAR0 dom0 drives, and the DMA test device.
 
 use astd::boot::{DmaTestDevice, PciDevice, MAX_PCI_DEVICES};
 use astd::heapless::Vec as ArrayVec;
@@ -20,6 +20,8 @@ const COMMAND: u8 = 0x04;
 const CLASS_REVISION: u8 = 0x08;
 const HEADER_TYPE: u8 = 0x0c;
 const BAR0: u8 = 0x10;
+/// Primary, secondary and subordinate bus numbers of a PCI-to-PCI bridge (header type 1).
+const BRIDGE_BUSES: u8 = 0x18;
 const COMMAND_MEMORY: u32 = 1 << 1;
 const COMMAND_BUS_MASTER: u32 = 1 << 2;
 
@@ -66,31 +68,31 @@ struct MemoryBar {
 }
 
 /// Sizes the memory BAR at `offset` with memory decoding off; `None` for an I/O or unimplemented BAR.
-unsafe fn memory_bar(device: u8, function: u8, offset: u8) -> Option<MemoryBar> {
-    let low = read(0, device, function, offset);
+unsafe fn memory_bar(bus: u8, device: u8, function: u8, offset: u8) -> Option<MemoryBar> {
+    let low = read(bus, device, function, offset);
     if low & BAR_IO != 0 {
         return None;
     }
     let is_64 = low & BAR_TYPE_MASK == BAR_TYPE_64;
     // Decoding goes off while the BAR holds all ones, unless the BAR is unassigned (as on host bridges).
-    let command = read(0, device, function, COMMAND) & 0xffff;
+    let command = read(bus, device, function, COMMAND) & 0xffff;
     if low & !0xf != 0 {
-        write(0, device, function, COMMAND, command & !COMMAND_MEMORY);
+        write(bus, device, function, COMMAND, command & !COMMAND_MEMORY);
     }
-    write(0, device, function, offset, 0xffff_ffff);
-    let low_mask = read(0, device, function, offset);
-    write(0, device, function, offset, low);
+    write(bus, device, function, offset, 0xffff_ffff);
+    let low_mask = read(bus, device, function, offset);
+    write(bus, device, function, offset, low);
     let (high, high_mask) = if is_64 {
-        let high = read(0, device, function, offset + 4);
-        write(0, device, function, offset + 4, 0xffff_ffff);
-        let high_mask = read(0, device, function, offset + 4);
-        write(0, device, function, offset + 4, high);
+        let high = read(bus, device, function, offset + 4);
+        write(bus, device, function, offset + 4, 0xffff_ffff);
+        let high_mask = read(bus, device, function, offset + 4);
+        write(bus, device, function, offset + 4, high);
         (high, high_mask)
     } else {
         (0, 0xffff_ffff)
     };
     if low & !0xf != 0 {
-        write(0, device, function, COMMAND, command);
+        write(bus, device, function, COMMAND, command);
     }
     let mask = ((high_mask as u64) << 32) | (low_mask & !0xf) as u64;
     if low_mask & !0xf == 0 && (!is_64 || high_mask == 0) {
@@ -100,20 +102,20 @@ unsafe fn memory_bar(device: u8, function: u8, offset: u8) -> Option<MemoryBar> 
     Some(MemoryBar { offset, base: ((high as u64) << 32) | (low & !0xf) as u64, size, is_64 })
 }
 
-/// The functions present on bus 0 as `(device, function)`, multifunction devices included.
-fn functions() -> impl Iterator<Item = (u8, u8)> {
-    (0..32u8).flat_map(|device| {
-        let multi = unsafe { read(0, device, 0, VENDOR_DEVICE) } & 0xffff != 0xffff
-            && unsafe { read(0, device, 0, HEADER_TYPE) } >> 16 & 0x80 != 0;
+/// The functions present on `bus` as `(device, function)`, multifunction devices included.
+fn functions(bus: u8) -> impl Iterator<Item = (u8, u8)> {
+    (0..32u8).flat_map(move |device| {
+        let multi = unsafe { read(bus, device, 0, VENDOR_DEVICE) } & 0xffff != 0xffff
+            && unsafe { read(bus, device, 0, HEADER_TYPE) } >> 16 & 0x80 != 0;
         (0..if multi { 8u8 } else { 1 }).map(move |function| (device, function))
     })
-    .filter(|&(device, function)| unsafe { read(0, device, function, VENDOR_DEVICE) } & 0xffff != 0xffff)
+    .filter(move |&(device, function)| unsafe { read(bus, device, function, VENDOR_DEVICE) } & 0xffff != 0xffff)
 }
 
 /// The memory ranges decoded on bus 0: every memory BAR below 4 GiB and every bridge memory window.
 fn busy_ranges() -> ArrayVec<(u64, u64), MAX_BUSY_RANGES> {
     let mut ranges = ArrayVec::new();
-    for (device, function) in functions() {
+    for (device, function) in functions(0) {
         let header_type = unsafe { read(0, device, function, HEADER_TYPE) } >> 16 & 0x7f;
         let bar_count = match header_type {
             0 => 6,
@@ -123,7 +125,7 @@ fn busy_ranges() -> ArrayVec<(u64, u64), MAX_BUSY_RANGES> {
         let mut index = 0;
         while index < bar_count {
             let offset = BAR0 + 4 * index;
-            match unsafe { memory_bar(device, function, offset) } {
+            match unsafe { memory_bar(0, device, function, offset) } {
                 Some(bar) => {
                     if bar.base != 0 && bar.base < FOUR_GIB {
                         ranges.push((bar.base, bar.size)).expect("too many PCI memory ranges");
@@ -193,14 +195,14 @@ fn mtrr_type(page: u64) -> Option<u64> {
 }
 
 /// Panics unless every page of `[base, base + pages * 4K)` is uncacheable under the MTRRs.
-fn check_uncacheable(bdf: (u8, u8), base: u64, pages: u64) {
+fn check_uncacheable(bdf: (u8, u8, u8), base: u64, pages: u64) {
     for page in 0..pages {
         let addr = base + page * PAGE_SIZE as u64;
         if let Some(ty) = mtrr_type(addr) {
             assert!(
                 ty == MTRR_TYPE_UC,
-                "MTRRs give BAR0 page {:#x} of 00:{:02x}.{} memory type {}, not UC: dom0's BAR0 window has no PCD bit",
-                addr, bdf.0, bdf.1, ty
+                "MTRRs give BAR0 page {:#x} of {:02x}:{:02x}.{} memory type {}, not UC: dom0's BAR0 window has no PCD bit",
+                addr, bdf.0, bdf.1, bdf.2, ty
             );
         }
     }
@@ -211,9 +213,17 @@ fn recorded_kind(vendor: u16, device: u16, class: u8, subclass: u8) -> bool {
     (class, subclass) == (0x01, 0x08) || (class, subclass) == (0x02, 0x00) || (vendor, device) == (EDU_VENDOR, EDU_DEVICE)
 }
 
-/// Scans bus 0 and records every NVMe, Ethernet and `edu` function with a memory BAR0: enables its memory
-/// decoding and bus mastering, moves a BAR0 at or above 4 GiB to a free range below, and checks that the MTRRs
-/// make BAR0 uncacheable. `e820` are the firmware memory map's ranges below 4 GiB, `mmconfig` the ECAM windows.
+/// Enables memory decoding and bus mastering of `(bus, device, function)`.
+unsafe fn enable(bus: u8, device: u8, function: u8) {
+    let command = read(bus, device, function, COMMAND) & 0xffff;
+    write(bus, device, function, COMMAND, command | COMMAND_MEMORY | COMMAND_BUS_MASTER);
+}
+
+/// Scans bus 0 and every bus reachable from it through PCI-to-PCI bridges, and records every NVMe, Ethernet and
+/// `edu` function with a memory BAR0: enables its memory decoding and bus mastering and those of the bridges above
+/// it, moves a BAR0 of a bus 0 function at or above 4 GiB to a free range below, and checks that the MTRRs make
+/// BAR0 uncacheable. A BAR0 behind a bridge must already lie below 4 GiB, since the bridge's window bounds it.
+/// `e820` are the firmware memory map's ranges below 4 GiB, `mmconfig` the ECAM windows.
 pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<PciDevice, MAX_PCI_DEVICES> {
     let def_type = unsafe { rdmsr(IA32_MTRR_DEF_TYPE) };
     log::info!(
@@ -224,54 +234,88 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
     );
     let mut busy = busy_ranges();
     let mut devices = ArrayVec::new();
-    for (dev, fun) in functions() {
-        let id = unsafe { read(0, dev, fun, VENDOR_DEVICE) };
-        let (vendor, device) = (id as u16, (id >> 16) as u16);
-        let class_rev = unsafe { read(0, dev, fun, CLASS_REVISION) };
-        let (class, subclass) = ((class_rev >> 24) as u8, (class_rev >> 16) as u8);
-        let header_type = unsafe { read(0, dev, fun, HEADER_TYPE) } >> 16 & 0x7f;
-        log::info!("PCI 00:{:02x}.{} {:04x}:{:04x} class {:02x}:{:02x}", dev, fun, vendor, device, class, subclass);
-        if header_type != 0 || !recorded_kind(vendor, device, class, subclass) {
-            continue;
-        }
-        let Some(mut bar) = (unsafe { memory_bar(dev, fun, BAR0) }) else { continue };
-        assert!(bar.size >= PAGE_SIZE as u64 || bar.base % PAGE_SIZE as u64 == 0, "BAR0 of 00:{:02x}.{} is not page aligned", dev, fun);
-        let size = bar.size.max(PAGE_SIZE as u64);
-        if bar.base == 0 || bar.base + size > FOUR_GIB {
-            assert!(bar.is_64 || bar.base == 0, "32-bit BAR0 above 4 GiB");
-            let base = free_bar_range(size, e820, mmconfig, &busy);
-            log::info!("PCI 00:{:02x}.{} BAR0 relocated {:#x} -> {:#x} ({:#x} bytes)", dev, fun, bar.base, base, size);
-            unsafe {
-                let command = read(0, dev, fun, COMMAND) & 0xffff;
-                write(0, dev, fun, COMMAND, command & !COMMAND_MEMORY);
-                let low = read(0, dev, fun, bar.offset) & 0xf;
-                write(0, dev, fun, bar.offset, base as u32 | low);
-                if bar.is_64 {
-                    write(0, dev, fun, bar.offset + 4, 0);
+    // The bridge above each bus reached so far, and the buses still to scan; each bus is queued at most once.
+    let mut parent: [Option<(u8, u8, u8)>; 256] = [None; 256];
+    let mut reached = [false; 256];
+    let mut pending: ArrayVec<u8, 256> = ArrayVec::new();
+    reached[0] = true;
+    pending.push(0).unwrap();
+    let mut next = 0;
+    while next < pending.len() {
+        let bus = pending[next];
+        next += 1;
+        for (dev, fun) in functions(bus) {
+            let id = unsafe { read(bus, dev, fun, VENDOR_DEVICE) };
+            let (vendor, device) = (id as u16, (id >> 16) as u16);
+            let class_rev = unsafe { read(bus, dev, fun, CLASS_REVISION) };
+            let (class, subclass) = ((class_rev >> 24) as u8, (class_rev >> 16) as u8);
+            let header_type = unsafe { read(bus, dev, fun, HEADER_TYPE) } >> 16 & 0x7f;
+            log::info!("PCI {:02x}:{:02x}.{} {:04x}:{:04x} class {:02x}:{:02x}", bus, dev, fun, vendor, device, class, subclass);
+            if header_type == 1 {
+                let secondary = (unsafe { read(bus, dev, fun, BRIDGE_BUSES) } >> 8) as u8;
+                if secondary != 0 && !reached[secondary as usize] {
+                    log::info!("PCI {:02x}:{:02x}.{} bridges to bus {:02x}", bus, dev, fun, secondary);
+                    reached[secondary as usize] = true;
+                    parent[secondary as usize] = Some((bus, dev, fun));
+                    pending.push(secondary).unwrap();
                 }
-                write(0, dev, fun, COMMAND, command);
+                continue;
             }
-            bar.base = base;
-            busy.push((base, size)).expect("too many PCI memory ranges");
-        }
-        let pages = size / PAGE_SIZE as u64;
-        check_uncacheable((dev, fun), bar.base, pages);
-        unsafe {
-            let command = read(0, dev, fun, COMMAND) & 0xffff;
-            write(0, dev, fun, COMMAND, command | COMMAND_MEMORY | COMMAND_BUS_MASTER);
-        }
-        let bdf = ((dev as u16) << 3) | fun as u16;
-        log::info!("PCI 00:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", dev, fun, bar.base, pages);
-        if devices.push(PciDevice { bdf, vendor, device, class, subclass, bar0_base: bar.base, bar0_pages: pages }).is_err() {
-            panic!("more than {} PCI functions with a device BAR0", MAX_PCI_DEVICES);
+            if header_type != 0 || !recorded_kind(vendor, device, class, subclass) {
+                continue;
+            }
+            if devices.is_full() {
+                log::warn!("PCI {:02x}:{:02x}.{} not recorded: more than {} PCI functions with a device BAR0", bus, dev, fun, MAX_PCI_DEVICES);
+                continue;
+            }
+            let Some(mut bar) = (unsafe { memory_bar(bus, dev, fun, BAR0) }) else { continue };
+            assert!(
+                bar.size >= PAGE_SIZE as u64 || bar.base % PAGE_SIZE as u64 == 0,
+                "BAR0 of {:02x}:{:02x}.{} is not page aligned", bus, dev, fun
+            );
+            let size = bar.size.max(PAGE_SIZE as u64);
+            if bar.base == 0 || bar.base + size > FOUR_GIB {
+                assert!(
+                    bus == 0,
+                    "BAR0 of {:02x}:{:02x}.{} behind a bridge is at {:#x}: the firmware must place it below 4 GiB (turn above-4G decoding off)",
+                    bus, dev, fun, bar.base
+                );
+                assert!(bar.is_64 || bar.base == 0, "32-bit BAR0 above 4 GiB");
+                let base = free_bar_range(size, e820, mmconfig, &busy);
+                log::info!("PCI 00:{:02x}.{} BAR0 relocated {:#x} -> {:#x} ({:#x} bytes)", dev, fun, bar.base, base, size);
+                unsafe {
+                    let command = read(0, dev, fun, COMMAND) & 0xffff;
+                    write(0, dev, fun, COMMAND, command & !COMMAND_MEMORY);
+                    let low = read(0, dev, fun, bar.offset) & 0xf;
+                    write(0, dev, fun, bar.offset, base as u32 | low);
+                    if bar.is_64 {
+                        write(0, dev, fun, bar.offset + 4, 0);
+                    }
+                    write(0, dev, fun, COMMAND, command);
+                }
+                bar.base = base;
+                busy.push((base, size)).expect("too many PCI memory ranges");
+            }
+            let pages = size / PAGE_SIZE as u64;
+            check_uncacheable((bus, dev, fun), bar.base, pages);
+            unsafe { enable(bus, dev, fun) };
+            let mut above = parent[bus as usize];
+            while let Some((b, d, f)) = above {
+                unsafe { enable(b, d, f) };
+                above = parent[b as usize];
+            }
+            let bdf = ((bus as u16) << 8) | ((dev as u16) << 3) | fun as u16;
+            log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", bus, dev, fun, bar.base, pages);
+            devices.push(PciDevice { bdf, vendor, device, class, subclass, bar0_base: bar.base, bar0_pages: pages }).unwrap();
         }
     }
+    devices.sort_unstable_by_key(|d| d.bdf);
     devices
 }
 
 /// The recorded `edu` device, if any. Test-only: the kernel uses it to issue DMA through the IOMMU.
 pub fn dma_test_device(devices: &[PciDevice]) -> Option<DmaTestDevice> {
     let edu = devices.iter().find(|d| (d.vendor, d.device) == (EDU_VENDOR, EDU_DEVICE))?;
-    log::info!("DMA test device 00:{:02x}.{} BAR0 {:#x}", edu.bdf >> 3, edu.bdf & 7, edu.bar0_base);
+    log::info!("DMA test device {:02x}:{:02x}.{} BAR0 {:#x}", edu.bdf >> 8, (edu.bdf >> 3) & 0x1f, edu.bdf & 7, edu.bar0_base);
     Some(DmaTestDevice { bdf: edu.bdf, mmio: edu.bar0_base })
 }

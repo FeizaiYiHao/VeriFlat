@@ -12,6 +12,7 @@ use crate::memory::MemoryRange;
 use super::StartInfo;
 
 const TAG_TYPE_NULL: u32 = 0;
+const TAG_TYPE_COMMAND_LINE: u32 = 1;
 const TAG_TYPE_MODULE: u32 = 3;
 const TAG_TYPE_MEMORY_INFO: u32 = 4;
 const TAG_TYPE_MEMORY_MAP: u32 = 6;
@@ -21,6 +22,7 @@ const TAG_ALIGNMENT: usize = 8;
 pub struct Multiboot2StartInfo<'a> {
     header: *const Header,
     memory_map: Option<Pin<&'a MemoryMap>>,
+    command_line: &'a str,
 }
 
 #[derive(Debug)]
@@ -40,6 +42,8 @@ struct TagHeader {
 #[derive(Debug)]
 #[allow(dead_code)]
 enum Tag<'a> {
+    /// The boot command line of the loader (the `multiboot2` line after the file name).
+    CommandLine(&'a str),
     MemoryInfo(Pin<&'a MemoryInfo>),
     MemoryMap(Pin<&'a MemoryMap>),
     Module(Pin<&'a Module>),
@@ -118,6 +122,12 @@ impl TagHeader {
         unsafe {
             match self.tag_type {
                 TAG_TYPE_NULL => None,
+                TAG_TYPE_COMMAND_LINE => {
+                    // A zero-terminated UTF-8 string follows the tag header.
+                    let bytes = core::slice::from_raw_parts(p.add(mem::size_of::<TagHeader>()), self.size as usize - mem::size_of::<TagHeader>());
+                    let len = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+                    Some(Tag::CommandLine(core::str::from_utf8(&bytes[..len]).unwrap_or("")))
+                }
                 TAG_TYPE_MEMORY_INFO => Some(Tag::MemoryInfo(Pin::new(&*(p as *const _)))),
                 TAG_TYPE_MODULE => Some(Tag::Module(Pin::new(&*(p as *const _)))),
                 TAG_TYPE_MEMORY_MAP => Some(Tag::MemoryMap(Pin::new(&*(p as *const _)))),
@@ -204,14 +214,17 @@ impl Multiboot2StartInfo<'static> {
         let mut s = Self {
             header: start_info_ptr as *const Header,
             memory_map: None,
+            command_line: "",
         };
 
         let header = s.header();
         log::info!("{:?}", header);
 
         for tag in header.iter_tags() {
-            if let Tag::MemoryMap(map) = tag {
-                s.memory_map = Some(map);
+            match tag {
+                Tag::MemoryMap(map) => s.memory_map = Some(map),
+                Tag::CommandLine(line) => s.command_line = line,
+                _ => {}
             }
         }
 
@@ -239,6 +252,10 @@ impl<'a> StartInfo for Multiboot2StartInfo<'a> {
         };
 
         it.map(|entry| (MemoryRange::new(entry.base_addr, entry.length), Some(entry.entry_type)))
+    }
+
+    fn command_line(&self) -> &str {
+        self.command_line
     }
 
     fn iter_modlist(&self) -> impl Iterator<Item = MemoryRange> + '_ {

@@ -19,7 +19,7 @@ use super::device::{num_lbas, NvmeDevice};
 use super::nvme_test::{report, run_blocktest_raw_with_delay, Samples};
 use super::pci::{find_nvme, NvmeFunction, PciBarAddr};
 use super::ring_buffer::GenericRingBuffer;
-use super::time::{rdtsc, tsc_hz};
+use super::time::{rdtsc, tsc_hz, tsc_rate};
 use super::{BlockOp, BlockReq};
 use crate::{check, current_cpu, entry, expect_error, fund, quiet, stack_top, wait_for, wait_yield};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -84,12 +84,17 @@ fn ring() -> &'static mut Ring {
     unsafe { &mut *(RING_VA as *mut Ring) }
 }
 
-/// Runs the three configurations, or logs that it skips them when bus 0 has no NVMe function.
+/// Runs the three configurations, or logs that it skips them when the loader recorded no NVMe function.
 pub fn run(image: usize, pages: usize) {
     let Some(f) = find_nvme() else {
-        log::info!("nvme bench skipped: no NVMe function on bus 0");
+        log::info!("nvme bench skipped: no NVMe function recorded");
         return;
     };
+    let Some((hz, source)) = tsc_rate() else {
+        log::error!("nvme bench: no CPUID source gives the TSC rate; build dom0 with VERIFLAT_TSC_MHZ set to it");
+        unsafe { sys_debug_exit(1) };
+    };
+    log::info!("nvme: TSC {} MHz from {}", hz / 1_000_000, source);
     log::info!(
         "nvme: {:02x}:{:02x}.{} vendor {:04x} device {:04x}, BAR0 {:#x} ({} pages) at {:#x}, {} s per run, TSC {} MHz",
         f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys, f.bar_pages, f.bar_va(), NVME_BENCH_SECS, tsc_hz() / 1_000_000

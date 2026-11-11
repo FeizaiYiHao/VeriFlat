@@ -231,8 +231,9 @@ pub fn get_cpu_id() -> usize {
 /// The current CPU ID from `IA32_TSC_AUX`, without `gs`. For code that can run while the GS base is
 /// the user's: the NMI handler and faults in the return path after `swapgs`.
 pub fn cpu_id_without_gs() -> usize {
-    let id: u64;
-    unsafe { asm!("rdpid {}", out(reg) id, options(nomem, nostack, preserves_flags)) };
+    // `rdtscp` also loads the TSC into edx:eax; it is used instead of `rdpid`, which Haswell lacks.
+    let id: u32;
+    unsafe { asm!("rdtscp", out("ecx") id, out("eax") _, out("edx") _, options(nomem, nostack, preserves_flags)) };
     id as usize
 }
 
@@ -387,6 +388,6 @@ pub unsafe fn init_cpu(cpu_id: usize) {
     // `swapgs` at every ring 3 crossing exchanges them, so user loads of `gs` cannot reach the kernel.
     msr::wrmsr(msr::IA32_GS_BASE, address as u64);
     msr::wrmsr(msr::IA32_KERNEL_GSBASE, 0);
-    assert!(core::arch::x86_64::__cpuid_count(7, 0).ecx & (1 << 22) != 0, "rdpid is required");
+    assert!(core::arch::x86_64::__cpuid(0x8000_0001).edx & (1 << 27) != 0, "rdtscp is required");
     msr::wrmsr(IA32_TSC_AUX, cpu_id as u64);
 }

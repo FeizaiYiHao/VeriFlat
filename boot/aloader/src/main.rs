@@ -124,6 +124,7 @@ pub extern "C" fn main() -> ! {
     }
 
     let mut boot_info = BootInfo::empty(); // stays on the loader stack
+    boot_info.command_line = boot::get_kernel_command_line();
     boot_info.pcide = cpu_has_pcid();
 
     if boot_info.pcide {
@@ -242,8 +243,8 @@ pub extern "C" fn main() -> ! {
             }
         }
         log::info!(
-            "dom0 BAR0 window: 00:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} pages)",
-            device.bdf >> 3, device.bdf & 7, PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + pages * PAGE_SIZE as u64, base, pages
+            "dom0 BAR0 window: {:02x}:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} pages)",
+            device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + pages * PAGE_SIZE as u64, base, pages
         );
     }
 

@@ -23,7 +23,7 @@ impl PciBarAddr {
     }
 }
 
-/// The first NVMe function of bus 0.
+/// An NVMe function the loader recorded.
 #[derive(Clone, Copy, Debug)]
 pub struct NvmeFunction {
     pub bus: usize,
@@ -48,16 +48,19 @@ impl NvmeFunction {
     }
 }
 
+/// The recorded NVMe function with the lowest B/D/F, on any bus.
 pub fn find_nvme() -> Option<NvmeFunction> {
-    for dev in 0..32 {
-        for fun in 0..8 {
-            let (rax, base, pages) = unsafe { sys_pci_info(0, dev, fun) };
-            if rax < 0 {
-                continue;
-            }
-            let id = rax as usize;
-            if (id >> 48) & 0xff == CLASS_STORAGE && (id >> 40) & 0xff == SUBCLASS_NVME {
-                return Some(NvmeFunction { bus: 0, dev, fun, vendor: (id >> 16) & 0xffff, device: id & 0xffff, bar_phys: base, bar_pages: pages });
+    for bus in 0..256 {
+        for dev in 0..32 {
+            for fun in 0..8 {
+                let (rax, base, pages) = unsafe { sys_pci_info(bus, dev, fun) };
+                if rax < 0 {
+                    continue;
+                }
+                let id = rax as usize;
+                if (id >> 48) & 0xff == CLASS_STORAGE && (id >> 40) & 0xff == SUBCLASS_NVME {
+                    return Some(NvmeFunction { bus, dev, fun, vendor: (id >> 16) & 0xffff, device: id & 0xffff, bar_phys: base, bar_pages: pages });
+                }
             }
         }
     }

@@ -171,8 +171,8 @@ syscall 49 with InvalidSyscall or when the root container has no 1G quota.
 
 The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and benchmark
 (`boot/dom0/src/nvme/`, `boot/dom0/src/slab_alloc.rs`) after the kill tests, against the emulated
-`-device nvme` that `boot/run.sh` attaches (64 MiB raw image). It finds the controller with `pci_info`
-(class 01, subclass 08 on bus 0), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
+`-device nvme` that `boot/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
+with `pci_info` (class 01, subclass 08, on any bus the loader reached through PCI-to-PCI bridges), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
 maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
 function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O (8 LBAs per request) for 2 s;
 `VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
@@ -186,7 +186,9 @@ Configurations, in this order, each with read and write at submission batch 1 an
 | `nvme twocore <op> batch=b` | the same driver process polling the ring on CPU 1 while dom0 spins on CPU 0 | cycles between two client rounds that moved a request |
 
 Each line reads `nvme <config> <read|write> batch=<b>: <iops> IOPS, <n> completed in <ms> ms, <sample> median
-<c> min <c> max <c> TSC cycles over <rounds> rounds`; IOPS use the TSC rate from CPUID 16H. As in
+<c> min <c> max <c> TSC cycles over <rounds> rounds`; IOPS use the TSC rate that `nvme: TSC <MHz> MHz from
+<source>` names: `VERIFLAT_TSC_MHZ` of the dom0 build if set, else CPUID 16H, else the hypervisor leaf 4000_0010H,
+else the "@ x.xxGHz" end of the CPUID brand string; with none of these the benchmark fails. As in
 Atmosphere, the batch is how many requests a round submits, not a queue depth: the linked client allocates a
 new batch whenever no request waits, and the ring clients push whenever a ring buffer is free, so up to 1023
 (linked) or 1024 (ring) requests are in flight at batch 1 too; only `ipc` at batch 1 stays near one request
@@ -207,3 +209,32 @@ caps the rate near 70K IOPS), KVM on the i9-13900HX, 2 s runs, `boot/run.sh` (SM
 These numbers measure QEMU's device model more than the driver or the kernel; they are not comparable with
 the thesis's real-device figures (Atmosphere reaches the SSD's maximum read rate and 232K IOPS on
 sequential writes at batch 32).
+
+### Real hardware
+
+Not yet tried on a real machine, and the GRUB `multiboot2` path with its `serial=` option has not been booted even
+under QEMU (`boot/run.sh` boots the loader directly). The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no
+CPUID leaf 16H; the NVMe SSD sits behind a PCIe root port). The machine needs VT-d on, and the firmware must place
+the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-bit BAR0 only on bus 0, and behind
+a bridge it stops with a message saying so.
+
+1. Build with 30 s runs: `cd boot && VERIFLAT_NVME_SECS=30 cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0`.
+   The E5-2630 v3 has no leaf 16H, so outside a hypervisor dom0 takes the TSC rate from the brand string's
+   "@ 2.40GHz"; `VERIFLAT_TSC_MHZ=<MHz>` in the same build overrides it. Concatenate the kernel and dom0 as
+   `boot/run.sh` does, `cat kernel dom0 > veriflat-jumbo` in `boot/target/x86_64-unknown-none/release/`, and copy
+   `aloader` and `veriflat-jumbo` to `/boot`.
+2. Add a GRUB entry, with `serial=com2` on the `multiboot2` line if the console is COM2:
+
+   ```
+   menuentry "VeriFlat" {
+       multiboot2 /boot/aloader
+       module2 /boot/veriflat-jumbo
+   }
+   ```
+
+3. Read the result lines from the serial console; the loader and the kernel use COM1 unless the boot command line
+   has `serial=com2` (or `com3`, `com4`). At the end dom0 writes its status to QEMU's exit port, which does nothing
+   on a real machine, so the machine then stays up until it is reset.
+
+Warning: the benchmark writes the SSD from LBA 0 on. It destroys whatever the SSD holds, partition table included,
+so never run it on a machine whose NVMe SSD has data.

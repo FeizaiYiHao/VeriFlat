@@ -10,10 +10,13 @@
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
 # 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable
 # except the BAR0 pages of the recorded PCI functions.
-# Devices: `intel-iommu` (VT-d, required), `edu` (DMA self-test), and an NVMe controller
-# (`-drive file=$OUT/nvme.img,if=none,id=nvm,format=raw -device nvme,drive=nvm,serial=veriflat0`) backed by a
-# 64 MiB sparse raw image created once in the build output directory; the loader maps the BAR0 of the NVMe and edu
-# functions into dom0 at 0xd0_0000_0000 + physical address.
+# Devices: `intel-iommu` (VT-d, required), `edu` (DMA self-test), and an NVMe controller behind the PCIe root port
+# rp1 (`-device pcie-root-port,id=rp1,chassis=1 -drive file=$OUT/nvme.img,if=none,id=nvm,format=raw
+# -device nvme,drive=nvm,serial=veriflat0,bus=rp1`), as an SSD sits on a real server, so every boot takes the loader
+# across a PCI-to-PCI bridge; it is backed by a 64 MiB sparse raw image created once in the build output directory.
+# The loader maps the BAR0 of the NVMe and edu functions into dom0 at 0xd0_0000_0000 + physical address.
+# `+invtsc` makes the TSC rate known to QEMU, which then reports it in the hypervisor leaf 4000_0010H that the NVMe
+# benchmark reads when the host CPU has no CPUID leaf 16H.
 # VERIFLAT_PARALLEL picks the parallel timings of a NO_TIMER dom0 (see bench/README.md).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -32,7 +35,7 @@ trap 'rm -f "$JUMBO"' EXIT
 cat "$OUT/kernel" "$OUT/dom0" > "$JUMBO"
 
 if [ -w /dev/kvm ]; then
-    ACCEL=(-enable-kvm -cpu host -machine q35,kernel_irqchip=split)
+    ACCEL=(-enable-kvm -cpu host,+invtsc -machine q35,kernel_irqchip=split)
 else
     echo "warning: /dev/kvm not writable, falling back to TCG" >&2
     ACCEL=(-cpu max,+pcid -machine q35)
@@ -43,5 +46,6 @@ qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 2304 \
     -nographic -serial mon:stdio \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -device intel-iommu,aw-bits=48,intremap=on -device edu,dma_mask=0xffffffffffff -nic none \
-    -drive file="$OUT/nvme.img",if=none,id=nvm,format=raw -device nvme,drive=nvm,serial=veriflat0 \
+    -device pcie-root-port,id=rp1,chassis=1 \
+    -drive file="$OUT/nvme.img",if=none,id=nvm,format=raw -device nvme,drive=nvm,serial=veriflat0,bus=rp1 \
     -no-reboot "$@"

@@ -38,7 +38,7 @@ pub const NR_DEBUG_DMA_DEVICE: usize = 28;
 pub const NR_DEBUG_DMA_PROBE: usize = 29;
 /// Returns 0 at once; with a nonzero argument the return goes through `iretq` instead of `sysretq`.
 pub const NR_DEBUG_NULL: usize = 36;
-/// Reads the loader's PCI record of bus 0 (see `sys_pci_info`).
+/// Reads the loader's record of a PCI function (see `sys_pci_info`).
 pub const NR_PCI_INFO: usize = 55;
 /// dom0 sees a recorded BAR0 page at physical address `p` at virtual address `PCI_BAR_WINDOW_BASE + p`.
 pub const PCI_BAR_WINDOW_BASE: usize = 0xd0_0000_0000;
