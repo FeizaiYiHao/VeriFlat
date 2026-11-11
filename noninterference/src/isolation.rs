@@ -218,4 +218,72 @@ pub open spec fn isolated(u: KernelU, a: RwLockContainerPtr, b: RwLockContainerP
     &&& inflight_iso(u, a, b)
     &&& inflight_iso(u, b, a)
 }
+
+/// A step that leaves the views of `a` and `b` unchanged preserves the isolation between them.
+pub proof fn domain_views_unchanged_implies_isolated_preserved(old_u: KernelU, new_u: KernelU, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        kernel_u_ownership_wf(new_u),
+        isolated(old_u, a, b),
+        domain_view(new_u, a) == domain_view(old_u, a),
+        domain_view(new_u, b) == domain_view(old_u, b),
+    ensures isolated(new_u, a, b),
+{
+    assert(domain_view(old_u, a).containers.dom().contains(a) && domain_view(old_u, b).containers.dom().contains(b));
+    assert(domain_view(new_u, a).containers[a] == new_u.container_map[a] && domain_view(old_u, a).containers[a] == old_u.container_map[a]);
+    assert(domain_view(new_u, b).containers[b] == new_u.container_map[b] && domain_view(old_u, b).containers[b] == old_u.container_map[b]);
+    assert forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map.dom().contains(p) && (in_domain(new_u, a, new_u.process_map[p].owning_container) || in_domain(new_u, b, new_u.process_map[p].owning_container))
+        implies old_u.process_map.dom().contains(p) && old_u.process_map[p] == new_u.process_map[p] by {
+        if in_domain(new_u, a, new_u.process_map[p].owning_container) {
+            assert(domain_view(new_u, a).processes.dom().contains(p));
+            assert(domain_view(new_u, a).processes[p] == new_u.process_map[p] && domain_view(old_u, a).processes[p] == old_u.process_map[p]);
+        } else {
+            assert(domain_view(new_u, b).processes.dom().contains(p));
+            assert(domain_view(new_u, b).processes[p] == new_u.process_map[p] && domain_view(old_u, b).processes[p] == old_u.process_map[p]);
+        }
+    };
+    assert forall|p: RwLockProcessPtr| #![trigger old_u.process_map[p]] old_u.process_map.dom().contains(p) && (in_domain(old_u, a, old_u.process_map[p].owning_container) || in_domain(old_u, b, old_u.process_map[p].owning_container))
+        implies new_u.process_map.dom().contains(p) && new_u.process_map[p] == old_u.process_map[p] by {
+        if in_domain(old_u, a, old_u.process_map[p].owning_container) { assert(domain_view(old_u, a).processes.dom().contains(p)); } else { assert(domain_view(old_u, b).processes.dom().contains(p)); }
+    };
+    assert forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map.dom().contains(t) && (in_domain(new_u, a, new_u.thread_map[t].owning_container) || in_domain(new_u, b, new_u.thread_map[t].owning_container))
+        implies old_u.thread_map.dom().contains(t) && old_u.thread_map[t] == new_u.thread_map[t] by {
+        if in_domain(new_u, a, new_u.thread_map[t].owning_container) {
+            assert(domain_view(new_u, a).threads.dom().contains(t));
+            assert(domain_view(new_u, a).threads[t] == new_u.thread_map[t] && domain_view(old_u, a).threads[t] == old_u.thread_map[t]);
+        } else {
+            assert(domain_view(new_u, b).threads.dom().contains(t));
+            assert(domain_view(new_u, b).threads[t] == new_u.thread_map[t] && domain_view(old_u, b).threads[t] == old_u.thread_map[t]);
+        }
+    };
+    assert(memory_view(new_u, a) =~~= memory_view(old_u, a) && memory_view(new_u, b) =~~= memory_view(old_u, b));
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+    assert forall|e: RwLockEndpointPtr, t1: RwLockThreadPtr, i1: EndpointIdx, t2: RwLockThreadPtr, i2: EndpointIdx|
+        #![trigger new_u.endpoint_map[e].owning_threads.contains((t1, i1)), new_u.endpoint_map[e].owning_threads.contains((t2, i2))]
+        new_u.endpoint_map.dom().contains(e) && new_u.endpoint_map[e].owning_threads.contains((t1, i1)) && new_u.endpoint_map[e].owning_threads.contains((t2, i2))
+        && in_domain(new_u, a, new_u.thread_map[t1].owning_container) implies !in_domain(new_u, b, new_u.thread_map[t2].owning_container) by {
+        reveal(kernel_u_endpoint_ownership_wf);
+    };
+    assert forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i))]
+        new_u.endpoint_map.dom().contains(e) && new_u.endpoint_map[e].owning_threads.contains((t, i))
+        implies (in_domain(new_u, a, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, b, new_u.endpoint_map[e].owning_container))
+            && (in_domain(new_u, b, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, a, new_u.endpoint_map[e].owning_container)) by {
+        reveal(kernel_u_endpoint_ownership_wf);
+        if in_domain(new_u, a, new_u.thread_map[t].owning_container) && in_domain(new_u, b, new_u.endpoint_map[e].owning_container) {
+            assert(domain_view(new_u, a).held_endpoints[t][i as int] == domain_view(old_u, a).held_endpoints[t][i as int]);
+        }
+        if in_domain(new_u, b, new_u.thread_map[t].owning_container) && in_domain(new_u, a, new_u.endpoint_map[e].owning_container) {
+            assert(domain_view(new_u, b).held_endpoints[t][i as int] == domain_view(old_u, b).held_endpoints[t][i as int]);
+        }
+    };
+    assert forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx, j: int| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i)), new_u.endpoint_map[e].queue[j]]
+        new_u.endpoint_map.dom().contains(e) && new_u.endpoint_map[e].owning_threads.contains((t, i)) && 0 <= j < new_u.endpoint_map[e].queue.len()
+        implies (in_domain(new_u, a, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, b, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container))
+            && (in_domain(new_u, b, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, a, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container)) by {
+        reveal(kernel_u_endpoint_ownership_wf);
+        if in_domain(new_u, a, new_u.thread_map[t].owning_container) { assert(domain_view(new_u, a).held_endpoints[t][i as int] == domain_view(old_u, a).held_endpoints[t][i as int]); }
+        if in_domain(new_u, b, new_u.thread_map[t].owning_container) { assert(domain_view(new_u, b).held_endpoints[t][i as int] == domain_view(old_u, b).held_endpoints[t][i as int]); }
+    };
+}
+
 } // verus!

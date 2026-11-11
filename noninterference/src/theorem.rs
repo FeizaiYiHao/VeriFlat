@@ -555,4 +555,149 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
         if x != a { isolated_symmetric(new_u, b, a); }
     }
 }
+
+/// A step of cpu `cpu_id` of domain `c`, isolated from both `a` and `b`, whose peers outside `c` are honest toward `a` and
+/// toward `b` (the honest-peer conditions of `trace_ni_at`), keeps `a` and `b` isolated from each other and from `c` and leaves
+/// the views of `a` and `b` unchanged.
+pub proof fn third_domain_step_implies_isolated_preserved(old_u: KernelU, new_u: KernelU, label: StepLabel, cpu_id: CpuId, c: RwLockContainerPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        kernel_u_ownership_wf(new_u),
+        isolated(old_u, c, a),
+        isolated(old_u, c, b),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, c),
+        labeled_step(label, old_u, new_u, cpu_id),
+        ({
+            let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
+            let peer = progress->IpcEndpoint_peer;
+            let payload = old_u.thread_map[peer].endpoint_descriptors[old_u.thread_map[peer].ipc_payload->Endpoint_endpoint_index as int]->Some_0;
+            let source = old_u.thread_map[share_4k_objects(old_u, cpu_id).source_thread].owning_proc;
+            &&& label is IpcEndpointFinish && !progress->IpcEndpoint_caller_sends && !in_domain(old_u, c, old_u.thread_map[peer].owning_container) ==> {
+                &&& forall|t: RwLockThreadPtr, j: EndpointIdx| #![trigger old_u.endpoint_map[payload].owning_threads.contains((t, j))]
+                    old_u.endpoint_map[payload].owning_threads.contains((t, j)) ==> !in_domain(old_u, a, old_u.thread_map[t].owning_container)
+                &&& forall|j: int| #![trigger old_u.endpoint_map[payload].queue[j]]
+                    0 <= j < old_u.endpoint_map[payload].queue.len() ==> !in_domain(old_u, a, old_u.thread_map[old_u.endpoint_map[payload].queue[j]].owning_container)
+            }
+            &&& label is Share4kLeaf && !in_domain(old_u, c, old_u.process_map[source].owning_container) ==> {
+                let shared = old_u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr;
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_4k[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, a, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
+                        ==> old_u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != shared
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].iommu_table->Some_0.mapping_4k[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, a, old_u.process_map[q].owning_container) && old_u.process_map[q].iommu_table is Some && old_u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(v)
+                        ==> old_u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_2m[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, a, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(v)
+                        ==> !(old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr + 0x200000)
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_1g[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, a, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_1g.dom().contains(v)
+                        ==> !(old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr + 0x4000_0000)
+            }
+            &&& label is IpcEndpointFinish && !progress->IpcEndpoint_caller_sends && !in_domain(old_u, c, old_u.thread_map[peer].owning_container) ==> {
+                &&& forall|t: RwLockThreadPtr, j: EndpointIdx| #![trigger old_u.endpoint_map[payload].owning_threads.contains((t, j))]
+                    old_u.endpoint_map[payload].owning_threads.contains((t, j)) ==> !in_domain(old_u, b, old_u.thread_map[t].owning_container)
+                &&& forall|j: int| #![trigger old_u.endpoint_map[payload].queue[j]]
+                    0 <= j < old_u.endpoint_map[payload].queue.len() ==> !in_domain(old_u, b, old_u.thread_map[old_u.endpoint_map[payload].queue[j]].owning_container)
+            }
+            &&& label is Share4kLeaf && !in_domain(old_u, c, old_u.process_map[source].owning_container) ==> {
+                let shared = old_u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr;
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_4k[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
+                        ==> old_u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != shared
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].iommu_table->Some_0.mapping_4k[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].iommu_table is Some && old_u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(v)
+                        ==> old_u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_2m[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(v)
+                        ==> !(old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_2m[v].addr + 0x200000)
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_1g[v]]
+                    old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_1g.dom().contains(v)
+                        ==> !(old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr <= shared < old_u.process_map[q].pagetable->Some_0.mapping_1g[v].addr + 0x4000_0000)
+            }
+        }),
+    ensures
+        isolated(new_u, a, b),
+        isolated(new_u, c, a),
+        isolated(new_u, c, b),
+        domain_view(new_u, a) =~~= domain_view(old_u, a),
+        domain_view(new_u, b) =~~= domain_view(old_u, b),
+{
+    let (us, labels, cpus, steppers) = (seq![old_u, new_u], seq![label], seq![cpu_id], seq![c]);
+    trace_ni_at(us, labels, cpus, steppers, c, a, 0, 1);
+    trace_ni_at(us, labels, cpus, steppers, c, b, 0, 1);
+    domain_views_unchanged_implies_isolated_preserved(old_u, new_u, a, b);
+}
+
+/// Unwinding over a trace of any set `domains` of pairwise isolated domains. `us[i + 1]` follows `us[i]` by the step `labels[i]`
+/// of cpu `cpus[i]` of domain `steppers[i]` in `domains`, and every peer outside the stepping domain is honest toward every other
+/// domain of the set (the honest-peer conditions of `trace_ni_at`). Then the domains stay pairwise isolated in `us[n]`, and steps
+/// of domains other than `b` from `us[m]` to `us[n]` leave the view of `b` unchanged.
+pub proof fn pairwise_isolated_domains_trace_implies_isolated_and_view_unchanged(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<CpuId>, steppers: Seq<RwLockContainerPtr>,
+    domains: Set<RwLockContainerPtr>, b: RwLockContainerPtr, m: int, n: int)
+    requires
+        us.len() == labels.len() + 1,
+        cpus.len() == labels.len(),
+        steppers.len() == labels.len(),
+        0 <= n < us.len(),
+        domains.contains(b),
+        forall|x: RwLockContainerPtr, y: RwLockContainerPtr| #![trigger isolated(us[0], x, y)] domains.contains(x) && domains.contains(y) && x != y ==> isolated(us[0], x, y),
+        forall|i: int| #![trigger labels[i]] 0 <= i < labels.len() ==> {
+            let u = us[i];
+            let x = steppers[i];
+            let progress = u.thread_map[u.cpu_array[cpus[i] as int].current_thread->Some_0].syscall_progress->Some_0;
+            let peer = progress->IpcEndpoint_peer;
+            let payload = u.thread_map[peer].endpoint_descriptors[u.thread_map[peer].ipc_payload->Endpoint_endpoint_index as int]->Some_0;
+            let source = u.thread_map[share_4k_objects(u, cpus[i]).source_thread].owning_proc;
+            &&& domains.contains(x)
+            &&& kernel_u_ownership_wf(u)
+            &&& kernel_u_ownership_wf(us[i + 1])
+            &&& steps_in_domain(u, cpus[i], x)
+            &&& labeled_step(labels[i], u, us[i + 1], cpus[i])
+            &&& forall|y: RwLockContainerPtr| #![trigger domains.contains(y)] domains.contains(y) && y != x ==> {
+                &&& labels[i] is IpcEndpointFinish && !progress->IpcEndpoint_caller_sends && !in_domain(u, x, u.thread_map[peer].owning_container) ==> {
+                    &&& forall|t: RwLockThreadPtr, j: EndpointIdx| #![trigger u.endpoint_map[payload].owning_threads.contains((t, j))]
+                        u.endpoint_map[payload].owning_threads.contains((t, j)) ==> !in_domain(u, y, u.thread_map[t].owning_container)
+                    &&& forall|j: int| #![trigger u.endpoint_map[payload].queue[j]]
+                        0 <= j < u.endpoint_map[payload].queue.len() ==> !in_domain(u, y, u.thread_map[u.endpoint_map[payload].queue[j]].owning_container)
+                }
+                &&& labels[i] is Share4kLeaf && !in_domain(u, x, u.process_map[source].owning_container) ==> {
+                    let shared = u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr;
+                    &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_4k[v]]
+                        u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
+                            ==> u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != shared
+                    &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].iommu_table->Some_0.mapping_4k[v]]
+                        u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].iommu_table is Some && u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(v)
+                            ==> u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
+                    &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_2m[v]]
+                        u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_2m.dom().contains(v)
+                            ==> !(u.process_map[q].pagetable->Some_0.mapping_2m[v].addr <= shared < u.process_map[q].pagetable->Some_0.mapping_2m[v].addr + 0x200000)
+                    &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_1g[v]]
+                        u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_1g.dom().contains(v)
+                            ==> !(u.process_map[q].pagetable->Some_0.mapping_1g[v].addr <= shared < u.process_map[q].pagetable->Some_0.mapping_1g[v].addr + 0x4000_0000)
+                }
+            }
+        },
+    ensures
+        forall|x: RwLockContainerPtr, y: RwLockContainerPtr| #![trigger isolated(us[n], x, y)] domains.contains(x) && domains.contains(y) && x != y ==> isolated(us[n], x, y),
+        0 <= m <= n && (forall|i: int| #![trigger steppers[i]] m <= i < n ==> steppers[i] != b) ==> domain_view(us[n], b) =~~= domain_view(us[m], b),
+    decreases n,
+{
+    if n > 0 {
+        let i = n - 1;
+        let (old_u, new_u, x) = (us[i], us[n], steppers[i]);
+        let (us1, labels1, cpus1, steppers1) = (seq![old_u, new_u], seq![labels[i]], seq![cpus[i]], seq![x]);
+        pairwise_isolated_domains_trace_implies_isolated_and_view_unchanged(us, labels, cpus, steppers, domains, b, m, i);
+        assert forall|y: RwLockContainerPtr, z: RwLockContainerPtr| #![trigger isolated(new_u, y, z)] domains.contains(y) && domains.contains(z) && y != z implies isolated(new_u, y, z) by {
+            if y == x {
+                trace_ni_at(us1, labels1, cpus1, steppers1, x, z, 0, 1);
+            } else if z == x {
+                trace_ni_at(us1, labels1, cpus1, steppers1, x, y, 0, 1); isolated_symmetric(new_u, x, y);
+            } else {
+                third_domain_step_implies_isolated_preserved(old_u, new_u, labels[i], cpus[i], x, y, z);
+            }
+        };
+        if m < n && (forall|j: int| #![trigger steppers[j]] m <= j < n ==> steppers[j] != b) { trace_ni_at(us1, labels1, cpus1, steppers1, x, b, 0, 1); }
+    }
+}
 } // verus!

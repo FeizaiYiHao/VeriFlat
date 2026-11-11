@@ -1,11 +1,15 @@
-//! Noninterference between two isolated container subtrees A and B over the kernel's user-visible
-//! step specifications.
+//! Noninterference between pairwise isolated container subtrees over the kernel's user-visible step
+//! specifications.
 //!
 //! Each syscall is a sequence of `KernelStep`s that may interleave with steps of other cpus, so
 //! unwinding is per step: for every step specification, (1) a step taken by a thread of A leaves
 //! B's `domain_view` unchanged (local respect), and (2) a step taken by a thread of A or B preserves
-//! `isolated`. `trace_ni_at` composes them over a trace of steps of A and B; steps of cpus outside
-//! both domains are not covered.
+//! `isolated`. `trace_ni_at` composes them over a trace of steps of two domains A and B. Because
+//! `isolated` depends only on the two domain views in well-formed states, a step of a third isolated domain keeps A and B
+//! isolated (`third_domain_step_implies_isolated_preserved`), and
+//! `pairwise_isolated_domains_trace_implies_isolated_and_view_unchanged` covers traces of any set of
+//! pairwise isolated domains. Steps of cpus whose domain is not in the pairwise isolated set, such as
+//! an ancestor container or a server sharing endpoints with several domains, are not covered.
 //!
 //! Output consistency: the kernel pins each syscall's result to the user state at entry
 //! (`*_syscall_result`, and `ipc_entry_result` and `ipc_reply_entry_result` for the IPC rejections; mmap
