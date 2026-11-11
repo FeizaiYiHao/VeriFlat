@@ -194,17 +194,18 @@ new batch whenever no request waits, and the ring clients push whenever a ring b
 (linked) or 1024 (ring) requests are in flight at batch 1 too; only `ipc` at batch 1 stays near one request
 per call. The child is killed after each ring configuration, which returns the function to dom0.
 
-Measured 2026-11-10, QEMU-emulated NVMe (not a real device: every doorbell is a VM exit into QEMU, which
-caps the rate near 70K IOPS), KVM on the i9-13900HX, 2 s runs, `boot/run.sh` (SMP 4) / `SMP=16 boot/run.sh`:
+Measured 2026-11-11, QEMU-emulated NVMe (not a real device: every doorbell is a VM exit into QEMU, which
+caps the rate near 75K IOPS), KVM on the i9-13900HX, TSC 2419 MHz from the hypervisor leaf, 2 s runs, `boot/run.sh`
+(SMP 4) / `SMP=16 boot/run.sh`:
 
 | configuration | read b=1 | read b=32 | write b=1 | write b=32 |
 | --- | --- | --- | --- | --- |
-| linked, IOPS | 55.1K / 69.0K | 47.0K / 53.1K | 64.0K / 71.3K | 46.6K / 67.0K |
-| linked, median cycles per call | 2.40M / 1.02M | 19.5K / 19.4K | 905K / 1.07M | 18.7K / 2.75M |
-| ipc, IOPS | 17.1K / 17.2K | 68.4K / 66.0K | 17.5K / 18.0K | 66.5K / 69.6K |
-| ipc, median cycles per round (call included) | 126K / 128K | 1.02M / 1.03M | 125K / 123K | 1.05M / 995K |
-| twocore, IOPS | 65.3K / 67.7K | 64.7K / 67.9K | 63.8K / 67.2K | 64.5K / 67.8K |
-| twocore, median cycles between rounds | 45 / 45 | 1.04M / 1.00M | 45 / 45 | 1.05M / 999K |
+| linked, IOPS | 72.9K / 75.6K | 54.0K / 56.8K | 72.1K / 78.1K | 54.3K / 51.5K |
+| linked, median cycles per call | 1.03M / 1.11M | 18.8K / 20.2K | 1.04M / 1.84M | 19.7K / 18.7K |
+| ipc, IOPS | 18.9K / 18.8K | 69.4K / 74.4K | 18.3K / 18.9K | 71.1K / 74.3K |
+| ipc, median cycles per round (call included) | 129K / 126K | 703 / 1.03M | 127K / 125K | 1.06M / 1.03M |
+| twocore, IOPS | 69.3K / 72.6K | 71.0K / 72.8K | 70.6K / 71.9K | 71.3K / 73.3K |
+| twocore, median cycles between rounds | 45 / 45 | 1.04M / 1.02M | 45 / 45 | 1.05M / 1.03M |
 
 These numbers measure QEMU's device model more than the driver or the kernel; they are not comparable with
 the thesis's real-device figures (Atmosphere reaches the SSD's maximum read rate and 232K IOPS on
@@ -212,20 +213,33 @@ sequential writes at batch 32).
 
 ### Real hardware
 
-Not yet tried on a real machine, and the GRUB `multiboot2` path with its `serial=` option has not been booted even
-under QEMU (`boot/run.sh` boots the loader directly). The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no
+Not yet tried on a real machine. The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no
 CPUID leaf 16H; the NVMe SSD sits behind a PCIe root port). The machine needs VT-d on, and the firmware must place
 the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-bit BAR0 only on bus 0, and behind
 a bridge it stops with a message saying so.
+
+The GRUB `multiboot2` path below has been booted under QEMU (KVM, q35, the devices of `boot/run.sh`) and passes
+the NVMe benchmark and the dom0 tests: from a `grub-mkrescue` ISO with GRUB 2.12 on SeaBIOS, with `serial=com2`
+too (the loader's and the kernel's output then arrive on the second serial port; only the loader's first lines
+and one kernel line printed before the kernel reads its command line stay on COM1), and from a standalone GRUB 2.14
+x86_64-efi image on OVMF, where the loader takes the RSDP from GRUB's ACPI tags since UEFI has none in the BIOS
+area. Untried on hardware: the server's firmware memory map, ACPI tables, VT-d units and serial ports, GRUB as
+installed on the server's disk, and the real SSD.
 
 1. Build with 30 s runs: `cd boot && VERIFLAT_NVME_SECS=30 cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0`.
    The E5-2630 v3 has no leaf 16H, so outside a hypervisor dom0 takes the TSC rate from the brand string's
    "@ 2.40GHz"; `VERIFLAT_TSC_MHZ=<MHz>` in the same build overrides it. Concatenate the kernel and dom0 as
    `boot/run.sh` does, `cat kernel dom0 > veriflat-jumbo` in `boot/target/x86_64-unknown-none/release/`, and copy
    `aloader` and `veriflat-jumbo` to `/boot`.
-2. Add a GRUB entry, with `serial=com2` on the `multiboot2` line if the console is COM2:
+2. Add a GRUB entry, with `serial=com2` on the `multiboot2` line if the console is COM2. This is the entry that
+   booted under QEMU (there the module file was named `/boot/jumbo`), with GRUB itself on the serial console
+   (`--unit=1` for COM2) and no menu wait:
 
    ```
+   serial --unit=0 --speed=115200
+   terminal_input serial
+   terminal_output serial
+   set timeout=0
    menuentry "VeriFlat" {
        multiboot2 /boot/aloader
        module2 /boot/veriflat-jumbo

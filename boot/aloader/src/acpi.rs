@@ -132,12 +132,21 @@ impl RemappingHeader {
     }
 }
 
+/// The ACPI tables, found from the RSDP that the bootloader passed (multiboot2 tags 14 and 15, which a UEFI
+/// bootloader provides, or the PVH start info), else by searching the BIOS area, where a UEFI machine has none.
+fn tables() -> AcpiTables<NullAcpiHandler> {
+    let handler = NullAcpiHandler::new();
+    unsafe {
+        match crate::boot::get_rsdp_address() {
+            Some(address) => AcpiTables::from_rsdp(handler, address).expect("invalid RSDP from the bootloader"),
+            None => AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP"),
+        }
+    }
+}
+
 /// Local APIC IDs of the enabled processors listed in the MADT, in table order.
 pub fn probe_cpus() -> ArrayVec<u8, MAX_CPUS> {
-    let handler = NullAcpiHandler::new();
-    let acpi = unsafe {
-        AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP")
-    };
+    let acpi = tables();
     let madt = acpi.find_table::<Madt>().expect("failed to find MADT");
 
     let mut ids = ArrayVec::new();
@@ -156,10 +165,7 @@ pub fn probe_cpus() -> ArrayVec<u8, MAX_CPUS> {
 /// remapping, so a machine without a DMAR table or a DRHD entry does not boot. PCI segment groups
 /// other than 0 are not supported: the kernel's requester IDs have no segment.
 pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
-    let handler = NullAcpiHandler::new();
-    let acpi = unsafe {
-        AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP")
-    };
+    let acpi = tables();
 
     log::info!("ACPI: {:?}", acpi);
 
@@ -178,10 +184,7 @@ pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
 
 /// The PCI ECAM (MMCONFIG) windows of the MCFG table as `(base, size)`; empty without an MCFG.
 pub fn probe_mmconfig() -> ArrayVec<(u64, u64), 8> {
-    let handler = NullAcpiHandler::new();
-    let acpi = unsafe {
-        AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP")
-    };
+    let acpi = tables();
     let mut windows = ArrayVec::new();
     if let Ok(mcfg) = acpi.find_table::<Mcfg>() {
         for entry in mcfg.get().entries() {

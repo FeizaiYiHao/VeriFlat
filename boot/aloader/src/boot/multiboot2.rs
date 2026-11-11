@@ -7,6 +7,8 @@ use core::ptr;
 use core::marker::PhantomData;
 use core::pin::Pin;
 
+use num_traits::FromPrimitive;
+
 use crate::memory::AcpiMemoryType;
 use crate::memory::MemoryRange;
 use super::StartInfo;
@@ -16,6 +18,8 @@ const TAG_TYPE_COMMAND_LINE: u32 = 1;
 const TAG_TYPE_MODULE: u32 = 3;
 const TAG_TYPE_MEMORY_INFO: u32 = 4;
 const TAG_TYPE_MEMORY_MAP: u32 = 6;
+const TAG_TYPE_ACPI_OLD_RSDP: u32 = 14;
+const TAG_TYPE_ACPI_NEW_RSDP: u32 = 15;
 
 const TAG_ALIGNMENT: usize = 8;
 
@@ -23,6 +27,7 @@ pub struct Multiboot2StartInfo<'a> {
     header: *const Header,
     memory_map: Option<Pin<&'a MemoryMap>>,
     command_line: &'a str,
+    rsdp: Option<&'a [u8]>,
 }
 
 #[derive(Debug)]
@@ -47,6 +52,9 @@ enum Tag<'a> {
     MemoryInfo(Pin<&'a MemoryInfo>),
     MemoryMap(Pin<&'a MemoryMap>),
     Module(Pin<&'a Module>),
+    /// A copy of the ACPI 1.0 RSDP (type 14) or of the ACPI 2.0+ RSDP (type 15), as the firmware provides it.
+    OldRsdp(&'a [u8]),
+    NewRsdp(&'a [u8]),
     Other(u32),
 }
 
@@ -71,7 +79,8 @@ struct MemoryMap {
 struct MemoryMapEntry {
     base_addr: u64,
     length: u64,
-    entry_type: AcpiMemoryType,
+    /// Read as a number: a bootloader may pass types that `AcpiMemoryType` lacks (GRUB on UEFI does).
+    entry_type: u32,
     _reserved: u32,
 }
 
@@ -127,6 +136,10 @@ impl TagHeader {
                     let bytes = core::slice::from_raw_parts(p.add(mem::size_of::<TagHeader>()), self.size as usize - mem::size_of::<TagHeader>());
                     let len = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
                     Some(Tag::CommandLine(core::str::from_utf8(&bytes[..len]).unwrap_or("")))
+                }
+                TAG_TYPE_ACPI_OLD_RSDP | TAG_TYPE_ACPI_NEW_RSDP => {
+                    let bytes = core::slice::from_raw_parts(p.add(mem::size_of::<TagHeader>()), self.size as usize - mem::size_of::<TagHeader>());
+                    Some(if self.tag_type == TAG_TYPE_ACPI_NEW_RSDP { Tag::NewRsdp(bytes) } else { Tag::OldRsdp(bytes) })
                 }
                 TAG_TYPE_MEMORY_INFO => Some(Tag::MemoryInfo(Pin::new(&*(p as *const _)))),
                 TAG_TYPE_MODULE => Some(Tag::Module(Pin::new(&*(p as *const _)))),
@@ -215,18 +228,23 @@ impl Multiboot2StartInfo<'static> {
             header: start_info_ptr as *const Header,
             memory_map: None,
             command_line: "",
+            rsdp: None,
         };
 
         let header = s.header();
-        log::info!("{:?}", header);
+        log::info!("{:?} at {:#x}", header, start_info_ptr as usize);
+        let mut old_rsdp = None;
 
         for tag in header.iter_tags() {
             match tag {
                 Tag::MemoryMap(map) => s.memory_map = Some(map),
                 Tag::CommandLine(line) => s.command_line = line,
+                Tag::NewRsdp(rsdp) => s.rsdp = Some(rsdp),
+                Tag::OldRsdp(rsdp) => old_rsdp = Some(rsdp),
                 _ => {}
             }
         }
+        s.rsdp = s.rsdp.or(old_rsdp);
 
         Some(s)
     }
@@ -251,11 +269,22 @@ impl<'a> StartInfo for Multiboot2StartInfo<'a> {
             MemoryMapIter::null()
         };
 
-        it.map(|entry| (MemoryRange::new(entry.base_addr, entry.length), Some(entry.entry_type)))
+        // The multiboot2 specification makes every type it does not define (it defines 1 to 5) reserved memory.
+        it.map(|entry| {
+            let ty = FromPrimitive::from_u32(entry.entry_type).unwrap_or_else(|| {
+                log::warn!("memory type {} at {:#x} taken as reserved", entry.entry_type, entry.base_addr);
+                AcpiMemoryType::Reserved
+            });
+            (MemoryRange::new(entry.base_addr, entry.length), Some(ty))
+        })
     }
 
     fn command_line(&self) -> &str {
         self.command_line
+    }
+
+    fn rsdp(&self) -> Option<&[u8]> {
+        self.rsdp
     }
 
     fn iter_modlist(&self) -> impl Iterator<Item = MemoryRange> + '_ {

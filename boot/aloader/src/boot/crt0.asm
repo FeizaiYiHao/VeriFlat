@@ -204,9 +204,10 @@ enable_paging:
     mov eax, p4_table
     mov cr3, eax
 
-    ; enable PAE-flag in cr4 (Physical Address Extension)
-    mov eax, cr4
-    or eax, 1 << 5
+    ; set cr4 to PAE (Physical Address Extension) alone: UEFI firmware leaves OSFXSR and OSXMMEXCPT on, which
+    ; GRUB EFI passes through, and the kernel requires CR4.OSFXSR and CR4.OSXSAVE clear before user mode (the loader
+    ; and the kernel are soft-float)
+    mov eax, 1 << 5
     mov cr4, eax
 
     ; set the long mode (LME) and no-execute (NXE) bits in the EFER MSR

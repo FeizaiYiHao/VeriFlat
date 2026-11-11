@@ -45,6 +45,8 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         syscalls::init_cpu();
 
         boot::init(boot_info);
+        // The console moves to the port that the command line's `serial=` option names, as the loader's did.
+        console::init();
         logging::init();
     }
 

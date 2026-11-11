@@ -183,17 +183,21 @@ pub fn init_physical_memory_map(
 
     map.sort();
 
-    // Reserve region for bump allocator
+    // Reserve region for bump allocator. A region may start right after a module at an unaligned address (GRUB
+    // packs the module behind the loader), so the reservation starts at the next page boundary: the reservations
+    // fill it exactly and allocate page-aligned.
     let mut reserved_region = ALLOCATOR_MEMORY_REGION.lock();
+    let page_align = |a: u64| (a + 0xfff) & !0xfff;
     let first_memory = map
         .regions
         .iter()
         .find(|(r, t)| {
-            t == &BootMemoryType::Other(AcpiMemoryType::Memory) && r.size() > ALLOCATOR_SIZE as u64
+            t == &BootMemoryType::Other(AcpiMemoryType::Memory)
+                && r.end_inclusive() >= page_align(r.base()) + ALLOCATOR_SIZE as u64 - 1
         })
         .expect("No usable memory region");
 
-    let allocator_region = MemoryRange::new(first_memory.0.base(), ALLOCATOR_SIZE as u64);
+    let allocator_region = MemoryRange::new(page_align(first_memory.0.base()), ALLOCATOR_SIZE as u64);
     map.relabel(allocator_region.clone(), BootMemoryType::LoaderAllocator);
 
     log::debug!(

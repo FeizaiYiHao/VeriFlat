@@ -17,6 +17,9 @@ static KERNEL_IMAGE: Mutex<Option<MemoryRange>> = Mutex::new(None);
 /// kernel's command line.
 static SERIAL_OPTION: Mutex<Option<ArrayString<16>>> = Mutex::new(None);
 
+/// A copy of the RSDP the bootloader passed, if any, made before the loader's allocator can reuse the boot information.
+static RSDP: Mutex<Option<[u8; 36]>> = Mutex::new(None);
+
 #[cfg(not(test))]
 //#[link(name = "crt0")]
 extern "C" {
@@ -50,6 +53,11 @@ trait StartInfo {
     /// The boot command line; empty when the bootloader passes none.
     fn command_line(&self) -> &str {
         ""
+    }
+
+    /// The bytes of the ACPI RSDP that the bootloader passes, as a copy in its boot information or as the firmware's own; `None` when it passes none.
+    fn rsdp(&self) -> Option<&[u8]> {
+        None
     }
 
     /// Creates an iterator through all memory regions.
@@ -114,6 +122,11 @@ pub fn get_kernel_command_line() -> ArrayString<4096> {
     SERIAL_OPTION.lock().as_ref().and_then(|s| ArrayString::new(s.as_str())).unwrap_or(ArrayString::empty())
 }
 
+/// The physical address of the RSDP the bootloader passed (a copy in the loader's own memory), if any.
+pub fn get_rsdp_address() -> Option<usize> {
+    RSDP.lock().as_ref().map(|r| r.as_ptr() as usize)
+}
+
 /// Returns the range of the kernel image.
 pub fn get_kernel_image_range() -> Option<MemoryRange> {
     KERNEL_IMAGE.lock().clone()
@@ -141,6 +154,13 @@ pub unsafe fn init() {
             unsafe { crate::console::use_port(port) };
             log::info!("Console on {}", option);
             *SERIAL_OPTION.lock() = ArrayString::new(option);
+        }
+        if let Some(rsdp) = start_info.rsdp() {
+            let mut copy = [0; 36];
+            let len = rsdp.len().min(copy.len());
+            copy[..len].copy_from_slice(&rsdp[..len]);
+            log::info!("RSDP from the bootloader ({} bytes, revision {})", rsdp.len(), copy[15]);
+            *RSDP.lock() = Some(copy);
         }
         start_info.dump_memmap();
         start_info.dump_modlist();

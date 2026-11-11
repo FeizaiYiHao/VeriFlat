@@ -94,6 +94,11 @@ pub struct ModlistIterator<'si> {
 }
 
 impl StartInfo for HvmStartInfo {
+    fn rsdp(&self) -> Option<&[u8]> {
+        // QEMU's PVH option ROM fills in the RSDP it finds in the BIOS area; 36 bytes cover an ACPI 2.0+ RSDP.
+        (self.rdsp_paddr != 0).then(|| unsafe { core::slice::from_raw_parts(self.rdsp_paddr as *const u8, 36) })
+    }
+
     fn iter_memory_regions(
         &self,
     ) -> impl Iterator<Item = (MemoryRange, Option<AcpiMemoryType>)> + '_ {

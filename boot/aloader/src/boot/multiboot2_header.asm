@@ -1,6 +1,7 @@
 ; Multiboot 2 - Compliant Header
 ; from https://kernelstack.net/2019-07-13-rust-os-1/
-section .multiboot_header
+; GRUB looks for the header only at 8-byte aligned offsets within the first 32 KiB of the file.
+section .multiboot_header align=8
 header_start:
     dd 0xe85250d6                ; Magic number identifying this as a header
     dd 0                         ; Specify the CPU as amd64 (32 bit)
