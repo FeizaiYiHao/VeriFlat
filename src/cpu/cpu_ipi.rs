@@ -2,11 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 // Platform implementation: send a wake-up IPI to `target`; halt the calling cpu with interrupts enabled
-// until an interrupt arrives; clear the calling cpu's pending running-to-idle request before it ends its kernel step.
+// until an interrupt arrives.
 unsafe extern "C" {
     fn veriflat_send_ipi(target: usize);
     fn veriflat_halt_until_ipi();
-    pub(super) fn veriflat_clear_running_to_idle_pending();
 }
 
 verus! {

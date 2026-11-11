@@ -1408,8 +1408,7 @@ takes the own cpu lock unless it is marked, through the lock-layer
 grants; moves the cpu's `KernelCallPerm` into the local context and sets
 `cpu_op` to `InStep`), `CpuLockedArray::exit_step_wunlock_own_cpu`
 (external_body; sets `cpu_op` to `cpu_op_after_step(state)`, moves the
-permission back, clears the pending running-to-idle flag through FFI
-`veriflat_clear_running_to_idle_pending`, and releases through the lock-layer
+permission back, and releases through the lock-layer
 `wunlock_sti`, which executes `sti` after the release), and the lock-layer
 variants `RwLock::wlock_unless_killed_cli` / `RwLock::wunlock_sti` and
 `LockedArray::wlock_unless_killed_cli` / `LockedArray::wunlock_sti`

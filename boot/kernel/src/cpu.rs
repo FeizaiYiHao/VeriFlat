@@ -132,8 +132,7 @@ pub struct Cpu {
 
     /// Set by every running-to-idle IPI (`platform::handle_running_to_idle_ipi`) together with
     /// `running_to_idle_ack_owed`, so outside the handler the two are equal; cleared with it by the
-    /// idle loop when it acknowledges (`platform::acknowledge_running_to_idle`) and when a kernel step
-    /// releases this CPU's own lock (`platform::veriflat_clear_running_to_idle_pending`).
+    /// idle loop when it acknowledges (`platform::acknowledge_running_to_idle`).
     /// While it is set the CPU runs on the kernel page table and must not return to ring 3:
     /// `restore_frame` diverts to the idle loop instead.
     pub running_to_idle_pending: AtomicBool,
@@ -278,7 +277,7 @@ pub fn set_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(true, Ordering::Relaxed);
 }
 
-/// Clears `running_to_idle_pending`. For the idle loop's acknowledgement and `veriflat_clear_running_to_idle_pending`.
+/// Clears `running_to_idle_pending`. For the idle loop's acknowledgement.
 pub fn clear_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(false, Ordering::Relaxed);
 }

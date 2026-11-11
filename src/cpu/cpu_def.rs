@@ -443,8 +443,8 @@ impl CpuLockedArray {
 
     /// TCB: leave the kernel step of the own cpu `cpu_id` and release its lock. The cpu's running state becomes the resting
     /// state its scheduling state implies, its kernel-call permission moves from the local context back into the cpu object
-    /// (it is there by linearity: only `wlock_own_cpu_enter_step` moves it in), the holder record is cleared, the cpu's
-    /// pending running-to-idle request is dropped, and the cpu sets its interrupt flag after the release.
+    /// (it is there by linearity: only `wlock_own_cpu_enter_step` moves it in), the holder record is cleared, and the
+    /// cpu sets its interrupt flag after the release.
     #[verifier::external_body]
     pub fn exit_step_wunlock_own_cpu(&mut self, cpu_id: CpuId, Tracked(cpu_op): Tracked<&mut CpuOpArray>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
@@ -493,7 +493,6 @@ impl CpuLockedArray {
             cpu.put_kernel_call_perm(cpu_id, slot.tracked_unwrap());
         }
         self.set_ghost(cpu_id, Ghost(None), Tracked(&*lctx), Tracked(&lock_perm));
-        unsafe { super::cpu_ipi::veriflat_clear_running_to_idle_pending(); }
         self.wunlock_sti(cpu_id, Tracked(&mut *lctx), Tracked(lock_perm), Ghost(KernelObjId::Cpu(cpu_id)));
     }
 

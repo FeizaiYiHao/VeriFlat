@@ -288,13 +288,3 @@ pub extern "C" fn veriflat_disable_interrupts() {
 pub extern "C" fn veriflat_enable_interrupts() {
     unsafe { asm!("sti", options(nostack, preserves_flags)) };
 }
-
-/// Clears this CPU's `running_to_idle_pending` flag. The verified kernel calls it inside a step,
-/// right before it releases this CPU's own lock. The flag is clear there: the killer that set it
-/// held this CPU's lock until the idle loop acknowledged, which clears the flag, so no step could
-/// start in between and the step's result alone decides where the CPU goes. The clear is a safety
-/// net that keeps a stale flag from diverting the next exit.
-#[unsafe(no_mangle)]
-pub extern "C" fn veriflat_clear_running_to_idle_pending() {
-    cpu::clear_running_to_idle_pending();
-}

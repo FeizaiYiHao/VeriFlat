@@ -41,7 +41,6 @@
 //! trap path of the thread it ran, and clears the flag there (`platform::acknowledge_running_to_idle`).
 //! Until then the requester holds this CPU's lock, so every glue path reaches the idle loop without
 //! a step: through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
-//! Every step also clears the flag when it releases this CPU's own lock, as a safety net.
 //!
 //! User mode has no floating point: every CPU enters ring 3 with CR0.TS set (see
 //! [`cpu::disable_user_fp`]), so x87/MMX instructions raise #NM and SSE/AVX raise #UD, and the
@@ -174,8 +173,8 @@ pub unsafe fn init_cpu() {
 ///   or when a syscall returns CpuIdle into [`run_idle`]. A running-to-idle IPI is acknowledged
 ///   only there, in [`run_idle`], once the trap path is left.
 /// - InStep: the verified kernel holds this CPU's own lock, interrupts off, from its `wlock_cpu` of
-///   this CPU (the lock executes `cli` when granted) until its unlock (the lock clears
-///   `running_to_idle_pending`, releases, and executes `sti`).
+///   this CPU (the lock executes `cli` when granted) until its unlock (the lock releases
+///   and executes `sti`).
 ///
 /// The running-to-idle IPI moves a CPU whose lock the killer holds from User or Trap to Idle; the
 /// wake IPI moves an Off CPU to Idle after `cpu_online` published it Idle.
