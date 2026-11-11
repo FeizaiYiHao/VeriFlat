@@ -65,7 +65,7 @@ QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
 | `parallel_call summary n=... median_ratio=... overlap=...` | ratios across CPUs, and the share of the concurrent span in which every pair was timing; dom0 fails below 0.50 |
 | `parallel_call_xproc cpu=k ...`, `parallel_call_xproc summary ...` | the same two lines after them, with each server the first thread of a child process sharing dom0's image (own endpoint, killed afterwards), so every round trip also loads both cr3s; `parallel_call_xproc funding` gives the 4K quota per pair and how many pairs it covers; `summarize-parallel-call.py` skips these lines |
 
-A ratio near 1.00 means the pairs do not slow each other down through the kernel.
+A ratio near 1.00 means the pairs do not slow each other down through the kernel. At most 24 pairs are timed, also at SMP 32, because pair k uses dom0 descriptor 8 + k, which must stay below the 32 endpoint descriptors of a thread; the parallel mmap and mmap_2m workers are these pairs' clients, so the same cap applies to them.
 
 ## Parallel mmap timing
 

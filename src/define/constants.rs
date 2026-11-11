@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use super::super::*;
 verus! {
 // -------------------- Begin of Const --------------------
-pub const MAX_NUM_ENDPOINT_DESCRIPTORS: usize = 128;
+pub const MAX_NUM_ENDPOINT_DESCRIPTORS: usize = 32;
 
 //1 for now
 pub const KERNEL_MEM_END_L4INDEX: usize = 1;

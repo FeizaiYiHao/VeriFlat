@@ -513,8 +513,9 @@ fn time_mmap_only() {
     }
 }
 
-/// Client/server pairs of the parallel call timing: at most one per CPU.
-const MAX_PAIRS: usize = 32;
+/// Client/server pairs of the parallel call timing: at most one per CPU, and at most 24, since pair k uses
+/// descriptor `PAIR_ENDPOINT + k`, which must stay below `MAX_NUM_ENDPOINT_DESCRIPTORS` (32).
+const MAX_PAIRS: usize = 24;
 /// dom0's descriptor of pair k's endpoint is `PAIR_ENDPOINT + k`; the pair's other threads hold it in
 /// descriptor 0.
 const PAIR_ENDPOINT: usize = 8;
