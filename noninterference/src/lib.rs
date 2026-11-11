@@ -8,8 +8,11 @@
 //! `isolated` depends only on the two domain views in well-formed states, a step of a third isolated domain keeps A and B
 //! isolated (`third_domain_step_implies_isolated_preserved`), and
 //! `pairwise_isolated_domains_trace_implies_isolated_and_view_unchanged` covers traces of any set of
-//! pairwise isolated domains. Steps of cpus whose domain is not in the pairwise isolated set, such as
-//! an ancestor container or a server sharing endpoints with several domains, are not covered.
+//! pairwise isolated domains. The theorem is about direct interference, as in Atmosphere: the domains
+//! of the set may each share endpoints and pages with a third party, such as a common server or an
+//! ancestor container. Steps of that party, including an ancestor killing a domain, are not steps of
+//! these traces, and that it does not relay between the domains is a property of its user program,
+//! which enters here only as the honest-peer conditions of `trace_ni_at`.
 //!
 //! Output consistency: the kernel pins each syscall's result to the user state at entry
 //! (`*_syscall_result`, and `ipc_entry_result` and `ipc_reply_entry_result` for the IPC rejections; mmap
