@@ -103,4 +103,108 @@ pub proof fn kernel_k_trap_return_values_written_implies_u_step(pre: &KernelK, p
     });
     assert(kernel_u_trap_return_values_written_step(pre_u, post_u, cpu_id, rax, rdx, rsi)) by { reveal(kernel_u_trap_return_values_written_step); reveal(kernel_k_to_kernel_u); };
 }
+
+/// A CPU TLB fill under the kernel invariant is the matching user TLB fill in the projection.
+pub proof fn kernel_k_cpu_tlb_filled_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, added_cache: PagingStructureCache)
+    requires
+        pre.inv(),
+        kernel_k_cpu_tlb_filled(*pre, *post, cpu_id, pcid, added, added_cache),
+    ensures kernel_u_cpu_tlb_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, pcid, added),
+{
+    reveal(kernel_u_cpu_tlb_filled_step); reveal(kernel_k_to_kernel_u);
+    kernel_cpu_tlb_within_may_cache_projection(pre, cpu_id, pcid, added, added_cache);
+}
+
+/// An IOTLB fill under the kernel invariant is the matching user IOTLB fill in the projection.
+pub proof fn kernel_k_iommu_tlb_filled_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId, added: SingleTLB)
+    requires
+        pre.inv(),
+        kernel_k_iommu_tlb_filled(*pre, *post, did, added),
+    ensures kernel_u_iommu_tlb_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), did, added),
+{
+    reveal(kernel_u_iommu_tlb_filled_step); reveal(kernel_k_to_kernel_u);
+    kernel_iommu_tlb_within_may_cache_projection(pre, did, added);
+}
+
+/// A context-cache fill changes neither projection.
+pub proof fn kernel_k_iommu_context_cache_filled_implies_u_step(pre: &KernelK, post: &KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId))
+    requires
+        pre.inv(),
+        kernel_k_iommu_context_cache_filled(*pre, *post, bdf, entry),
+    ensures kernel_u_iommu_context_cache_filled_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
+{ reveal(kernel_u_iommu_context_cache_filled_step); reveal(kernel_k_to_kernel_u); }
+
+/// A trap entry on cpu `cpu_id` projects to the user trap entry: the frame of its trap-frame slot takes the registers the
+/// running thread had in user mode, so no thread's registers change.
+pub proof fn kernel_k_trap_enter_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, kernel_regs: Registers)
+    requires
+        pre.inv(),
+        kernel_k_trap_enter(*pre, *post, cpu_id, kernel_regs),
+    ensures
+        kernel_u_trap_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    assert(kernel_u_trap_enter_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_enter_step_pre); };
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
+        let c = pre.thrd_mp.spec_index(x).view().state->RUNNING_cpu_id;
+        if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); thread_cpu_wf_thread_at(pre.thrd_mp, pre.cpu_arr, x); }
+        if c != cpu_id { vstd::map::axiom_map_remove_different(pre.cpu_trap_frame.view().view(), c, cpu_id); vstd::map::axiom_map_remove_different(post.cpu_trap_frame.view().view(), c, cpu_id); }
+    });
+    assert(kernel_u_trap_enter_step(pre_u, post_u, cpu_id)) by {
+        reveal(kernel_u_trap_enter_step); reveal(kernel_k_to_kernel_u);
+        assert(post_u.cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Trap, ..pre_u.cpu_array[cpu_id as int] }));
+    };
+}
+
+/// A trap return on cpu `cpu_id` projects to the user trap return: the cpu loads the frame of its trap-frame slot, so no
+/// thread's registers change.
+pub proof fn kernel_k_trap_return_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_return(*pre, *post, cpu_id),
+    ensures
+        kernel_u_trap_return_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_return_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    assert(kernel_u_trap_return_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_return_step_pre); };
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
+        if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); }
+    });
+    assert(kernel_u_trap_return_step(pre_u, post_u, cpu_id)) by {
+        reveal(kernel_u_trap_return_step); reveal(kernel_k_to_kernel_u);
+        assert(post_u.cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::User, ..pre_u.cpu_array[cpu_id as int] }));
+    };
+}
+
+/// A trap divert on cpu `cpu_id` projects to the user trap divert: the cpu stays off user mode, so no thread's registers
+/// change.
+pub proof fn kernel_k_trap_divert_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_divert(*pre, *post, cpu_id),
+    ensures
+        kernel_u_trap_divert_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_divert_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    assert(kernel_u_trap_divert_step_pre(pre_u, cpu_id)) by { reveal(kernel_u_trap_divert_step_pre); };
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, x => {
+        if pre.thrd_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); }
+    });
+    assert(kernel_u_trap_divert_step(pre_u, post_u, cpu_id)) by {
+        reveal(kernel_u_trap_divert_step); reveal(kernel_k_to_kernel_u);
+        assert(post_u.cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Idle, ..pre_u.cpu_array[cpu_id as int] }));
+    };
+}
 }
