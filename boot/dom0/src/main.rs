@@ -3,6 +3,11 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+mod nvme;
+mod slab_alloc;
+
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
@@ -106,6 +111,10 @@ static mut SHARED_PAGE: PageBuffer = PageBuffer([0; 512]);
 /// Where dom0 receives that page: free in dom0's user half.
 const PAGES_VA: usize = TEST_VA + 0x10_0000;
 const PAGE_MAGIC: u64 = 0x5afe_9a9e;
+
+/// The heap of each process running dom0's image; only the NVMe benchmark allocates.
+#[global_allocator]
+static HEAP: slab_alloc::Heap = slab_alloc::Heap;
 
 extern "C" {
     /// The first and one-past-last bytes of dom0's loaded image (linker-defined).
@@ -2738,6 +2747,9 @@ pub extern "C" fn _start() -> ! {
     // 9. kill_process: dom0's children and a zombie, a running child killed through running-to-idle
     // IPIs, and the leak loop over victim subtrees; the helper threads exit on the way.
     test_kill_process(image, pages);
+
+    // 9c. Atmosphere's NVMe driver benchmark in its three configurations; skipped without an NVMe function.
+    nvme::client::run(image, pages);
 
     // 10. new_thread cost, last because the threads it creates keep yielding on this CPU.
     time_new_thread();

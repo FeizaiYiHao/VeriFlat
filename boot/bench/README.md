@@ -166,3 +166,44 @@ syscall 49 with InvalidSyscall or when the root container has no 1G quota.
    Every run boots A, then B, so host drift hits both alike.
 3. Every run must exit with status 1. Compare the medians over the 5 runs:
    `python3 -I boot/bench/summarize-parallel-call.py boot/bench/out/results-a boot/bench/out/results-b`.
+
+## NVMe driver benchmark (port of Atmosphere's)
+
+The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and benchmark
+(`boot/dom0/src/nvme/`, `boot/dom0/src/slab_alloc.rs`) after the kill tests, against the emulated
+`-device nvme` that `boot/run.sh` attaches (64 MiB raw image). It finds the controller with `pci_info`
+(class 01, subclass 08 on bus 0), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
+maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
+function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O (8 LBAs per request) for 2 s;
+`VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
+
+Configurations, in this order, each with read and write at submission batch 1 and 32:
+
+| line | configuration | sample |
+| --- | --- | --- |
+| `nvme linked <op> batch=b` | the driver in dom0's own thread (`run_blocktest_raw_with_delay`) | one `submit_and_poll_raw` call that submitted or reaped a request |
+| `nvme ipc <op> batch=b` | the driver in a child process on CPU 0; dom0 fills up to b requests into a shared ring and `call`s it once per batch, the driver submits and reaps once and answers with `reply_and_receive` | one round: ring update plus the call |
+| `nvme twocore <op> batch=b` | the same driver process polling the ring on CPU 1 while dom0 spins on CPU 0 | cycles between two client rounds that moved a request |
+
+Each line reads `nvme <config> <read|write> batch=<b>: <iops> IOPS, <n> completed in <ms> ms, <sample> median
+<c> min <c> max <c> TSC cycles over <rounds> rounds`; IOPS use the TSC rate from CPUID 16H. As in
+Atmosphere, the batch is how many requests a round submits, not a queue depth: the linked client allocates a
+new batch whenever no request waits, and the ring clients push whenever a ring buffer is free, so up to 1023
+(linked) or 1024 (ring) requests are in flight at batch 1 too; only `ipc` at batch 1 stays near one request
+per call. The child is killed after each ring configuration, which returns the function to dom0.
+
+Measured 2026-11-10, QEMU-emulated NVMe (not a real device: every doorbell is a VM exit into QEMU, which
+caps the rate near 70K IOPS), KVM on the i9-13900HX, 2 s runs, `boot/run.sh` (SMP 4) / `SMP=16 boot/run.sh`:
+
+| configuration | read b=1 | read b=32 | write b=1 | write b=32 |
+| --- | --- | --- | --- | --- |
+| linked, IOPS | 55.1K / 69.0K | 47.0K / 53.1K | 64.0K / 71.3K | 46.6K / 67.0K |
+| linked, median cycles per call | 2.40M / 1.02M | 19.5K / 19.4K | 905K / 1.07M | 18.7K / 2.75M |
+| ipc, IOPS | 17.1K / 17.2K | 68.4K / 66.0K | 17.5K / 18.0K | 66.5K / 69.6K |
+| ipc, median cycles per round (call included) | 126K / 128K | 1.02M / 1.03M | 125K / 123K | 1.05M / 995K |
+| twocore, IOPS | 65.3K / 67.7K | 64.7K / 67.9K | 63.8K / 67.2K | 64.5K / 67.8K |
+| twocore, median cycles between rounds | 45 / 45 | 1.04M / 1.00M | 45 / 45 | 1.05M / 999K |
+
+These numbers measure QEMU's device model more than the driver or the kernel; they are not comparable with
+the thesis's real-device figures (Atmosphere reaches the SSD's maximum read rate and 232K IOPS on
+sequential writes at batch 32).
