@@ -99,7 +99,15 @@ pub extern "C" fn main() -> ! {
     }
     // ACPI tables sit at the top of RAM, which the final page tables may not cover: read them now.
     let iommu_units = acpi::probe_iommu();
-    let apic_ids = acpi::probe_cpus();
+    let mut apic_ids = acpi::probe_cpus();
+    if let Some(n) = boot::get_max_cpus() {
+        if n <= apic_ids.len() {
+            log::info!("maxcpus={}: using {} of {} processors", n, n, apic_ids.len());
+            apic_ids.truncate(n);
+        } else {
+            log::warn!("maxcpus={} ignored: only {} processors", n, apic_ids.len());
+        }
+    }
     let mmconfig = acpi::probe_mmconfig();
     let e820: ArrayVec<(u64, u64), 100> =
         memory::get_physical_memory_map().regions.iter().map(|(r, _)| (r.base(), r.size())).collect();

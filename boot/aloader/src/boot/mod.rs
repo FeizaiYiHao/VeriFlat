@@ -17,6 +17,9 @@ static KERNEL_IMAGE: Mutex<Option<MemoryRange>> = Mutex::new(None);
 /// kernel's command line.
 static KERNEL_OPTIONS: Mutex<astd::heapless::String<256>> = Mutex::new(astd::heapless::String::new());
 
+/// The `maxcpus=<n>` option of the boot command line, or 0 when absent.
+static MAX_CPUS: Mutex<usize> = Mutex::new(0);
+
 /// A copy of the RSDP the bootloader passed, if any, made before the loader's allocator can reuse the boot information.
 static RSDP: Mutex<Option<[u8; 36]>> = Mutex::new(None);
 
@@ -146,6 +149,11 @@ pub fn get_rsdp_address() -> Option<usize> {
     RSDP.lock().as_ref().map(|r| r.as_ptr() as usize)
 }
 
+/// The processor count the `maxcpus=<n>` boot option asks for, if it was given.
+pub fn get_max_cpus() -> Option<usize> {
+    Some(*MAX_CPUS.lock()).filter(|&n| n != 0)
+}
+
 /// Returns the range of the kernel image.
 pub fn get_kernel_image_range() -> Option<MemoryRange> {
     KERNEL_IMAGE.lock().clone()
@@ -181,6 +189,10 @@ pub unsafe fn init() {
                 ns16550a::ramlog::start(addr);
             }
             log::info!("RAM log at {:#x}, {} bytes", addr, ns16550a::ramlog::SIZE);
+        }
+        if let Some(option) = start_info.command_line().split_ascii_whitespace().find(|c| c.starts_with("maxcpus=")) {
+            let n = option["maxcpus=".len()..].parse::<usize>().unwrap_or_else(|_| panic!("maxcpus= takes a number: {:?}", option));
+            *MAX_CPUS.lock() = n;
         }
         for option in start_info.command_line().split_ascii_whitespace() {
             if ["serial=", "ramlog=", "reset_after="].iter().any(|p| option.starts_with(p)) {

@@ -263,6 +263,11 @@ also resets the machine (reason "timeout") at the first timer tick after that ma
 the TSC rate from CPUID 16H or 4000_0010H, or 3 GHz assumed when neither gives one (an E5-2630 v3 at 2.4 GHz then
 waits 25% longer). Without `ramlog=` every end behaves as before.
 
+The boot option `maxcpus=<n>` makes the loader hand only the first n processors of the ACPI MADT list to the kernel,
+so that the kernel and dom0 see n CPUs; the loader logs "maxcpus=n: using n of m processors" and ignores n = 0 and
+an n above the count. The loader also reads the boot command line from the PVH start info, so under QEMU it comes
+from `-append`, e.g. `NO_TIMER=1 SMP=8 boot/run.sh -append maxcpus=2`.
+
 1. Keep the buffer out of Linux's memory with the kernel parameter `memmap=16M!0x140000000` (in
    `GRUB_CMDLINE_LINUX` of `/etc/default/grub`, then `update-grub`); Linux then shows it as `/dev/pmem0`.
 2. Add the VeriFlat entry and, with `GRUB_DEFAULT=saved`, boot it once with `grub-reboot "VeriFlat"`, so that the reset returns to Linux:
