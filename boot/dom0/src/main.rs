@@ -5,6 +5,7 @@
 
 extern crate alloc;
 
+mod ice_bench;
 mod nvme;
 mod slab_alloc;
 
@@ -2514,6 +2515,11 @@ pub extern "C" fn _start() -> ! {
         test_split_2m();
         unsafe { sys_debug_exit(0) };
     }
+    if cfg!(feature = "ice-bench") {
+        // First, while every other CPU is Off, so that worker k comes up on CPU k.
+        ice_bench::run();
+        unsafe { sys_debug_exit(0) };
+    }
 
     // 0. paths that need no thread quota
     for _ in 0..2 {
@@ -2776,6 +2782,9 @@ pub extern "C" fn _start() -> ! {
 
     // 9c. Atmosphere's NVMe driver benchmark in its three configurations; skipped without an NVMe function.
     nvme::client::run(image, pages);
+
+    // 9d. Whether the loader recorded an E810 for the ice benchmark (feature `ice-bench` runs it).
+    ice_bench::probe();
 
     // 10. new_thread cost, last because the threads it creates keep yielding on this CPU.
     time_new_thread();

@@ -15,7 +15,10 @@ split-test = []
 zero-test = []
 # Focused EDU device-to-RAM DMA revocation regression.
 dma-write-test = []
+# The E810 (ice) packet benchmark, run first and alone; skipped without an E810 function (see src/ice_bench.rs).
+ice-bench = []
 
 [dependencies]
 vsys = { path = "../vsys" }
+ice = { path = "../ice" }
 log = "0.4.19"
