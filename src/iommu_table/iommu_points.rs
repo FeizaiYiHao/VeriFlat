@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 impl IommuTable {
-    pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
+    pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
         requires
             pei_valid(mem_end_l4_index),
             page_ptr_valid(page_map_ptr),
@@ -34,13 +34,13 @@ impl IommuTable {
             pcid,
             did: None,
             kernel_l4_end: mem_end_l4_index,
-            l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
+            l4_table: Tracked(Map::<PageMapPtr, PointsTo<IommuPageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()),
-            l3_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
+            l3_tables: Tracked(Map::<PageMapPtr, PointsTo<IommuPageMap>>::tracked_empty()),
             l2_rev_map: Ghost(Map::<PageMapPtr, (L4Index, L3Index)>::empty()),
-            l2_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
+            l2_tables: Tracked(Map::<PageMapPtr, PointsTo<IommuPageMap>>::tracked_empty()),
             l1_rev_map: Ghost(Map::<PageMapPtr, (L4Index, L3Index, L2Index)>::empty()),
-            l1_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
+            l1_tables: Tracked(Map::<PageMapPtr, PointsTo<IommuPageMap>>::tracked_empty()),
             mapping_4k: Ghost(Map::<VAddr, MapEntry>::empty()),
             mapping_2m: Ghost(Map::<VAddr, MapEntry>::empty()),
             mapping_1g: Ghost(Map::<VAddr, MapEntry>::empty()),
@@ -72,9 +72,9 @@ impl IommuTable {
                 #![trigger ret.kernel_entries.view().spec_index(i as int)]
                 #![trigger ret.l4_entry(i)]
                 0 <= i < ret.kernel_l4_end ==> ret.kernel_entries.view().spec_index(i as int) == ret.l4_entry(i),
-            ret.l3_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
-            ret.l2_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
-            ret.l1_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
+            ret.l3_tables.view() == Map::<PageMapPtr, PointsTo<IommuPageMap>>::empty(),
+            ret.l2_tables.view() == Map::<PageMapPtr, PointsTo<IommuPageMap>>::empty(),
+            ret.l1_tables.view() == Map::<PageMapPtr, PointsTo<IommuPageMap>>::empty(),
             ret.mapping_4k.view() == Map::<VAddr, MapEntry>::empty(),
             ret.mapping_2m.view() == Map::<VAddr, MapEntry>::empty(),
             ret.mapping_1g.view() == Map::<VAddr, MapEntry>::empty(),

@@ -5,19 +5,19 @@ use super::entry::*;
 use super::page_map::*;
 use vstd::simple_pptr::*;
 
-/// Legacy 4-level VT-d second-level table, 4K leaves only. The PageMap view is a bit lens; IOMMU publication has its own codec. Hidden leaves keep address/held/software-XD in memory and old write permission in mapping_4k until domain invalidation. Fields are public for specs only.
+/// Legacy 4-level VT-d second-level table, 4K leaves only. The IommuPageMap view is a bit lens; IOMMU publication has its own codec. Hidden leaves keep address/held/software-XD in memory and old write permission in mapping_4k until domain invalidation. Fields are public for specs only.
 pub struct IommuTable {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
     pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
-    pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
+    pub l4_table: Tracked<Map<PageMapPtr, PointsTo<IommuPageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
-    pub l3_tables: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
+    pub l3_tables: Tracked<Map<PageMapPtr, PointsTo<IommuPageMap>>>,
     pub l2_rev_map: Ghost<Map<PageMapPtr, (L4Index, L3Index)>>,
-    pub l2_tables: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
+    pub l2_tables: Tracked<Map<PageMapPtr, PointsTo<IommuPageMap>>>,
     pub l1_rev_map: Ghost<Map<PageMapPtr, (L4Index, L3Index, L2Index)>>,
-    pub l1_tables: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
+    pub l1_tables: Tracked<Map<PageMapPtr, PointsTo<IommuPageMap>>>,
     pub mapping_4k: Ghost<Map<VAddr, MapEntry>>,
     pub mapping_2m: Ghost<Map<VAddr, MapEntry>>,
     pub mapping_1g: Ghost<Map<VAddr, MapEntry>>,

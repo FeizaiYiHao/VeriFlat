@@ -2,12 +2,12 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-pub(super) open spec fn iommu_page_map_set_eof_transition_framing(pre: PageMap, post: PageMap, index: usize, value: PageEntry, raw: usize) -> bool {
+pub(super) open spec fn iommu_page_map_set_eof_transition_framing(pre: IommuPageMap, post: IommuPageMap, index: usize, value: PageEntry, raw: usize) -> bool {
     &&& post.ar.view() =~= pre.ar.view().update(index as int, raw)
     &&& post.spec_seq.view() =~= pre.spec_seq.view().update(index as int, value)
 }
 
-pub(super) proof fn iommu_page_map_set_eof_implies_wf(pre: PageMap, post: PageMap, index: usize, value: PageEntry, raw: usize)
+pub(super) proof fn iommu_page_map_set_eof_implies_wf(pre: IommuPageMap, post: IommuPageMap, index: usize, value: PageEntry, raw: usize)
     requires
         pre.iommu_wf(),
         pei_valid(index),

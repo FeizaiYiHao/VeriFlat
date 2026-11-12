@@ -51,7 +51,7 @@ impl IommuTable {
         }
         proof { self.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i); }
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(target_l1_p);
-        let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(target_l1_p).borrow(Tracked(l1_perm));
+        let l1_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(target_l1_p).borrow(Tracked(l1_perm));
         let mut l1_entry = l1_tbl.get(target_l1i);
         l1_entry.perm.present = false;
         l1_entry.perm.write = false;
@@ -118,7 +118,7 @@ impl IommuTable {
         }
     }
 
-    pub fn remove_l2_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
+    pub fn remove_l2_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<IommuPageMap>>))
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -172,7 +172,7 @@ impl IommuTable {
         return ret;
     }
 
-    pub fn remove_l3_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
+    pub fn remove_l3_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<IommuPageMap>>))
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -225,7 +225,7 @@ impl IommuTable {
         return ret;
     }
 
-    pub fn remove_l4_entry(&mut self, target_l4i: L4Index, target_l3_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
+    pub fn remove_l4_entry(&mut self, target_l4i: L4Index, target_l3_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<IommuPageMap>>))
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),

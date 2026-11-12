@@ -375,7 +375,7 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
     }
     let Tracked(page_4k_perm) = if iommu {
         let Tracked(page_map_perm) = iommu_table_map_remove_table_page(&mut krnl.it_mp, table, scan, Tracked(&mut *lctx), Tracked(table_perm));
-        page_map_to_page_perm(pg_ptr, Tracked(page_map_perm), &krnl.cpu_tlb, &krnl.cpu_arr, &krnl.pcid_needflush)
+        iommu_page_map_to_page_perm(pg_ptr, Tracked(page_map_perm), &krnl.cpu_tlb, &krnl.cpu_arr, &krnl.pcid_needflush)
     } else if let StructureScan::L1 { l4i, l3i, l2i, l2_p, l1_p } = scan {
         let Tracked(page_map_perm) = pagetable_map_unlink_unresolvable_l1_page(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), table, l4i, l3i, l2i, l2_p, l1_p, &krnl.pg_arr,
             Tracked(&mut *lctx), Tracked(table_perm));

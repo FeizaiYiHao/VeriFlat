@@ -308,7 +308,8 @@ impl IommuRootTable {
 
     /// Trusted store boundary: publishes context entry `slot` with two aligned
     /// volatile 64-bit stores, `upper` (DID/AW) first and `lower` (root|P) last,
-    /// so a remapping unit never observes P with a stale upper word.
+    /// so a remapping unit never observes P with a stale upper word, then writes
+    /// the entry back to memory for a unit that does not snoop CPU caches.
     #[verifier::external_body]
     fn publish_context_entry(&mut self, slot: usize, lower: usize, upper: usize)
         requires
@@ -323,10 +324,12 @@ impl IommuRootTable {
         let entry = &mut self.context_entries.ar[slot];
         unsafe { core::ptr::write_volatile(&mut entry.upper as *mut usize, upper); }
         unsafe { core::ptr::write_volatile(&mut entry.lower as *mut usize, lower); }
+        unsafe { veriflat_iommu_flush_to_memory(entry as *mut VtdLegacyEntry as usize, core::mem::size_of::<VtdLegacyEntry>()); }
     }
 
     /// Trusted store boundary: clears context entry `slot` with two aligned
-    /// volatile 64-bit stores, the P-containing `lower` word first, then `upper`.
+    /// volatile 64-bit stores, the P-containing `lower` word first, then `upper`,
+    /// then writes the entry back to memory before the caller's invalidation.
     #[verifier::external_body]
     fn clear_context_entry(&mut self, slot: usize)
         requires
@@ -341,6 +344,7 @@ impl IommuRootTable {
         let entry = &mut self.context_entries.ar[slot];
         unsafe { core::ptr::write_volatile(&mut entry.lower as *mut usize, 0); }
         unsafe { core::ptr::write_volatile(&mut entry.upper as *mut usize, 0); }
+        unsafe { veriflat_iommu_flush_to_memory(entry as *mut VtdLegacyEntry as usize, core::mem::size_of::<VtdLegacyEntry>()); }
     }
 
     /// Flat slot of one B/D/F, shared by the context entries and the owner slots.

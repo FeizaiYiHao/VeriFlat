@@ -283,7 +283,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(iommu_l4_page_lock_perm),
     );
     let ghost iommu_l4_page_locks = pagetable_page_locks.insert(iommu_l4_pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(iommu_l4_pg_idx), mode: TypedLockMode::Write });
-    let (iommu_l4_ptr, Tracked(iommu_l4_perm)) = page_perm_to_page_map(iommu_l4_pg_ptr, Tracked(iommu_l4_page_perm));
+    let (iommu_l4_ptr, Tracked(iommu_l4_perm)) = iommu_page_perm_to_page_map(iommu_l4_pg_ptr, Tracked(iommu_l4_page_perm));
     assert(iommu_l4_perm.value().iommu_wf()) by {
         assert(iommu_word_valid(0usize)) by (compute);
         assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user

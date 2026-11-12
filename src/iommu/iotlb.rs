@@ -6,6 +6,9 @@ unsafe extern "C" {
     fn veriflat_iommu_invalidate_domain(did: usize);
     // Domain-selective IOTLB invalidation for `did` on every unit, awaited; the context cache is untouched.
     fn veriflat_iommu_invalidate_iotlb_domain(did: usize);
+    // Writes the cache lines overlapping [addr, addr + len) back to memory when some unit does not snoop CPU caches
+    // (ECAP.C = 0), so the unit reads what the kernel stored; otherwise does nothing.
+    pub(crate) fn veriflat_iommu_flush_to_memory(addr: usize, len: usize);
 }
 
 verus! {

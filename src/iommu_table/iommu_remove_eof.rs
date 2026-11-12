@@ -9,7 +9,7 @@ impl IommuTable {
     #[verifier::opaque]
     pub open spec fn remove_l2_entry_eof_transition_framing(pre: Self, post: Self,
         target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
-        target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>) -> bool {
+        target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>) -> bool {
         &&& post == (Self { l2_tables: post.l2_tables, l1_rev_map: post.l1_rev_map, l1_tables: post.l1_tables, ..pre })
         &&& post.l1_rev_map.view() == pre.l1_rev_map.view().remove(target_l1_p)
         &&& post.l1_tables.view() == pre.l1_tables.view().remove(target_l1_p)
@@ -30,7 +30,7 @@ impl IommuTable {
 
     pub(super) proof fn remove_l2_entry_eof_implies_wf(pre: Self, post: Self,
         target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index,
-        target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+        target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -61,7 +61,7 @@ impl IommuTable {
     #[verifier::opaque]
     pub open spec fn remove_l3_entry_eof_transition_framing(pre: Self, post: Self,
         target_l4i: L4Index, target_l3i: L3Index,
-        target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>) -> bool {
+        target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>) -> bool {
         &&& post == (Self { l3_tables: post.l3_tables, l2_rev_map: post.l2_rev_map, l2_tables: post.l2_tables, ..pre })
         &&& post.l2_rev_map.view() == pre.l2_rev_map.view().remove(target_l2_p)
         &&& post.l2_tables.view() == pre.l2_tables.view().remove(target_l2_p)
@@ -82,7 +82,7 @@ impl IommuTable {
 
     pub(super) proof fn remove_l3_entry_eof_implies_wf(pre: Self, post: Self,
         target_l4i: L4Index, target_l3i: L3Index,
-        target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>)
+        target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -110,7 +110,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l2_entry`: table-structure leaves and the shrunk page closure.
-    pub(super) proof fn remove_l2_entry_eof_tables(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l2_entry_eof_tables(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -154,7 +154,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l2_entry`: 4K abstract-mapping leaf.
-    pub(super) proof fn remove_l2_entry_eof_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l2_entry_eof_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -174,7 +174,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l2_entry`: 2M abstract-mapping leaf.
-    pub(super) proof fn remove_l2_entry_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l2_entry_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -194,7 +194,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l2_entry`: 1G abstract-mapping leaf.
-    pub(super) proof fn remove_l2_entry_eof_wf_mapping_1g(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l2_entry_eof_wf_mapping_1g(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -214,7 +214,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l2_entry`: walk-table reachability.
-    pub(super) proof fn remove_l2_entry_eof_reachable(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l2_entry_eof_reachable(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -235,7 +235,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l3_entry`: table-structure leaves and the shrunk page closure.
-    pub(super) proof fn remove_l3_entry_eof_tables(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l3_entry_eof_tables(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -277,7 +277,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l3_entry`: 4K abstract-mapping leaf.
-    pub(super) proof fn remove_l3_entry_eof_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l3_entry_eof_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -297,7 +297,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l3_entry`: 2M and 1G abstract-mapping leaves.
-    pub(super) proof fn remove_l3_entry_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l3_entry_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -319,7 +319,7 @@ impl IommuTable {
     }
 
     /// EOF closure of `remove_l3_entry`: walk-table reachability.
-    pub(super) proof fn remove_l3_entry_eof_reachable(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<PageMap>)
+    pub(super) proof fn remove_l3_entry_eof_reachable(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, returned: PointsTo<IommuPageMap>)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),

@@ -186,7 +186,7 @@ pub fn install_staged_4k_iommu_table_page(
         thread.quota_4k = thread.quota_4k - 1;
         thread.syscall_progress = Ghost(iommu_map_4k_progress_after_directory(thread.syscall_progress.view(), level));
     }
-    let (page_map_ptr, Tracked(page_map_perm)) = page_perm_to_page_map(pg_ptr, Tracked(page_perm));
+    let (page_map_ptr, Tracked(page_map_perm)) = iommu_page_perm_to_page_map(pg_ptr, Tracked(page_perm));
     assert(page_map_perm.value().iommu_wf()) by {
         assert(iommu_word_valid(0usize)) by (compute);
         assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user

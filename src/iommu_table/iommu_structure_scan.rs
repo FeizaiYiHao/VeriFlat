@@ -73,7 +73,7 @@ impl IommuTable {
     }
 
     /// Unlink the table page that `scan` names and return its memory; every mapping stays.
-    pub fn remove_structure_page(&mut self, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PointsTo<PageMap>>)
+    pub fn remove_structure_page(&mut self, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PointsTo<IommuPageMap>>)
         requires
             old(self).wf(),
             old(self).structure_scan_wf(scan),

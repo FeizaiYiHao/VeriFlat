@@ -1,5 +1,6 @@
 mod entry;
 mod page_map;
+mod iommu_page_map_t;
 pub mod iommu_spec;
 mod iommu_lemma;
 mod iommu_impl_base;
@@ -16,6 +17,8 @@ mod iommu_structure_scan;
 mod iommu_structure_scan_eof;
 pub use entry::*;
 pub use iommu_spec::*;
+pub use page_map::IommuPageMap;
+pub use iommu_page_map_t::*;
 mod iommu_read_eof;
 mod iommu_page_map_eof;
 mod iommu_points;

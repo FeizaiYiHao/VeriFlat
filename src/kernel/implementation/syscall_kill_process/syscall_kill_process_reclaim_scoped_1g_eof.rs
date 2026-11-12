@@ -201,7 +201,12 @@ proof fn kill_reclaim_held_1g_page_scoped_eof_process_pagetable(
         process_pagetable_wf(post.prc_mp, post.pt_mp),
 {
     reveal(kill_reclaim_held_1g_page_scoped_eof_transition_framing);
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by {
+        reveal(process_pagetable_wf);
+        assert forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr] post.pt_mp.dom().contains(pt)
+            implies post.prc_mp.dom().contains(post.pt_mp.spec_index(pt).view().higher.proc_ptr) && post.prc_mp.spec_index(post.pt_mp.spec_index(pt).view().higher.proc_ptr).view().pagetable == pt
+            by { process_pagetable_wf_pagetable_at(pre.prc_mp, pre.pt_mp, pt); };
+    };
 }
 
 /// The 1G global-pool relation closes after `pg_ptr` enters the head of the global pool of the owner allocator `allc_ptr`.

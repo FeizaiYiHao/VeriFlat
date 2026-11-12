@@ -216,7 +216,7 @@ pub fn iommu_table_map_insert_4k(
 /// IOMMU mirror of `pagetable_map_create_entry_l4`: link the empty L3 page `page_map_ptr` at L4 index `indices.0` of the write-held
 /// IOMMU table `iommu_table_ptr`; every mapping stays.
 pub fn iommu_table_map_create_entry_l4(
-    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index), page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index), page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
@@ -278,7 +278,7 @@ pub fn iommu_table_map_create_entry_l4(
 /// `target_l3_ptr` of the write-held IOMMU table `iommu_table_ptr`; every mapping stays.
 pub fn iommu_table_map_create_entry_l3(
     iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), target_l3_ptr: PageMapPtr, page_map_ptr: PageMapPtr,
-    Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+    Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
         iommu_table_perms_wf(*old(iommu_table_map)),
@@ -344,7 +344,7 @@ pub fn iommu_table_map_create_entry_l3(
 /// `target_l2_ptr` of the write-held IOMMU table `iommu_table_ptr`; every mapping stays.
 pub fn iommu_table_map_create_entry_l2(
     iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), target_l2_ptr: PageMapPtr, page_map_ptr: PageMapPtr,
-    Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+    Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
         iommu_table_perms_wf(*old(iommu_table_map)),
@@ -409,7 +409,7 @@ pub fn iommu_table_map_create_entry_l2(
 /// Unlink the table page that `scan` names from the write-held IOMMU table `iommu_table_ptr` and return its memory; every mapping stays.
 pub fn iommu_table_map_remove_table_page(
     iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
-) -> (ret: Tracked<vstd::simple_pptr::PointsTo<PageMap>>)
+) -> (ret: Tracked<vstd::simple_pptr::PointsTo<IommuPageMap>>)
     requires
         iommu_table_perms_wf(*old(iommu_table_map)),
         old(iommu_table_map).dom().contains(iommu_table_ptr),

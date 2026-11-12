@@ -29,7 +29,7 @@ impl IommuEntry {
             | (if self.held { IOMMU_HELD_MASK } else { 0 }) | (if self.software_xd { IOMMU_SOFTWARE_XD_MASK } else { 0 })
     }
 
-    /// The shared PageMap view is a bit lens, not a CPU encoding operation.
+    /// The IommuPageMap view is a bit lens, not a CPU encoding operation.
     pub open spec fn bit_view(&self) -> PageEntry {
         PageEntry { addr: self.addr, perm: PageEntryPerm {
             present: !(self.access is Disabled), ps: false, write: self.access is ReadWrite,

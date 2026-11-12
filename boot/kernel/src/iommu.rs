@@ -13,13 +13,15 @@
 //! - CAP.RWBF = 0: table stores need no write-buffer flush before the unit can see them.
 //! - CAP.ND >= 6: 16-bit domain IDs, the model's `VtdDomainId` range.
 //! - CAP.SAGAW bit 2: 4-level second-level tables, the address width the model writes.
-//! - ECAP.C = 1: table walks snoop CPU caches, so the hardware reads what the model stores. An
-//!   emulated remapping unit (under a hypervisor) reads guest memory directly and is accepted
-//!   with C = 0. Supporting C = 0 hardware needs a cache-line flush after every store the unit
-//!   may read, including the zeroing of IOMMU table pages.
+//!
+//! Table walks of a unit with ECAP.C = 0 do not snoop CPU caches. When some unit reports C = 0,
+//! `veriflat_iommu_flush_to_memory` writes back (clflush, then mfence) every store the verified
+//! kernel makes into a structure a unit reads: each IOMMU table word, each zeroed new IOMMU table
+//! page and each context entry; `init` writes back the whole root and context table, which the
+//! kernel built with ordinary stores, before translation is enabled.
 
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
 use astd::boot::MAX_IOMMU_UNITS;
 
@@ -32,6 +34,16 @@ static UNIT_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// runs under the verified root-table lock, but an IOTLB-only domain invalidation runs under one
 /// IOMMU table's lock, so invalidations of different domains may race on a unit.
 static INVALIDATION_LOCK: AtomicBool = AtomicBool::new(false);
+/// Whether stores into remapping structures must be written back to memory: `FLUSH_UNKNOWN` until
+/// the first `flush_needed` reads every unit's ECAP. That can happen before `init`, because the
+/// kernel zeroes the root process's IOMMU root page while it builds itself.
+static FLUSH_MODE: AtomicU8 = AtomicU8::new(FLUSH_UNKNOWN);
+const FLUSH_UNKNOWN: u8 = 0;
+const FLUSH_OFF: u8 = 1;
+const FLUSH_ON: u8 = 2;
+const CACHE_LINE: usize = 64;
+/// One 4 KiB root table and one 4 KiB context table per bus.
+const ROOT_AND_CONTEXT_TABLE_SIZE: usize = REGISTER_PAGE * (1 + 256);
 
 /// The interrupt remapping table every unit uses: 256 entries, all not present, never written.
 #[repr(C, align(4096))]
@@ -168,9 +180,38 @@ fn domain_id(did: usize) -> u64 {
     did as u64
 }
 
-/// CPUID.01H:ECX[31]: a hypervisor emulates this machine, and with it the remapping unit.
-fn under_hypervisor() -> bool {
-    core::arch::x86_64::__cpuid(1).ecx & (1 << 31) != 0
+/// Whether some remapping unit has ECAP.C = 0; decided once from the hardware. Before the first
+/// flush it checks CPUID.01H:EDX[19] (CLFSH).
+fn flush_needed() -> bool {
+    match FLUSH_MODE.load(Ordering::Acquire) {
+        FLUSH_OFF => false,
+        FLUSH_ON => true,
+        _ => {
+            let needed = boot::get_boot_info().iommu_units.iter().any(|&base| read64(base, ECAP_REG) & ECAP_C == 0);
+            if needed {
+                assert!(core::arch::x86_64::__cpuid(1).edx & (1 << 19) != 0, "VT-d table walks do not snoop CPU caches and the CPU has no CLFLUSH");
+            }
+            FLUSH_MODE.store(if needed { FLUSH_ON } else { FLUSH_OFF }, Ordering::Release);
+            needed
+        }
+    }
+}
+
+/// Writes every cache line overlapping [addr, addr + len) back to memory and waits for it, when
+/// some unit does not snoop CPU caches; otherwise returns at once. The verified kernel calls it
+/// after each store into an IOMMU table page or a context entry and after zeroing a new IOMMU
+/// table page, before the store can matter to a unit.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_iommu_flush_to_memory(addr: usize, len: usize) {
+    if len == 0 || !flush_needed() {
+        return;
+    }
+    let mut line = addr & !(CACHE_LINE - 1);
+    while line < addr + len {
+        unsafe { core::arch::x86_64::_mm_clflush(line as *const u8) };
+        line += CACHE_LINE;
+    }
+    unsafe { core::arch::x86_64::_mm_mfence() };
 }
 
 /// Points every remapping unit at the verified root table at `root_table` and enables translation
@@ -180,6 +221,13 @@ fn under_hypervisor() -> bool {
 pub fn init(root_table: u64) {
     let units = &boot::get_boot_info().iommu_units;
     assert!(!units.is_empty(), "no VT-d remapping unit: VeriFlat needs DMA remapping");
+    if flush_needed() {
+        // The kernel built the root and context table with ordinary stores.
+        veriflat_iommu_flush_to_memory(root_table as usize, ROOT_AND_CONTEXT_TABLE_SIZE);
+        log::info!("VT-d table walks do not snoop CPU caches on some unit: remapping-structure stores are flushed to memory");
+    } else {
+        log::info!("VT-d table walks snoop CPU caches on every unit: no remapping-structure flush");
+    }
     for (i, &base) in units.iter().enumerate() {
         init_unit(base, root_table);
         UNITS[i].store(base, Ordering::Release);
@@ -199,7 +247,6 @@ fn init_unit(base: u64, root_table: u64) {
     let (records, count) = fault_records(base);
     assert!(iotlb_reg(base) + 8 <= REGISTER_PAGE && records + 16 * count <= REGISTER_PAGE, "VT-d registers beyond the mapped page");
     assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE) == 0, "VT-d translation or interrupt remapping already enabled");
-    assert!(ecap & ECAP_C != 0 || under_hypervisor(), "VT-d table walks do not snoop CPU caches");
     assert!(ecap & ECAP_IR != 0, "VT-d does not support interrupt remapping");
 
     assert!(root_table & !RTADDR_RTA_MASK == 0, "VT-d root table {:#x} is not a 4 KiB-aligned 48-bit address", root_table);

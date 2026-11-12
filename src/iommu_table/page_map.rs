@@ -5,7 +5,57 @@ use super::entry::*;
 use super::iommu_page_map_eof::*;
 use vstd::simple_pptr::*;
 
-impl PageMap {
+/// Concrete IOMMU table page, a type of its own so that no CPU page-table writer reaches it: its words change only through
+/// `IommuTableWords::set_flushed`. The view and spec shapes are `PageMap`'s.
+#[repr(C)]
+pub struct IommuPageMap {
+    pub ar: IommuTableWords,
+    pub spec_seq: Ghost<Seq<PageEntry>>,
+}
+
+impl IommuPageMap {
+    pub open spec fn wf(&self) -> bool {
+        &&& self.ar.wf()
+        &&& self.spec_seq.view().len() == 512
+        &&& forall|i: usize| #![trigger usize2page_entry(self.ar.view().spec_index(i as int))] pei_valid(i) ==> (usize2page_entry(self.ar.view().spec_index(i as int)) =~= self.spec_seq.view().spec_index(i as int))
+        &&& forall|i: usize|
+            #![trigger self.spec_seq.view().spec_index(i as int).perm.kernel_present]
+            pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
+    }
+
+    pub proof fn wf_at(&self, index: usize)
+        requires self.wf(), pei_valid(index),
+        ensures usize2page_entry(self.ar.view().spec_index(index as int)) =~= self.spec_seq.view().spec_index(index as int),
+    {
+    }
+
+    pub open spec fn view(&self) -> Seq<PageEntry> { self.spec_seq.view() }
+
+    pub open spec fn spec_index(&self, index: usize) -> PageEntry
+        recommends
+            pei_valid(index),
+    {
+        self.view().spec_index(index as int)
+    }
+
+    pub open spec fn is_empty(&self) -> bool
+        recommends
+            self.wf(),
+    {
+        forall|x: u16| #![auto] pei_valid(x as usize) ==> self.spec_seq.view().spec_index(x as int).perm.present == false
+    }
+
+    pub fn get(&self, index: usize) -> (ret: PageEntry)
+        requires
+            self.wf(),
+            pei_valid(index),
+        ensures
+            ret =~= self.spec_index(index),
+            mem_valid(ret.addr),
+    {
+        return usize2page_entry(*self.ar.get(index));
+    }
+
     pub open spec fn iommu_wf(&self) -> bool {
         &&& self.wf()
         &&& forall|i: usize| #![trigger self.ar.view().spec_index(i as int)] pei_valid(i) ==> iommu_word_valid(self.ar.view().spec_index(i as int))
@@ -17,7 +67,7 @@ impl PageMap {
     }
 }
 
-pub(crate) fn iommu_page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+pub(crate) fn iommu_page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<IommuPageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
@@ -48,13 +98,13 @@ pub(crate) fn iommu_page_map_set_published(page_map_ptr: PageMapPtr, Tracked(pag
     proof { lctx.enter_kernel_view_release(); }
     let entry = IommuEntry::from_bit_view(&value);
     let raw = entry.encode();
-    let pm = PPtr::<PageMap>::from_usize(page_map_ptr).borrow_mut(Tracked(page_map_perm));
-    pm.ar.set(index, raw);
+    let pm = PPtr::<IommuPageMap>::from_usize(page_map_ptr).borrow_mut(Tracked(page_map_perm));
+    pm.ar.set_flushed(index, raw);
     proof { pm.spec_seq = Ghost(pm.spec_seq.view().update(index as int, value)); }
     proof { iommu_page_map_set_eof_implies_wf(old(page_map_perm).value(), *pm, index, value, raw); }
 }
 
-pub(crate) fn iommu_page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+pub(crate) fn iommu_page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<IommuPageMap>>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perms).dom().contains(page_map_ptr),
         old(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,

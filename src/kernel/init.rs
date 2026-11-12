@@ -1063,7 +1063,7 @@ pub fn finish_init_from_boot(
         layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
         Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
-    let (iommu_l4, Tracked(iommu_l4_perm)) = page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
+    let (iommu_l4, Tracked(iommu_l4_perm)) = iommu_page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     assert(iommu_l4_perm.value().iommu_wf()) by {
         assert(iommu_word_valid(0usize)) by (compute);
         assert(!spec_usize2page_entry(0usize).perm.ps && !spec_usize2page_entry(0usize).perm.user

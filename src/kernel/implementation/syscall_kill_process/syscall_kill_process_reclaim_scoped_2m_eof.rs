@@ -202,6 +202,11 @@ proof fn kill_reclaim_held_2m_page_scoped_eof_page_relations(
     assert(allocator_cpu_cache_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by {
         reveal(allocator_free_2m_pages_wf); reveal(allocator_cpu_cache_2m_pages_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
         seq_insert_head_implies_contains::<PagePtr>(); page_ptr_roundtrip(); page_index_roundtrip();
+        assert forall|a: RwLockPageAllocatorPtr, c: CpuId, p: PagePtr| #![trigger post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(p)]
+            post.allc_2m_mp.dom().contains(a) && index_valid(NUM_CPUS, c) && post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(p)
+            implies post.pg_arr.spec_index(page_ptr2page_index(p)).view().view().state == (PageState::Free2m { allocator_ptr: Ghost(a), state: FreePageAllocatorState::PreCpuCache { cpu_id: c } })
+                && post.pg_arr.spec_index(page_ptr2page_index(p)).view().view().owning_container == post.allc_2m_mp.spec_index(a).owning_container
+            by { allocator_free_2m_pages_wf_cache_at(pre.allc_2m_mp, pre.pg_arr, a, c, p); };
     };
     reveal(allocator_free_2m_pages_wf);
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(pg_ptr)); };

@@ -23,7 +23,7 @@ impl IommuTable {
             self.wf_l4_at(target_l4i);
         }
         let tracked l4_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
-        let l4_tbl: &PageMap = PPtr::<PageMap>::from_usize(self.cr3).borrow(Tracked(l4_perm));
+        let l4_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(self.cr3).borrow(Tracked(l4_perm));
         let l4_entry = l4_tbl.get(target_l4i);
         let ret = if l4_entry.perm.present {
             Some(l4_entry)
@@ -52,7 +52,7 @@ impl IommuTable {
             self.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
         }
         let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
-        let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
+        let l3_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
         let l3_entry = l3_tbl.get(target_l3i);
         let ret = if l3_entry.perm.present && !l3_entry.perm.ps {
             Some(l3_entry)
@@ -95,7 +95,7 @@ impl IommuTable {
             self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
         }
         let tracked l2_perm = self.l2_tables.borrow().tracked_borrow(l3_entry.addr);
-        let l2_tbl: &PageMap = PPtr::<PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
+        let l2_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
         let l2_entry = l2_tbl.get(target_l2i);
         let ret = if l2_entry.perm.present && !l2_entry.perm.ps {
             Some(l2_entry)
@@ -146,7 +146,7 @@ impl IommuTable {
         proof { self.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i); }
 
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(l2_entry.addr);
-        let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
+        let l1_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
         let l1_entry = l1_tbl.get(target_l1i);
         if l1_entry.perm.kernel_present {
             Some(l1_entry)
@@ -155,7 +155,7 @@ impl IommuTable {
         }
     }
 
-    pub fn create_entry_l4(&mut self, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn create_entry_l4(&mut self, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -203,7 +203,7 @@ impl IommuTable {
         }
     }
 
-    pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -264,7 +264,7 @@ impl IommuTable {
         }
     }
 
-    pub fn create_entry_l2(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn create_entry_l2(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<IommuPageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
             old(self).kernel_l4_end <= target_l4i && pei_valid(target_l4i),
