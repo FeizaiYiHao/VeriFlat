@@ -242,6 +242,62 @@ benchmark, it overwrites the SSD. For a real machine build the no-timer image, `
 cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/no-timer`, and
 boot it as below; `maxcpus=<n>` on the `multiboot2` line gives the IOPS at n cores, one boot per count.
 
+### Cross-process parallel NVMe benchmark (driver and application in two processes)
+
+`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme,nvme_xproc boot/run.sh` runs `parallel_nvme` and then `parallel_nvme_xproc`
+(`boot/dom0/src/nvme/parallel_xproc.rs`), the same workload with the driver and the application in two processes
+that pass work by IPC, one pair per CPU; one boot gives per core count the linked-in multi-queue IOPS and the
+cross-process IOPS, and their ratio is the cost of the IPC. `nvme_xproc` alone runs only the second.
+
+- Driver process: a child of dom0 sharing dom0's image, with its own IOMMU table. Its first thread takes the NVMe
+  function (`send_pci`) and BAR0 (`send_pages`) from dom0, attaches the function to its IOMMU table, resets the
+  controller, sends Set Features Number of Queues and creates I/O queue pair k + 1 (rings in its own heap) for each
+  worker k, then creates driver thread k, which owns that queue pair alone; the first thread keeps only the admin
+  queue and, after the last run, disables the controller.
+- Application: dom0, as in `parallel_nvme`: worker 0 is dom0's first thread on CPU 0, worker k the client of parallel
+  call pair k on CPU k.
+- Endpoints: dom0 creates one handoff endpoint before the call pairs start and gives it to each pair client over the
+  pair's endpoint while the client is still on CPU 0, before the pair's server exists (a client created later could
+  receive nothing: its server occupies the pair's endpoint); the driver process holds it as its first endpoint. Worker
+  k creates its own endpoint and sends it to driver thread k over the handoff endpoint, one pair at a time; from then
+  on the pair uses only that endpoint. A `call` runs the waiting driver thread on the caller's CPU, so driver thread k
+  runs on CPU k without any placement.
+- Buffers, shared as the `ipc` configuration shares its ring: worker k maps a region of 33 pages in dom0 (a control
+  page, then 32 4 KiB data buffers, at `0xdc_0000_0000 + k * 2 MiB`) and shares it with `send_pages`; driver thread k
+  receives it at the same address and maps it into the driver process's IOMMU table at IOVA = VA, so the controller
+  reads and writes the application's buffers directly.
+- One IPC round trip per round: worker k writes up to b - (requests in flight) new requests (LBA, buffer, op) into its
+  control page and calls driver thread k with their count (`call_usize`); the driver thread submits them with one
+  doorbell write, reaps every posted completion, waiting for at least one while any request is in flight, writes
+  their buffer numbers into the control page and answers with their count (`reply_and_receive_usize`). At batch 1 that
+  is one round trip per request; at batch 32 one round trip per group of completions.
+
+Workers = min(CPUs, the queue pairs the controller allocates, 24), as for `parallel_nvme`; LBA ranges, ops, batches,
+phases and `VERIFLAT_NVME_PARALLEL_MS` / `VERIFLAT_NVME_INDEX` are the same. The lines are those of `parallel_nvme`
+with the prefix `parallel_nvme_xproc` (`total_conc` is the total IOPS of the concurrent phase), plus per run
+`parallel_nvme_xproc calls op=.. batch=b n=.. calls=C per_call=P`: the round trips of the concurrent phase and its
+completions per round trip. Afterwards the driver process is killed, which returns the function to dom0, and dom0
+unmaps the regions. Without the NVMe function it logs `parallel_nvme_xproc skipped`; an LBA size above 4 KiB skips it
+too.
+
+Under KVM (2026-11-12, emulated NVMe, so the device is the bottleneck and the numbers show only that it works),
+`total_conc` IOPS of `parallel_nvme` / `parallel_nvme_xproc` at read batch 32 and read batch 1:
+
+| SMP | `parallel_nvme` read b=32 | `parallel_nvme_xproc` read b=32 | `parallel_nvme` read b=1 | `parallel_nvme_xproc` read b=1 |
+| --- | --- | --- | --- | --- |
+| 1 | 55.2K | 38.2K | 7.7K | 7.5K |
+| 2 | 69.9K | 73.2K | 17.0K | 18.9K |
+| 4 | 63.4K | 54.1K | 15.2K | 18.4K |
+| 8 | 39.6K | 58.5K | 15.2K | 9.0K |
+
+The two benchmarks swap places from run to run: QEMU's single device thread sets both rates. At batch 32 a round trip
+answered 15 to 26 completions. The SMP 4 run also ran `call` before them (the clients then hold the handoff endpoint
+while the call timing runs), and its call timings passed unchanged.
+
+For the real machine build the no-timer image with both, `cd boot && VERIFLAT_PARALLEL=nvme,nvme_xproc cargo +1.99.1
+build --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/no-timer`, and boot it with
+`maxcpus=<n>` as for `parallel_nvme`.
+
 ### Real hardware
 
 Not yet tried on a real machine. The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no

@@ -579,6 +579,10 @@ const PHASE_MAP2M_END: usize = PHASE_MAP2M_FIRST + 4 * MAP2M_VARIANTS.len();
 /// The parallel NVMe benchmark's phases (`nvme::parallel`).
 const PHASE_NVME_FIRST: usize = PHASE_MAP2M_END;
 const PHASE_NVME_END: usize = PHASE_NVME_FIRST + nvme::parallel::PHASES;
+/// The cross-process parallel NVMe benchmark's phases (`nvme::parallel_xproc`): worker k's setup, then the runs.
+const PHASE_NVME_XPROC_SETUP: usize = PHASE_NVME_END;
+const PHASE_NVME_XPROC_FIRST: usize = PHASE_NVME_XPROC_SETUP + 1;
+const PHASE_NVME_XPROC_END: usize = PHASE_NVME_XPROC_FIRST + nvme::parallel_xproc::PHASES;
 /// The descriptor where each client of the cross-process mode, dom0 as client 0 included, creates the
 /// endpoint of its child server, which holds it in descriptor 0. The pair's endpoint cannot serve: the
 /// same-process server stays blocked in receive_call on it.
@@ -589,7 +593,7 @@ const MMAP_XPROC_ENDPOINT: usize = 5;
 /// The same for the child of the parallel mmap_2m timing.
 const MAP2M_XPROC_ENDPOINT: usize = 6;
 /// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
-/// `mmap`, `mmap2m`, `unmapn`, `mmap1g`, and `nvme` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// `mmap`, `mmap2m`, `unmapn`, `mmap1g`, `nvme`, and `nvme_xproc` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
@@ -701,10 +705,17 @@ fn start_pair_child(k: usize, endpoint: usize, server: extern "C" fn() -> !) {
 /// parallel mmap timing's worker k in dom0's mmap phases, and starts its mmap child and has it run
 /// worker k in the cross-process mmap phases. dom0 skips the phases of the timings it does not run and
 /// the cross-process ones of the pairs its quota does not cover. At the stop it yields until its CPU
-/// goes Off.
+/// goes Off. In a build that runs `nvme_xproc` it first takes the benchmark's handoff endpoint from dom0
+/// over the pair's endpoint, still on CPU 0 (`nvme::parallel_xproc`).
 extern "C" fn pair_client() -> ! {
     let k = NEXT_PAIR.load(Ordering::SeqCst);
     let pair = &PAIRS[k];
+    if nvme::parallel_xproc::handoff() {
+        // Still on CPU 0, before the pair's server waits on the pair's endpoint: dom0 sends the handoff endpoint over it.
+        quiet("pair client receive_endpoint (nvme_xproc handoff)", unsafe {
+            sys_receive_endpoint(0, nvme::parallel_xproc::HANDOFF_ENDPOINT)
+        });
+    }
     pair.client_cpu.store(current_cpu() + 1, Ordering::SeqCst);
     fund("pair client funding", 1);
     let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[k] });
@@ -743,6 +754,11 @@ extern "C" fn pair_client() -> ! {
             PHASE_MAP2M_FIRST..PHASE_MAP2M_END if map2m_phase_in_child(phase) => call_mmap_child(phase),
             PHASE_MAP2M_FIRST..PHASE_MAP2M_END => time_map2m(k, phase),
             PHASE_NVME_FIRST..PHASE_NVME_END => nvme::parallel::worker(k, phase),
+            PHASE_NVME_XPROC_SETUP => {
+                nvme::parallel_xproc::worker_setup(k);
+                pair.ready.store(true, Ordering::SeqCst);
+            }
+            PHASE_NVME_XPROC_FIRST..PHASE_NVME_XPROC_END => nvme::parallel_xproc::worker(k, phase),
             PHASE_STOP => break,
             _ => {
                 log::error!("pair {}: released into unknown phase {}", k, phase);
@@ -817,6 +833,8 @@ fn time_parallel_call() {
         expect_quiet("cpu_offline_request to count the CPUs", ret, "ErrorCpuAlreadyOff");
         n += 1;
     }
+    // The cross-process NVMe benchmark's handoff endpoint, which each client takes from dom0 before its server exists.
+    let handoff = runs_parallel("nvme_xproc") && nvme::parallel_xproc::prepare_handoff();
     // The endpoints, the n - 1 clients, and server 0; each client funds its own server.
     fund("parallel call funding", 2 * n);
     for k in 0..n {
@@ -833,6 +851,12 @@ fn time_parallel_call() {
         NEXT_PAIR.store(k, Ordering::SeqCst);
         let sp = stack_top(unsafe { &raw const PAIR_CLIENT_STACKS[k] });
         quiet("new_thread_with_endpoint (pair client)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT + k, entry(pair_client), sp) });
+        if handoff {
+            // The client runs until it blocks for the handoff endpoint; sending it queues the client on CPU 0 again,
+            // the only thread there besides this one, for CPU k to pull.
+            unsafe { sys_schedule() };
+            quiet("send_endpoint (nvme_xproc handoff)", unsafe { sys_send_endpoint(PAIR_ENDPOINT + k, nvme::parallel_xproc::HANDOFF_ENDPOINT) });
+        }
         quiet("cpu_online (pair client)", unsafe { sys_cpu_online(k) });
         wait_for("a pair client", || pair.client_cpu.load(Ordering::SeqCst) != 0);
         let cpu = pair.client_cpu.load(Ordering::SeqCst) - 1;
@@ -862,6 +886,9 @@ fn time_parallel_call() {
     }
     if runs_parallel("nvme") {
         nvme::parallel::run(n);
+    }
+    if runs_parallel("nvme_xproc") {
+        nvme::parallel_xproc::run(n);
     }
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.

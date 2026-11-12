@@ -12,6 +12,7 @@ pub mod device;
 pub mod dma;
 pub mod nvme_test;
 pub mod parallel;
+pub mod parallel_xproc;
 pub mod pci;
 mod queue;
 mod regs;

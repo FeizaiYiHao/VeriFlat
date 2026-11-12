@@ -29,20 +29,20 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use vsys::*;
 
 /// The most I/O queue pairs, and so workers, this build creates.
-const MAX_QUEUES: usize = MAX_PAIRS;
+pub(super) const MAX_QUEUES: usize = MAX_PAIRS;
 /// The largest batch, and so the data buffers per queue pair.
-const MAX_BATCH: usize = 32;
+pub(super) const MAX_BATCH: usize = 32;
 /// The runs: (write, batch).
-const RUNS: [(bool, usize); 4] = [(false, 1), (false, 32), (true, 1), (true, 32)];
+pub(super) const RUNS: [(bool, usize); 4] = [(false, 1), (false, 32), (true, 1), (true, 32)];
 /// The phases worker k >= 1 is released into: run c alone is `PHASE_NVME_FIRST + 2 * c`, all at once the next.
 pub const PHASES: usize = 2 * RUNS.len();
 /// The timed window of each phase in ms, from `VERIFLAT_NVME_PARALLEL_MS` of the dom0 build (default 1000).
-const WINDOW_MS: u64 = match option_env!("VERIFLAT_NVME_PARALLEL_MS") {
+pub(super) const WINDOW_MS: u64 = match option_env!("VERIFLAT_NVME_PARALLEL_MS") {
     Some(s) => parse_decimal(s),
     None => 1000,
 };
 /// Which recorded NVMe function in B/D/F order the benchmark drives, from `VERIFLAT_NVME_INDEX` (default 0).
-const NVME_INDEX: usize = match option_env!("VERIFLAT_NVME_INDEX") {
+pub(super) const NVME_INDEX: usize = match option_env!("VERIFLAT_NVME_INDEX") {
     Some(s) => parse_decimal(s) as usize,
     None => 0,
 };
@@ -81,16 +81,30 @@ struct QueuePair {
 /// Queue pair of worker k; only dom0's first thread writes a slot, while no worker runs.
 static mut QUEUES: [Option<QueuePair>; MAX_QUEUES] = [const { None }; MAX_QUEUES];
 
-/// What worker k measured in its last finished phase, alone on its cache lines.
+/// What worker k measured in its last finished phase, alone on its cache lines: completions, the TSC at its start
+/// and end, and the IPC calls it made (`parallel_xproc`; 0 here).
 #[repr(C, align(64))]
-struct Measured {
-    completed: AtomicU64,
-    begin: AtomicU64,
-    end: AtomicU64,
+pub(super) struct Measured {
+    pub(super) completed: AtomicU64,
+    pub(super) begin: AtomicU64,
+    pub(super) end: AtomicU64,
+    pub(super) calls: AtomicU64,
 }
 
-static MEASURED: [Measured; MAX_QUEUES] =
-    [const { Measured { completed: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0) } }; MAX_QUEUES];
+impl Measured {
+    pub(super) const fn new() -> Self {
+        Measured { completed: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0), calls: AtomicU64::new(0) }
+    }
+
+    pub(super) fn record(&self, completed: u64, begin: u64, end: u64, calls: u64) {
+        self.completed.store(completed, Ordering::SeqCst);
+        self.begin.store(begin, Ordering::SeqCst);
+        self.end.store(end, Ordering::SeqCst);
+        self.calls.store(calls, Ordering::SeqCst);
+    }
+}
+
+static MEASURED: [Measured; MAX_QUEUES] = [const { Measured::new() }; MAX_QUEUES];
 static HEAP_READY: AtomicBool = AtomicBool::new(false);
 static WORKERS: AtomicUsize = AtomicUsize::new(0);
 
@@ -157,7 +171,7 @@ pub fn run(n: usize) {
     );
 
     for (c, &(is_write, batch)) in RUNS.iter().enumerate() {
-        time_run(workers, c, is_write, batch);
+        time_run("parallel_nvme", PHASE_NVME_FIRST, &MEASURED, |phase| worker(0, phase), workers, c, is_write, batch);
     }
 
     // Disabling the controller deletes every queue, so no DMA reaches the buffers freed after it.
@@ -170,21 +184,23 @@ pub fn run(n: usize) {
 }
 
 /// Spins until worker `k` finished `phase`, for at most the window and 20 s more.
-fn wait_done(k: usize, phase: usize) {
+fn wait_done(prefix: &str, k: usize, phase: usize) {
     let limit = rdtsc() + (WINDOW_MS / 1000 + 20) * tsc_hz();
     while PAIRS[k].done.load(Ordering::SeqCst) != phase {
         if rdtsc() > limit {
-            fail(format_args!("worker {} did not finish phase {}", k, phase));
+            log::error!("{}: worker {} did not finish phase {}", prefix, k, phase);
+            unsafe { sys_debug_exit(1) };
         }
         core::hint::spin_loop();
     }
 }
 
-/// Runs worker k in `phase` until `deadline`: on CPU 0 here, else by releasing the client of pair k.
-fn run_worker(k: usize, phase: usize, deadline: u64) {
+/// Runs worker k in `phase` until `deadline`: worker 0 here with `run0`, worker k >= 1 by releasing the client of
+/// pair k.
+fn run_worker(k: usize, phase: usize, deadline: u64, run0: &dyn Fn(usize)) {
     PAIRS[k].deadline.store(deadline, Ordering::SeqCst);
     if k == 0 {
-        worker(0, phase);
+        run0(phase);
     } else {
         PAIRS[k].go.store(phase, Ordering::SeqCst);
     }
@@ -194,39 +210,45 @@ fn iops(completed: u64, cycles: u64) -> u64 {
     (completed as u128 * tsc_hz() as u128 / cycles.max(1) as u128) as u64
 }
 
-/// Times run `c` with each worker alone, then all at once, and logs a line per worker and a summary.
-fn time_run(workers: usize, c: usize, is_write: bool, batch: usize) {
-    let (alone_phase, conc_phase) = (PHASE_NVME_FIRST + 2 * c, PHASE_NVME_FIRST + 2 * c + 1);
+/// Times run `c` (phases `first_phase + 2 * c` alone and the next at once) with each worker alone, then all at once,
+/// and logs with `prefix` a line per worker and a summary from what the workers recorded in `measured`; worker 0 runs
+/// here with `run0`. The summary of a benchmark whose workers make IPC calls (`parallel_xproc`) also gives the calls
+/// of the concurrent phase and its completions per call.
+pub(super) fn time_run(
+    prefix: &str, first_phase: usize, measured: &[Measured], run0: impl Fn(usize), workers: usize, c: usize, is_write: bool, batch: usize,
+) {
+    let (alone_phase, conc_phase) = (first_phase + 2 * c, first_phase + 2 * c + 1);
     let window = WINDOW_MS * tsc_hz() / 1000;
     let mut alone = [0u64; MAX_QUEUES];
     for k in 0..workers {
-        run_worker(k, alone_phase, rdtsc() + window);
-        wait_done(k, alone_phase);
-        let m = &MEASURED[k];
+        run_worker(k, alone_phase, rdtsc() + window, &run0);
+        wait_done(prefix, k, alone_phase);
+        let m = &measured[k];
         alone[k] = iops(m.completed.load(Ordering::SeqCst), m.end.load(Ordering::SeqCst) - m.begin.load(Ordering::SeqCst));
     }
     // One deadline for all workers, published with each release; worker 0 runs last, here.
     let deadline = rdtsc() + window;
     for k in (0..workers).rev() {
-        run_worker(k, conc_phase, deadline);
+        run_worker(k, conc_phase, deadline, &run0);
     }
     for k in 0..workers {
-        wait_done(k, conc_phase);
+        wait_done(prefix, k, conc_phase);
     }
 
     let op = if is_write { "write" } else { "read" };
-    let (mut min_begin, mut max_begin, mut min_end, mut max_end, mut total) = (u64::MAX, 0, u64::MAX, 0, 0);
+    let (mut min_begin, mut max_begin, mut min_end, mut max_end, mut total, mut calls) = (u64::MAX, 0, u64::MAX, 0, 0, 0);
     let mut ratios = [0u64; MAX_QUEUES];
     let mut sum_alone = 0;
     for k in 0..workers {
-        let m = &MEASURED[k];
+        let m = &measured[k];
         let (completed, begin, end) = (m.completed.load(Ordering::SeqCst), m.begin.load(Ordering::SeqCst), m.end.load(Ordering::SeqCst));
         (min_begin, max_begin, min_end, max_end) = (min_begin.min(begin), max_begin.max(begin), min_end.min(end), max_end.max(end));
         total += completed;
+        calls += m.calls.load(Ordering::SeqCst);
         sum_alone += alone[k];
         let conc = iops(completed, end - begin);
         ratios[k] = hundredths(conc, alone[k].max(1));
-        log::info!("parallel_nvme cpu={} op={} batch={} alone={} conc={} ratio={}", k, op, batch, alone[k], conc, Hundredths(ratios[k]));
+        log::info!("{} cpu={} op={} batch={} alone={} conc={} ratio={}", prefix, k, op, batch, alone[k], conc, Hundredths(ratios[k]));
     }
     // Total IOPS of the concurrent phase: every completion over the span from the first begin to the last end.
     let total_iops = iops(total, max_end - min_begin);
@@ -237,10 +259,13 @@ fn time_run(workers: usize, c: usize, is_write: bool, batch: usize) {
     alone.sort_unstable();
     let median_alone = (alone[(workers - 1) / 2] + alone[workers / 2]) / 2;
     log::info!(
-        "parallel_nvme summary op={} batch={} n={} total_conc={} sum_alone={} median_alone={} scaling={} min_ratio={} median_ratio={} overlap={}",
-        op, batch, workers, total_iops, sum_alone, median_alone, Hundredths(hundredths(total_iops, median_alone.max(1))), Hundredths(ratios[0]),
+        "{} summary op={} batch={} n={} total_conc={} sum_alone={} median_alone={} scaling={} min_ratio={} median_ratio={} overlap={}",
+        prefix, op, batch, workers, total_iops, sum_alone, median_alone, Hundredths(hundredths(total_iops, median_alone.max(1))), Hundredths(ratios[0]),
         Hundredths((ratios[(workers - 1) / 2] + ratios[workers / 2]) / 2), Hundredths(overlap)
     );
+    if calls > 0 {
+        log::info!("{} calls op={} batch={} n={} calls={} per_call={}", prefix, op, batch, workers, calls, Hundredths(hundredths(total, calls)));
+    }
 }
 
 /// Takes every posted completion of worker `k`'s queue pair `q`, returns its command ID (= data buffer) to
@@ -331,9 +356,6 @@ pub fn worker(k: usize, phase: usize) {
             fail(format_args!("worker {} (queue {}): {} requests still pending after the phase", k, qid, in_flight));
         }
     }
-    let m = &MEASURED[k];
-    m.completed.store(completed, Ordering::SeqCst);
-    m.begin.store(begin, Ordering::SeqCst);
-    m.end.store(end, Ordering::SeqCst);
+    MEASURED[k].record(completed, begin, end, 0);
     pair.done.store(phase, Ordering::SeqCst);
 }
