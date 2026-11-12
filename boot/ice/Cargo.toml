@@ -1,0 +1,10 @@
+[package]
+name = "ice"
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "Hardware-independent polling driver core for the Intel E810 (ice) Ethernet controller"
+
+[dependencies]
+log = "0.4.19"
