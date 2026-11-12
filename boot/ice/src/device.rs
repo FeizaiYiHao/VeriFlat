@@ -254,9 +254,22 @@ impl<'p, P: Platform> Device<'p, P> {
         let mut info = DeviceInfo { pf_id: (p.read32(PF_FUNC_RID) & PF_FUNC_RID_FUNC_NUM_M) as u8, ..Default::default() };
         pf_reset(p)?;
         p.write32(PFINT_OICR_ENA, 0);
-        let aq = ControlQueue::init(p)?;
-        let mut dev = Device { p, aq, info: DeviceInfo::default(), config, queues: Vec::new() };
-        dev.get_version(&mut info)?;
+        // As the Linux driver, retry the control queue bring-up for about a second while the firmware is not ready.
+        let mut tries = 0;
+        let mut dev = loop {
+            ControlQueue::disable(p);
+            let aq = ControlQueue::init(p)?;
+            let mut dev = Device { p, aq, info: DeviceInfo::default(), config, queues: Vec::new() };
+            match dev.get_version(&mut info) {
+                Ok(()) => break dev,
+                Err(e) if tries < 10 => {
+                    log::warn!("ice: firmware not answering yet ({}), retrying", e);
+                    tries += 1;
+                    p.delay_us(100_000);
+                }
+                Err(e) => return Err(e),
+            }
+        };
         log::info!(
             "ice: PF {} firmware {}.{}.{} build {:#x}, API {}.{}.{}",
             info.pf_id, info.fw[0], info.fw[1], info.fw[2], info.fw_build, info.api[0], info.api[1], info.api[2]
@@ -264,7 +277,10 @@ impl<'p, P: Platform> Device<'p, P> {
         dev.send(AqDesc::new(opc::CLEAR_PF_CFG), None)?;
         let mut pxe = AqDesc::new(opc::CLEAR_PXE_MODE);
         pxe.set_u8(0, cmd::CLEAR_PXE_RX_CNT);
-        dev.send(pxe, None)?;
+        // The Linux driver ignores the result too.
+        if let Err(e) = dev.send(pxe, None) {
+            log::warn!("ice: clear PXE mode: {}", e);
+        }
         dev.read_caps(&mut info)?;
         log::info!(
             "ice: queues rx {} from {}, tx {} from {}, RSS table {}, VSIs {}",
@@ -534,21 +550,30 @@ impl<'p, P: Platform> Device<'p, P> {
         let (lport, vsi, mac) = (self.info.lport, self.info.vsi_num, self.info.mac);
         match self.config.steering {
             RxSteering::PerQueueMac => {
-                self.add_rule(rule::rx(rule::RECIPE_MAC, lport, rule::to_vsi(vsi), Some(mac)))?;
-                for q in 0..self.config.queues {
-                    let target = self.info.rxq_first + q as u32;
-                    self.add_rule(rule::rx(rule::RECIPE_MAC, lport, rule::to_queue(target), Some(steering_mac(mac, q))))?;
+                let mut steer = || -> Result<()> {
+                    self.add_rule(rule::rx(rule::RECIPE_MAC, lport, rule::to_vsi(vsi), Some(mac)))?;
+                    for q in 0..self.config.queues {
+                        let target = self.info.rxq_first + q as u32;
+                        self.add_rule(rule::rx(rule::RECIPE_MAC, lport, rule::to_queue(target), Some(steering_mac(mac, q))))?;
+                    }
+                    Ok(())
+                };
+                match steer() {
+                    Ok(()) => {
+                        log::info!(
+                            "ice: frames to {} .. {} go to queues 0 .. {}",
+                            Mac(steering_mac(mac, 0)), Mac(steering_mac(mac, self.config.queues - 1)), self.config.queues - 1
+                        );
+                        return Ok(());
+                    }
+                    // Untested on hardware: keep receiving through the default-VSI rule rather than fail the bring-up.
+                    Err(e) => log::error!("ice: per-queue steering rules rejected ({}); falling back to the default-VSI rule", e),
                 }
-                log::info!(
-                    "ice: frames to {} .. {} go to queues 0 .. {}",
-                    Mac(steering_mac(mac, 0)), Mac(steering_mac(mac, self.config.queues - 1)), self.config.queues - 1
-                );
             }
-            RxSteering::Promiscuous => {
-                self.add_rule(rule::rx(rule::RECIPE_DFLT, lport, rule::to_vsi(vsi), None))?;
-                log::info!("ice: every frame no other rule takes goes to VSI {}", vsi);
-            }
+            RxSteering::Promiscuous => {}
         }
+        self.add_rule(rule::rx(rule::RECIPE_DFLT, lport, rule::to_vsi(vsi), None))?;
+        log::info!("ice: every frame no other rule takes goes to VSI {}", vsi);
         Ok(())
     }
 

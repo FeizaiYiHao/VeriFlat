@@ -63,6 +63,9 @@ pub struct State {
     pub rss_lut: Vec<u8>,
     pub link_up: bool,
     pub resets: usize,
+    /// Fault injection: Get Version answers EAGAIN this many more times; MAC rules are refused.
+    pub get_ver_failures: usize,
+    pub reject_mac_rules: bool,
 }
 
 pub struct Mock {
@@ -147,6 +150,10 @@ impl State {
     fn command(&mut self, d: &mut AqDesc) -> u16 {
         self.log.push(d.opcode);
         match d.opcode {
+            opc::GET_VER if self.get_ver_failures > 0 => {
+                self.get_ver_failures -= 1;
+                8
+            }
             opc::GET_VER => {
                 d.set_u8(cmd::VER_FW_MAJOR, 1);
                 d.set_u8(cmd::VER_FW_MINOR, 7);
@@ -286,6 +293,9 @@ impl State {
                 assert_eq!(d.u16_at(cmd::SW_RULES_NUM), 1);
                 let b = self.buffer(d, true);
                 assert_eq!(u16::from_le_bytes([b[0], b[1]]), 0, "Rx lookup rule");
+                if self.reject_mac_rules && u16::from_le_bytes([b[4], b[5]]) == 1 {
+                    return 14;
+                }
                 assert_eq!(u16::from_le_bytes([b[14], b[15]]), 16);
                 let rule = MockRule {
                     recipe: u16::from_le_bytes([b[4], b[5]]),
@@ -389,6 +399,10 @@ impl Platform for Mock {
         let mut s = self.state.lock().unwrap();
         match offset {
             PFGEN_CTRL if value & PFGEN_CTRL_PFSWR != 0 => s.pf_reset(),
+            PF_FW_ATQH => {
+                s.atq_head = value as usize;
+                s.regs.insert(offset, value);
+            }
             PF_FW_ATQT => {
                 s.regs.insert(offset, value);
                 if s.reg(PF_FW_ATQLEN) & PF_FW_QLEN_ENABLE != 0 {
@@ -551,6 +565,19 @@ mod tests {
         assert_eq!(queues[2].0.clean(), 16);
         dev.shutdown().unwrap();
         assert_eq!(m.state.lock().unwrap().resets, 2);
+    }
+
+    #[test]
+    fn retries_and_steering_fallback() {
+        let m = Mock::new(true);
+        m.state.lock().unwrap().get_ver_failures = 2;
+        m.state.lock().unwrap().reject_mac_rules = true;
+        let dev = Device::new(&m, Config { queues: 2, ..Default::default() }).unwrap();
+        let s = m.state.lock().unwrap();
+        assert_eq!(&s.log[..3], &[opc::GET_VER; 3]);
+        assert_eq!(s.rules.len(), 1);
+        assert_eq!(s.rules[0].recipe, 5);
+        assert_eq!(dev.info.vsi_num, MOCK_VSI);
     }
 
     #[test]

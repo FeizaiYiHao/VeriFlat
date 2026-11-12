@@ -167,6 +167,13 @@ fn alloc(p: &impl Platform, len: usize, align: usize) -> Result<DmaRegion> {
 }
 
 impl ControlQueue {
+    /// Turns both queues off, as the Linux driver's `ice_shutdown_ctrlq` does.
+    pub fn disable(p: &impl Platform) {
+        for r in [PF_FW_ATQH, PF_FW_ATQT, PF_FW_ATQLEN, PF_FW_ATQBAL, PF_FW_ATQBAH, PF_FW_ARQH, PF_FW_ARQT, PF_FW_ARQLEN, PF_FW_ARQBAL, PF_FW_ARQBAH] {
+            p.write32(r, 0);
+        }
+    }
+
     /// Allocates both queues and programs them into the device, which must have just left a PF reset.
     pub fn init(p: &impl Platform) -> Result<ControlQueue> {
         let atq = alloc(p, ATQ_LEN * 32, 4096)?;
