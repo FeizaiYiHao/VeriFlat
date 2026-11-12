@@ -21,9 +21,8 @@ build skill. Reserve the full workspace and monolithic verification for the
 handoff stages required there.
 
 After substantial `src/` edits verify the smallest relevant target and follow
-the build skill's final checks. The shared `.codex/hooks/style_gate.py` Stop
-hook requires a final style pass over every `src/**/*.rs` file this session
-changed; finish again without edits once that pass is clean.
+the build skill's final checks, including a final style pass over every
+`src/**/*.rs` file this session changed.
 
 When a task is complete, end the turn with an `AskUserQuestion` (a short
 "done, anything next?" question) so the user gets a phone notification.

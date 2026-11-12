@@ -53,10 +53,10 @@
   The EOF functions must derive all aggregate invariant closure themselves;
   post invariants or `*_wf` leaves passed from the exec equation are forbidden
   shortcuts.
-- EOF framing calls are limited to existing
-  `lemma_no_change_imply_*_wf*` and approved fold lemmas. All other new or
-  existing specialized preservation/framing helpers are forbidden; prove
-  changed-state leaves inline with S, scoped reveals, and direct algebra.
+- EOF framing calls are limited to existing `*_implies_*_preserved_forall` and
+  approved fold lemmas. All other new or existing specialized
+  preservation/framing helpers are forbidden; prove changed-state leaves inline
+  with S, scoped reveals, and direct algebra.
 - Closure still follows subsystem -> memory -> process -> direct leaves ->
   `inv()`, and uses the canonical compact layout.
 - Before reporting full EOF, audit the exec function for leftover final

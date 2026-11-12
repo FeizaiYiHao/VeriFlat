@@ -14,9 +14,11 @@
   fresh verification.
 - Each `--package` run uses its own target directory and lock,
   `target/verus-focus/<package>/verus-partial` (whole workspace:
-  `target/verus-focus/_workspace/verus-partial`). Focused runs of different
-  packages may run concurrently; runs of the same package serialize. The first
-  run of a package cold-builds its dependencies (vstd included) into its own
+  `target/verus-focus/_workspace/verus-partial`). `--package` runs of different
+  packages may run concurrently; runs of the same package serialize. As in
+  `AGENTS.md`, only module- or function-level runs count as focused (light); a
+  whole-package run is heavy and counts toward the two-job limit. The first run
+  of a package cold-builds its dependencies (vstd included) into its own
   directory; each package directory takes about 0.8 GB of disk.
 - Focused/workspace: `./verify-workspace.sh --package <package>` and
   `./verify-workspace.sh`. Monolith:
@@ -59,9 +61,9 @@
 - Never let self-made tooling stall a session: wrap temporary scripts and
   multi-file rewrites in `timeout`, dry-run them on the largest target file
   first, prefer line-based edits over multi-line backtracking regexes, launch
-  focused or workspace verification in the background (`nohup ... &`) and
-  poll the log with short commands, and remove stray processes and temporary
-  scripts before moving on.
+  verification in the background and follow it through the runtime's completion
+  notification or short bounded log polls, and remove stray processes and
+  temporary scripts before moving on.
 - Report results in the conversation. Do not retain verification reports,
   handoff records, run logs, profiles, or benchmark source snapshots. Use
   temporary files while measuring and remove them before handoff. Keep only

@@ -76,15 +76,18 @@
   and follow the same rule.
 - `*_wf_at` point lemmas have one shape: `requires <pred>_wf(<maps>)` plus the
   index's domain membership, `ensures` only the quantified body instantiated at
-  that index, body `reveal(<pred>_wf)`. They never ensure a map-level or
-  quantified fact (`perms_wf()`, `inv()`, a forall); such a clause leaks the
-  invariant into the caller's context and is a defect to fix in the lemma, not a
-  convenience. Call a `*_wf_at` in exec only to discharge a callee's
-  precondition; a fact the just-executed callee can state goes in that callee's
-  ensures instead. Without the full-EOF boundary a `*_wf_at` chain in exec is
-  piecewise invariant closure, which is the same leak as a reveal: add the EOF
-  boundary first. A map-level fact comes from the matching `*_wf_map` lemma
-  (`requires <pred>_wf(<maps>)`, `ensures` only `perms_wf()` or `.inv()`),
+  that index, body `reveal(<pred>_wf)`. A point lemma may join several `*_wf`
+  predicates at the same index (for example
+  `cpu_current_pcid_pagetable_match_at`): it requires each of them, reveals
+  each, and still ensures only the fact at that index. They never ensure a
+  map-level or quantified fact (`perms_wf()`, `inv()`, a forall); such a clause
+  leaks the invariant into the caller's context and is a defect to fix in the
+  lemma, not a convenience. Call a `*_wf_at` in exec only to discharge a
+  callee's precondition; a fact the just-executed callee can state goes in that
+  callee's ensures instead. Without the full-EOF boundary a `*_wf_at` chain in
+  exec is piecewise invariant closure, which is the same leak as a reveal: add
+  the EOF boundary first. A map-level fact comes from the matching `*_wf_map`
+  lemma (`requires <pred>_wf(<maps>)`, `ensures` only `perms_wf()` or `.inv()`),
   called only where that fact is needed.
 - Operation-local K-to-U bridging lemmas live in the operation's `*_trace.rs` and
   need no approval: `<op>_<step>_pre_from_k(krnl, lctx, cpu_id, ..)` requires
