@@ -17,6 +17,10 @@ zero-test = []
 dma-write-test = []
 # The E810 (ice) packet benchmark, run first and alone; skipped without an E810 function (see src/ice_bench.rs).
 ice-bench = []
+# The E810 benchmark with the driver linked in and in a process of its own, IPC per batch (see src/ice_xproc.rs).
+ice-xproc = []
+# `ice-xproc` on the software device model of `ice::mock` instead of an E810 (measures the IPC, not a NIC).
+ice-mock = ["ice-xproc", "ice/mock"]
 
 [dependencies]
 vsys = { path = "../vsys" }

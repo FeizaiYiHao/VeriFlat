@@ -407,6 +407,20 @@ software device model only.
   `VERIFLAT_ICE_PEER` (+ `VERIFLAT_ICE_PEER_QUEUES`), `VERIFLAT_ICE_STEER` (`mac`, `promisc`), `VERIFLAT_ICE_LINK_SECS`
   (15). Without an E810 it logs `ice bench skipped: no E810 function recorded`; the default dom0 test logs the same, or
   the E810 functions the loader recorded.
+- `boot/dom0/src/ice_xproc.rs`: the IPC variant, feature `ice-xproc` (`ICE_XPROC=1 boot/run.sh`, skipped likewise
+  without an E810). Application thread k (dom0, CPU k) hands up to 1 or 32 frames per batch to the driver's queue pair
+  k and reads back what that queue received, through `ice::xfer` (a mailbox page and Tx slots per pair, Rx buffers
+  handed out in place and re-armed at the next request, zero copy both ways): first `ice_linked`, the driver called
+  directly, then `ice_xproc`, the driver in a child process (`new_process_with_iommu_and_endpoint`) with one thread per
+  pair, one `call` + `reply_and_receive` round trip per batch on the pair's endpoint, CPU k switching straight between
+  the two threads. The driver process gets the function (`send_pci`, then its own `pci_attach_dma`), BAR0 and the
+  shared region (`send_pages`, the same pages mapped in both; it maps the region into its IOMMU table at IOVA = VA) and
+  the endpoints (`send_endpoint`). At most 31 cross-process pairs (endpoint descriptors per thread). Lines:
+  `ice_linked|ice_xproc cpu=k batch=b alone=<pps> conc=<pps> ratio=<alone/conc> ..`, a summary per batch size with
+  the total pps, and `ice_ipc_cost` comparing both. `ICE_MOCK=1` (feature `ice-mock`) runs both on the device model
+  (`ice::mock`, each queue's frames looped back to itself and checked by sequence number): numbers of the IPC and the
+  model, not a NIC. The E810 benchmarks run on a kernel without the timer (`run.sh` builds it so), since a tick on
+  CPU 0 could let a CPU coming online pull dom0's first thread instead of thread k.
 
 Each queue sends one fixed UDP frame (one descriptor per frame, all pointing at the same buffer, report status on the
 last of each 32-descriptor batch) and counts what its Rx queue receives (buffers re-armed in place). The result lines
@@ -431,6 +445,17 @@ through the Tx queues, the steering rules and the Rx queues); the bare-metal bui
 with SMP 4, both passing with the skip line. The device model encodes the same reading of the specification as the
 driver, so it finds plumbing errors, not misreadings.
 
+`ICE_MOCK=1 boot/run.sh` under KVM (2026-11-12, i9-13900HX under WSL2, 100 ms windows, 64-byte frames), total pps of
+all pairs at once and the median extra TSC cycles per batch of `ice_xproc` over `ice_linked` alone; the IPC and the
+device model, not a NIC:
+
+| SMP | batch 1 linked | batch 1 xproc | batch 32 linked | batch 32 xproc | IPC cycles per batch (1 / 32) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 19.2M | 3.01M | 28.3M | 19.1M | 669 / 775 |
+| 2 | 38.4M | 5.33M | 55.0M | 42.1M | 687 / 787 |
+| 4 | 70.6M | 11.6M | 103.5M | 79.4M | 712 / 924 |
+| 8 | 122.2M | 20.5M | 170.1M | 143.5M | 692 / 876 |
+
 Untested on hardware, each following the Linux driver's encoding of the datasheet topic named:
 
 | part | topic | what may differ |
@@ -449,6 +474,7 @@ Untested on hardware, each following the Linux driver's encoding of the datashee
 | Get Link Status (32-byte buffer), Restart Autonegotiation | link | whether a down link needs Set PHY Config first |
 | `GLPRT_*` port counters | statistics | counter latching |
 | dom0: worker placement on CPUs coming online, heap DMA at IOVA = VA above 4 GiB, BAR0 window as UC through MTRRs | VeriFlat | untested with any NIC |
+| `ice_xproc`: function, BAR0 and shared region handed to the driver process, its IOMMU table, per-frame report status | VeriFlat | run on the model only |
 
 Kernel and loader gaps (nothing changed for them):
 
@@ -480,7 +506,9 @@ Then dom0, once the Linux program works:
 1. In the firmware setup: VT-d on, above-4G decoding off; check in Linux that `lspci -vv -s <bdf>` shows Region 0
    below 4 GiB.
 2. Build: `cd boot && VERIFLAT_ICE_SECS=10 VERIFLAT_ICE_PEER=<peer MAC> VERIFLAT_ICE_MODE=both cargo +1.99.1 build
-   --profile release -p aloader -p kernel -p dom0 --features dom0/ice-bench`, then concatenate kernel and dom0 into
+   --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/ice-bench` (for the IPC variant
+   `--features kernel/no-timer,dom0/ice-xproc`, with `VERIFLAT_ICE_WINDOW_MS=1000`), then concatenate kernel and dom0 into
    the jumbo image and boot it from GRUB as in the NVMe section above (`maxcpus=<n>` for n queue pairs, and the RAM
    log for unattended runs). The peer runs the Linux program (`--mode rx --peer <this port's MAC>` or `--mode both`).
-3. Read the `ice queue`, `ice total` and `ice port` lines; `ice bench passed` ends the run.
+3. Read the `ice queue`, `ice total` and `ice port` lines; `ice bench passed` ends the run (`ice xproc bench passed`
+   after the `ice_linked`, `ice_xproc` and `ice_ipc_cost` lines for the IPC variant).

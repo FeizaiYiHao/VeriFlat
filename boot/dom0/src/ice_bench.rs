@@ -4,8 +4,9 @@
 //! `VERIFLAT_ICE_SECS` seconds; dom0 then reports per-queue and total packets per second from the TSC and the port
 //! counters.
 //!
-//! The benchmark runs only in a dom0 built with feature `ice-bench` (`ICE_BENCH=1 boot/run.sh`), first thing after
-//! boot while every other CPU is still Off, and exits afterwards; the default dom0 test only reports whether the
+//! The benchmark runs only in a dom0 built with feature `ice-bench` (`ICE_BENCH=1 boot/run.sh`), on a kernel without
+//! the timer (feature `no-timer`, so that no tick on CPU 0 lets CPU k pull dom0's thread instead of worker k), first
+//! thing after boot while every other CPU is still Off, and exits afterwards; the default dom0 test only reports whether the
 //! loader recorded an E810 function. Build-time settings (environment of the dom0 build):
 //!
 //! - `VERIFLAT_ICE_SECS` seconds of traffic (default 5); `VERIFLAT_ICE_QUEUES` queue pairs (default: one per CPU);
@@ -61,7 +62,7 @@ pub fn find_e810() -> Vec<IceFunction> {
 }
 
 /// The function the benchmark drives: `VERIFLAT_ICE_BDF`, else the first E810-C (100G), else the first E810.
-fn pick(found: &[IceFunction]) -> Option<IceFunction> {
+pub(crate) fn pick(found: &[IceFunction]) -> Option<IceFunction> {
     if let Some(bdf) = option_env!("VERIFLAT_ICE_BDF") {
         let parse = || -> Option<(usize, usize, usize)> {
             let (bus, rest) = bdf.split_once(':')?;
@@ -131,7 +132,7 @@ impl Platform for Dom0Platform {
 }
 
 /// The most worker CPUs.
-const MAX_WORKERS: usize = 64;
+pub(crate) const MAX_WORKERS: usize = 64;
 const WORKER_STACK: usize = 64 * 1024;
 
 /// What worker k owns and reports, reached through `WORKERS[k]`.
@@ -181,7 +182,7 @@ extern "C" fn ice_worker() -> ! {
     }
 }
 
-fn env_num(name: &str, value: Option<&str>, default: u64) -> u64 {
+pub(crate) fn env_num(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {
         None => default,
         Some(s) => s.parse().unwrap_or_else(|_| {
@@ -191,7 +192,7 @@ fn env_num(name: &str, value: Option<&str>, default: u64) -> u64 {
     }
 }
 
-fn env_mac(name: &str, value: Option<&str>) -> Option<[u8; 6]> {
+pub(crate) fn env_mac(name: &str, value: Option<&str>) -> Option<[u8; 6]> {
     value.map(|s| {
         ice::parse_mac(s).unwrap_or_else(|| {
             log::error!("ice: {}={} is not a MAC address", name, s);
@@ -202,7 +203,7 @@ fn env_mac(name: &str, value: Option<&str>) -> Option<[u8; 6]> {
 
 /// CPUs the kernel runs: every CPU but 0 is Off, so an offline request fails without effect until the first missing
 /// CPU, where it fails with InvalidArgument.
-fn count_cpus() -> usize {
+pub(crate) fn count_cpus() -> usize {
     let mut n = 1;
     while n < MAX_WORKERS {
         let ret = unsafe { sys_cpu_offline_request(n) };
@@ -218,7 +219,7 @@ fn count_cpus() -> usize {
     n
 }
 
-fn fail(what: &str, e: ice::Error) -> ! {
+pub(crate) fn fail(what: &str, e: ice::Error) -> ! {
     log::error!("ice: {}: {}", what, e);
     unsafe { sys_debug_exit(1) }
 }

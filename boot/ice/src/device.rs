@@ -502,7 +502,7 @@ impl<'p, P: Platform> Device<'p, P> {
         let mut bufs = Vec::with_capacity(size);
         while bufs.len() < size {
             let n = per_chunk.min(size - bufs.len());
-            let chunk = dma(self.p, n * buf_len, 4096)?;
+            let chunk = self.p.dma_alloc_packets(n * buf_len, 4096).ok_or(Error::NoDmaMemory)?;
             bufs.extend((0..n).map(|i| chunk.slice(i * buf_len, buf_len)));
         }
         let ctx = RxQueueContext { base: descs.iova, qlen: size as u16, buf_len: buf_len as u16, rxmax: buf_len.min(9728) as u16 };

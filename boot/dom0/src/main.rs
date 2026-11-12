@@ -6,6 +6,7 @@
 extern crate alloc;
 
 mod ice_bench;
+mod ice_xproc;
 mod nvme;
 mod slab_alloc;
 
@@ -2552,6 +2553,11 @@ pub extern "C" fn _start() -> ! {
     if cfg!(feature = "ice-bench") {
         // First, while every other CPU is Off, so that worker k comes up on CPU k.
         ice_bench::run();
+        unsafe { sys_debug_exit(0) };
+    }
+    if cfg!(feature = "ice-xproc") {
+        // The same, with the driver linked in and then in a process of its own (see src/ice_xproc.rs).
+        ice_xproc::run();
         unsafe { sys_debug_exit(0) };
     }
 

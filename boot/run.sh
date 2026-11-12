@@ -7,6 +7,8 @@
 # NO_TIMER=1 builds the kernel and dom0 with feature `no-timer`: no LAPIC timer, dom0 runs its timings only.
 # DMA_WRITE_TEST=1 runs only the opt-in EDU device-to-RAM revocation regression.
 # ICE_BENCH=1 runs only the E810 (ice) packet benchmark, which QEMU has no device for: dom0 logs that it is skipped.
+# ICE_XPROC=1 runs only its linked-in vs cross-process (IPC per batch) variant, skipped likewise; ICE_MOCK=1 runs that
+# variant on the driver's software device model instead (numbers of the IPC and the model, not of a NIC).
 # VERIFLAT_BOOT_2M_BLOCKS=n (default 4) sets the free 2M blocks of the kernel build, the root container's 2M quota;
 # VERIFLAT_BOOT_1G_BLOCKS=0|1 (default 1) sets the free 1G block [1 GiB, 2 GiB) of the kernel build, the root container's
 # 1G quota (0 without CPUID pdpe1gb). The page array covers [0, 4 GiB); `-m 2304` is RAM, the rest stays Unavailable
@@ -27,7 +29,11 @@ PROFILE=${PROFILE:-release}
 BUILD_FEATURES=()
 if [ -n "${NO_TIMER:-}" ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0/no-timer); fi
 if [ "${DMA_WRITE_TEST:-0}" = 1 ]; then BUILD_FEATURES+=(--features dom0/dma-write-test); fi
-if [ "${ICE_BENCH:-0}" = 1 ]; then BUILD_FEATURES+=(--features dom0/ice-bench); fi
+# The E810 benchmarks place thread k on CPU k by bringing CPU k online to pull it, which a timer tick on CPU 0 can
+# preempt into pulling dom0's first thread instead: their kernel runs without the timer.
+if [ "${ICE_BENCH:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0/ice-bench); fi
+if [ "${ICE_XPROC:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0/ice-xproc); fi
+if [ "${ICE_MOCK:-0}" = 1 ]; then BUILD_FEATURES+=(--features kernel/no-timer,dom0/ice-mock); fi
 cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0 "${BUILD_FEATURES[@]}"
 OUT=target/x86_64-unknown-none/$PROFILE
 

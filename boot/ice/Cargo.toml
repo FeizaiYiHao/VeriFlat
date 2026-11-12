@@ -6,5 +6,9 @@ edition = "2021"
 publish = false
 description = "Hardware-independent polling driver core for the Intel E810 (ice) Ethernet controller"
 
+[features]
+# The software device model (`mock`), for dom0 runs without an E810; host tests always have it.
+mock = []
+
 [dependencies]
 log = "0.4.19"

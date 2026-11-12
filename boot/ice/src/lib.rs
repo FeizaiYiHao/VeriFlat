@@ -29,12 +29,13 @@ mod queue;
 pub mod regs;
 pub mod ring;
 pub mod sched;
+pub mod xfer;
 
-#[cfg(test)]
-mod mock;
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
 
 pub use device::{Config, Device, DeviceInfo, LinkStatus, PortStats, RxSteering};
-pub use queue::{RxQueue, TxQueue};
+pub use queue::{RxFrame, RxQueue, TxQueue};
 
 use core::fmt;
 
@@ -85,6 +86,11 @@ pub trait Platform: Sync {
     /// returned IOVA, contiguous in VA and IOVA. Regions are never freed. The driver never asks for more than 2 MiB
     /// in one region.
     fn dma_alloc(&self, len: usize, align: usize) -> Option<DmaRegion>;
+    /// `dma_alloc` for packet buffers (the Rx buffers), which a front end may place apart from the rings, for
+    /// example in memory it shares with another process.
+    fn dma_alloc_packets(&self, len: usize, align: usize) -> Option<DmaRegion> {
+        self.dma_alloc(len, align)
+    }
     /// Waits at least `us` microseconds.
     fn delay_us(&self, us: u64);
     /// A monotonic cycle counter (the TSC) for the benchmark loop.

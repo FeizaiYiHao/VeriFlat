@@ -74,6 +74,38 @@ impl<'p, P: Platform> TxQueue<'p, P> {
         k * self.batch
     }
 
+    /// Queues one descriptor per frame of `frames` (IOVA, length), each asking for a write-back as the Linux driver
+    /// does per frame, as many as the ring has room for, and rings the doorbell once; returns the frames queued. A
+    /// queue that sends this way reclaims with `clean_frames`, never with `clean`.
+    pub fn send_frames(&mut self, frames: &[(u64, u16)]) -> usize {
+        let k = frames.len().min(self.ring.free(self.next_to_use, self.next_to_clean));
+        if k == 0 {
+            return 0;
+        }
+        for &(iova, len) in &frames[..k] {
+            unsafe { ptr::write_volatile(self.desc(self.next_to_use), TxDesc::data(iova, len, true)) };
+            self.next_to_use = self.ring.add(self.next_to_use, 1);
+        }
+        fence(Ordering::Release);
+        self.p.write32(regs::qtx_comm_dbell(self.index), self.next_to_use as u32);
+        k
+    }
+
+    /// Reclaims, in order, every frame `send_frames` queued that the device reported sent; returns how many.
+    pub fn clean_frames(&mut self) -> usize {
+        let mut n = 0;
+        while self.next_to_clean != self.next_to_use {
+            let qw1 = unsafe { ptr::read_volatile(&(*self.desc(self.next_to_clean)).cmd_type_offset_bsz) };
+            if !TxDesc::is_done(qw1) {
+                break;
+            }
+            self.next_to_clean = self.ring.add(self.next_to_clean, 1);
+            n += 1;
+        }
+        self.completed += n as u64;
+        n
+    }
+
     /// Descriptors queued and not reclaimed yet.
     pub fn in_flight(&self) -> usize {
         self.ring.distance(self.next_to_clean, self.next_to_use)
@@ -89,8 +121,16 @@ pub struct RxCounts {
     pub errors: u64,
 }
 
+/// A received frame that `RxQueue::take` hands out, valid until the next `give_back`.
+#[derive(Clone, Copy, Debug)]
+pub struct RxFrame {
+    pub va: *const u8,
+    pub iova: u64,
+    pub len: u16,
+}
+
 /// An Rx queue whose every descriptor keeps its own buffer: a received frame is counted and the descriptor re-armed
-/// with the same buffer.
+/// with the same buffer, at once (`poll`) or once its reader is done with the frame (`take`, then `give_back`).
 pub struct RxQueue<'p, P: Platform> {
     p: &'p P,
     pub index: usize,
@@ -98,13 +138,15 @@ pub struct RxQueue<'p, P: Platform> {
     descs: DmaRegion,
     bufs: alloc::vec::Vec<DmaRegion>,
     next_to_clean: usize,
+    /// The first descriptor taken and not given back yet; `next_to_clean` when none is held.
+    next_to_arm: usize,
     pub counts: RxCounts,
 }
 
 impl<'p, P: Platform> RxQueue<'p, P> {
     /// A queue whose descriptor `i` uses `bufs[i]`. Arms every descriptor; the device gets them with `start`.
     pub(crate) fn new(p: &'p P, index: usize, descs: DmaRegion, bufs: alloc::vec::Vec<DmaRegion>) -> Self {
-        let q = RxQueue { p, index, ring: Ring::new(bufs.len()), descs, bufs, next_to_clean: 0, counts: RxCounts::default() };
+        let q = RxQueue { p, index, ring: Ring::new(bufs.len()), descs, bufs, next_to_clean: 0, next_to_arm: 0, counts: RxCounts::default() };
         for i in 0..q.ring.size() {
             q.arm(i);
         }
@@ -133,8 +175,10 @@ impl<'p, P: Platform> RxQueue<'p, P> {
         self.p.write32(regs::qrx_tail(self.index), self.ring.sub(0, 1) as u32);
     }
 
-    /// Counts and re-arms up to `budget` received frames; returns how many there were.
+    /// Counts and re-arms up to `budget` received frames; returns how many there were. Not for a queue that holds
+    /// frames `take` handed out.
     pub fn poll(&mut self, budget: usize) -> usize {
+        debug_assert_eq!(self.next_to_arm, self.next_to_clean, "poll of an Rx queue holding taken frames");
         let mut n = 0;
         while n < budget {
             let d = self.desc(self.next_to_clean);
@@ -162,7 +206,49 @@ impl<'p, P: Platform> RxQueue<'p, P> {
             fence(Ordering::Release);
             self.p.write32(regs::qrx_tail(self.index), self.ring.sub(self.next_to_clean, 1) as u32);
         }
+        self.next_to_arm = self.next_to_clean;
         n
+    }
+
+    /// Counts up to `budget` received frames and hands each good one to `f` without re-arming its descriptor, so
+    /// that the device cannot overwrite it before `give_back`; returns the descriptors taken. The device fills no
+    /// descriptor past the tail of the last `give_back`, so it never reaches the taken ones.
+    pub fn take(&mut self, budget: usize, mut f: impl FnMut(RxFrame)) -> usize {
+        let mut n = 0;
+        while n < budget {
+            let d = self.desc(self.next_to_clean);
+            let qw1 = unsafe { ptr::read_volatile(&(*d).qw[1]) };
+            let status = RxDesc::status0(qw1);
+            if status & RX_STATUS0_DD == 0 {
+                break;
+            }
+            fence(Ordering::Acquire);
+            let qw0 = unsafe { ptr::read_volatile(&(*d).qw[0]) };
+            if status & RX_STATUS0_RXE != 0 || status & RX_STATUS0_EOF == 0 {
+                self.counts.errors += 1;
+            } else {
+                let (len, buf) = (RxDesc::pkt_len(qw0), &self.bufs[self.next_to_clean]);
+                self.counts.packets += 1;
+                self.counts.bytes += len as u64;
+                f(RxFrame { va: buf.va, iova: buf.iova, len });
+            }
+            self.next_to_clean = self.ring.add(self.next_to_clean, 1);
+            n += 1;
+        }
+        n
+    }
+
+    /// Re-arms every descriptor taken since the last call and hands them back to the device.
+    pub fn give_back(&mut self) {
+        if self.next_to_arm == self.next_to_clean {
+            return;
+        }
+        while self.next_to_arm != self.next_to_clean {
+            self.arm(self.next_to_arm);
+            self.next_to_arm = self.ring.add(self.next_to_arm, 1);
+        }
+        fence(Ordering::Release);
+        self.p.write32(regs::qrx_tail(self.index), self.ring.sub(self.next_to_clean, 1) as u32);
     }
 
     /// The received frame at descriptor `i` as the device wrote it, for tests and debugging: (length, status, bytes).

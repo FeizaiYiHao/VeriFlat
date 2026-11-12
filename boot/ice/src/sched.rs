@@ -175,8 +175,9 @@ pub fn plan(res: &SchedResources, parent: &Node, queues: usize) -> Result<Plan, 
     Ok(Plan { chain_layers: parent.layer + 1..qgl, qgroups, per_qgroup })
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// Canned firmware answers for the tests and the device model.
+#[cfg(any(test, feature = "mock"))]
+pub(crate) mod canned {
     use super::*;
 
     /// A default topology of 9 layers as E810 firmware reports it: root, TC, three generic nodes, an entry point at
@@ -207,6 +208,12 @@ pub(crate) mod tests {
         }
         buf
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canned::*;
+    use super::*;
 
     #[test]
     fn parse_and_plan() {
