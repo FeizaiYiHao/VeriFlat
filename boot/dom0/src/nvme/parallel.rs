@@ -18,7 +18,7 @@
 //! the lowest B/D/F); other NVMe functions stay untouched.
 
 use super::cmd as nvme_cmd;
-use super::device::{lba_shift, num_lbas, NvmeDevice};
+use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::dma::{allocate_dma, Dma, NvmeCommand, NvmeCompletion};
 use super::pci::find_nvme_index;
 use super::queue::QUEUE_DEPTH;
@@ -121,10 +121,12 @@ pub fn run(n: usize) {
     check("parallel_nvme pci_attach_dma", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     let mut dev = NvmeDevice::new(f.bar());
     dev.init_admin_only();
-    if lba_shift() > 12 {
-        fail(format_args!("the LBA size {} exceeds the 4 KiB request", 1u64 << lba_shift()));
-    }
-    let blocks = 4096u64 >> lba_shift();
+    let Some(blocks) = blocks_per_4k() else {
+        dev.shutdown();
+        log::info!("parallel_nvme skipped: namespace 1's LBA size {} bytes does not divide the 4 KiB request", 1u64 << lba_shift());
+        return;
+    };
+    let blocks = blocks as u64;
 
     // Set Features Number of Queues, then one I/O queue pair per worker.
     let want = n.min(MAX_QUEUES);

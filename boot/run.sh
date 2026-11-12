@@ -18,6 +18,7 @@
 # The loader maps the BAR0 of the NVMe and edu functions into dom0 at 0xd0_0000_0000 + physical address.
 # `+invtsc` makes the TSC rate known to QEMU, which then reports it in the hypervisor leaf 4000_0010H that the NVMe
 # benchmark reads when the host CPU has no CPUID leaf 16H.
+# NVME_BLOCK_SIZE=4096 (default 512) formats the emulated NVMe namespace with that logical block size.
 # VERIFLAT_PARALLEL picks the parallel timings of a NO_TIMER dom0 (see bench/README.md).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -49,5 +50,5 @@ qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 2304 \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -device intel-iommu,aw-bits=48,intremap=on -device edu,dma_mask=0xffffffffffff -nic none \
     -device pcie-root-port,id=rp1,chassis=1 \
-    -drive file="$OUT/nvme.img",if=none,id=nvm,format=raw -device nvme,drive=nvm,serial=veriflat0,bus=rp1 \
+    -drive file="$OUT/nvme.img",if=none,id=nvm,format=raw -device nvme,drive=nvm,serial=veriflat0,bus=rp1,logical_block_size=${NVME_BLOCK_SIZE:-512},physical_block_size=${NVME_BLOCK_SIZE:-512} \
     -no-reboot "$@"

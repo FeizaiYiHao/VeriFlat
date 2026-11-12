@@ -174,7 +174,11 @@ The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and b
 `-device nvme` that `boot/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
 with `pci_info` (class 01, subclass 08, on any bus: the loader scans all 256 buses, so that the root buses of a server's further host bridges and the buses behind PCI-to-PCI bridges are covered), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
 maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
-function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O (8 LBAs per request) for 2 s;
+function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O for 2 s, 4 KiB of namespace 1's LBAs per
+request (8 at 512-byte LBAs, 1 at 4 KiB LBAs; `nvme: LBA size ..` logs it after the linked configuration's Identify
+Namespace, where Atmosphere always sends 8); an LBA size above 4 KiB logs `nvme bench skipped: namespace 1's LBA
+size .. does not divide the 4 KiB request` and leaves the controller disabled, as does `parallel_nvme`.
+`NVME_BLOCK_SIZE=4096 boot/run.sh` formats the emulated namespace with 4 KiB LBAs (default 512);
 `VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
 
 Configurations, in this order, each with read and write at submission batch 1 and 32:

@@ -33,12 +33,18 @@ pub fn num_lbas() -> u64 {
     NUM_LBAS.load(Ordering::Relaxed)
 }
 
-/// Not in Atmosphere: log2 of namespace 1's LBA size, as `identify_ns` read it. The linked and ring paths
-/// assume 512 bytes (8 LBAs per 4 KiB request); `parallel` uses this.
+/// Not in Atmosphere: log2 of namespace 1's LBA size, as `identify_ns` read it; every path sizes its 4 KiB requests
+/// with it (`blocks_per_4k`), where Atmosphere assumes 512 bytes (8 LBAs per request).
 static LBA_SHIFT: AtomicU64 = AtomicU64::new(9);
 
 pub fn lba_shift() -> u32 {
     LBA_SHIFT.load(Ordering::Relaxed) as u32
+}
+
+/// Not in Atmosphere: the LBAs of one 4 KiB request, or `None` when namespace 1's LBA size exceeds 4 KiB (LBA sizes
+/// are powers of two from 512 bytes on, so this is the one case where it does not divide 4 KiB).
+pub fn blocks_per_4k() -> Option<u16> {
+    if lba_shift() > 12 { None } else { Some((4096u32 >> lba_shift()) as u16) }
 }
 
 #[allow(dead_code)]
@@ -444,15 +450,16 @@ impl NvmeDevice {
         unsafe {
             let size = *(data.as_ptr().offset(0) as *const u64);
             let capacity = *(data.as_ptr().offset(8) as *const u64);
-            println!("    - ID: {} Size: {} Capacity: {}", nsid, size * 512, capacity * 512);
+            // Not in Atmosphere: the LBA data size of the format in use. FLBAS bits 3:0 pick the LBA format
+            // descriptor at byte 128 + 4 * index, whose LBADS (bits 23:16) is log2 of the size; the sizes below
+            // use it instead of Atmosphere's 512.
+            let lbads = (data[128 + 4 * (data[26] & 0xf) as usize + 2] as u64).max(9);
+            LBA_SHIFT.store(lbads, Ordering::Relaxed);
+            println!("    - ID: {} Size: {} Capacity: {} LBA size: {}", nsid, size << lbads, capacity << lbads, 1u64 << lbads);
 
             if capacity > 0 {
                 NUM_LBAS.store(capacity, Ordering::Relaxed);
             }
-            // Not in Atmosphere: the LBA data size of the format in use. FLBAS bits 3:0 pick the LBA format
-            // descriptor at byte 128 + 4 * index, whose LBADS (bits 23:16) is log2 of the size.
-            let lbads = data[128 + 4 * (data[26] & 0xf) as usize + 2] as u64;
-            LBA_SHIFT.store(lbads.max(9), Ordering::Relaxed);
 
             //TODO: Read block size
             self.namespaces.push(NvmeNamespace { id: nsid, blocks: size, block_size: 512 });
@@ -471,7 +478,9 @@ impl NvmeDevice {
             let (ptr0, ptr1) = (breq.as_ptr() as u64, 0);
             let queue = &mut self.submission_queues[qid];
 
-            let num_blocks = 8;
+            // Not in Atmosphere, which sends 8 LBAs: one 4 KiB buffer's worth of LBAs (the caller checked that
+            // the LBA size divides 4 KiB).
+            let num_blocks = 4096u32 >> lba_shift();
             let entry = if write {
                 nvme_cmd::io_write(qid as u16, 1, 0, (num_blocks - 1) as u16, ptr0, ptr1)
             } else {

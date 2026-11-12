@@ -14,8 +14,11 @@
 //! CPU 1 is Off during the first two configurations, so the driver process cannot move off CPU 0, and
 //! online again from the third on. Each configuration ends with the controller disabled, and the child
 //! killed, which returns the function to dom0 detached.
+//!
+//! Not in Atmosphere, which sends 8 LBAs per request: each 4 KiB request covers 4 KiB of namespace 1's LBAs as
+//! Identify Namespace in the `linked` configuration reports them; an LBA size above 4 KiB skips the benchmark.
 
-use super::device::{num_lbas, NvmeDevice};
+use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::nvme_test::{report, run_blocktest_raw_with_delay, Samples};
 use super::pci::{find_nvme, NvmeFunction, PciBarAddr};
 use super::ring_buffer::GenericRingBuffer;
@@ -105,11 +108,18 @@ pub fn run(image: usize, pages: usize) {
     crate::slab_alloc::init();
     take_driver_cpu_off();
 
-    // 1. linked
+    // 1. linked, whose Identify Namespace also gives the LBA size every configuration sizes its requests with.
     check("nvme pci_attach_dma (dom0)", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     {
         let mut dev = NvmeDevice::new(f.bar());
         dev.init();
+        if blocks_per_4k().is_none() {
+            // CPU 1 stays Off, as after a run without the `twocore` configuration.
+            dev.shutdown();
+            log::info!("nvme bench skipped: namespace 1's LBA size {} bytes does not divide the 4 KiB request", 1u64 << lba_shift());
+            return;
+        }
+        log::info!("nvme: LBA size {} bytes, {} LBAs per 4 KiB request", 1u64 << lba_shift(), 4096 >> lba_shift());
         for (is_write, batch) in RUNS {
             run_blocktest_raw_with_delay(&mut dev, NVME_BENCH_SECS, batch, is_write, false, 0);
         }
@@ -192,7 +202,8 @@ fn ring_configuration(f: &NvmeFunction, mode: usize, image: usize, pages: usize)
 fn run_ring_client(config: &str, ipc: bool, is_write: bool, batch_sz: u64) {
     let ring = ring();
     let op = if is_write { BlockOp::Write } else { BlockOp::Read };
-    let max_block_num = num_lbas().saturating_sub(8).max(8);
+    let blocks = blocks_per_4k().unwrap();
+    let max_block_num = num_lbas().saturating_sub(blocks as u64).max(blocks as u64);
     let (mut block_num, mut in_flight, mut completed) = (0u64, 0u64, 0u64);
     let mut samples = Samples::new();
     let call = || quiet("nvme call", unsafe { sys_call(NVME_ENDPOINT) });
@@ -217,8 +228,8 @@ fn run_ring_client(config: &str, ipc: bool, is_write: bool, batch_sz: u64) {
         let mut push_count = 0;
         while push_count < batch_sz && !ring.request_queue.is_full() {
             let Some(data) = ring.try_pop_allocator() else { break };
-            ring.request_queue.try_push(&BlockReq::new(block_num, 8, data, op));
-            block_num = (block_num + 8) % max_block_num;
+            ring.request_queue.try_push(&BlockReq::new(block_num, blocks, data, op));
+            block_num = (block_num + blocks as u64) % max_block_num;
             push_count += 1;
         }
         in_flight += push_count;
