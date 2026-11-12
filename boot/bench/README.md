@@ -290,3 +290,110 @@ server's RAM keeps its contents across the warm reset is untested.
 
 Warning: the benchmark writes the SSD from LBA 0 on. It destroys whatever the SSD holds, partition table included,
 so never run it on a machine whose NVMe SSD has data.
+
+## E810 (ice) driver benchmark
+
+A polling, multi-queue user-level driver for the Intel E810 (PCI 8086:1591..1593 E810-C, 1599..159b E810-XXV), for
+throughput scaling with cores on a CloudLab c6620. Nothing of it has run on an E810 yet: no such device or QEMU model
+was available, so it is built and reviewed against the Linux `ice` headers (read as a reference) and tested on a
+software device model only.
+
+- `boot/ice/`: the hardware-independent core (no_std). Its only hardware access is the `Platform` trait (32-bit BAR0
+  read/write, zeroed DMA allocation returning VA and IOVA, delay, TSC). `Device::new` does a PF reset, the control
+  queue bring-up (retried while the firmware does not answer), Get Version, Clear PF Configuration, Clear PXE Mode,
+  List Function Capabilities, Get Switch Configuration (logical port, switch ID), Manage MAC Read, Query Scheduler
+  Resource Allocation and Get Default Topology, removal of the firmware's default scheduler nodes from the entry point
+  layer down, a chain of scheduler nodes and enough queue group nodes for N queues, Add VSI (one PF VSI, N contiguous
+  queues, PF RSS table, Toeplitz), Add Tx LAN Queues, Rx queue contexts through `QRX_CONTEXT` with RXDID 2 (32-byte
+  flex descriptors) and the queue enables, Set RSS Key and LUT, the Rx switch rules, and `bring_link_up` (Get Link
+  Status, Restart Autonegotiation with the link enabled). `bench::run_queue_pair` is the loop both front ends run.
+- `boot/ice-linux/`: a host program (own workspace, builds into `boot/target/x86_64-unknown-linux-gnu`) that runs the
+  core from Linux user space, ixy-style: BAR0 through sysfs `resource0`, DMA memory from 2 MiB hugepages with physical
+  addresses from `/proc/self/pagemap`, one pinned thread per queue pair. `ice-linux` without arguments prints its
+  options.
+- `boot/dom0/src/ice_bench.rs`: the dom0 front end, built with feature `ice-bench` (`ICE_BENCH=1 boot/run.sh`). It runs
+  first and alone, finds the E810 with `sys_pci_info` (`VERIFLAT_ICE_BDF=bb:dd.f`, else the first E810-C, else the
+  first E810), attaches it with `pci_attach_dma`, drives BAR0 at `0xd0_0000_0000 + base` and takes DMA memory from
+  the heap (IOVA = VA). Worker k runs on CPU k (placed as the parallel call timing places its clients) and owns
+  queue pair k. Build-time settings: `VERIFLAT_ICE_SECS` (5), `VERIFLAT_ICE_QUEUES` (one per CPU),
+  `VERIFLAT_ICE_FRAME` (64, with CRC), `VERIFLAT_ICE_MODE` (`tx`, `rx`, `both`, default `both`), `VERIFLAT_ICE_DST` or
+  `VERIFLAT_ICE_PEER` (+ `VERIFLAT_ICE_PEER_QUEUES`), `VERIFLAT_ICE_STEER` (`mac`, `promisc`), `VERIFLAT_ICE_LINK_SECS`
+  (15). Without an E810 it logs `ice bench skipped: no E810 function recorded`; the default dom0 test logs the same, or
+  the E810 functions the loader recorded.
+
+Each queue sends one fixed UDP frame (one descriptor per frame, all pointing at the same buffer, report status on the
+last of each 32-descriptor batch) and counts what its Rx queue receives (buffers re-armed in place). The result lines
+are `ice queue <q> cpu <q>: tx <pps> pps, rx <pps> pps, rx errors <n>`, `ice total: tx .. pps, rx .. pps over <n>
+queues; line rate of <s>-byte frames at <Mb/s> is <pps> pps`, and `ice port: ..` with the port counters over the run
+(`GLPRT_*`); the Linux program prints the same without the `ice` prefix.
+
+Receive spreading. RSS hashing on E810 needs the DDP package downloaded to the device and RSS flow profiles programmed
+through it (the Linux driver's `ice_flex_pipe`/`ice_flow` code); without a package the Linux driver runs in "safe mode"
+with one queue. That is not implemented: the VSI gets a PF lookup table and a key, but the device computes no hash.
+Frames reach queue q instead through switch rules: frames to the steering MAC `02:b2:b3:b4:b5:qq` (bytes 2..5 of the
+port's MAC, then q) go to queue q, frames to the port's own MAC to the VSI. A peer running the same benchmark with
+`--peer <this port's MAC>` (`VERIFLAT_ICE_PEER`) sends queue q's frames to this side's queue q. `--steer promisc`
+(`VERIFLAT_ICE_STEER=promisc`) instead installs the default-VSI rule, which takes every frame into the VSI (one queue
+without a hash). If the firmware refuses the Rx MAC rules the driver falls back to the default-VSI rule and says so.
+
+Checked here: `cd boot && cargo +1.99.1 test -p ice --target x86_64-unknown-linux-gnu` (descriptor, context, admin
+command, VSI, switch rule and scheduler layouts; ring arithmetic; the UDP frame and IPv4 checksum; and a software model
+of the PF that runs the whole bring-up, checks every DMA address against the driver's allocations, and loops frames
+through the Tx queues, the steering rules and the Rx queues); the bare-metal build of `ice` and `dom0` with and without
+`ice-bench`; the Linux program's build and argument handling; `boot/run.sh` and `ICE_BENCH=1 boot/run.sh` under KVM
+with SMP 4, both passing with the skip line. The device model encodes the same reading of the specification as the
+driver, so it finds plumbing errors, not misreadings.
+
+Untested on hardware, each following the Linux driver's encoding of the datasheet topic named:
+
+| part | topic | what may differ |
+| --- | --- | --- |
+| PF reset, reset-done wait (`PFGEN_CTRL.PFSWR`, `GLGEN_RSTAT`, `GLNVM_ULD`) | resets | timing after UEFI/UNDI or after Linux's `ice` |
+| control queue registers, descriptor flags, one 4 KiB buffer, head polling, ARQ re-posting | control queues | whether the firmware needs anything before the first command |
+| Get Version, Clear PF Configuration (0x02A4), Clear PXE Mode, List Function Capabilities | admin commands | capability IDs and fields |
+| Get Switch Configuration, Manage MAC Read | switch / MAC admin commands | which element is this PF's port |
+| Query Scheduler Resources, Get Default Topology, Delete/Add Scheduler Elements | transmit scheduler | the default tree shape, which nodes may be deleted, children limits |
+| Add VSI with the 128-byte properties block (firmware-chosen VSI number) | VSI configuration | valid-section bits on add, VSI number allocation |
+| Add Tx LAN Queues with the 22-byte Tx queue context | transmit queue context | context fields (TSO queue, legacy interrupt, timestamp enable as Linux sets) |
+| Rx queue context through `QRX_CONTEXT`, `QRXFLXP_CNTXT` RXDID 2, `QRX_CTRL` enable | receive queue context | none expected; the context layout is checked by tests |
+| Tx data descriptor (EOP, RS per batch, done = DTYPE 0xF), flex Rx write-back (DD, EOF, RXE, length) | descriptors | none expected |
+| Set RSS Key / Set RSS LUT (PF table, 2048 entries) | RSS | inert without a DDP package |
+| Rx lookup switch rules: MAC (recipe 1) to queue / to VSI, default (recipe 5) to VSI | switch rules | whether Rx MAC rules are accepted (the Linux driver adds MAC filters as Tx rules); queue index device-wide (`rxq_first` + q) |
+| Get Link Status (32-byte buffer), Restart Autonegotiation | link | whether a down link needs Set PHY Config first |
+| `GLPRT_*` port counters | statistics | counter latching |
+| dom0: worker placement on CPUs coming online, heap DMA at IOVA = VA above 4 GiB, BAR0 window as UC through MTRRs | VeriFlat | untested with any NIC |
+
+Kernel and loader gaps (nothing changed for them):
+
+- BAR0 placement: the E810's BAR0 is a 64-bit prefetchable BAR (32 MiB on the E810-C: Atmosphere's c6620 run found
+  it at 0xfa000000, size 0x2000000). The loader records a function off bus 0 only when the firmware placed BAR0 below
+  4 GiB, because io pages must lie in the page array, which covers [0, 4 GiB); with above-4G decoding on (usual on UEFI
+  servers) the E810 is skipped with a warning. Turn above-4G decoding off, or the page array and loader must learn
+  BARs above 4 GiB (a kernel and model change). The loader also panics unless the MTRRs make BAR0 uncacheable.
+- No MSI-X or interrupts are needed (polling); BAR3 (MSI-X table) stays unmapped. No new syscall is needed.
+- At most 16 recorded functions (`MAX_PCI_DEVICES`); a c6620 has 2 + 2 E810 ports plus NVMe and other NICs.
+- 40 CPUs at most; boot with `maxcpus=` on a machine with more logical processors.
+
+On the real machine, Linux front end first:
+
+1. Find the cabled 100G port: `lspci -nn | grep -i e810`, `ip -br link`, `ethtool <if>`; note its PCI address and
+   MAC on both nodes (the program prints the MAC at bring-up too).
+2. Boot Linux with `intel_iommu=off` (or `iommu=pt`), since the program hands physical addresses to the device, and
+   reserve hugepages: `echo 512 | sudo tee /proc/sys/vm/nr_hugepages`.
+3. Build: `cd boot/ice-linux && cargo +1.99.1 build --release` (the binary is `boot/target/x86_64-unknown-linux-gnu/release/ice-linux`).
+4. Unbind the port from `ice`: `echo <bdf> | sudo tee /sys/bus/pci/drivers/ice/unbind`.
+5. Receiver on node B: `sudo ice-linux <bdf> --queues 8 --cpus 0-7 --mode rx --secs 10`; sender on node A:
+   `sudo ice-linux <bdf> --queues 8 --cpus 0-7 --mode tx --peer <B's MAC> --secs 10`. Repeat with 1, 2, 4, ...
+   queues on both sides for the scaling curve, and `--frame 1518` for the byte rate. Each run ends with a PF reset;
+   rebind afterwards with `echo <bdf> | sudo tee /sys/bus/pci/drivers/ice/bind`.
+6. If the bring-up stops, the log names the admin command and firmware return value; fix that in `boot/ice` and rerun.
+
+Then dom0, once the Linux program works:
+
+1. In the firmware setup: VT-d on, above-4G decoding off; check in Linux that `lspci -vv -s <bdf>` shows Region 0
+   below 4 GiB.
+2. Build: `cd boot && VERIFLAT_ICE_SECS=10 VERIFLAT_ICE_PEER=<peer MAC> VERIFLAT_ICE_MODE=both cargo +1.99.1 build
+   --profile release -p aloader -p kernel -p dom0 --features dom0/ice-bench`, then concatenate kernel and dom0 into
+   the jumbo image and boot it from GRUB as in the NVMe section above (`maxcpus=<n>` for n queue pairs, and the RAM
+   log for unattended runs). The peer runs the Linux program (`--mode rx --peer <this port's MAC>` or `--mode both`).
+3. Read the `ice queue`, `ice total` and `ice port` lines; `ice bench passed` ends the run.

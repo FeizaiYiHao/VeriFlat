@@ -1,6 +1,6 @@
 //! Queue contexts: the Rx LAN queue context the driver writes through `QRX_CONTEXT`, and the Tx LAN queue context
-//! it hands to the firmware in "Add Tx LAN Queues" (E810 datasheet 10.5.8.1 "Receive Queue Context" and 10.6.11
-//! "Transmit Queue Context"). A context is a little-endian bit string: a field of width `w` at bit `lsb` holds bits
+//! it hands to the firmware in "Add Tx LAN Queues" (E810 datasheet: receive queue context and
+//! transmit queue context). A context is a little-endian bit string: a field of width `w` at bit `lsb` holds bits
 //! `lsb .. lsb + w` of the buffer, bit `n` being bit `n % 8` of byte `n / 8`.
 
 /// Rx context size: 8 dwords.

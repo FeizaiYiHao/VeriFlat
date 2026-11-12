@@ -1,5 +1,5 @@
-//! Tx data descriptors and 32-byte Rx flexible descriptors (E810 datasheet 10.6.3 "Transmit Data Descriptor" and
-//! 10.5.3 "Receive Descriptors", RXDID 2 "flex NIC" write-back format).
+//! Tx data descriptors and 32-byte Rx flexible descriptors (E810 datasheet: transmit data descriptor
+//! and receive descriptors, RXDID 2 "flex NIC" write-back format).
 
 /// A 16-byte Tx data descriptor: buffer address and the command/type/offset/size quadword.
 #[repr(C, align(16))]

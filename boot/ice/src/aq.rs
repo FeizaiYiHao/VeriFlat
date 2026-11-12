@@ -1,5 +1,5 @@
-//! The control queue ("admin queue") between the PF driver and the device firmware (E810 datasheet 10.2 "Control
-//! Queues" and chapter 11 "Admin Commands"). The admin transmit queue (ATQ) carries the driver's commands, the admin
+//! The control queue ("admin queue") between the PF driver and the device firmware (E810 datasheet: control
+//! queues, and the admin command descriptions). The admin transmit queue (ATQ) carries the driver's commands, the admin
 //! receive queue (ARQ) the firmware's events. A command is one 32-byte descriptor and, for indirect commands, a buffer
 //! the descriptor points to. The driver sends one command at a time and polls the ATQ head until the firmware passed
 //! the descriptor, then reads the write-back from the same descriptor.

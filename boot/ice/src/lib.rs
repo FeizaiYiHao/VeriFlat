@@ -10,10 +10,10 @@
 //! contexts written through registers, RSS key and lookup table, switch rules that steer received frames, and link
 //! bring-up. Queues are polled: no interrupt is ever enabled.
 //!
-//! The register offsets, admin queue command layouts, context bit layouts and descriptor formats follow the Intel
-//! Ethernet Controller E810 datasheet; the constants were cross-checked against the Linux `ice` driver headers as a
-//! reading reference. No hardware was available when this was written: see the crate README section in
-//! `boot/bench/README.md` for what is verified and what is not.
+//! The register offsets, admin queue command layouts, context bit layouts and descriptor formats are those of the
+//! Intel Ethernet Controller E810 datasheet as the Linux `ice` driver headers encode them (read as a reference, not
+//! copied); the datasheet itself was not at hand, so the module comments name its topics, not section numbers. No
+//! hardware was available when this was written: `boot/bench/README.md` lists what is verified and what is not.
 
 #![cfg_attr(not(test), no_std)]
 

@@ -140,7 +140,7 @@ fn wait_reset_done(p: &impl Platform) -> Result<()> {
     })
 }
 
-/// PF software reset (datasheet 4.1.3.4 "PF Reset"): clears the PF's queues, VSIs and control queues. As in the Linux
+/// PF software reset (E810 datasheet: resets, PF reset): clears the PF's queues, VSIs and control queues. As in the Linux
 /// driver, a global reset in progress replaces it.
 pub(crate) fn pf_reset(p: &impl Platform) -> Result<()> {
     if p.read32(GLGEN_RSTAT) & GLGEN_RSTAT_DEVSTATE_M != 0 || p.read32(GLNVM_ULD) & GLNVM_ULD_RESET_DONE != GLNVM_ULD_RESET_DONE {

@@ -1,6 +1,6 @@
-//! BAR0 register offsets and fields used by the driver (E810 datasheet, chapter 13 "Programming Interface"; the
-//! values match the Linux `ice_hw_autogen.h`). Queue-indexed registers take the PF's own queue index (0 = the
-//! PF's first queue), as the Linux driver passes them.
+//! BAR0 register offsets and fields used by the driver (E810 datasheet: register descriptions; the values match the
+//! Linux `ice_hw_autogen.h`). Queue-indexed registers take the PF's own queue index (0 = the PF's first queue), as
+//! the Linux driver passes them.
 
 /// Global reset status; `DEVSTATE` is 0 when no global reset is in progress.
 pub const GLGEN_RSTAT: usize = 0x000B_8188;

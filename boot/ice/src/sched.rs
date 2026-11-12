@@ -1,4 +1,4 @@
-//! The Tx scheduler tree (E810 datasheet 10.6.6 "Transmit Scheduler" and 11.2.x "Tx Scheduler Commands"). The
+//! The Tx scheduler tree (E810 datasheet: transmit scheduler, and the Tx scheduler admin commands). The
 //! firmware builds a default tree per port, root (layer 0) and traffic class (layer 1) nodes and a chain of nodes down
 //! to a leaf; every Tx queue must hang under a node of the queue group layer (two above the last layer). The driver
 //! does what the Linux driver does for one VSI: it removes the firmware's default nodes from the "entry point" layer
