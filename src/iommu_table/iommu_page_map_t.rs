@@ -4,14 +4,14 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-/// The 512 words of an IOMMU table page. The words are private: `set_flushed` is the only exec writer, so every store
+/// The 512 words of an IOMMU table page. The words are private: `set` is the only exec writer, so every store
 /// into an IOMMU table page reaches memory before a remapping unit that does not snoop CPU caches can need it.
 #[repr(C)]
-pub struct IommuTableWords {
+pub struct IommuArray {
     ar: [usize; 512],
 }
 
-impl IommuTableWords {
+impl IommuArray {
     pub closed spec fn view(&self) -> Seq<usize> { self.ar.view() }
     pub open spec fn wf(&self) -> bool { self.view().len() == 512 }
 
@@ -27,7 +27,7 @@ impl IommuTableWords {
 
     /// TCB: stores word `i`, then writes its cache line back to memory through the glue hook.
     #[verifier::external_body]
-    pub fn set_flushed(&mut self, i: usize, raw: usize)
+    pub fn set(&mut self, i: usize, raw: usize)
         requires
             0 <= i < 512,
             old(self).wf(),

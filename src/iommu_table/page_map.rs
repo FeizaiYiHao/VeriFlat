@@ -6,10 +6,10 @@ use super::iommu_page_map_eof::*;
 use vstd::simple_pptr::*;
 
 /// Concrete IOMMU table page, a type of its own so that no CPU page-table writer reaches it: its words change only through
-/// `IommuTableWords::set_flushed`. The view and spec shapes are `PageMap`'s.
+/// `IommuArray::set`. The view and spec shapes are `PageMap`'s.
 #[repr(C)]
 pub struct IommuPageMap {
-    pub ar: IommuTableWords,
+    pub ar: IommuArray,
     pub spec_seq: Ghost<Seq<PageEntry>>,
 }
 
@@ -99,7 +99,7 @@ pub(crate) fn iommu_page_map_set_published(page_map_ptr: PageMapPtr, Tracked(pag
     let entry = IommuEntry::from_bit_view(&value);
     let raw = entry.encode();
     let pm = PPtr::<IommuPageMap>::from_usize(page_map_ptr).borrow_mut(Tracked(page_map_perm));
-    pm.ar.set_flushed(index, raw);
+    pm.ar.set(index, raw);
     proof { pm.spec_seq = Ghost(pm.spec_seq.view().update(index as int, value)); }
     proof { iommu_page_map_set_eof_implies_wf(old(page_map_perm).value(), *pm, index, value, raw); }
 }

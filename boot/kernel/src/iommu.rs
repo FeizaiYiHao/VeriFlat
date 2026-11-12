@@ -18,7 +18,7 @@
 //! `veriflat_iommu_flush_to_memory` writes back (clflush, then mfence) every store the verified
 //! kernel makes into a structure a unit reads: each IOMMU table word, each zeroed new IOMMU table
 //! page and each context entry; `init` writes back the whole root and context table, which the
-//! kernel built with ordinary stores, before translation is enabled.
+//! kernel built with ordinary stores, and the interrupt remapping table, before any unit is enabled.
 
 use core::ptr;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
@@ -224,6 +224,7 @@ pub fn init(root_table: u64) {
     if flush_needed() {
         // The kernel built the root and context table with ordinary stores.
         veriflat_iommu_flush_to_memory(root_table as usize, ROOT_AND_CONTEXT_TABLE_SIZE);
+        veriflat_iommu_flush_to_memory((&raw const IRT) as usize, REGISTER_PAGE);
         log::info!("VT-d table walks do not snoop CPU caches on some unit: remapping-structure stores are flushed to memory");
     } else {
         log::info!("VT-d table walks snoop CPU caches on every unit: no remapping-structure flush");
