@@ -1,0 +1,337 @@
+//! Not in Atmosphere: the multi-queue NVMe benchmark `parallel_nvme`, one worker per CPU, each with its own I/O
+//! queue pair, as the parallel call timing has one call pair per CPU (`VERIFLAT_PARALLEL=nvme` of a no-timer dom0).
+//!
+//! dom0's first thread resets the controller, sends Set Features Number of Queues before any I/O queue exists, and
+//! creates I/O queue pair k + 1 for worker k: its own submission and completion rings, `MAX_BATCH` 4 KiB data
+//! buffers and doorbells, all from dom0's heap (IOVA = VA) before any worker runs. Worker 0 is dom0's first thread
+//! on CPU 0, worker k >= 1 the client of parallel call pair k on CPU k, threads of dom0 that share its page table
+//! (BAR0 window, heap) and IOMMU table. A worker touches only its own pair, so the fast path takes no lock; the
+//! admin queue belongs to dom0's first thread alone, which issues every admin command (`NvmeDevice::admin`) before
+//! it releases a worker and after the last worker is done. Polling only: the completion queues have interrupts off.
+//!
+//! Worker count = min(CPUs, i.e. parallel call pairs, at most `MAX_PAIRS` = 24 because pair k uses dom0 endpoint
+//! descriptor 8 + k; the I/O queue pairs the controller allocates; `MAX_QUEUES`). Worker k reads and writes 4 KiB
+//! requests sequentially within its own 1/n of namespace 1's LBAs. Batch b means at most b requests in flight on
+//! the worker's queue: each round reaps every posted completion, refills up to b, and writes each doorbell at
+//! most once. Per (op, batch), each worker runs alone for `WINDOW_MS` while the others spin, then all at once
+//! until one shared deadline. The function is the recorded NVMe function number `VERIFLAT_NVME_INDEX` (default 0,
+//! the lowest B/D/F); other NVMe functions stay untouched.
+
+use super::cmd as nvme_cmd;
+use super::device::{lba_shift, num_lbas, NvmeDevice};
+use super::dma::{allocate_dma, Dma, NvmeCommand, NvmeCompletion};
+use super::pci::find_nvme_index;
+use super::queue::QUEUE_DEPTH;
+use super::time::{rdtsc, tsc_hz, tsc_rate};
+use crate::{check, current_cpu, hundredths, Hundredths, MAX_PAIRS, PAIRS, PHASE_NVME_FIRST};
+use alloc::vec::Vec;
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use vsys::*;
+
+/// The most I/O queue pairs, and so workers, this build creates.
+const MAX_QUEUES: usize = MAX_PAIRS;
+/// The largest batch, and so the data buffers per queue pair.
+const MAX_BATCH: usize = 32;
+/// The runs: (write, batch).
+const RUNS: [(bool, usize); 4] = [(false, 1), (false, 32), (true, 1), (true, 32)];
+/// The phases worker k >= 1 is released into: run c alone is `PHASE_NVME_FIRST + 2 * c`, all at once the next.
+pub const PHASES: usize = 2 * RUNS.len();
+/// The timed window of each phase in ms, from `VERIFLAT_NVME_PARALLEL_MS` of the dom0 build (default 1000).
+const WINDOW_MS: u64 = match option_env!("VERIFLAT_NVME_PARALLEL_MS") {
+    Some(s) => parse_decimal(s),
+    None => 1000,
+};
+/// Which recorded NVMe function in B/D/F order the benchmark drives, from `VERIFLAT_NVME_INDEX` (default 0).
+const NVME_INDEX: usize = match option_env!("VERIFLAT_NVME_INDEX") {
+    Some(s) => parse_decimal(s) as usize,
+    None => 0,
+};
+
+const fn parse_decimal(s: &str) -> u64 {
+    let b = s.as_bytes();
+    let mut i = 0;
+    let mut v = 0;
+    while i < b.len() {
+        assert!(b[i].is_ascii_digit(), "VERIFLAT_NVME_PARALLEL_MS and VERIFLAT_NVME_INDEX must be decimal numbers");
+        v = v * 10 + (b[i] - b'0') as u64;
+        i += 1;
+    }
+    v
+}
+
+/// I/O queue pair `qid` and the state of the one worker that uses it.
+struct QueuePair {
+    sq: Dma<[NvmeCommand; QUEUE_DEPTH]>,
+    cq: Dma<[NvmeCompletion; QUEUE_DEPTH]>,
+    /// Entries of each ring (at most `QUEUE_DEPTH`), the submission tail, the completion head and phase.
+    len: usize,
+    tail: usize,
+    head: usize,
+    phase: bool,
+    sq_doorbell: *mut u32,
+    cq_doorbell: *mut u32,
+    /// Data buffer i serves the request with command ID i.
+    bufs: Vec<Dma<[u8; 4096]>>,
+    /// The worker's LBA range and the next LBA it requests.
+    first_lba: u64,
+    lbas: u64,
+    next_lba: u64,
+}
+
+/// Queue pair of worker k; only dom0's first thread writes a slot, while no worker runs.
+static mut QUEUES: [Option<QueuePair>; MAX_QUEUES] = [const { None }; MAX_QUEUES];
+
+/// What worker k measured in its last finished phase, alone on its cache lines.
+#[repr(C, align(64))]
+struct Measured {
+    completed: AtomicU64,
+    begin: AtomicU64,
+    end: AtomicU64,
+}
+
+static MEASURED: [Measured; MAX_QUEUES] =
+    [const { Measured { completed: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0) } }; MAX_QUEUES];
+static HEAP_READY: AtomicBool = AtomicBool::new(false);
+static WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+fn fail(what: core::fmt::Arguments) -> ! {
+    log::error!("parallel_nvme: {}", what);
+    unsafe { sys_debug_exit(1) };
+}
+
+/// Runs the benchmark over the first `n` parallel call pairs, or logs that it skips it when the loader recorded
+/// no NVMe function `NVME_INDEX`.
+pub fn run(n: usize) {
+    let Some(f) = find_nvme_index(NVME_INDEX) else {
+        log::info!("parallel_nvme skipped: no NVMe function {} recorded", NVME_INDEX);
+        return;
+    };
+    let Some((hz, source)) = tsc_rate() else {
+        fail(format_args!("no CPUID source gives the TSC rate; build dom0 with VERIFLAT_TSC_MHZ set to it"));
+    };
+    let others = find_nvme_index(NVME_INDEX + 1).is_some() || NVME_INDEX > 0;
+    log::info!(
+        "parallel_nvme: NVMe function {} ({:02x}:{:02x}.{}, vendor {:04x} device {:04x}, BAR0 {:#x}){}, TSC {} MHz from {}",
+        NVME_INDEX, f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys,
+        if others { "; other NVMe functions stay untouched" } else { "" }, hz / 1_000_000, source
+    );
+    if !HEAP_READY.swap(true, Ordering::SeqCst) {
+        crate::slab_alloc::init();
+    }
+    check("parallel_nvme pci_attach_dma", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
+    let mut dev = NvmeDevice::new(f.bar());
+    dev.init_admin_only();
+    if lba_shift() > 12 {
+        fail(format_args!("the LBA size {} exceeds the 4 KiB request", 1u64 << lba_shift()));
+    }
+    let blocks = 4096u64 >> lba_shift();
+
+    // Set Features Number of Queues, then one I/O queue pair per worker.
+    let want = n.min(MAX_QUEUES);
+    let (nsqa, ncqa) = dev.set_number_of_queues(want as u16).unwrap_or_else(|s| fail(format_args!("Set Features Number of Queues: status {:#x}", s)));
+    let workers = want.min(nsqa as usize).min(ncqa as usize);
+    let len = QUEUE_DEPTH.min(dev.max_queue_entries());
+    let per = num_lbas() / workers as u64 / blocks * blocks;
+    if per < blocks {
+        fail(format_args!("{} LBAs do not give each of {} workers a 4 KiB request", num_lbas(), workers));
+    }
+    for k in 0..workers {
+        let qid = k as u16 + 1;
+        let pair = QueuePair {
+            sq: allocate_dma().unwrap(), cq: allocate_dma().unwrap(), len, tail: 0, head: 0, phase: true,
+            sq_doorbell: dev.doorbell(qid, false), cq_doorbell: dev.doorbell(qid, true),
+            bufs: (0..MAX_BATCH).map(|_| allocate_dma().unwrap()).collect(), first_lba: k as u64 * per, lbas: per,
+            next_lba: k as u64 * per,
+        };
+        if let Err(s) = dev.create_io_queue_pair(qid, pair.cq.physical(), pair.sq.physical(), len as u16) {
+            fail(format_args!("creating I/O queue pair {}: status {:#x}", qid, s));
+        }
+        unsafe { (*(&raw mut QUEUES))[k] = Some(pair) };
+    }
+    WORKERS.store(workers, Ordering::SeqCst);
+    log::info!(
+        "parallel_nvme: {} workers (CPUs {}, controller allocated {} SQ / {} CQ, cap {}), {} entries per queue, {} LBAs of {} bytes per worker, {} ms per phase",
+        workers, n, nsqa, ncqa, MAX_QUEUES, len, per, 1u64 << lba_shift(), WINDOW_MS
+    );
+
+    for (c, &(is_write, batch)) in RUNS.iter().enumerate() {
+        time_run(workers, c, is_write, batch);
+    }
+
+    // Disabling the controller deletes every queue, so no DMA reaches the buffers freed after it.
+    dev.shutdown();
+    for k in 0..workers {
+        unsafe { (*(&raw mut QUEUES))[k] = None };
+    }
+    WORKERS.store(0, Ordering::SeqCst);
+    log::info!("parallel_nvme passed");
+}
+
+/// Spins until worker `k` finished `phase`, for at most the window and 20 s more.
+fn wait_done(k: usize, phase: usize) {
+    let limit = rdtsc() + (WINDOW_MS / 1000 + 20) * tsc_hz();
+    while PAIRS[k].done.load(Ordering::SeqCst) != phase {
+        if rdtsc() > limit {
+            fail(format_args!("worker {} did not finish phase {}", k, phase));
+        }
+        core::hint::spin_loop();
+    }
+}
+
+/// Runs worker k in `phase` until `deadline`: on CPU 0 here, else by releasing the client of pair k.
+fn run_worker(k: usize, phase: usize, deadline: u64) {
+    PAIRS[k].deadline.store(deadline, Ordering::SeqCst);
+    if k == 0 {
+        worker(0, phase);
+    } else {
+        PAIRS[k].go.store(phase, Ordering::SeqCst);
+    }
+}
+
+fn iops(completed: u64, cycles: u64) -> u64 {
+    (completed as u128 * tsc_hz() as u128 / cycles.max(1) as u128) as u64
+}
+
+/// Times run `c` with each worker alone, then all at once, and logs a line per worker and a summary.
+fn time_run(workers: usize, c: usize, is_write: bool, batch: usize) {
+    let (alone_phase, conc_phase) = (PHASE_NVME_FIRST + 2 * c, PHASE_NVME_FIRST + 2 * c + 1);
+    let window = WINDOW_MS * tsc_hz() / 1000;
+    let mut alone = [0u64; MAX_QUEUES];
+    for k in 0..workers {
+        run_worker(k, alone_phase, rdtsc() + window);
+        wait_done(k, alone_phase);
+        let m = &MEASURED[k];
+        alone[k] = iops(m.completed.load(Ordering::SeqCst), m.end.load(Ordering::SeqCst) - m.begin.load(Ordering::SeqCst));
+    }
+    // One deadline for all workers, published with each release; worker 0 runs last, here.
+    let deadline = rdtsc() + window;
+    for k in (0..workers).rev() {
+        run_worker(k, conc_phase, deadline);
+    }
+    for k in 0..workers {
+        wait_done(k, conc_phase);
+    }
+
+    let op = if is_write { "write" } else { "read" };
+    let (mut min_begin, mut max_begin, mut min_end, mut max_end, mut total) = (u64::MAX, 0, u64::MAX, 0, 0);
+    let mut ratios = [0u64; MAX_QUEUES];
+    let mut sum_alone = 0;
+    for k in 0..workers {
+        let m = &MEASURED[k];
+        let (completed, begin, end) = (m.completed.load(Ordering::SeqCst), m.begin.load(Ordering::SeqCst), m.end.load(Ordering::SeqCst));
+        (min_begin, max_begin, min_end, max_end) = (min_begin.min(begin), max_begin.max(begin), min_end.min(end), max_end.max(end));
+        total += completed;
+        sum_alone += alone[k];
+        let conc = iops(completed, end - begin);
+        ratios[k] = hundredths(conc, alone[k].max(1));
+        log::info!("parallel_nvme cpu={} op={} batch={} alone={} conc={} ratio={}", k, op, batch, alone[k], conc, Hundredths(ratios[k]));
+    }
+    // Total IOPS of the concurrent phase: every completion over the span from the first begin to the last end.
+    let total_iops = iops(total, max_end - min_begin);
+    let overlap = if max_begin < min_end { hundredths(min_end - max_begin, max_end - min_begin) } else { 0 };
+    let ratios = &mut ratios[..workers];
+    ratios.sort_unstable();
+    let alone = &mut alone[..workers];
+    alone.sort_unstable();
+    let median_alone = (alone[(workers - 1) / 2] + alone[workers / 2]) / 2;
+    log::info!(
+        "parallel_nvme summary op={} batch={} n={} total_conc={} sum_alone={} median_alone={} scaling={} min_ratio={} median_ratio={} overlap={}",
+        op, batch, workers, total_iops, sum_alone, median_alone, Hundredths(hundredths(total_iops, median_alone.max(1))), Hundredths(ratios[0]),
+        Hundredths((ratios[(workers - 1) / 2] + ratios[workers / 2]) / 2), Hundredths(overlap)
+    );
+}
+
+/// Takes every posted completion of worker `k`'s queue pair `q`, returns its command ID (= data buffer) to
+/// `free`, writes the completion head doorbell once if it took any, and returns how many it took.
+#[inline(always)]
+fn reap(k: usize, q: &mut QueuePair, free: &mut [u16; MAX_BATCH], nfree: &mut usize, in_flight: &mut usize) -> u64 {
+    let mut reaped = 0;
+    loop {
+        let entry = unsafe { core::ptr::read_volatile(q.cq.as_ptr().add(q.head)) };
+        if ((entry.status & 1) == 1) != q.phase {
+            break;
+        }
+        if entry.status >> 1 != 0 {
+            fail(format_args!("worker {}: command {} failed with status {:#x}", k, { entry.cid }, { entry.status } >> 1));
+        }
+        free[*nfree] = entry.cid;
+        *nfree += 1;
+        *in_flight -= 1;
+        reaped += 1;
+        q.head += 1;
+        if q.head == q.len {
+            q.head = 0;
+            q.phase = !q.phase;
+        }
+    }
+    if reaped > 0 {
+        unsafe { core::ptr::write_volatile(q.cq_doorbell, q.head as u32) };
+    }
+    reaped
+}
+
+/// Worker `k` in `phase`, on CPU k: sequential 4 KiB requests on its own queue pair with at most `batch` in
+/// flight until the deadline of pair k, counting the completions reaped by then; then reaps the rest, so the
+/// next phase starts with an empty queue, records the result, and marks the phase done.
+pub fn worker(k: usize, phase: usize) {
+    let pair = &PAIRS[k];
+    let (is_write, batch) = RUNS[(phase - PHASE_NVME_FIRST) / 2];
+    let deadline = pair.deadline.load(Ordering::SeqCst);
+    let Some(q) = (unsafe { (*(&raw mut QUEUES))[k].as_mut() }) else {
+        fail(format_args!("worker {} has no queue pair", k));
+    };
+    if current_cpu() != k {
+        fail(format_args!("worker {} runs on CPU {}", k, current_cpu()));
+    }
+    let qid = k as u16 + 1;
+    let blocks = 4096u64 >> lba_shift();
+    let mut free = [0u16; MAX_BATCH];
+    for (i, slot) in free.iter_mut().enumerate() {
+        *slot = i as u16;
+    }
+    let (mut nfree, mut in_flight, mut completed) = (MAX_BATCH, 0, 0u64);
+
+    let begin = rdtsc();
+    let end = loop {
+        completed += reap(k, q, &mut free, &mut nfree, &mut in_flight);
+        let mut submitted = false;
+        while in_flight < batch {
+            nfree -= 1;
+            let slot = free[nfree];
+            let buf = q.bufs[slot as usize].physical() as u64;
+            let mut cmd = if is_write {
+                nvme_cmd::io_write(slot, 1, q.next_lba, blocks as u16 - 1, buf, 0)
+            } else {
+                nvme_cmd::io_read(slot, 1, q.next_lba, blocks as u16 - 1, buf, 0)
+            };
+            cmd.cid = slot;
+            unsafe { core::ptr::write_volatile(q.sq.as_mut_ptr().add(q.tail), cmd) };
+            q.tail = (q.tail + 1) % q.len;
+            q.next_lba += blocks;
+            if q.next_lba >= q.first_lba + q.lbas {
+                q.next_lba = q.first_lba;
+            }
+            in_flight += 1;
+            submitted = true;
+        }
+        if submitted {
+            unsafe { core::ptr::write_volatile(q.sq_doorbell, q.tail as u32) };
+        }
+        let now = rdtsc();
+        if now >= deadline {
+            break now;
+        }
+    };
+    let drain_limit = rdtsc() + 10 * tsc_hz();
+    while in_flight > 0 {
+        reap(k, q, &mut free, &mut nfree, &mut in_flight);
+        if rdtsc() > drain_limit {
+            fail(format_args!("worker {} (queue {}): {} requests still pending after the phase", k, qid, in_flight));
+        }
+    }
+    let m = &MEASURED[k];
+    m.completed.store(completed, Ordering::SeqCst);
+    m.begin.store(begin, Ordering::SeqCst);
+    m.end.store(end, Ordering::SeqCst);
+    pair.done.store(phase, Ordering::SeqCst);
+}

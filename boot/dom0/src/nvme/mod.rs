@@ -11,6 +11,7 @@ pub mod cmd;
 pub mod device;
 pub mod dma;
 pub mod nvme_test;
+pub mod parallel;
 pub mod pci;
 mod queue;
 mod regs;

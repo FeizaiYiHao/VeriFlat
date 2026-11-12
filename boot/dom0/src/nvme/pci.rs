@@ -50,6 +50,11 @@ impl NvmeFunction {
 
 /// The recorded NVMe function with the lowest B/D/F, on any bus.
 pub fn find_nvme() -> Option<NvmeFunction> {
+    find_nvme_index(0)
+}
+
+/// The recorded NVMe function `index` in B/D/F order (0 is `find_nvme`'s).
+pub fn find_nvme_index(mut index: usize) -> Option<NvmeFunction> {
     for bus in 0..256 {
         for dev in 0..32 {
             for fun in 0..8 {
@@ -59,6 +64,10 @@ pub fn find_nvme() -> Option<NvmeFunction> {
                 }
                 let id = rax as usize;
                 if (id >> 48) & 0xff == CLASS_STORAGE && (id >> 40) & 0xff == SUBCLASS_NVME {
+                    if index > 0 {
+                        index -= 1;
+                        continue;
+                    }
                     return Some(NvmeFunction { bus, dev, fun, vendor: (id >> 16) & 0xffff, device: id & 0xffff, bar_phys: base, bar_pages: pages });
                 }
             }

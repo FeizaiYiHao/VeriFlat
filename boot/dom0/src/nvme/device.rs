@@ -33,6 +33,14 @@ pub fn num_lbas() -> u64 {
     NUM_LBAS.load(Ordering::Relaxed)
 }
 
+/// Not in Atmosphere: log2 of namespace 1's LBA size, as `identify_ns` read it. The linked and ring paths
+/// assume 512 bytes (8 LBAs per 4 KiB request); `parallel` uses this.
+static LBA_SHIFT: AtomicU64 = AtomicU64::new(9);
+
+pub fn lba_shift() -> u32 {
+    LBA_SHIFT.load(Ordering::Relaxed) as u32
+}
+
 #[allow(dead_code)]
 struct NvmeNamespace {
     pub id: u32,
@@ -112,6 +120,61 @@ impl NvmeDevice {
         self.create_io_queues();
 
         log::info!("Nvme Initialized!");
+    }
+
+    /// Not in Atmosphere: `init` without I/O queue pair 1, for `parallel`, which has to set the number of
+    /// queues before it creates any (`set_number_of_queues`, `create_io_queue_pair`).
+    pub fn init_admin_only(&mut self) {
+        self.reset_controller();
+        self.configure_admin_queue();
+        self.set_entry_sizes();
+        self.write_flag32(NvmeRegs32::CC, 1);
+        self.wait_set_reg32(NvmeRegs32::CSTS, NVME_CSTS_RDY, 7500);
+        self.identify_controller();
+        self.identify_ns_list();
+        self.identify_ns(1);
+    }
+
+    /// Not in Atmosphere: submits one admin command, spins for its completion, and returns it, or the status
+    /// field when the command failed. Only the thread that owns this `NvmeDevice` issues admin commands.
+    pub fn admin(&mut self, entry: NvmeCommand) -> Result<NvmeCompletion, u16> {
+        let tail = self.submission_queues[0].submit(entry);
+        self.submission_queue_tail(0, tail as u16);
+        let (head, entry, _) = self.completion_queues[0].complete_spin();
+        self.completion_queue_head(0, head as u16);
+        if entry.status >> 1 != 0 {
+            return Err(entry.status >> 1);
+        }
+        Ok(entry)
+    }
+
+    /// Not in Atmosphere: Set Features Number of Queues asking for `n` I/O submission and `n` I/O completion
+    /// queues; returns how many of each the controller allocated, which may be more or fewer than `n`.
+    pub fn set_number_of_queues(&mut self, n: u16) -> Result<(u16, u16), u16> {
+        let cid = self.submission_queues[0].i as u16;
+        let dw0 = self.admin(nvme_cmd::set_features_number_of_queues(cid, n - 1, n - 1))?.command_specific();
+        Ok(((dw0 & 0xffff) as u16 + 1, (dw0 >> 16) as u16 + 1))
+    }
+
+    /// Not in Atmosphere: creates I/O completion queue `qid` of `len` entries at `cq`, polled (no interrupts),
+    /// and I/O submission queue `qid` of `len` entries at `sq` that completes into it.
+    pub fn create_io_queue_pair(&mut self, qid: u16, cq: usize, sq: usize, len: u16) -> Result<(), u16> {
+        let cid = self.submission_queues[0].i as u16;
+        self.admin(nvme_cmd::create_io_completion_queue(cid, qid, cq, len - 1))?;
+        let cid = self.submission_queues[0].i as u16;
+        self.admin(nvme_cmd::create_io_submission_queue(cid, qid, sq, len - 1, qid))?;
+        Ok(())
+    }
+
+    /// Not in Atmosphere: the submission queue tail doorbell (`cq` false) or the completion queue head doorbell
+    /// (`cq` true) of queue `qid`.
+    pub fn doorbell(&self, qid: u16, cq: bool) -> *mut u32 {
+        (self.bar.get_base() + 0x1000 + (4u64 << self.dstrd) * (2 * qid as u64 + cq as u64)) as *mut u32
+    }
+
+    /// Not in Atmosphere: CAP.MQES + 1, the most entries an I/O queue of this controller may have.
+    pub fn max_queue_entries(&self) -> usize {
+        (self.read_reg64(NvmeRegs64::CAP) & 0xffff) as usize + 1
     }
 
     pub fn new(bar: PciBarAddr) -> NvmeDevice {
@@ -386,6 +449,10 @@ impl NvmeDevice {
             if capacity > 0 {
                 NUM_LBAS.store(capacity, Ordering::Relaxed);
             }
+            // Not in Atmosphere: the LBA data size of the format in use. FLBAS bits 3:0 pick the LBA format
+            // descriptor at byte 128 + 4 * index, whose LBADS (bits 23:16) is log2 of the size.
+            let lbads = data[128 + 4 * (data[26] & 0xf) as usize + 2] as u64;
+            LBA_SHIFT.store(lbads.max(9), Ordering::Relaxed);
 
             //TODO: Read block size
             self.namespaces.push(NvmeNamespace { id: nsid, blocks: size, block_size: 512 });

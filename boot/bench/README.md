@@ -211,6 +211,33 @@ These numbers measure QEMU's device model more than the driver or the kernel; th
 the thesis's real-device figures (Atmosphere reaches the SSD's maximum read rate and 232K IOPS on
 sequential writes at batch 32).
 
+### Parallel NVMe benchmark (one queue pair per CPU)
+
+`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme boot/run.sh` (`nvme` may join other parallel timings in the list) runs
+`parallel_nvme` (`boot/dom0/src/nvme/parallel.rs`) on the parallel call timing's workers: worker 0 is dom0 on CPU 0,
+worker k the client of pair k on CPU k. dom0 resets the controller, sends Set Features Number of Queues, and creates
+I/O queue pair k + 1 for worker k with its own rings (min(1024, CAP.MQES + 1) entries), 32 data buffers and doorbells,
+polled; only dom0's first thread uses the admin queue, before any worker runs and after all are done, so neither
+needs a lock. Workers = min(CPUs, the queue pairs the controller allocates, 24): at most 24 because the workers are
+the call pairs. Worker k reads or writes 4 KiB sequentially within its own 1/n of namespace 1 (the LBA size comes
+from Identify Namespace); batch b = at most b requests in flight on its queue, refilled each round with one doorbell
+write. Per op and batch (read 1, read 32, write 1, write 32), each worker runs alone for `VERIFLAT_NVME_PARALLEL_MS`
+(default 1000) while the others spin, then all at once until one shared deadline; then the controller is disabled.
+
+| line | what it reports |
+| --- | --- |
+| `parallel_nvme cpu=k op=<read\|write> batch=b alone=A conc=C ratio=R` | IOPS of worker k alone and with all workers at once; `ratio` = conc / alone |
+| `parallel_nvme summary op=.. batch=b n=.. total_conc=T sum_alone=.. median_alone=M scaling=S ...` | `total_conc`: every completion of the concurrent phase over its span from the first worker's start to the last one's end; `scaling` = T / M; the ratios' min and median; the share of the span in which all workers ran (`overlap`) |
+
+It drives the recorded NVMe function number `VERIFLAT_NVME_INDEX` (default 0, the lowest B/D/F) and leaves other NVMe
+functions alone, so with two SSDs it measures one of them; without that function it logs `parallel_nvme skipped`.
+Under QEMU every doorbell is a VM exit into QEMU's one NVMe device thread, so the total stays near the
+single-queue rate whatever the CPU count (2026-11-12, KVM, SMP 1/2/4/8: total_conc at read batch 32 74K / 58K /
+74K / 58K IOPS, each worker's ratio about 1/n); these runs show only that the queues work. Like the other NVMe
+benchmark, it overwrites the SSD. For a real machine build the no-timer image, `cd boot && VERIFLAT_PARALLEL=nvme
+cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/no-timer`, and
+boot it as below; `maxcpus=<n>` on the `multiboot2` line gives the IOPS at n cores, one boot per count.
+
 ### Real hardware
 
 Not yet tried on a real machine. The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no

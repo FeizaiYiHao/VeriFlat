@@ -576,6 +576,9 @@ const PHASE_STOP: usize = 17;
 const PHASE_MAP2M_XPROC_SETUP: usize = 18;
 const PHASE_MAP2M_FIRST: usize = 19;
 const PHASE_MAP2M_END: usize = PHASE_MAP2M_FIRST + 4 * MAP2M_VARIANTS.len();
+/// The parallel NVMe benchmark's phases (`nvme::parallel`).
+const PHASE_NVME_FIRST: usize = PHASE_MAP2M_END;
+const PHASE_NVME_END: usize = PHASE_NVME_FIRST + nvme::parallel::PHASES;
 /// The descriptor where each client of the cross-process mode, dom0 as client 0 included, creates the
 /// endpoint of its child server, which holds it in descriptor 0. The pair's endpoint cannot serve: the
 /// same-process server stays blocked in receive_call on it.
@@ -586,7 +589,7 @@ const MMAP_XPROC_ENDPOINT: usize = 5;
 /// The same for the child of the parallel mmap_2m timing.
 const MAP2M_XPROC_ENDPOINT: usize = 6;
 /// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
-/// `mmap`, `mmap2m`, `unmapn`, and `mmap1g` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// `mmap`, `mmap2m`, `unmapn`, `mmap1g`, and `nvme` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
@@ -739,6 +742,7 @@ extern "C" fn pair_client() -> ! {
             }
             PHASE_MAP2M_FIRST..PHASE_MAP2M_END if map2m_phase_in_child(phase) => call_mmap_child(phase),
             PHASE_MAP2M_FIRST..PHASE_MAP2M_END => time_map2m(k, phase),
+            PHASE_NVME_FIRST..PHASE_NVME_END => nvme::parallel::worker(k, phase),
             PHASE_STOP => break,
             _ => {
                 log::error!("pair {}: released into unknown phase {}", k, phase);
@@ -855,6 +859,9 @@ fn time_parallel_call() {
     }
     if runs_parallel("mmap1g") {
         time_mmap_1g();
+    }
+    if runs_parallel("nvme") {
+        nvme::parallel::run(n);
     }
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.

@@ -10,6 +10,7 @@ enum AdminCommandSet {
     DELETE_IO_CQ = 0x04,
     CREATE_IO_CQ = 0x05,
     IDENTIFY_COMMAND = 0x06,
+    SET_FEATURES = 0x09,
 }
 
 #[repr(u8)]
@@ -58,6 +59,26 @@ pub fn create_io_submission_queue(
         cdw11: ((cqid as u32) << 16) | 1, /* Physically Contiguous */
         //TODO: QPRIO
         cdw12: 0, //TODO: NVMSETID
+        cdw13: 0,
+        cdw14: 0,
+        cdw15: 0,
+    }
+}
+
+/// Not in Atmosphere: Set Features, feature 07h Number of Queues, asking for `nsqr` + 1 I/O submission and
+/// `ncqr` + 1 I/O completion queues.
+pub fn set_features_number_of_queues(cid: u16, nsqr: u16, ncqr: u16) -> NvmeCommand {
+    NvmeCommand {
+        opcode: AdminCommandSet::SET_FEATURES as u8,
+        flags: 0,
+        cid: cid,
+        nsid: 0,
+        _rsvd: 0,
+        mptr: 0,
+        dptr: [0, 0],
+        cdw10: 0x07,
+        cdw11: ((ncqr as u32) << 16) | nsqr as u32,
+        cdw12: 0,
         cdw13: 0,
         cdw14: 0,
         cdw15: 0,

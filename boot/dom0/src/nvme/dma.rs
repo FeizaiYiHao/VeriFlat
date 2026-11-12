@@ -62,6 +62,13 @@ pub struct NvmeCompletion {
     pub status: u16,
 }
 
+impl NvmeCompletion {
+    /// Dword 0, the command-specific result.
+    pub fn command_specific(&self) -> u32 {
+        self.command_specific
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 pub struct NvmeCommand {
