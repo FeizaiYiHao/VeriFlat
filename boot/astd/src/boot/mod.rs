@@ -11,7 +11,7 @@ use crate::string::ArrayString;
 pub const MAX_PAGES: usize = 1024 * 1024;
 
 /// The most processors the loader reports. Must equal `veriflat_monolith::NUM_CPUS`.
-pub const MAX_CPUS: usize = 32;
+pub const MAX_CPUS: usize = 40;
 
 /// The most VT-d remapping units (DMAR DRHD entries) the loader reports.
 pub const MAX_IOMMU_UNITS: usize = 8;

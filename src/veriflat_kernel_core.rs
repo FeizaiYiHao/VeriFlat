@@ -70,9 +70,9 @@ global layout ThreadRwLock is size == 760, align == 8;
 global layout Registers is size == 168, align == 8;
 global layout ProcessRwLock is size == 256, align == 8;
 global layout EndpointRwLock is size == 72, align == 8;
-global layout CpuSetRwLock is size == 2176, align == 64;
+global layout CpuSetRwLock is size == 2688, align == 64;
 global layout IommuTableRwLock is size == 64, align == 8;
-global layout PageTableRwLock is size == 2112, align == 64;
+global layout PageTableRwLock is size == 2624, align == 64;
 global layout PcidAllocatorRwLock is size == 32776, align == 8;
 }
 
