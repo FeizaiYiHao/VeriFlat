@@ -65,6 +65,7 @@ pub(super) proof fn new_container_enter_step_from_u(
         },
         pre.process_map[prc_ptr].pagetable->Some_0.pagetable_window_locks == old_windows,
         windows == pagetable_window_locks_after_locking_range(old_windows, range, cpu_id),
+        pagetable_range_windows_unlocked(old_windows, range),
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(ctn_ptr, ContainerU {

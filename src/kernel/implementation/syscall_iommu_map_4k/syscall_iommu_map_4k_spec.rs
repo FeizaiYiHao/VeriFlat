@@ -42,7 +42,8 @@ pub open spec fn iommu_map_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
 }
 
 /// The cpu runs a live thread of a live process of an existing container with no multi-step syscall in progress; the cpu,
-/// the thread, and its process are unlocked, the process's page table is not write-locked and its IOMMU table is unlocked; `va_range` and
+/// the thread, and its process are unlocked, the process's page table is not write-locked, its existing 2M windows of `va_range` are
+/// unlocked, and its IOMMU table is unlocked; `va_range` and
 /// `iova_range` are valid user ranges of equal non-zero length; every page of `va_range` is mapped in the page table and
 /// no page of `iova_range` is mapped in the IOMMU table.
 #[verifier::opaque]
@@ -60,6 +61,7 @@ pub open spec fn iommu_map_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, va_r
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
+    &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, va_range)
     &&& process.iommu_table is Some
     &&& iommu_table.lock_state is Unlocked
     &&& va_range.wf()

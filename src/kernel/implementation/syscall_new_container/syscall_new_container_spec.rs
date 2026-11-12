@@ -49,7 +49,7 @@ pub open spec fn new_container_syscall_result(
 /// for the child's pages, `funding`, and three directory pages per shared page; `transfer_cpu` is an
 /// Off cpu of the container; a present `ep_idx` names a live descriptor. The cpu, the container
 /// and its cpu set, the process, the thread, and that endpoint are unlocked, and the page table is not
-/// write-locked.
+/// write-locked and its existing windows over `range` are unlocked.
 #[verifier::opaque]
 pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, ep_idx: Option<EndpointIdx>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -72,6 +72,7 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     &&& !process.killed
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
+    &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range)
     &&& range.wf()
     // Nine 4K pages and two 2M pages for the child, as in `new_container_syscall_result`, and up to three directory pages per page.
     &&& 0 < range.len <= (usize::MAX - 9) / 3

@@ -429,8 +429,9 @@ pub open spec fn ipc_pages_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     })
 }
 
-/// Locking runs after entering, while no other thread write-locks the sender's page table, and no other thread write-locks
-/// the receiver's page table to read it or holds it at all to fill it.
+/// Locking runs after entering, while no other thread write-locks the sender's page table, no other thread write-locks
+/// the receiver's page table to read it or holds it at all to fill it, and, when both ranges are user ranges, the existing
+/// 2M windows of both ranges are unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_pages_lock_tables_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, tables: IpcPagesTables) -> bool {
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
@@ -443,6 +444,8 @@ pub open spec fn ipc_pages_lock_tables_step_pre(old_u: KernelU, cpu_id: CpuId, e
     &&& ipc_pages_tables_present(old_u, cpu_id)
     &&& !(source.lock_state is WriteLocked)
     &&& if tables is Fill { target.lock_state is Unlocked } else { !(target.lock_state is WriteLocked) }
+    &&& user_va_range(old_u, progress->IpcPages_source_range) && user_va_range(old_u, progress->IpcPages_target_range)
+        ==> pagetable_range_windows_unlocked(source.pagetable_window_locks, progress->IpcPages_source_range) && pagetable_range_windows_unlocked(target.pagetable_window_locks, progress->IpcPages_target_range)
 }
 
 /// Locking read-locks the sender's page table, read-locks the receiver's or write-locks it to fill it, write-locks the existing 2M

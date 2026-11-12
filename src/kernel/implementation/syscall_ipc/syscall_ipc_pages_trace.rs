@@ -167,6 +167,14 @@ pub(super) proof fn ipc_pages_lock_tables_step_pre_from_k(
         !(krnl.pt_mp.spec_index(source_pagetable).locking_thread() is Write),
         tables is Fill ==> krnl.pt_mp.spec_index(target_pagetable).locking_thread() is None,
         tables is Read ==> !(krnl.pt_mp.spec_index(target_pagetable).locking_thread() is Write),
+        krnl.inv(),
+        ({
+            let progress = krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0;
+            let source_c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
+            let target_c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+            source_c.kernel_l4_end() <= spec_va2index(progress->IpcPages_source_range.start).0 && target_c.kernel_l4_end() <= spec_va2index(progress->IpcPages_target_range.start).0
+                ==> pagetable_range_windows_unlocked(source_c.lower.pagetable_window_locks, progress->IpcPages_source_range) && pagetable_range_windows_unlocked(target_c.lower.pagetable_window_locks, progress->IpcPages_target_range)
+        }),
     ensures
         ipc_pages_lock_tables_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, tables),
         ({
@@ -181,6 +189,8 @@ pub(super) proof fn ipc_pages_lock_tables_step_pre_from_k(
     kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thrd_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_thread_projection_at(krnl, thrd_ptr);
     kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
+    kernel_process_projection_at(krnl, source_process); kernel_process_projection_at(krnl, target_process);
+    kernel_l4_end_projection_at(krnl, source_pagetable); kernel_l4_end_projection_at(krnl, target_pagetable);
     ipc_pages_lock_tables_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, ep_idx, tables);
 }
 
@@ -516,6 +526,8 @@ pub(super) proof fn ipc_pages_lock_tables_step_pre_from_u(pre: KernelU, cpu_id: 
             &&& ipc_pages_tables_present(pre, cpu_id)
             &&& !(source.lock_state is WriteLocked)
             &&& if tables is Fill { target.lock_state is Unlocked } else { !(target.lock_state is WriteLocked) }
+            &&& user_va_range(pre, progress->IpcPages_source_range) && user_va_range(pre, progress->IpcPages_target_range)
+                ==> pagetable_range_windows_unlocked(source.pagetable_window_locks, progress->IpcPages_source_range) && pagetable_range_windows_unlocked(target.pagetable_window_locks, progress->IpcPages_target_range)
         },
     ensures ipc_pages_lock_tables_step_pre(pre, cpu_id, ep_idx, tables),
 { reveal(ipc_pages_lock_tables_step_pre); }

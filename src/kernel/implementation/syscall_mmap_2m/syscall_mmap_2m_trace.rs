@@ -143,6 +143,7 @@ pub(super) proof fn mmap_2m_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
         windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range(), cpu_id),
+        pagetable_range_windows_unlocked(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range()),
         {
             let pre = kernel_k_to_kernel_u(*krnl);
             let cpu = pre.cpu_array[cpu_id as int];
@@ -192,6 +193,7 @@ pub(super) proof fn mmap_2m_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
         windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range(), cpu_id),
+        pagetable_range_windows_unlocked(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range.covering_4k_range()),
         owner == prc_ptr,
         {
             let pre = kernel_k_to_kernel_u(*krnl);

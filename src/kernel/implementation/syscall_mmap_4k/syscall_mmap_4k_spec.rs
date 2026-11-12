@@ -46,8 +46,8 @@ pub open spec fn mmap_4k_progress_after_leaf(progress: Option<SyscallProgress>) 
 /// The cpu runs a live thread of an existing container with no multi-step syscall in progress; to
 /// read, the cpu and the thread are unlocked and its process's pagetable is not write-locked, and to
 /// fill, the cpu and the thread are write-locked since the hold step and the pagetable is unlocked;
-/// and the thread has four 4K quota per page of a valid, non-empty user range none of whose VAs is
-/// covered by a 4K, 2M, or 1G leaf.
+/// the range's existing 2M windows are unlocked; and the thread has four 4K quota per page of a
+/// valid, non-empty user range none of whose VAs is covered by a 4K, 2M, or 1G leaf.
 #[verifier::opaque]
 pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -59,6 +59,7 @@ pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
     &&& !(phase is Filled)
     &&& phase is Read ==> cpu.lock_state is Unlocked && thread.lock_state is Unlocked && !(pagetable.lock_state is WriteLocked)
     &&& phase is Fill ==> cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && pagetable.lock_state is Unlocked
+    &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range)
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range)

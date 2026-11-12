@@ -103,6 +103,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0) && ep_ptr is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) == ep_ptr
             &&& ep_ptr is Some ==> krnl.ep_mp.dom().contains(ep_ptr->Some_0) && krnl.ep_mp.spec_index(ep_ptr->Some_0).locking_thread() is None
         },
+        pagetable_range_windows_unlocked(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
     ensures
         new_process_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, ep_idx, with_iommu),
 {

@@ -312,6 +312,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& pt.mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_2m()
             &&& pt.mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_1g()
             &&& pt.lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).lower.pagetable_window_locks, va_range, cpu_id)
+            &&& pagetable_range_windows_unlocked(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).lower.pagetable_window_locks, va_range)
             &&& !old(krnl).it_mp.spec_index(e.iommu_table_ptr).locked()
             &&& final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, e.iommu_table_ptr)
             &&& it == old(krnl).it_mp.spec_index(e.iommu_table_ptr).view()

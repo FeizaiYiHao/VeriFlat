@@ -38,7 +38,8 @@ pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAd
 /// a nonempty well-formed user range whose every page the process maps; the thread's container has a
 /// free PCID; the thread's 4K quota pays for the new process's pages and three directory pages per
 /// shared page; a present `ep_idx` names a live descriptor. The cpu, the process, the thread,
-/// and that endpoint are unlocked, the page table is not write-locked, and the container is never locked.
+/// and that endpoint are unlocked, the page table is not write-locked and its existing windows over `range` are unlocked, and
+/// the container is never locked.
 #[verifier::opaque]
 pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -58,6 +59,7 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
     &&& !process.killed
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
+    &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range)
     &&& range.wf()
     &&& 0 < range.len <= (usize::MAX - base) / 3
     &&& user_va_range(old_u, range)

@@ -73,6 +73,11 @@ pub open spec fn pagetable_window_locks_after_locking_range(m: Map<WindowVa, Loc
     Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::WriteLocked { writer: cpu_id } } else { m[w] })
 }
 
+/// Every window of `range` that `m` holds is unlocked.
+pub open spec fn pagetable_range_windows_unlocked(m: Map<WindowVa, LockStateU>, range: VaRange4K) -> bool {
+    forall|w: WindowVa| #![trigger va_range_2m_windows(range).contains(w)] va_range_2m_windows(range).contains(w) && m.dom().contains(w) ==> m[w] is Unlocked
+}
+
 /// `m` with every window of `range` that it holds unlocked.
 pub open spec fn pagetable_window_locks_after_unlocking_range(m: Map<WindowVa, LockStateU>, range: VaRange4K) -> Map<WindowVa, LockStateU> {
     Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::Unlocked } else { m[w] })
