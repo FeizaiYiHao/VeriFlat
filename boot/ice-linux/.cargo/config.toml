@@ -1,0 +1,5 @@
+# boot/.cargo/config.toml makes every build bare metal; this program runs on Linux. Its build output goes to the
+# ignored boot/target.
+[build]
+target = "x86_64-unknown-linux-gnu"
+target-dir = "../target"

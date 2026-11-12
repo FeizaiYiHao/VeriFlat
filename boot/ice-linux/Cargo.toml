@@ -1,0 +1,18 @@
+[package]
+name = "ice-linux"
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "Linux user-space front end of the boot/ice E810 driver core, for debugging on the real machine"
+
+[dependencies]
+ice = { path = "../ice" }
+libc = "0.2"
+log = { version = "0.4.19", features = ["std"] }
+
+[profile.release]
+debug = true
+
+# A host program: its own workspace, outside the bare-metal boot workspace.
+[workspace]
