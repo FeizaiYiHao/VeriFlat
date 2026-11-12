@@ -22,7 +22,10 @@
   directory; each package directory takes about 0.8 GB of disk.
 - Focused/workspace: `./verify-workspace.sh --package <package>` and
   `./verify-workspace.sh`. Monolith:
-  `./verify.sh --num-threads 32 --time`. Report each run number.
+  `./verify.sh --num-threads 32 --time`. Noninterference:
+  `noninterference/verify-ni.sh`, which verifies the noninterference workspace
+  outside the split workspace and does not reverify the kernel; a whole run
+  counts as a heavy run. Report each run number.
 - Reproduce a monolith-only failure on one module with
   `./verify.sh --no-erasure-check --verify-only-module <monolith module path> --expand-errors`.
 - Pipeline measurement:
@@ -42,7 +45,8 @@
   rlimit already reported by that run to judge cost and move on. Wall-time
   measurement and interleaved A/B runs happen only once, for the final report.
 - Typecheck first, then verify the smallest function/module/package. Completed
-  cross-crate work requires full workspace and 32-thread monolith checks.
+  cross-crate work requires the full workspace, the 32-thread monolith, and the
+  noninterference run, all green at the handed-off commit.
 - Use `--time-expanded` to inspect equation-level cost. A structurally large
   equation may justify a higher `--rlimit` or `#[verifier::rlimit]`; high rlimit
   alone does not determine proof quality or speed. Measure the uncapped cost,
