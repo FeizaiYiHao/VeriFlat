@@ -46,6 +46,21 @@ fn fund(amount: usize) -> bool {
     unsafe { sys_alloc_quota_4k(amount) >= 0 && sys_alloc_thread_quota_4k(amount) >= 0 }
 }
 
+/// Runs `map`, an `mmap_4k` (`per_page` = 4) or `iommu_map_4k` (3) of `count` pages, which the kernel refuses with
+/// `ErrorNoQuota` unless the calling thread holds `per_page` 4K quota per page for the worst case of page tables.
+/// Each refusal funds the thread `count` more, so it is funded only for its shortfall; what the call leaves unused
+/// stays with the thread for the next one.
+fn funded(per_page: usize, count: usize, map: impl Fn() -> isize) -> bool {
+    for _ in 0..per_page {
+        match map() {
+            r if r >= 0 => return true,
+            r if error_name(r) == "ErrorNoQuota" && fund(count) => {}
+            _ => return false,
+        }
+    }
+    map() >= 0
+}
+
 /// Maps the state page of the calling process. Call once per process before the first allocation.
 pub fn init() {
     if !fund(4) || unsafe { sys_mmap_4k(HEAP_STATE_VA, 1) } < 0 {
@@ -58,21 +73,15 @@ pub fn init() {
 }
 
 impl HeapState {
-    /// Maps at least `pages` more pages at the end of the bump region, CPU and IOMMU. The kernel wants
-    /// the calling thread to hold 3 4K quota per page for the worst case of page tables; what the tables
-    /// do not use stays with the thread for the next refill.
+    /// Maps at least `pages` more pages at the end of the bump region, CPU and IOMMU.
     fn grow(&mut self, pages: usize) -> bool {
         let count = pages.max(MAP_CHUNK);
         if self.mapped + count * PAGE > HEAP_LIMIT {
             return false;
         }
-        if !fund(3 * count) {
+        let va = self.mapped;
+        if !funded(4, count, || unsafe { sys_mmap_4k(va, count) }) || !funded(3, count, || unsafe { sys_iommu_map_4k(va, va, count) }) {
             return false;
-        }
-        unsafe {
-            if sys_mmap_4k(self.mapped, count) < 0 || sys_iommu_map_4k(self.mapped, self.mapped, count) < 0 {
-                return false;
-            }
         }
         self.mapped += count * PAGE;
         true

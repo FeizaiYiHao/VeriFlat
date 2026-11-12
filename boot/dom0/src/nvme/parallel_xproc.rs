@@ -60,8 +60,6 @@ const REGION_VA: usize = 0xdc_0000_0000;
 const REGION_STRIDE: usize = 1 << 21;
 const REGION_PAGES: usize = 1 + MAX_BATCH;
 const DRIVER_STACK_SIZE: usize = 32 * 1024;
-/// The pages the heap's pager maps at least per refill (`slab_alloc`'s `MAP_CHUNK`).
-const HEAP_CHUNK_PAGES: usize = 64;
 
 /// One request in worker k's control page: its first LBA, its data buffer (= command ID), and whether it writes.
 #[derive(Clone, Copy)]
@@ -324,10 +322,8 @@ pub fn worker(k: usize, phase: usize) {
 /// controller and answers.
 extern "C" fn driver_main() -> ! {
     let f = unsafe { FUNCTION }.unwrap();
-    // A receiver holds 3 4K quota per page for the worst case of page tables. The heap's pager funds 3 per page it
-    // maps, which `mmap_4k` (4 per page at hand) and `iommu_map_4k` (3) only meet with quota left over from earlier
-    // calls, as dom0's first thread has: this process starts with one heap chunk's worth more.
-    fund("parallel_nvme_xproc driver receive funding", 3 * f.bar_pages + 2 * HEAP_CHUNK_PAGES);
+    // A receiver holds 3 4K quota per page for the worst case of page tables.
+    fund("parallel_nvme_xproc driver receive funding", 3 * f.bar_pages);
     quiet("parallel_nvme_xproc driver receive_pci", unsafe { sys_receive_pci(0, f.bus, f.dev, f.fun) });
     quiet("parallel_nvme_xproc driver receive_pages (BAR0)", unsafe { sys_receive_pages(0, f.bar_va(), f.bar_pages) });
     crate::slab_alloc::init();

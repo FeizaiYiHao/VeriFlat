@@ -74,7 +74,6 @@ const RX_BYTES: usize = RX_RING * RX_BUF;
 /// The shared region, at the same address in dom0 and in the driver process.
 const SHARED_VA: usize = 0xdc_0000_0000;
 const STACK_BYTES: usize = 64 * 1024;
-const HEAP_RESERVE: usize = 512;
 
 const MODE_LINKED: usize = 0;
 const MODE_XPROC: usize = 1;
@@ -522,7 +521,7 @@ pub fn run() {
         ),
     }
 
-    heap_init();
+    crate::slab_alloc::init();
     // The pair endpoints and the application threads; dom0's first thread is application thread 0.
     fund("ice xproc endpoint and thread funding", m + 2 * n);
     for k in 0..m {
@@ -579,14 +578,6 @@ fn median(values: impl Iterator<Item = u64>) -> u64 {
     let v = &mut v[..n];
     v.sort_unstable();
     (v[(n - 1) / 2] + v[n / 2]) / 2
-}
-
-/// Sets up the calling process's heap. Its pager funds 3 4K quota per page it maps, while `mmap_4k` wants the
-/// thread to hold 4 per page, so the thread keeps a reserve of one per page of the largest refill (a 1 MiB Rx buffer
-/// chunk) on top; what a refill leaves over adds to it.
-fn heap_init() {
-    crate::slab_alloc::init();
-    fund("ice heap reserve", HEAP_RESERVE);
 }
 
 /// A thread stack from the calling process's heap; returns its top.
@@ -715,7 +706,7 @@ extern "C" fn driver_main() -> ! {
     for k in 1..m {
         quiet("ice driver receive_endpoint", unsafe { sys_receive_endpoint(0, k) });
     }
-    heap_init();
+    crate::slab_alloc::init();
     fund("ice driver IOMMU funding", 3 * pages);
     quiet("ice driver iommu_map_4k (shared region)", unsafe { sys_iommu_map_4k(SHARED_VA, SHARED_VA, pages) });
     if hw {
