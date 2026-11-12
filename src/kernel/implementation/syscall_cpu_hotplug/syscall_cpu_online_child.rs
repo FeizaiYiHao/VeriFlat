@@ -22,6 +22,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         cpu_online_child_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, target, ret),

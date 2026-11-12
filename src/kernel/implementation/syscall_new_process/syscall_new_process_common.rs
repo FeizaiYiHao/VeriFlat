@@ -52,6 +52,7 @@ fn new_process_lock_entry(
             &&& new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, r)
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(krnl).inv()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
@@ -315,6 +316,7 @@ pub(super) fn syscall_new_process_shared_body(krnl: &mut KernelK, Tracked(lctx):
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, ep_idx, with_iommu, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),

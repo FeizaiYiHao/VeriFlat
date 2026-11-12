@@ -152,6 +152,7 @@ fn new_container_release_entry_locks(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).view() == old(steps).view(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(old(steps).snapshot_k()),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -203,6 +204,7 @@ fn new_container_lock_owners(
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx, r)
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(krnl).inv()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
@@ -446,6 +448,7 @@ fn new_container_lock_entry(
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx, r)
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(krnl).inv()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
@@ -728,6 +731,7 @@ fn syscall_new_container_shared_body(
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
@@ -778,6 +782,7 @@ pub fn syscall_new_container(
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, None, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
@@ -813,6 +818,7 @@ pub fn syscall_new_container_with_endpoint(
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, Some(ep_idx), ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),

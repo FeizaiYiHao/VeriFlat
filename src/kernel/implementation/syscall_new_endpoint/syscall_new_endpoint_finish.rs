@@ -86,6 +86,7 @@ pub(super) fn finish_new_endpoint_commit(
     ensures
         final(steps).view().len() == old(steps).view().len() + 1,
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),

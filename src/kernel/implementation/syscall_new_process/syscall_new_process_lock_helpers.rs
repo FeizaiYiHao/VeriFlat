@@ -37,6 +37,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, initial_regs, ep_idx, with_iommu, r)
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(krnl).inv()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
@@ -360,6 +361,7 @@ pub(super) fn new_process_unlock_and_stutter(
         new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
             kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, initial_regs, ep_idx, with_iommu, error),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),

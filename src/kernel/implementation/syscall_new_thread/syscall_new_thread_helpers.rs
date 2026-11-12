@@ -96,6 +96,7 @@ verus! {
                 final(lctx).no_locks_held(),
                 final(krnl).all_objects_unlocked(final(lctx)),
                 final(steps).snapshot_k() == *final(krnl),
+                final(krnl).inv(),
                 new_thread_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, None, true),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         {

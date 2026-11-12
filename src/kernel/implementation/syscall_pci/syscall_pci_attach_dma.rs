@@ -27,6 +27,7 @@ pub fn syscall_pci_attach_dma(
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         pci_attach_dma_syscall_trace(

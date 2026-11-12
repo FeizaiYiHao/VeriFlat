@@ -28,6 +28,7 @@ pub fn syscall_new_process_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Trac
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, *initial_regs, Some(ep_idx), false, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).inv(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),

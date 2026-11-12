@@ -91,6 +91,7 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, ep_idx, r)
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(krnl).inv()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
