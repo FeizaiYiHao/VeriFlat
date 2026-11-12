@@ -269,7 +269,7 @@ fn fatal_exception(name: &str, regs: &Registers) -> ! {
         regs.rsp,
         regs,
     );
-    unsafe { crate::boot::exit_qemu(3) }
+    unsafe { crate::boot::exit_qemu(ns16550a::ramlog::REASON_FATAL_EXCEPTION, 3) }
 }
 
 /// A fault in ring 3 ends only the faulting thread, as if it had called `thread_exit`

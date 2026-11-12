@@ -250,5 +250,37 @@ installed on the server's disk, and the real SSD.
    has `serial=com2` (or `com3`, `com4`). At the end dom0 writes its status to QEMU's exit port, which does nothing
    on a real machine, so the machine then stays up until it is reset.
 
+#### Unattended runs with a RAM log
+
+When nobody can read the serial console, the boot option `ramlog=<hex physical address>` makes the loader, the
+kernel and dom0's output also go to a 16 MiB RAM buffer at that address (at or above 4 GiB, 2 MiB aligned, inside
+one 1 GiB region). The buffer starts with a 4 KiB header (magic `VFRAMLOG`, version, capacity, bytes written,
+exit reason and code; `boot/ns16550a/src/ramlog.rs`); writes stop when it is full. With the option, dom0's
+`sys_debug_exit(code)`, a kernel or loader panic and a fatal kernel exception record the reason and code, write
+back the caches and warm-reset the machine (port 0xCF9, then the keyboard controller). `reset_after=<seconds>`
+also resets the machine (reason "timeout") at the first timer tick after that many seconds from kernel start, with
+the TSC rate from CPUID 16H or 4000_0010H, or 3 GHz assumed when neither gives one (an E5-2630 v3 at 2.4 GHz then
+waits 25% longer). Without `ramlog=` every end behaves as before.
+
+1. Keep the buffer out of Linux's memory with the kernel parameter `memmap=16M!0x140000000` (in
+   `GRUB_CMDLINE_LINUX` of `/etc/default/grub`, then `update-grub`); Linux then shows it as `/dev/pmem0`.
+2. Add the VeriFlat entry and, with `GRUB_DEFAULT=saved`, boot it once with `grub-reboot "VeriFlat"`, so that the reset returns to Linux:
+
+   ```
+   menuentry "VeriFlat" {
+       multiboot2 /boot/aloader ramlog=0x140000000 reset_after=600
+       module2 /boot/veriflat-jumbo
+   }
+   ```
+
+3. Back in Linux, read the log: `sudo python3 boot/tools/ramlog_read.py /dev/pmem0`. It prints the header (the
+   exit reason "running" means the machine reset without recording an end) and the text, and exits with status 1
+   when the magic is missing, as when the RAM did not survive the reset or Linux overwrote it.
+
+Tested under QEMU/KVM only (GRUB ISO, `-m 8192`, the dump taken with QMP `pmemsave` after the reset): the dump
+holds the loader's lines from its banner on, the kernel's, dom0's `dom0 test passed` and exit reason
+`sys_debug_exit` with code 0; the loader-panic and `reset_after` ends record their reasons too. Whether the
+server's RAM keeps its contents across the warm reset is untested.
+
 Warning: the benchmark writes the SSD from LBA 0 on. It destroys whatever the SSD holds, partition table included,
 so never run it on a machine whose NVMe SSD has data.

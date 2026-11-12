@@ -464,6 +464,7 @@ fn start_timer() {
 /// sets `wake_seen` either way: the idle loop waits for ticks too.
 pub fn timer_interrupt(regs: &mut Registers) {
     interrupt::end_of_interrupt();
+    crate::boot::check_reset_deadline();
     cpu::set_wake_seen();
     if cpu::get_current().timer_on {
         interrupt::set_timer(TICK);
@@ -623,7 +624,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             regs.rax = 0;
             return;
         }
-        vsys::NR_DEBUG_EXIT => unsafe { crate::boot::exit_qemu(a1 as u32) },
+        vsys::NR_DEBUG_EXIT => unsafe { crate::boot::exit_qemu(ns16550a::ramlog::REASON_EXIT, a1 as u32) },
         vsys::NR_DEBUG_DMA_DEVICE => {
             regs.rax = crate::iommu::dma_test_device().map_or(vsys::ERR_INVALID_SYSCALL, |bdf| bdf as isize) as u64;
             return;

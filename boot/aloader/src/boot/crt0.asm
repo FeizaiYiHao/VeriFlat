@@ -14,6 +14,8 @@ global bootinfo
 global start64
 global stack_bottom
 global stack_top
+global p3_table
+global ramlog_p2
 extern main
 
 section .note note alloc
@@ -256,6 +258,8 @@ p3_table:
     resb 4096
 p2_tables:
     resb 4096 * 4
+ramlog_p2:
+    resb 4096 ; the L2 table of the RAM log buffer (boot option ramlog=), filled by Rust
 
 stack_bottom:
     resb 1024 * 1024 * 32 ; the loader uses about 16 MiB (BootInfo and its 4 GiB page list live here)

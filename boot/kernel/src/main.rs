@@ -81,5 +81,5 @@ static ALLOCATOR: NoAlloc = NoAlloc;
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     log::error!("panic! {}", info);
-    unsafe { boot::exit_qemu(4) }
+    unsafe { boot::exit_qemu(ns16550a::ramlog::REASON_KERNEL_PANIC, 4) }
 }

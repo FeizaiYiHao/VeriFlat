@@ -32,6 +32,12 @@ pub struct KernelCommandLine {
 
     /// Bochs APM I/O port base.
     pub bochs_apm_io_base: Option<u16>,
+
+    /// The physical address of the RAM log buffer that the loader started (`ramlog=<hex>`).
+    pub ramlog: Option<usize>,
+
+    /// Reset the machine this many seconds after kernel start (`reset_after=<seconds>`).
+    pub reset_after: Option<u64>,
 }
 
 impl KernelCommandLine {
@@ -44,6 +50,8 @@ impl KernelCommandLine {
             script_shutdown: false,
             qemu_debug_exit_io_base: None,
             bochs_apm_io_base: None,
+            ramlog: None,
+            reset_after: None,
         }
     }
 
@@ -84,6 +92,12 @@ impl KernelCommandLine {
                                 .parse()
                                 .map_err(|_| Error::InvalidCommandLineOption(component))?,
                         );
+                    }
+                    "ramlog" => {
+                        self.ramlog = Some(ns16550a::ramlog::parse(value).map_err(|_| Error::InvalidCommandLineOption(component))?);
+                    }
+                    "reset_after" => {
+                        self.reset_after = Some(value.parse().map_err(|_| Error::InvalidCommandLineOption(component))?);
                     }
                     _ => {
                         return Err(Error::InvalidCommandLineOption(component));

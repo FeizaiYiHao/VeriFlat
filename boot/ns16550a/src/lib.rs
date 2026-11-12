@@ -45,6 +45,8 @@
 use core::arch::asm;
 use core::fmt::{Result as FmtResult, Write};
 
+pub mod ramlog;
+
 /// Receive Holding Register
 const RHR: usize = 0;
 
@@ -104,7 +106,9 @@ macro_rules! impl_serial {
             }
 
             /// Puts a byte to the serial port.
+            /// Also appends the byte to the RAM log (`ramlog`), if one is active.
             pub fn putc(&mut self, c: u8) {
+                ramlog::put(c);
                 unsafe {
                     while $read(self.base, LSR) & (1 << 5) == 0 {}
 

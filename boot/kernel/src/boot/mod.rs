@@ -25,6 +25,46 @@ pub unsafe fn init(boot_info: *const BootInfo) {
     PCIDE = if BOOT_INFO.pcide { 1 } else { 0 };
 
     command_line::init(BOOT_INFO.command_line.as_str()).expect("Invalid kernel command-line");
+    let cmdline = get_command_line();
+    // The console keeps appending to the RAM log buffer that the loader started and mapped.
+    if let Some(addr) = cmdline.ramlog {
+        let attached = {
+            let _console = crate::console::get_writer();
+            ns16550a::ramlog::attach(addr)
+        };
+        assert!(attached, "ramlog={:#x} holds no RAM log header", addr);
+    }
+    if let Some(seconds) = cmdline.reset_after {
+        let (hz, source) = tsc_hz();
+        RESET_DEADLINE = core::arch::x86_64::_rdtsc() + seconds * hz;
+        log::info!("Resetting the machine after {} s (TSC {} MHz from {})", seconds, hz / 1_000_000, source);
+    }
+}
+
+/// The TSC value after which the timer interrupt resets the machine (`reset_after=`), or 0.
+pub static mut RESET_DEADLINE: u64 = 0;
+
+/// The TSC rate from CPUID 16H or 4000_0010H, or 3 GHz assumed when neither gives one.
+fn tsc_hz() -> (u64, &'static str) {
+    use core::arch::x86_64::__cpuid;
+    if __cpuid(0).eax >= 0x16 && __cpuid(0x16).eax != 0 {
+        return (__cpuid(0x16).eax as u64 * 1_000_000, "CPUID 16H");
+    }
+    if __cpuid(0x4000_0000).eax >= 0x4000_0010 && __cpuid(0x4000_0010).eax != 0 {
+        return (__cpuid(0x4000_0010).eax as u64 * 1_000, "CPUID 4000_0010H");
+    }
+    (3_000_000_000, "an assumed 3 GHz")
+}
+
+/// Resets the machine when `reset_after=` is set and its time has passed: called on every timer tick.
+#[inline(always)]
+pub fn check_reset_deadline() {
+    let deadline = unsafe { RESET_DEADLINE };
+    if deadline != 0 && unsafe { core::arch::x86_64::_rdtsc() } > deadline {
+        log::error!("reset_after: time is up, resetting the machine");
+        ns16550a::ramlog::finish(ns16550a::ramlog::REASON_TIMEOUT, 0);
+        unsafe { ns16550a::ramlog::reset() }
+    }
 }
 
 pub fn get_boot_info() -> &'static BootInfo {
@@ -45,8 +85,9 @@ pub fn get_raw_command_line() -> &'static str {
     unsafe { BOOT_INFO.command_line.as_str() }
 }
 
-/// Exits QEMU with status `(code << 1) | 1`.
-pub unsafe fn exit_qemu(code: u32) -> ! {
+/// Exits QEMU with status `(code << 1) | 1`; with an active RAM log (`ramlog=`) it records `reason` (a
+/// `ns16550a::ramlog::REASON_*`) and `code` there and resets the machine instead.
+pub unsafe fn exit_qemu(reason: u32, code: u32) -> ! {
     use core::sync::atomic::Ordering::Relaxed;
     use crate::platform::{REMOTE_RUNNING_TO_IDLE_IPIS, WAKE_IPIS};
     let high_water = (0..crate::cpu::present_cpus()).map(crate::cpu::kernel_stack_high_water).max().unwrap_or(0);
@@ -54,6 +95,10 @@ pub unsafe fn exit_qemu(code: u32) -> ! {
         "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), running-to-idle IPIs {}, wake IPIs {}",
         code, high_water / 1024, crate::cpu::remote_flushes(), crate::platform::nmi_flushes(), REMOTE_RUNNING_TO_IDLE_IPIS.load(Relaxed), WAKE_IPIS.load(Relaxed),
     );
+    if ns16550a::ramlog::base() != 0 {
+        ns16550a::ramlog::finish(reason, code);
+        ns16550a::ramlog::reset();
+    }
     outl(QEMU_DEBUG_EXIT_PORT, code);
     spin_forever();
 }

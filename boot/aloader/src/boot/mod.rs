@@ -13,9 +13,9 @@ use astd::sync::Mutex;
 /// The kernel image passed by the bootloader.
 static KERNEL_IMAGE: Mutex<Option<MemoryRange>> = Mutex::new(None);
 
-/// The `serial=` option of the boot command line, if any: the loader's console uses it and passes it on as the
+/// The `serial=`, `ramlog=` and `reset_after=` options of the boot command line, which the loader passes on as the
 /// kernel's command line.
-static SERIAL_OPTION: Mutex<Option<ArrayString<16>>> = Mutex::new(None);
+static KERNEL_OPTIONS: Mutex<astd::heapless::String<256>> = Mutex::new(astd::heapless::String::new());
 
 /// A copy of the RSDP the bootloader passed, if any, made before the loader's allocator can reuse the boot information.
 static RSDP: Mutex<Option<[u8; 36]>> = Mutex::new(None);
@@ -28,6 +28,8 @@ extern "C" {
     static __loader_end: u8;
     static stack_bottom: u8;
     static stack_top: u8;
+    static p3_table: u8;
+    static ramlog_p2: u8;
 }
 
 #[cfg(test)]
@@ -117,10 +119,27 @@ pub fn get_loader_image_range() -> MemoryRange {
     MemoryRange::new(start, size)
 }
 
-/// The kernel command line: the `serial=` option of the boot command line, or empty.
+/// The kernel command line: the `serial=`, `ramlog=` and `reset_after=` options of the boot command line, or empty.
 pub fn get_kernel_command_line() -> ArrayString<4096> {
-    SERIAL_OPTION.lock().as_ref().and_then(|s| ArrayString::new(s.as_str())).unwrap_or(ArrayString::empty())
+    ArrayString::new(KERNEL_OPTIONS.lock().as_str()).unwrap_or(ArrayString::empty())
 }
+
+/// Maps the RAM log buffer at `addr` (checked by `ramlog::parse`) identity in crt0's page table with 2M pages:
+/// kernel-only, writable, write-through and no-execute, under one new L2 table at the L3 entry of its 1 GiB region.
+#[cfg(not(test))]
+unsafe fn map_ramlog_in_loader_table(addr: usize) {
+    let p3 = &raw const p3_table as *mut u64;
+    let p2 = &raw const ramlog_p2 as *mut u64;
+    for i in 0..ns16550a::ramlog::SIZE >> 21 {
+        let page = addr + (i << 21);
+        ptr::write_volatile(p2.add((page >> 21) & 511), page as u64 | 1 | 2 | 8 | 0x80 | 1 << 63);
+    }
+    ptr::write_volatile(p3.add((addr >> 30) & 511), p2 as u64 | 1 | 2);
+    core::arch::asm!("mov {0}, cr3", "mov cr3, {0}", out(reg) _);
+}
+
+#[cfg(test)]
+unsafe fn map_ramlog_in_loader_table(_addr: usize) {}
 
 /// The physical address of the RSDP the bootloader passed (a copy in the loader's own memory), if any.
 pub fn get_rsdp_address() -> Option<usize> {
@@ -153,7 +172,22 @@ pub unsafe fn init() {
             };
             unsafe { crate::console::use_port(port) };
             log::info!("Console on {}", option);
-            *SERIAL_OPTION.lock() = ArrayString::new(option);
+        }
+        if let Some(option) = start_info.command_line().split_ascii_whitespace().find(|c| c.starts_with("ramlog=")) {
+            let addr = ns16550a::ramlog::parse(&option["ramlog=".len()..]).unwrap_or_else(|e| panic!("{}: {:?}", e, option));
+            unsafe {
+                map_ramlog_in_loader_table(addr);
+                let _console = crate::console::get_writer();
+                ns16550a::ramlog::start(addr);
+            }
+            log::info!("RAM log at {:#x}, {} bytes", addr, ns16550a::ramlog::SIZE);
+        }
+        for option in start_info.command_line().split_ascii_whitespace() {
+            if ["serial=", "ramlog=", "reset_after="].iter().any(|p| option.starts_with(p)) {
+                let mut options = KERNEL_OPTIONS.lock();
+                let pushed = (options.is_empty() || options.push(' ').is_ok()) && options.push_str(option).is_ok();
+                assert!(pushed, "boot options for the kernel are longer than 256 bytes");
+            }
         }
         if let Some(rsdp) = start_info.rsdp() {
             let mut copy = [0; 36];

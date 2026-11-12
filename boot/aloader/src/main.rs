@@ -87,6 +87,16 @@ pub extern "C" fn main() -> ! {
         }
         cur += PAGE_SIZE as u64;
     }
+    // The RAM log buffer (boot option `ramlog=`), identity with 4K pages, kernel-only, write-through and no-execute:
+    // the kernel keeps writing it, and dom0 and every process share this part of the kernel half.
+    let ramlog = ns16550a::ramlog::base() as u64;
+    if ramlog != 0 {
+        let mut cur = ramlog;
+        while cur < ramlog + ns16550a::ramlog::SIZE as u64 {
+            unsafe { kernel_space.map_ramlog(bootstrap_allocator, cur) };
+            cur += PAGE_SIZE as u64;
+        }
+    }
     // ACPI tables sit at the top of RAM, which the final page tables may not cover: read them now.
     let iommu_units = acpi::probe_iommu();
     let apic_ids = acpi::probe_cpus();
@@ -417,6 +427,10 @@ fn cpu_has_pcid() -> bool {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     log::error!("loader panic: {}", info);
+    if ns16550a::ramlog::base() != 0 {
+        ns16550a::ramlog::finish(ns16550a::ramlog::REASON_LOADER_PANIC, 0);
+        unsafe { ns16550a::ramlog::reset() }
+    }
     loop {
         unsafe { asm!("hlt") };
     }
