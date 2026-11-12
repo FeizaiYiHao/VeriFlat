@@ -172,7 +172,7 @@ syscall 49 with InvalidSyscall or when the root container has no 1G quota.
 The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and benchmark
 (`boot/dom0/src/nvme/`, `boot/dom0/src/slab_alloc.rs`) after the kill tests, against the emulated
 `-device nvme` that `boot/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
-with `pci_info` (class 01, subclass 08, on any bus the loader reached through PCI-to-PCI bridges), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
+with `pci_info` (class 01, subclass 08, on any bus: the loader scans all 256 buses, so that the root buses of a server's further host bridges and the buses behind PCI-to-PCI bridges are covered), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
 maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
 function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O (8 LBAs per request) for 2 s;
 `VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
@@ -215,8 +215,9 @@ sequential writes at batch 32).
 
 Not yet tried on a real machine. The target is a CloudLab d430 (2x Xeon E5-2630 v3, Haswell: no RDPID, no
 CPUID leaf 16H; the NVMe SSD sits behind a PCIe root port). The machine needs VT-d on, and the firmware must place
-the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-bit BAR0 only on bus 0, and behind
-a bridge it stops with a message saying so.
+the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-bit BAR0 only on bus 0, and on any
+other bus it skips an NVMe, Ethernet or `edu` function whose BAR0 is unassigned or not below 4 GiB with a warning
+that names the function, so that such a device stays out of dom0 but does not stop the boot.
 
 The GRUB `multiboot2` path below has been booted under QEMU (KVM, q35, the devices of `boot/run.sh`) and passes
 the NVMe benchmark and the dom0 tests: from a `grub-mkrescue` ISO with GRUB 2.12 on SeaBIOS, with `serial=com2`

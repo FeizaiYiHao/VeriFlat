@@ -1,5 +1,6 @@
-//! PCI configuration space access (legacy 0xCF8/0xCFC mechanism): the scan of bus 0 and of every bus behind its
-//! PCI-to-PCI bridges that records the functions whose BAR0 dom0 drives, and the DMA test device.
+//! PCI configuration space access (legacy 0xCF8/0xCFC mechanism): the scan of every bus, root buses of several host
+//! bridges and buses behind PCI-to-PCI bridges alike, that records the functions whose BAR0 dom0 drives, and the DMA
+//! test device.
 
 use astd::boot::{DmaTestDevice, PciDevice, MAX_PCI_DEVICES};
 use astd::heapless::Vec as ArrayVec;
@@ -219,10 +220,17 @@ unsafe fn enable(bus: u8, device: u8, function: u8) {
     write(bus, device, function, COMMAND, command | COMMAND_MEMORY | COMMAND_BUS_MASTER);
 }
 
-/// Scans bus 0 and every bus reachable from it through PCI-to-PCI bridges, and records every NVMe, Ethernet and
-/// `edu` function with a memory BAR0: enables its memory decoding and bus mastering and those of the bridges above
-/// it, moves a BAR0 of a bus 0 function at or above 4 GiB to a free range below, and checks that the MTRRs make
-/// BAR0 uncacheable. A BAR0 behind a bridge must already lie below 4 GiB, since the bridge's window bounds it.
+/// A PCI-to-PCI bridge as `(bus, device, function)` with the secondary and subordinate bus numbers it forwards.
+type Bridge = ((u8, u8, u8), u8, u8);
+
+/// The most PCI-to-PCI bridges the scan records to enable the bridges above a recorded function.
+const MAX_BRIDGES: usize = 256;
+
+/// Scans every bus 0..=255, since a server has several root buses that each sit under their own host bridge, and
+/// records every NVMe, Ethernet and `edu` function with a memory BAR0: enables its memory decoding and bus mastering
+/// and those of every bridge whose bus range contains its bus, moves a BAR0 of a bus 0 function at or above 4 GiB to
+/// a free range below, and checks that the MTRRs make BAR0 uncacheable. A function off bus 0 whose BAR0 is
+/// unassigned or not below 4 GiB is skipped with a warning, since a bridge window or another host bridge bounds it.
 /// `e820` are the firmware memory map's ranges below 4 GiB, `mmconfig` the ECAM windows.
 pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<PciDevice, MAX_PCI_DEVICES> {
     let def_type = unsafe { rdmsr(IA32_MTRR_DEF_TYPE) };
@@ -234,36 +242,44 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
     );
     let mut busy = busy_ranges();
     let mut devices = ArrayVec::new();
-    // The bridge above each bus reached so far, and the buses still to scan; each bus is queued at most once.
-    let mut parent: [Option<(u8, u8, u8)>; 256] = [None; 256];
-    let mut reached = [false; 256];
-    let mut pending: ArrayVec<u8, 256> = ArrayVec::new();
-    reached[0] = true;
-    pending.push(0).unwrap();
-    let mut next = 0;
-    while next < pending.len() {
-        let bus = pending[next];
-        next += 1;
+    // The bridges come first, so that the bridges above a function are known whatever bus order the firmware chose.
+    let mut bridges: ArrayVec<Bridge, MAX_BRIDGES> = ArrayVec::new();
+    let mut function_count = 0usize;
+    let mut bus_count = 0usize;
+    for bus in 0..=255u8 {
+        let mut any = false;
+        for (dev, fun) in functions(bus) {
+            any = true;
+            function_count += 1;
+            if unsafe { read(bus, dev, fun, HEADER_TYPE) } >> 16 & 0x7f != 1 {
+                continue;
+            }
+            let buses = unsafe { read(bus, dev, fun, BRIDGE_BUSES) };
+            let (secondary, subordinate) = ((buses >> 8) as u8, (buses >> 16) as u8);
+            if secondary == 0 || subordinate < secondary {
+                log::info!("PCI {:02x}:{:02x}.{} bridge without assigned buses", bus, dev, fun);
+                continue;
+            }
+            log::info!("PCI {:02x}:{:02x}.{} bridges to buses {:02x}..={:02x}", bus, dev, fun, secondary, subordinate);
+            if bridges.push(((bus, dev, fun), secondary, subordinate)).is_err() {
+                log::warn!("PCI {:02x}:{:02x}.{} bridge not recorded: more than {} bridges", bus, dev, fun, MAX_BRIDGES);
+            }
+        }
+        bus_count += any as usize;
+    }
+    log::info!("PCI scan: {} functions on {} buses, {} bridges", function_count, bus_count, bridges.len());
+    for bus in 0..=255u8 {
         for (dev, fun) in functions(bus) {
             let id = unsafe { read(bus, dev, fun, VENDOR_DEVICE) };
             let (vendor, device) = (id as u16, (id >> 16) as u16);
             let class_rev = unsafe { read(bus, dev, fun, CLASS_REVISION) };
             let (class, subclass) = ((class_rev >> 24) as u8, (class_rev >> 16) as u8);
             let header_type = unsafe { read(bus, dev, fun, HEADER_TYPE) } >> 16 & 0x7f;
-            log::info!("PCI {:02x}:{:02x}.{} {:04x}:{:04x} class {:02x}:{:02x}", bus, dev, fun, vendor, device, class, subclass);
-            if header_type == 1 {
-                let secondary = (unsafe { read(bus, dev, fun, BRIDGE_BUSES) } >> 8) as u8;
-                if secondary != 0 && !reached[secondary as usize] {
-                    log::info!("PCI {:02x}:{:02x}.{} bridges to bus {:02x}", bus, dev, fun, secondary);
-                    reached[secondary as usize] = true;
-                    parent[secondary as usize] = Some((bus, dev, fun));
-                    pending.push(secondary).unwrap();
-                }
-                continue;
-            }
+            // The loader logs only the functions it may record and the bridges, which keeps a big server's log short.
             if header_type != 0 || !recorded_kind(vendor, device, class, subclass) {
                 continue;
             }
+            log::info!("PCI {:02x}:{:02x}.{} {:04x}:{:04x} class {:02x}:{:02x}", bus, dev, fun, vendor, device, class, subclass);
             if devices.is_full() {
                 log::warn!("PCI {:02x}:{:02x}.{} not recorded: more than {} PCI functions with a device BAR0", bus, dev, fun, MAX_PCI_DEVICES);
                 continue;
@@ -275,11 +291,13 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
             );
             let size = bar.size.max(PAGE_SIZE as u64);
             if bar.base == 0 || bar.base + size > FOUR_GIB {
-                assert!(
-                    bus == 0,
-                    "BAR0 of {:02x}:{:02x}.{} behind a bridge is at {:#x}: the firmware must place it below 4 GiB (turn above-4G decoding off)",
-                    bus, dev, fun, bar.base
-                );
+                if bus != 0 {
+                    log::warn!(
+                        "PCI {:02x}:{:02x}.{} not recorded: its BAR0 at {:#x} must be assigned below 4 GiB (turn above-4G decoding off)",
+                        bus, dev, fun, bar.base
+                    );
+                    continue;
+                }
                 assert!(bar.is_64 || bar.base == 0, "32-bit BAR0 above 4 GiB");
                 let base = free_bar_range(size, e820, mmconfig, &busy);
                 log::info!("PCI 00:{:02x}.{} BAR0 relocated {:#x} -> {:#x} ({:#x} bytes)", dev, fun, bar.base, base, size);
@@ -299,17 +317,17 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
             let pages = size / PAGE_SIZE as u64;
             check_uncacheable((bus, dev, fun), bar.base, pages);
             unsafe { enable(bus, dev, fun) };
-            let mut above = parent[bus as usize];
-            while let Some((b, d, f)) = above {
-                unsafe { enable(b, d, f) };
-                above = parent[b as usize];
+            // Every bridge that forwards this bus lies above the function; a function on a root bus has none.
+            for &((b, d, f), secondary, subordinate) in bridges.iter() {
+                if secondary <= bus && bus <= subordinate {
+                    unsafe { enable(b, d, f) };
+                }
             }
             let bdf = ((bus as u16) << 8) | ((dev as u16) << 3) | fun as u16;
             log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", bus, dev, fun, bar.base, pages);
             devices.push(PciDevice { bdf, vendor, device, class, subclass, bar0_base: bar.base, bar0_pages: pages }).unwrap();
         }
     }
-    devices.sort_unstable_by_key(|d| d.bdf);
     devices
 }
 
