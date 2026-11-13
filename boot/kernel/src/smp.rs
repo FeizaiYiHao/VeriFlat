@@ -53,6 +53,7 @@ extern "C" fn ap_main(cpu_id: u64) -> ! {
         gdt::init_cpu();
         interrupt::init_cpu();
         syscalls::init_cpu();
+        crate::power::disable_turbo(cpu_id);
     }
     cpu::mark_started(cpu_id);
     unsafe { syscalls::enter_off_cpu() }

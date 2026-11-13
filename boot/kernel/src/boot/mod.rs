@@ -45,7 +45,7 @@ pub unsafe fn init(boot_info: *const BootInfo) {
 pub static mut RESET_DEADLINE: u64 = 0;
 
 /// The TSC rate from CPUID 16H or 4000_0010H, or 3 GHz assumed when neither gives one.
-fn tsc_hz() -> (u64, &'static str) {
+pub fn tsc_hz() -> (u64, &'static str) {
     use core::arch::x86_64::__cpuid;
     if __cpuid(0).eax >= 0x16 && __cpuid(0x16).eax != 0 {
         return (__cpuid(0x16).eax as u64 * 1_000_000, "CPUID 16H");
@@ -62,6 +62,7 @@ pub fn check_reset_deadline() {
     let deadline = unsafe { RESET_DEADLINE };
     if deadline != 0 && unsafe { core::arch::x86_64::_rdtsc() } > deadline {
         log::error!("reset_after: time is up, resetting the machine");
+        unsafe { crate::power::log_frequency() };
         ns16550a::ramlog::finish(ns16550a::ramlog::REASON_TIMEOUT, 0);
         unsafe { ns16550a::ramlog::reset() }
     }
@@ -95,6 +96,7 @@ pub unsafe fn exit_qemu(reason: u32, code: u32) -> ! {
         "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), running-to-idle IPIs {}, wake IPIs {}",
         code, high_water / 1024, crate::cpu::remote_flushes(), crate::platform::nmi_flushes(), REMOTE_RUNNING_TO_IDLE_IPIS.load(Relaxed), WAKE_IPIS.load(Relaxed),
     );
+    crate::power::log_frequency();
     if ns16550a::ramlog::base() != 0 {
         ns16550a::ramlog::finish(reason, code);
         ns16550a::ramlog::reset();

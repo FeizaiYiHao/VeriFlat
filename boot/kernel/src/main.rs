@@ -18,6 +18,7 @@ mod interrupt;
 mod iommu;
 mod logging;
 mod platform;
+mod power;
 mod ring_buffer;
 mod smp;
 mod syscalls;
@@ -48,6 +49,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         // The console moves to the port that the command line's `serial=` option names, as the loader's did.
         console::init();
         logging::init();
+        power::disable_turbo(0);
     }
 
     log::info!("VeriFlat trap layer: command line {:?}", boot::get_raw_command_line());
@@ -58,7 +60,9 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         iommu::init(glue::iommu_root_table());
         cpu::mark_started(0);
         smp::start_aps();
+        power::log_turbo();
         log::info!("Kernel boot stack high-water {} KiB of {} KiB", boot::boot_stack_high_water() / 1024, boot::get_boot_info().kernel_stack_size / 1024);
+        power::start_frequency_interval();
         syscalls::enter_first_thread();
     }
 }

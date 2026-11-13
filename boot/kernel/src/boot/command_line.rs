@@ -38,6 +38,9 @@ pub struct KernelCommandLine {
 
     /// Reset the machine this many seconds after kernel start (`reset_after=<seconds>`).
     pub reset_after: Option<u64>,
+
+    /// Disable turbo on every CPU (`turbo=off`; `turbo=on` leaves it as the firmware set it).
+    pub turbo_off: bool,
 }
 
 impl KernelCommandLine {
@@ -52,6 +55,7 @@ impl KernelCommandLine {
             bochs_apm_io_base: None,
             ramlog: None,
             reset_after: None,
+            turbo_off: false,
         }
     }
 
@@ -98,6 +102,14 @@ impl KernelCommandLine {
                     }
                     "reset_after" => {
                         self.reset_after = Some(value.parse().map_err(|_| Error::InvalidCommandLineOption(component))?);
+                    }
+                    "turbo" => {
+                        self.turbo_off = match value {
+                            "off" => true,
+                            "on" => false,
+                            _ => return Err(Error::InvalidCommandLineOption(component)),
+                        };
+                        crate::power::TURBO_OFF.store(self.turbo_off, core::sync::atomic::Ordering::Relaxed);
                     }
                     _ => {
                         return Err(Error::InvalidCommandLineOption(component));

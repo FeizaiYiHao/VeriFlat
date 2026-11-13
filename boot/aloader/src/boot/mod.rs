@@ -13,7 +13,7 @@ use astd::sync::Mutex;
 /// The kernel image passed by the bootloader.
 static KERNEL_IMAGE: Mutex<Option<MemoryRange>> = Mutex::new(None);
 
-/// The `serial=`, `ramlog=` and `reset_after=` options of the boot command line, which the loader passes on as the
+/// The `serial=`, `ramlog=`, `reset_after=` and `turbo=` options of the boot command line, which the loader passes on as the
 /// kernel's command line.
 static KERNEL_OPTIONS: Mutex<astd::heapless::String<256>> = Mutex::new(astd::heapless::String::new());
 
@@ -122,7 +122,7 @@ pub fn get_loader_image_range() -> MemoryRange {
     MemoryRange::new(start, size)
 }
 
-/// The kernel command line: the `serial=`, `ramlog=` and `reset_after=` options of the boot command line, or empty.
+/// The kernel command line: the `serial=`, `ramlog=`, `reset_after=` and `turbo=` options of the boot command line, or empty.
 pub fn get_kernel_command_line() -> ArrayString<4096> {
     ArrayString::new(KERNEL_OPTIONS.lock().as_str()).unwrap_or(ArrayString::empty())
 }
@@ -195,7 +195,7 @@ pub unsafe fn init() {
             *MAX_CPUS.lock() = n;
         }
         for option in start_info.command_line().split_ascii_whitespace() {
-            if ["serial=", "ramlog=", "reset_after="].iter().any(|p| option.starts_with(p)) {
+            if ["serial=", "ramlog=", "reset_after=", "turbo="].iter().any(|p| option.starts_with(p)) {
                 let mut options = KERNEL_OPTIONS.lock();
                 let pushed = (options.is_empty() || options.push(' ').is_ok()) && options.push_str(option).is_ok();
                 assert!(pushed, "boot options for the kernel are longer than 256 bytes");

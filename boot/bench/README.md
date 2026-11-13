@@ -355,6 +355,16 @@ so that the kernel and dom0 see n CPUs; the loader logs "maxcpus=n: using n of m
 an n above the count. The loader also reads the boot command line from the PVH start info, so under QEMU it comes
 from `-append`, e.g. `NO_TIMER=1 SMP=8 boot/run.sh -append maxcpus=2`.
 
+The boot option `turbo=off` makes every CPU that comes up set IA32_MISC_ENABLE bit 38 (Turbo Mode Disable) when
+CPUID.06H:EAX bit 1 reports turbo, and read it back; on an Intel CPU outside a hypervisor without that CPUID bit it
+only reads the MSR, to tell firmware-disabled turbo from none. The kernel logs "turbo=off: IA32_MISC_ENABLE bit 38
+set on k of n CPUs (s set here, a already set)" and warns for each CPU without it; under KVM nothing is written and
+every CPU gets that warning. Independently of the option, when CPUID.06H:ECX bit 0 reports APERF/MPERF, CPU 0 reads
+them before it enters dom0 and again where the RAM log is finalised (exit, panic, fatal exception, `reset_after`),
+and logs "effective frequency: CPU 0 <f> MHz = TSC <t> MHz (from <source>) x APERF/MPERF <ratio> (<dA> / <dM>),
+unhalted <p>% of <c> TSC cycles", the mean frequency while CPU 0 was not halted (`boot/kernel/src/power.rs`); without
+the CPUID bit, as under KVM, it logs once that the frequency is not measured.
+
 1. Keep the buffer out of Linux's memory with the kernel parameter `memmap=16M!0x140000000` (in
    `GRUB_CMDLINE_LINUX` of `/etc/default/grub`, then `update-grub`); Linux then shows it as `/dev/pmem0`.
 2. Add the VeriFlat entry and, with `GRUB_DEFAULT=saved`, boot it once with `grub-reboot "VeriFlat"`, so that the reset returns to Linux:
