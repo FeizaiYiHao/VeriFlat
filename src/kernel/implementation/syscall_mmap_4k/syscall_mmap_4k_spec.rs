@@ -60,6 +60,7 @@ pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
     &&& phase is Read ==> cpu.lock_state is Unlocked && thread.lock_state is Unlocked && !(pagetable.lock_state is WriteLocked)
     &&& phase is Fill ==> cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && pagetable.lock_state is Unlocked
     &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range)
+    &&& phase is Read ==> pagetable_range_windows_exist(pagetable.pagetable_window_locks, range)
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range)

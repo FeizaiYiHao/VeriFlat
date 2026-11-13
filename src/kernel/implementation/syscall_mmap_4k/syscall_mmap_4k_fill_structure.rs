@@ -73,7 +73,7 @@ fn mmap_4k_fill_page_directories(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 2,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= range.len + 2,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range == *range,

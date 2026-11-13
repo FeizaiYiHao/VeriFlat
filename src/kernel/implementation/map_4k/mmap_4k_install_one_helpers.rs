@@ -126,6 +126,7 @@ verus! {
             mmap_guard ==> {
                 let progress = old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view();
                 &&& transfer_source is None && progress_thread == quota_thrd_ptr
+                &&& old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > progress->Some_0->Mmap4k_range.len - progress->Some_0->Mmap4k_mapped
                 &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr)
                 &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
                 &&& old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr
@@ -719,6 +720,7 @@ verus! {
                 let pre = old(steps).snapshot_k();
                 let progress = pre.thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view();
                 &&& transfer_source is None
+                &&& pre.thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > progress->Some_0->Mmap4k_range.len - progress->Some_0->Mmap4k_mapped
                 &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr)
                 &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
                 &&& pre.prc_mp.dom().contains(prc_ptr) && pre.thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr

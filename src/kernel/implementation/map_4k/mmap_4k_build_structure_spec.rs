@@ -44,7 +44,7 @@ pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &L
 }
 
 /// A directory step starts under the three mmap locks, before the recorded range is fully mapped,
-/// with quota for one directory page.
+/// with quota for one directory page beyond one per unmapped page.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -52,7 +52,7 @@ pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& thread_pagetable_op_in_progress(old_u, cpu_id)
     &&& progress is Mmap4k
     &&& progress->Mmap4k_mapped < progress->Mmap4k_range.len
-    &&& thread.quota_4k >= 1
+    &&& thread.quota_4k > progress->Mmap4k_range.len - progress->Mmap4k_mapped
 }
 
 /// A directory page consumes one 4K quota and records its level in the same phase: an L4 or L3 directory

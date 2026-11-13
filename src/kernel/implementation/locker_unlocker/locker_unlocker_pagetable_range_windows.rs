@@ -91,6 +91,7 @@ impl KernelK {
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks
                 == pagetable_window_locks_after_locking_range(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range, final(lctx).thread_id()),
             pagetable_range_windows_unlocked(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
+            pagetable_range_windows_exist(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks, *range),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),

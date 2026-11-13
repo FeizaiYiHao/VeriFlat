@@ -41,7 +41,7 @@ pub(super) fn map_one_mmap_4k_page(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_clean(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
-        old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 2,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 2 * (range.len - mapped),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range, mapped, directory: Mmap4kDirectory::None, phase }),
         !(phase is Fill),
         mapped < range.len,

@@ -6,7 +6,7 @@ use super::locker_unlocker_pagetable_range_windows::window_successor_implies_pat
 verus! {
 /// Loop state of `lock_pagetable_range_windows` before window index `cursor`: only the page-table map and lower half changed
 /// and table `root` keeps its leaves, higher half, L2 entries, L1 links, reverse map, stale CPUs and page closure; the windows
-/// of `range` before `cursor` were unlocked and are now write-locked; `perms` holds exactly those windows, each held by this
+/// of `range` before `cursor` existed, were unlocked and are now write-locked; `perms` holds exactly those windows, each held by this
 /// thread in the window lock map; if only write-locked L2 entries hid L1 pages before, that still holds and no window in
 /// `perms` hides one; every other typed lock map is unchanged.
 #[verifier::opaque]
@@ -48,6 +48,8 @@ pub(super) open spec fn lock_pagetable_range_windows_eol_loop_framing(pre: Kerne
     &&& forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
         va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
             && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked
+    &&& forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
+        va_range_2m_windows(*range).contains(w) && !spec_l4_index_path_le((cursor.0, cursor.1, cursor.2, 0usize), spec_va2index(w.va)) ==> before.lower.pagetable_window_locks.dom().contains(w)
     &&& after.page_closure() == before.page_closure()
     &&& before.lower.hidden_l1_tables_in_locked_windows() ==> after.lower.hidden_l1_tables_in_locked_windows()
     &&& cur_lctx.page_lock_map() == pre_lctx.page_lock_map()
@@ -212,6 +214,7 @@ pub(super) proof fn lock_pagetable_range_windows_eol_exit(pre: KernelK, post: Ke
         forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
             va_range_2m_windows(*range).contains(w) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(w)
                 ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks[w] is Unlocked,
+        pagetable_range_windows_exist(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.pagetable_window_locks, *range),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), root).page_closure() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).page_closure(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.hidden_l1_tables_in_locked_windows(),
         post_lctx.page_lock_map() == pre_lctx.page_lock_map(),
