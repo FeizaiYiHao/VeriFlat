@@ -154,6 +154,87 @@ impl WholePageTable<PT_TYPE> {
             0 <= i < range.len ==> self.spec_4k_entry_usable(spec_va2index(range.view().spec_index(i)).0, spec_va2index(range.view().spec_index(i)).1, spec_va2index(range.view().spec_index(i)).2,
                 spec_va2index(range.view().spec_index(i)).3)
     }
+
+    /// A range all of whose pages a 4K leaf maps has every 2M window linked.
+    pub proof fn mapping_4k_contains_range_implies_range_windows_linked(&self, range: VaRange4K)
+        requires
+            self.wf_mapping_4k(),
+            range.wf(),
+            range.len > 0,
+            self.kernel_l4_end() <= spec_v2l4index(range.start),
+            forall|i: int| #![trigger self.lower.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len ==> self.lower.mapping_4k.dom().contains(range.view()[i]),
+        ensures
+            self.higher.spec_mapping_4k_va_range_windows_exist(&range),
+    {
+        let first = spec_va2index(range.start);
+        let last = range.view()[range.len - 1];
+        range.wf_implies_view_index_is_start_plus_offset();
+        assert(range.view()[0] == range.start && last == spec_va_add_range(range.start, (range.len - 1) as usize));
+        spec_va_4k_valid_index_roundtrip(range.start);
+        spec_va_4k_valid_index_roundtrip(last);
+        assert forall|w: WindowVa| #![trigger va_range_2m_windows(range).contains(w)] va_range_2m_windows(range).contains(w)
+            implies self.higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some by {
+            let x = w.va;
+            let idx = (spec_v2l4index(x), spec_v2l3index(x), spec_v2l2index(x), 0usize);
+            spec_va_2m_valid_index_roundtrip(x);
+            spec_index2va_2m_valid(idx.0, idx.1, idx.2);
+            if x <= range.start {
+                spec_index2va_le_implies_4k_indices_lex_le(idx, first);
+                assert(self.lower.mapping_4k.dom().contains(range.view()[0]));
+                self.wf_mapping_4k_at(first.0, first.1, first.2, first.3);
+            } else {
+                if last < x { spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(last), idx); }
+                let start = range.start;
+                assert(x % 4096 == 0 && start % 4096 == 0) by (bit_vector) requires spec_va_2m_valid(x), spec_va_4k_valid(start);
+                let page = ((x - range.start) / 4096) as int;
+                assert(range.start + page * 4096 == x && 0 <= page < range.len) by (nonlinear_arith)
+                    requires x % 4096 == 0, range.start % 4096 == 0, range.start < x, x <= range.start + (range.len - 1) * 4096, page == (x - range.start) / 4096;
+                assert(range.view()[page] == spec_va_add_range(range.start, page as usize));
+                assert(self.lower.mapping_4k.dom().contains(range.view()[page]));
+                self.wf_mapping_4k_at(idx.0, idx.1, idx.2, 0);
+            }
+        };
+    }
+
+    /// A 2M range all of whose pages a 2M leaf maps has every window of its covering 4K range linked.
+    pub proof fn mapping_2m_contains_range_implies_range_windows_linked(&self, range: VaRange2M)
+        requires
+            self.wf_mapping_2m(),
+            range.wf(),
+            range.covering_4k_range().wf(),
+            range.len > 0,
+            self.kernel_l4_end() <= spec_v2l4index(range.start),
+            forall|i: int| #![trigger self.lower.mapping_2m.dom().contains(range.view()[i])] 0 <= i < range.len ==> self.lower.mapping_2m.dom().contains(range.view()[i]),
+        ensures
+            self.higher.spec_mapping_4k_va_range_windows_exist(&range.covering_4k_range()),
+    {
+        let cover = range.covering_4k_range();
+        let first = spec_va2index(range.start);
+        let last = cover.view()[cover.len - 1];
+        range.wf_implies_view_index_is_start_plus_offset(); cover.wf_implies_view_index_is_start_plus_offset();
+        assert(range.len * 512 <= usize::MAX / 4096 && (range.len * 512) * 4096 == range.len * 0x200000) by (nonlinear_arith) requires range.len <= usize::MAX / 0x200000;
+        assert(last == spec_va_add_range(range.start, (cover.len - 1) as usize));
+        spec_va_4k_valid_index_roundtrip(last);
+        spec_va_2m_valid_index_roundtrip(range.start);
+        assert forall|w: WindowVa| #![trigger va_range_2m_windows(cover).contains(w)] va_range_2m_windows(cover).contains(w)
+            implies self.higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some by {
+            let x = w.va;
+            let idx = (spec_v2l4index(x), spec_v2l3index(x), spec_v2l2index(x), 0usize);
+            spec_va_2m_valid_index_roundtrip(x);
+            spec_index2va_2m_valid(idx.0, idx.1, idx.2);
+            spec_index2va_2m_valid(first.0, first.1, first.2);
+            if x < range.start { spec_index2va_le_implies_4k_indices_lex_le(idx, spec_va2index(range.start)); }
+            if last < x { spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(last), idx); }
+            let start = range.start;
+            assert(x % 0x200000 == 0 && start % 0x200000 == 0) by (bit_vector) requires spec_va_2m_valid(x), spec_va_2m_valid(start);
+            let page = ((x - range.start) / 0x200000) as int;
+            assert(range.start + page * 0x200000 == x && 0 <= page < range.len) by (nonlinear_arith)
+                requires x % 0x200000 == 0, range.start % 0x200000 == 0, range.start <= x, x <= range.start + (range.len * 512 - 1) * 4096, page == (x - range.start) / 0x200000;
+            assert(range.view()[page] == spec_va_add_range_2m(range.start, page as usize));
+            assert(self.lower.mapping_2m.dom().contains(range.view()[page]));
+            self.wf_mapping_2m_at(idx.0, idx.1, idx.2);
+        };
+    }
 }
 
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {

@@ -106,7 +106,9 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
         unmap_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range),
 {
     kernel_u_domains_projection(krnl); kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
-    thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
+    thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); kernel_l4_end_projection_at(krnl, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+    whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k_contains_range_implies_range_windows_linked(range);
+    whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).range_windows_linked_implies_pagetable_range_windows_exist(range);
     reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step);
 }
 

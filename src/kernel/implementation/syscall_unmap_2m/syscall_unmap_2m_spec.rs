@@ -18,7 +18,7 @@ pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
-/// process has a pagetable that no thread write-holds and whose existing 2M windows of the range are unlocked; the
+/// process has a pagetable that no thread write-holds and in which every 2M window of the range exists and is unlocked; the
 /// thread's container exists; and every page of the valid, non-empty user range is mapped by a 2M leaf.
 #[verifier::opaque]
 pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange2M) -> bool {
@@ -32,6 +32,7 @@ pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
     &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range.covering_4k_range())
+    &&& pagetable_range_windows_exist(pagetable.pagetable_window_locks, range.covering_4k_range())
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& range.wf()
     &&& range.len > 0

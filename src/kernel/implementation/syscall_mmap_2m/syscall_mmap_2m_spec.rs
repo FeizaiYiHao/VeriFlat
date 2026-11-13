@@ -124,15 +124,18 @@ pub open spec fn mmap_2m_hold_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaR
     &&& thread.quota_4k >= 2 * range.len
 }
 
-/// Downgrading happens in the fill phase under the mmap locks with the pagetable write-locked.
+/// Downgrading happens in the fill phase under the mmap locks with the pagetable write-locked and
+/// every 2M window of the recorded range in place.
 #[verifier::opaque]
 pub open spec fn mmap_2m_downgrade_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
+    let pagetable = old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0;
     &&& thread_pagetable_op_in_progress(old_u, cpu_id)
     &&& progress is Mmap2m
     &&& progress->Mmap2m_phase is Fill
-    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
+    &&& pagetable.lock_state is WriteLocked
+    &&& pagetable_range_windows_exist(pagetable.pagetable_window_locks, progress->Mmap2m_range.covering_4k_range())
 }
 
 /// Downgrading turns the pagetable's write lock into a read lock and moves progress to the filled

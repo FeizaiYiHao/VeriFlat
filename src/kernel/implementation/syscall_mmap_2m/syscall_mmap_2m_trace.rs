@@ -302,6 +302,7 @@ pub(super) proof fn mmap_2m_release_step_from_u(pre: KernelU, post: KernelU, cpu
 pub(super) proof fn mmap_2m_downgrade_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     pagetable_ptr: RwLockPageTableRoot, windows: Map<WindowVa, LockStateU>)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
@@ -323,6 +324,10 @@ pub(super) proof fn mmap_2m_downgrade_step_from_u(krnl: &KernelK, post: KernelU,
             &&& thread.syscall_progress is Some
             &&& progress is Mmap2m
             &&& progress->Mmap2m_phase is Fill
+            &&& progress->Mmap2m_range.wf() && progress->Mmap2m_range.len > 0
+            &&& progress->Mmap2m_range.covering_4k_range().wf()
+            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(progress->Mmap2m_range.start)
+            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(&progress->Mmap2m_range.covering_4k_range())
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
                 process_map: pre.process_map.insert(prc_ptr, ProcessU {
@@ -334,7 +339,12 @@ pub(super) proof fn mmap_2m_downgrade_step_from_u(krnl: &KernelK, post: KernelU,
     ensures
         mmap_2m_downgrade_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         mmap_2m_downgrade_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
-{ kernel_process_projection_at(krnl, prc_ptr); reveal(mmap_2m_downgrade_step_pre); reveal(mmap_2m_downgrade_step); }
+{
+    let progress = kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thrd_ptr).syscall_progress->Some_0;
+    kernel_process_projection_at(krnl, prc_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+    whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).range_windows_linked_implies_pagetable_range_windows_exist(progress->Mmap2m_range.covering_4k_range());
+    reveal(mmap_2m_downgrade_step_pre); reveal(mmap_2m_downgrade_step);
+}
 /// of pagetable `pagetable_ptr` to `windows`, those of `krnl` after unlocking `range`, returning the cpu to its trap path, and
 /// releasing this cpu's read hold on the pagetable, is the exit step from `krnl`'s projection to `post`.
 pub(super) proof fn mmap_2m_exit_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,

@@ -457,4 +457,32 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         }
     }
 }
+
+impl WholePageTable<PT_TYPE> {
+    /// Every linked 2M window of `range` has a window lock.
+    pub proof fn range_windows_linked_implies_pagetable_range_windows_exist(&self, range: VaRange4K)
+        requires
+            self.wf(),
+            range.wf(),
+            range.len > 0,
+            self.kernel_l4_end() <= spec_v2l4index(range.start),
+            self.higher.spec_mapping_4k_va_range_windows_exist(&range),
+        ensures
+            pagetable_range_windows_exist(self.lower.pagetable_window_locks, range),
+    {
+        spec_va_4k_valid_index_roundtrip(range.start);
+        assert forall|w: WindowVa| #![trigger va_range_2m_windows(range).contains(w)] va_range_2m_windows(range).contains(w) implies self.lower.pagetable_window_locks.dom().contains(w) by {
+            let (l4i, l3i, l2i) = (spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va));
+            spec_va_2m_valid_index_roundtrip(w.va);
+            let p = self.spec_resolve_mapping_l3(l4i, l3i)->0.addr;
+            self.higher.wf_l4_at(l4i);
+            self.l3_links_l2_wf_at(self.higher.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+            self.tables_reachable_wf_l2_at(p);
+            let rev = self.higher.l2_rev_map.view().spec_index(p);
+            self.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(l4i, l3i);
+            self.higher.disjoint_l4_l3_implies_held_l3_addr_unique_at(l4i, l3i, rev.0, rev.1);
+            self.wf_window_locks_l2_entry_at(p, l2i);
+        };
+    }
+}
 } // verus!

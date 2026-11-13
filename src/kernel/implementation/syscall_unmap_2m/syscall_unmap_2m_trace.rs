@@ -70,9 +70,11 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
     range: VaRange2M, windows: Map<WindowVa, LockStateU>,
 )
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         range == spec_va_range_2m(va, len),
         range.wf(),
+        range.covering_4k_range().wf(),
         unmap_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
@@ -108,6 +110,9 @@ pub(super) proof fn unmap_2m_enter_step_from_u(
         unmap_2m_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range),
 {
     kernel_u_domains_projection(krnl); kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_l4_end_projection_at(krnl, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+    whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m_contains_range_implies_range_windows_linked(range);
+    whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).range_windows_linked_implies_pagetable_range_windows_exist(range.covering_4k_range());
     reveal(unmap_2m_enter_step_pre); reveal(unmap_2m_enter_step);
 }
 

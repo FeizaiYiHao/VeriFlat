@@ -18,7 +18,7 @@ pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
-/// process and container exist; no thread write-holds the process's pagetable; the range's existing 2M windows are unlocked;
+/// process and container exist; no thread write-holds the process's pagetable; every 2M window of the range exists and is unlocked;
 /// and every VA of the valid, non-empty user range is mapped.
 #[verifier::opaque]
 pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
@@ -32,6 +32,7 @@ pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& process.pagetable is Some
     &&& !(pagetable.lock_state is WriteLocked)
     &&& pagetable_range_windows_unlocked(pagetable.pagetable_window_locks, range)
+    &&& pagetable_range_windows_exist(pagetable.pagetable_window_locks, range)
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& range.wf()
     &&& range.len > 0

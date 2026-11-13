@@ -183,8 +183,11 @@
   function-scope reveals require genuinely shared goals.
 - Do not add `assert forall`. Fix the producer trigger/contract instead.
   Exceptions are the approved linked-list/fold patterns and the existing
-  quantified lift in
-  `page_invariant_fields_unchanged_implies_memory_management_inv_preserved_forall`.
+  quantified lifts in
+  `page_invariant_fields_unchanged_implies_memory_management_inv_preserved_forall`,
+  `mapping_4k_contains_range_implies_range_windows_linked`,
+  `mapping_2m_contains_range_implies_range_windows_linked`, and
+  `range_windows_linked_implies_pagetable_range_windows_exist`.
 - Approved folds are
   `unchanged_members_implies_{process,thread}_effective_quota_{4k,2m,1g}_fold_sum_eq_forall`,
   `one_member_changed_implies_{process_effective_quota_4k,thread_effective_quota_{4k,2m}}_fold_sum_changed_by_forall`,
