@@ -15,7 +15,7 @@
 //! - holder edge, `typed_lock_entry(obj) is Some` for the next cpu's wanted object: follows from alignment once the
 //!   physical lock word is held, which is **TCB** (b).
 //! - each wanted id is at most `kernel_obj_lock_id(krnl, obj)` (equal except for containers): **Argued** (a), with the
-//!   re-keying case open.
+//!   re-key groups listed there as open.
 //! - `lock_id_acyclic(want)` for each cpu: **Verified** at every call site of a blocking primitive, **Argued** (b).
 //! - same-want edge (a cpu waits behind a per-cpu reader-lock writer that has not taken every slot): **TCB** (b).
 //!
@@ -48,12 +48,37 @@
 //!   recorded owner is at or above it (`lock_inner_t.rs:164`), so its want is at most the K id. A victim thread of a
 //!   killer whose state is unknown is ordered by depth: `wlock_kill_victim_thread`
 //!   (`locker_unlocker_thread.rs:436`) requires the victim deeper than the killer's cpu (`killer_any_thread_lock_context`)
-//!   and proves `lock_id_acyclic` from that before spinning. **Open**: an id changes only by `update_lock_id`
-//!   (`src/locks/local_context.rs:318`), in the Release phase, on an object the cpu write-holds; about 30 sites re-key
-//!   pages (retype, reclaim), threads (schedule, IPC, reclaim) and cpus (online, offline, switch). A re-key that lowers
-//!   the id while another cpu spins on the object at the old id would break the hypothesis; that no cpu can reach the
-//!   object then (for example a free page reached only through the pool lock the re-keying cpu holds) is not checked
-//!   site by site.
+//!   and proves `lock_id_acyclic` from that before spinning, for every non-killed state of the victim.
+//!   Re-keying: an id changes only by `update_lock_id` (`src/locks/local_context.rs:318`), in the Release phase, on an
+//!   object the cpu write-holds. The theorems may be instantiated with each want set to the wanted object's current K
+//!   id, so what a waiter needs is that every lock it holds stays below that id; a re-key that raises the id keeps this,
+//!   and so does any re-key of an object whose locker proves `lock_id_acyclic` from depth for every state (killed-victim
+//!   threads, `wlock_cpu` targets in a deeper container). Ids order owner first (Some below None), then the major.
+//!   Raising or equal, no effect: thread RUNNING to SCHEDULED, blocked or idle, blocked or IPC_TRANSIT to SCHEDULED,
+//!   rebalance moves (`syscall_schedule_switch_helpers.rs:267`, `syscall_ipc_endpoint.rs:583`, `rebalance_pull.rs:409`);
+//!   cpu Running to Idle and Idle to Off (`syscall_cpu_offline_commit_helpers.rs:419`, :439); page owned to typed and
+//!   typed to free or merged (`create_endpoint_from_staged_page.rs:121`, `unmap_4k_reclaim.rs:154`).
+//!   Lowering, by transition:
+//!   - thread endpoint-waiting to IPC_TRANSIT or RUNNING: no waiter at the old id; others reach the thread through its
+//!     endpoint queue, whose lock the re-keyer holds, or as a kill victim (depth) (`syscall_ipc_endpoint.rs:339`,
+//!     `syscall_ipc_call.rs:195`).
+//!   - thread reply-waiting to RUNNING: no waiter at the old id; only its callee (the re-keyer's held running thread) or
+//!     a dangling-chain reclaimer holding that callee killed reaches it (`syscall_ipc_call_reply.rs:177`).
+//!   - thread SCHEDULED to RUNNING: no waiter at the old id; the re-keyer holds the scheduler shard that queues it, which
+//!     a scheduler user or rebalance (holding every shard up to the victim's) must hold (`syscall_schedule_switch_helpers.rs:273`).
+//!   - thread marked killed (to the minimal id): no edge, Argued (c) (`locker_unlocker_thread.rs:577`).
+//!   - cpu Off to Idle: no waiter at the old id; `wlock_off_cpu` requires the cpu set write-held, which the re-keyer
+//!     holds, `wlock_cpu` excludes Off, and `wlock_own_cpu` waiters hold nothing (`syscall_cpu_online.rs:107`).
+//!   - **Open, possible**: cpu Running to Running in the same container at a process not deeper than a killer's
+//!     (`syscall_schedule_switch_helpers.rs:256`, `syscall_ipc_call_helpers.rs:178`): a killer spinning in `wlock_cpu`
+//!     on a same-container target running a deeper process may hold a lock not below the new id. Only the hypothesis
+//!     fails; no cycle is shown.
+//!   - **Open, not confirmed**: thread dangling to KILLED (`take_over_dangling_caller.rs:76`) and `fresh_to_scheduled`
+//!     (`process_subsystem_mutation.rs:971`, `thread_util_t.rs:667`); idle cpu moved to an ancestor container
+//!     (`syscall_kill_container_cpus.rs:795`); page free to owned at allocator pops (`allocate_free_2m_page_pop_impl.rs:155`;
+//!     the popper holds the pool or cache lock, but `wlock_page` needs no evidence, so other paths to a free page are
+//!     unchecked); page last mapping to Unavailable (`unmap_4k_remove.rs:93`, `unmap_iommu_4k_remove.rs:87`,
+//!     `unmap_2m_reclaim_in_window.rs:116`; the re-keyer holds the mapping's table, other paths unchecked).
 //! - (b) Every blocking primitive requires `lock_id_acyclic` of the id it spins on, so every call site proves it
 //!   (Verified); `l2_entry_lock` (`src/locks/l2_entry_lock_t.rs:14`) does not, and its caller
 //!   `pagetable_concurrent_lock.rs:21` does; `wlock_kill_victim_thread` proves it in its own body.
