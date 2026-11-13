@@ -15,7 +15,7 @@
 //! - holder edge, `typed_lock_entry(obj) is Some` for the next cpu's wanted object: follows from alignment once the
 //!   physical lock word is held, which is **TCB** (b).
 //! - each wanted id is at most `kernel_obj_lock_id(krnl, obj)` (equal except for containers): **Argued** (a), with the
-//!   re-key groups listed there as open.
+//!   one re-key residual listed there as open.
 //! - `lock_id_acyclic(want)` for each cpu: **Verified** at every call site of a blocking primitive, **Argued** (b).
 //! - same-want edge (a cpu waits behind a per-cpu reader-lock writer that has not taken every slot): **TCB** (b).
 //!
@@ -69,16 +69,30 @@
 //!   - thread marked killed (to the minimal id): no edge, Argued (c) (`locker_unlocker_thread.rs:577`).
 //!   - cpu Off to Idle: no waiter at the old id; `wlock_off_cpu` requires the cpu set write-held, which the re-keyer
 //!     holds, `wlock_cpu` excludes Off, and `wlock_own_cpu` waiters hold nothing (`syscall_cpu_online.rs:107`).
-//!   - **Open, possible**: cpu Running to Running in the same container at a process not deeper than a killer's
-//!     (`syscall_schedule_switch_helpers.rs:256`, `syscall_ipc_call_helpers.rs:178`): a killer spinning in `wlock_cpu`
-//!     on a same-container target running a deeper process may hold a lock not below the new id. Only the hypothesis
-//!     fails; no cycle is shown.
-//!   - **Open, not confirmed**: thread dangling to KILLED (`take_over_dangling_caller.rs:76`) and `fresh_to_scheduled`
-//!     (`process_subsystem_mutation.rs:971`, `thread_util_t.rs:667`); idle cpu moved to an ancestor container
-//!     (`syscall_kill_container_cpus.rs:795`); page free to owned at allocator pops (`allocate_free_2m_page_pop_impl.rs:155`;
-//!     the popper holds the pool or cache lock, but `wlock_page` needs no evidence, so other paths to a free page are
-//!     unchecked); page last mapping to Unavailable (`unmap_4k_remove.rs:93`, `unmap_iommu_4k_remove.rs:87`,
-//!     `unmap_2m_reclaim_in_window.rs:116`; the re-keyer holds the mapping's table, other paths unchecked).
+//!   - cpu Running to Running at another process (`syscall_schedule_switch_helpers.rs:256`,
+//!     `syscall_ipc_call_helpers.rs:178`): no re-key while a waiter spins; `wlock_cpu` has two callers: the kill_process
+//!     one (`syscall_kill_process_victim.rs:340`) write-holds the marked victim thread running there, and a switch must
+//!     re-key that thread under its lock; the kill_container one (`syscall_kill_container_cpus.rs:665`) takes an Idle
+//!     target in a deeper container, ordered by depth for any state.
+//!   - thread DANGLING (None, None, blocked) to KILLED (Some c, None) (`take_over_dangling_caller.rs:76`): no waiter at the
+//!     old id; a dangling thread is reached only as the caller of its callee, which the re-keyer write-holds, and the
+//!     chain reclaimer (`wlock_killed_chain_caller`) also needs that callee held.
+//!   - `fresh_to_scheduled` (`process_subsystem_mutation.rs:971`, `thread_util_t.rs:667`): raises, RUNNING to SCHEDULED, on a
+//!     thread born held by retype that no other cpu can know yet.
+//!   - idle cpu moved to an ancestor container, (Some c, None) to (Some ancestor, None) (`syscall_kill_container_cpus.rs:795`):
+//!     no waiter at the old id holding a lock; `wlock_own_cpu` waiters hold nothing, the kill_process `wlock_cpu` caller
+//!     needs a running victim on the cpu, the kill_container one needs the cpu's owning set, which the re-keyer write-holds,
+//!     and `wlock_off_cpu` needs Off.
+//!   - page free to owned at allocator pops (`allocate_free_2m_page_pop_impl.rs:155`): no waiter at the old id; the popper
+//!     holds the cache or pool list holding the page, and every free-page locker holds that list: pops, drains and refills
+//!     (both lists), `merge_2m` (`freeze_merge_2m_sources` locks every 4K source list), `split_2m` (the 2M list) and
+//!     kill_container drains and moves (the killed container's lists).
+//!   - page last mapping, Mapped4k to Unavailable (`unmap_4k_remove.rs:93`, :190, `unmap_iommu_4k_remove.rs:87`,
+//!     `unmap_2m_reclaim_in_window.rs:116`): no waiter at the old id, argued: `ref_count` counts CPU and IOMMU mappings
+//!     (`src/page/page_def.rs:39`), so the removed entry is the only path; the re-keyer holds its table (write, or read plus
+//!     the window write, or the IOMMU table), and every mapped-page locker holds a page-table, window or IOMMU-table lock.
+//!     **Open**: that each such locker's held table is the one holding its page's entry is read from requires names,
+//!     not checked caller by caller.
 //! - (b) Every blocking primitive requires `lock_id_acyclic` of the id it spins on, so every call site proves it
 //!   (Verified); `l2_entry_lock` (`src/locks/l2_entry_lock_t.rs:14`) does not, and its caller
 //!   `pagetable_concurrent_lock.rs:21` does; `wlock_kill_victim_thread` proves it in its own body.
