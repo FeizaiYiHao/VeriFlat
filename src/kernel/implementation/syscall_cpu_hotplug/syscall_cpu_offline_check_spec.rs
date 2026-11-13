@@ -146,14 +146,15 @@ pub(super) open spec fn cpu_went_off_eof_transition_framing(
     &&& cpu_offline_requests_of(table_after) == cpu_offline_requests_of(table_before).update(cpu_id as int, false)
 }
 
-/// User-visible precondition of the hold step on `cpu_id`: the live, non-Off cpu is unlocked and its container's
-/// request bit for the cpu is set.
+/// User-visible precondition of the hold step on `cpu_id`: the live, non-Off cpu is unlocked in the resting state of its
+/// scheduling state and its container's request bit for the cpu is set.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_hold_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& old_u.cpu_array.len() == NUM_CPUS
     &&& cpu.lock_state is Unlocked
+    &&& cpu.op == cpu_op_after_step(cpu.state)
     &&& !cpu.killed
     &&& !(cpu.state is Off)
     &&& old_u.container_map.dom().contains(cpu.owning_container)
@@ -167,12 +168,16 @@ pub open spec fn cpu_offline_check_hold_step(old_u: KernelU, new_u: KernelU, cpu
     new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
 }
 
-/// Releasing happens with cpu `cpu_id` write-locked since the hold step.
+/// Releasing happens with cpu `cpu_id` write-held by itself inside its kernel step since the hold step, and its running
+/// thread, if any, not write-held by it.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_release_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& old_u.cpu_array.len() == NUM_CPUS
-    &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+    &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
+    &&& cpu.op is InStep
+    &&& cpu.current_thread is Some && old_u.thread_map.dom().contains(cpu.current_thread->Some_0) ==> old_u.thread_map[cpu.current_thread->Some_0].lock_state != (LockStateU::WriteLocked { writer: cpu_id })
 }
 
 /// Releasing unlocks cpu `cpu_id`, which leaves its kernel step for the resting state of its scheduling state, and changes

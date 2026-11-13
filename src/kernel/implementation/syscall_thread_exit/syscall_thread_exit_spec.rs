@@ -295,13 +295,16 @@ pub open spec fn thread_exit_quota_progress_after(progress: SyscallProgress) -> 
     }
 }
 
-/// Returning one size of quota runs after the flush is recorded, while the reclaiming locks are held and some quota size
-/// is left to return.
+/// Returning one size of quota runs after the flush is recorded, while the reclaiming locks are held, the process's IOMMU
+/// table keeps no 4K mapping, and some quota size is left to return.
 #[verifier::opaque]
 pub open spec fn thread_exit_quota_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
-    let progress = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).syscall_progress->Some_0;
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let process = old_u.process_map.spec_index(thread.owning_proc);
+    let progress = thread.syscall_progress->Some_0;
     &&& thread_exit_reclaim_step_pre(old_u, cpu_id, progress)
     &&& thread_exit_quota_progress_after(progress) is Some
+    &&& process.iommu_table is Some ==> process_iommu_4k_unmapped(process.iommu_table->Some_0)
 }
 
 /// The thread returns the next size of quota after its progress, named by its new progress: the whole quota of that size

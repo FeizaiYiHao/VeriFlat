@@ -750,6 +750,7 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
     pagetable: RwLockPageTableRoot, size: PageSize,
 )
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_maps_aligned(krnl, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -761,6 +762,9 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        krnl.prc_mp.spec_index(prc_ptr).view().iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+            #![trigger krnl.it_mp.spec_index(krnl.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !krnl.it_mp.spec_index(krnl.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         krnl.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some,
@@ -771,6 +775,7 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    if krnl.prc_mp.spec_index(prc_ptr).view().iommu_table is Some { kernel_iommu_table_4k_unmapped_projection_at(krnl, prc_ptr); }
     reveal(thread_exit_quota_step_pre); reveal(thread_exit_reclaim_step_pre);
 }
 

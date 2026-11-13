@@ -131,7 +131,8 @@ verus! {
                 &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
                 &&& old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr
                 &&& progress is Some && progress->Some_0 is Mmap4k && progress->Some_0->Mmap4k_mapped < progress->Some_0->Mmap4k_range.len
-                &&& progress->Some_0->Mmap4k_phase is Fill ==> level is L4 || level is L3
+                &&& progress->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(progress->Some_0->Mmap4k_directory is L4))
+                &&& progress->Some_0->Mmap4k_phase is Fill && level is L4 ==> va_range_2m_windows(progress->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) })
                 &&& !(progress->Some_0->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Some_0->Mmap4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level))
                 &&& level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(progress->Some_0->Mmap4k_range).contains(w)]
                     w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1 ==> va_range_2m_windows(progress->Some_0->Mmap4k_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi)
@@ -389,6 +390,12 @@ verus! {
                 if whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) }) {
                     pagetable_lower_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
                     whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) });
+                }
+            }
+            if !(level is L2) {
+                spec_va_4k_index_roundtrip_at(spec_index2va((indices.0, indices.1, lo, 0usize)), indices.0, indices.1, lo, 0usize);
+                if whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }) {
+                    pagetable_lower_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr); whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) });
                 }
             }
         }
@@ -684,6 +691,8 @@ verus! {
                     whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w]
                 } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
             level is L3 ==> !whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) }),
+            pei_valid(lo) && pei_valid(hi) && lo <= hi,
+            !(level is L2) ==> !whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }),
             !(level is L3) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
             old(lctx).kernel_view_locking_state() is Release,
             kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(krnl), quota_thrd_ptr, -1),
@@ -725,7 +734,8 @@ verus! {
                 &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
                 &&& pre.prc_mp.dom().contains(prc_ptr) && pre.thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr
                 &&& progress is Some && progress->Some_0 is Mmap4k && progress->Some_0->Mmap4k_mapped < progress->Some_0->Mmap4k_range.len
-                &&& progress->Some_0->Mmap4k_phase is Fill ==> level is L4 || level is L3
+                &&& progress->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(progress->Some_0->Mmap4k_directory is L4))
+                &&& progress->Some_0->Mmap4k_phase is Fill && level is L4 ==> va_range_2m_windows(progress->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) })
                 &&& !(progress->Some_0->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Some_0->Mmap4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level))
                 &&& old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(progress, level)
                 &&& progress_thread == quota_thrd_ptr
@@ -1020,7 +1030,8 @@ verus! {
                 |w: WindowVa| if whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) {
                     whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w]
                 } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
-            level is L3 ==> !whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) }),
+            pei_valid(lo) && pei_valid(hi) && lo <= hi,
+            !whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }),
             level is L4 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
             old(lctx).kernel_view_locking_state() is Release,
             kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(krnl), thrd_ptr, -1),
@@ -1053,6 +1064,7 @@ verus! {
                 &&& pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr
                 &&& progress is Some && progress->Some_0 is Mmap2m && progress->Some_0->Mmap2m_mapped < progress->Some_0->Mmap2m_range.len
                 &&& progress->Some_0->Mmap2m_phase is Fill
+                &&& level is L4 ==> !(progress->Some_0->Mmap2m_directory is L4) && va_range_2m_windows(progress->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) })
                 &&& old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(progress, level)
                 &&& level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(progress->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
                     w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1

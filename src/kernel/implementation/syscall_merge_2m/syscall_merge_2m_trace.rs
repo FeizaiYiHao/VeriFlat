@@ -40,9 +40,12 @@ pub proof fn merge_2m_step_from_k(pre: &KernelK, post: &KernelK, cpu_id: CpuId, 
             quota_4k: (pre.thrd_mp.spec_index(thread).view().quota_4k - 512 * m) as usize,
             quota_2m: (pre.thrd_mp.spec_index(thread).view().quota_2m + m) as usize, ..pre.thrd_mp.spec_index(thread).view()
         }),
+        if post.cpu_arr.spec_index(cpu_id).view().locking_thread() is None { post.cpu_op.view().view()[cpu_id as int] is Trap && post.thrd_mp.spec_index(thread).locking_thread() is None }
+        else { post.cpu_op.view().view()[cpu_id as int] is InStep && post.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(cpu_id) && post.thrd_mp.spec_index(thread).wlocked_by_thread(cpu_id) },
     ensures merge_2m_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, m),
 {
     kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread);
+    kernel_cpu_projection_at(post, cpu_id); kernel_thread_projection_at(post, thread);
     kernel_thread_quotas_exchanged_implies_u_step(pre, post, cpu_id, thread, (pre.thrd_mp.spec_index(thread).view().quota_4k - 512 * m) as usize, (pre.thrd_mp.spec_index(thread).view().quota_2m + m) as usize);
 }
 pub proof fn merge_2m_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, thread: RwLockThreadPtr)
@@ -56,6 +59,9 @@ pub proof fn merge_2m_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, thread: RwL
         !krnl.thrd_mp.spec_index(thread).being_killed(),
         krnl.thrd_mp.spec_index(thread).view().quota_4k >= 512,
         krnl.thrd_mp.spec_index(thread).view().quota_2m < usize::MAX,
+        krnl.thrd_mp.spec_index(thread).view().syscall_progress.view() is None,
+        if krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() is None { krnl.cpu_op.view().view()[cpu_id as int] is Trap && krnl.thrd_mp.spec_index(thread).locking_thread() is None }
+        else { krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(cpu_id) && krnl.thrd_mp.spec_index(thread).wlocked_by_thread(cpu_id) },
     ensures
         merge_2m_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, 1),
 { kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thread); }

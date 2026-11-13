@@ -39,7 +39,8 @@ pub open spec fn kill_container_killer_at(u: KernelU, cpu_id: CpuId, container: 
 }
 
 /// The live cpu runs a live thread of a live process in a live container, the thread has no syscall in progress, and the
-/// container's child at `child_index` is live. The cpu, the container, the process, and the thread are unlocked.
+/// container's child at `child_index` is live. The cpu, the container, the process, the thread, and the child are
+/// unlocked.
 #[verifier::opaque]
 pub open spec fn kill_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -56,6 +57,7 @@ pub open spec fn kill_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ch
     &&& child_index < container.children.len()
     &&& old_u.container_map.dom().contains(container.children[child_index as int])
     &&& !old_u.container_map[container.children[child_index as int]].killed
+    &&& old_u.container_map[container.children[child_index as int]].lock_state is Unlocked
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, its container, the process, and the thread, marks the
@@ -106,7 +108,8 @@ pub open spec fn kill_container_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     &&& target.uppertree_seq.contains(cpu.owning_container)
 }
 
-/// The kill descends from its target into the target's first child container, which it marks and write-locks.
+/// The kill descends from its target into the target's first child container, unlocked and unmarked, which it marks and
+/// write-locks.
 #[verifier::opaque]
 pub open spec fn kill_container_mark_child_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let target = old_u.container_map[kill_container_target(old_u, cpu_id)];
@@ -114,6 +117,8 @@ pub open spec fn kill_container_mark_child_step(old_u: KernelU, new_u: KernelU, 
     &&& kill_container_stage(old_u, cpu_id) is Walk
     &&& 0 < target.children.len()
     &&& old_u.container_map.dom().contains(child_ptr)
+    &&& old_u.container_map[child_ptr].lock_state is Unlocked
+    &&& !old_u.container_map[child_ptr].killed
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.container_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, child_ptr, ContainerKillStage::Walk)),
@@ -121,8 +126,8 @@ pub open spec fn kill_container_mark_child_step(old_u: KernelU, new_u: KernelU, 
     })
 }
 
-/// The target without child containers but with processes marks and write-locks its root process, and the kill walks
-/// that process.
+/// The target without child containers but with processes marks and write-locks its unlocked and unmarked root process,
+/// and the kill walks that process.
 #[verifier::opaque]
 pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -132,6 +137,8 @@ pub open spec fn kill_container_mark_root_step(old_u: KernelU, new_u: KernelU, c
     &&& target.children.len() == 0
     &&& !target.owned_processes.is_empty()
     &&& old_u.process_map.dom().contains(root_ptr)
+    &&& old_u.process_map[root_ptr].lock_state is Unlocked
+    &&& !old_u.process_map[root_ptr].killed
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.process_map[root_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id),
@@ -167,7 +174,8 @@ pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU,
     })
 }
 
-/// The target without child containers and processes marks and write-locks its cpu set and moves on to its cpus.
+/// The target without child containers and processes marks and write-locks its unlocked cpu set and moves on to its
+/// cpus.
 #[verifier::opaque]
 pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -175,6 +183,7 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& kill_container_stage(old_u, cpu_id) is Walk
     &&& target.children.len() == 0
     &&& target.owned_processes.is_empty()
+    &&& target.cpu_set_lock is Unlocked
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..target }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Cpus)),

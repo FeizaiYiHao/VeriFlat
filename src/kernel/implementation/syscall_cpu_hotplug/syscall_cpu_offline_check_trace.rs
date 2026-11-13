@@ -41,6 +41,7 @@ pub(super) proof fn cpu_offline_check_hold_step_pre_from_k(krnl: &KernelK, cpu_i
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let c = cpu.view().view();
             &&& cpu.locking_thread() is None
+            &&& krnl.cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(c.state)
             &&& !cpu.being_killed()
             &&& !(c.state is Off)
             &&& krnl.ctn_mp.dom().contains(c.owning_container)
@@ -73,7 +74,12 @@ pub(super) proof fn cpu_offline_check_hold_step_from_u(before: &KernelK, after: 
 pub(super) proof fn cpu_offline_check_release_step_from_u(before: &KernelK, after: &KernelK, cpu_id: CpuId)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        before.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
+        before.cpu_arr.spec_index(cpu_id).value.wlocked_by_thread(cpu_id),
+        before.cpu_op.view().view()[cpu_id as int] is InStep,
+        ({
+            let ct = before.cpu_arr.spec_index(cpu_id).view().view().view().current_thread;
+            &&& ct is Some && before.thrd_mp.dom().contains(ct->Some_0) ==> !before.thrd_mp.spec_index(ct->Some_0).wlocked_by_thread(cpu_id)
+        }),
         after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         after.cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(before.cpu_arr.spec_index(cpu_id).view().view().view().state),
         ({
@@ -86,7 +92,12 @@ pub(super) proof fn cpu_offline_check_release_step_from_u(before: &KernelK, afte
     ensures
         cpu_offline_check_release_step_pre(kernel_k_to_kernel_u(*before), cpu_id),
         cpu_offline_check_release_step(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
-{ kernel_cpu_projection_at(before, cpu_id); reveal(cpu_offline_check_release_step_pre); reveal(cpu_offline_check_release_step); }
+{
+    let ct = before.cpu_arr.spec_index(cpu_id).view().view().view().current_thread;
+    kernel_u_domains_projection(before); kernel_cpu_projection_at(before, cpu_id);
+    if ct is Some && before.thrd_mp.dom().contains(ct->Some_0) { kernel_thread_projection_at(before, ct->Some_0); }
+    reveal(cpu_offline_check_release_step_pre); reveal(cpu_offline_check_release_step);
+}
 
 /// The went-off wrapper's user-view facts from the decision snapshot `snap`, which write-holds the cpu since the hold step,
 /// are exactly the offline step from `snap` to `post`.

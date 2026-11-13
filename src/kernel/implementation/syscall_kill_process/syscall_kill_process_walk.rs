@@ -436,17 +436,14 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         ThreadState::RUNNING { .. } => (false, true),
         _ => (false, false),
     };
-    proof {
-        let victim = before.thrd_mp.spec_index(victim_ptr).view();
-        kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
-        kill_victim_pre_from_k(&before, &before_lctx, cpu_id, target, victim_ptr, victim.state, victim.owning_container, victim.blocking_endpoint_ptr);
-    }
+    proof { kill_step_pre_from_k(&before, &before_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Thread { thread: victim_ptr }, scope); }
     if scheduled {
         kill_dequeue_scheduled_victim(krnl, Tracked(&mut *lctx), victim_ptr, Tracked(victim_perm));
         let ghost killed_k = *krnl;
         proof {
             let victim = before.thrd_mp.spec_index(victim_ptr).view();
             let ctn_ptr = victim.owning_container;
+            kill_victim_pre_from_k(&before, &before_lctx, cpu_id, target, victim_ptr, victim.state, victim.owning_container, victim.blocking_endpoint_ptr);
             let shard = victim.state->SCHEDULED_cpu_id;
             kernel_scheduled_thread_killed_implies_u_step(&before, &killed_k, victim_ptr, ctn_ptr, before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().scheduler, shard);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
@@ -459,7 +456,9 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         kill_running_victim_cpu_to_idle(krnl, Tracked(&mut *lctx), victim_ptr, Ghost(killer_info), Tracked(victim_perm));
         let ghost killed_k = *krnl;
         proof {
-            let remote = before.thrd_mp.spec_index(victim_ptr).view().state->RUNNING_cpu_id;
+            let victim = before.thrd_mp.spec_index(victim_ptr).view();
+            let remote = victim.state->RUNNING_cpu_id;
+            kill_victim_pre_from_k(&before, &before_lctx, cpu_id, target, victim_ptr, victim.state, victim.owning_container, victim.blocking_endpoint_ptr);
             kernel_running_thread_cpu_to_idle_implies_u_step(&before, &killed_k, victim_ptr, remote);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
@@ -470,7 +469,9 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         kill_dequeue_endpoint_victim(krnl, Tracked(&mut *lctx), victim_ptr, Tracked(victim_perm));
         let ghost killed_k = *krnl;
         proof {
-            let ep_ptr = before.thrd_mp.spec_index(victim_ptr).view().blocking_endpoint_ptr->Some_0;
+            let victim = before.thrd_mp.spec_index(victim_ptr).view();
+            let ep_ptr = victim.blocking_endpoint_ptr->Some_0;
+            kill_victim_pre_from_k(&before, &before_lctx, cpu_id, target, victim_ptr, victim.state, victim.owning_container, victim.blocking_endpoint_ptr);
             kernel_endpoint_waiter_killed_implies_u_step(&before, &killed_k, victim_ptr, ep_ptr);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);

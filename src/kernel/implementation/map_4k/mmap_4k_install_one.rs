@@ -375,7 +375,9 @@ verus! {
                         ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
             old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some
                 && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
-                && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L4 || level is L3)
+                && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
+                && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill && level is L4
+                    ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }))
                 && (!(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill)
                     ==> mmap_4k_directory_rank(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level)))
                 && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
@@ -408,7 +410,9 @@ verus! {
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi));
         let ghost mmap_guard = old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some
             && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
-            && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L4 || level is L3)
+            && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)))
+            && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill && level is L4
+                ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }))
             && (!(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill)
                 ==> mmap_4k_directory_rank(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level)))
             && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
@@ -504,6 +508,8 @@ verus! {
             pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
             pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             level is L4 || level is L3,
+            level is L4 ==> !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_directory is L4),
+            level is L4 ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }),
             KERNEL_MEM_END_L4INDEX <= indices.0,
             pei_valid(lo) && pei_valid(hi) && lo <= hi,
             level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
@@ -719,12 +725,9 @@ verus! {
         let windows = install_one_mmap_4k_directory_page_link(krnl, Tracked(&mut *lctx), level, pg_ptr, thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr, indices, lo, hi, true, None,
             Ghost(entry_lctx), Tracked(page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None), Tracked(None));
         proof {
-            if level is L3 {
-                spec_va_4k_index_roundtrip_at(spec_index2va((indices.0, indices.1, 0usize, 0usize)), indices.0, indices.1, 0usize, 0usize);
-                if whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) }) {
-                    pagetable_lower_wf_at(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr);
-                    whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, 0usize, 0usize)) });
-                }
+            spec_va_4k_index_roundtrip_at(spec_index2va((indices.0, indices.1, lo, 0usize)), indices.0, indices.1, lo, 0usize);
+            if whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }) {
+                pagetable_lower_wf_at(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr); whole_pagetable(linked.pt_mp, linked.pt_lower.view(), pagetable_ptr).wf_window_locks_va_at(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) });
             }
         }
         install_one_mmap_2m_directory_page_end_step(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), level, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr, indices, lo, hi,

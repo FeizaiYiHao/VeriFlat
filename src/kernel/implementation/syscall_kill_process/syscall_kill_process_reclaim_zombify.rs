@@ -108,6 +108,8 @@ pub(crate) fn kill_reclaim_return_quota(
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
+        iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -174,6 +176,8 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
+        iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -226,6 +230,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thrd_ptr);
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, stage, scope);
         kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, stage, pagetable, iommu_table);
+        if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&entry_k, target); }
         kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, stage, size, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);

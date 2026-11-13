@@ -38,18 +38,21 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some && pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped < pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len,
-        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L4 || level is L3,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill ==> level is L3 || (level is L4 && !(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is L4)),
         !(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill)
             ==> mmap_4k_directory_rank(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level)),
         kernel_thread_quota_4k_changed(pre, post, thrd_ptr, -1),
         pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k > pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len - pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped,
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
+        pei_valid(lo) && pei_valid(hi) && lo <= hi,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
-        level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
+        !(level is L2) ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }),
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill && level is L4
+            ==> va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
                 ==> va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi),
@@ -60,6 +63,8 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
 {
     reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step); reveal(kernel_thread_quota_4k_changed);
     broadcast use spec_index2va_2m_valid, Set::lemma_map_by_contains;
+    spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
+    if pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_phase is Fill { assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) })); }
     if write_held { kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     else { kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr); }
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
@@ -103,7 +108,7 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some && pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_mapped < pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.len,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_phase is Fill,
-        level is L4 || level is L3,
+        level is L3 || (level is L4 && !(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_directory is L4)),
         kernel_thread_quota_4k_changed(pre, post, thrd_ptr, -1),
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_2m_progress_after_directory(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
@@ -111,7 +116,9 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
-        level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
+        pei_valid(lo) && pei_valid(hi) && lo <= hi,
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }),
+        level is L4 ==> va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
                 ==> va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w) == (lo <= spec_v2l2index(w.va) <= hi),
@@ -122,6 +129,8 @@ pub(super) proof fn mmap_2m_directory_step_from_k(pre: &KernelK, post: &KernelK,
 {
     reveal(mmap_2m_directory_step_pre); reveal(mmap_2m_directory_step); reveal(kernel_thread_quota_4k_changed);
     broadcast use spec_index2va_2m_valid, Set::lemma_map_by_contains;
+    spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, lo, 0usize)), l4i, l3i, lo, 0usize);
+    assert(va_range_2m_windows(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((l4i, l3i, lo, 0usize)) }));
     kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, thrd_ptr, prc_ptr, pagetable_ptr);
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {

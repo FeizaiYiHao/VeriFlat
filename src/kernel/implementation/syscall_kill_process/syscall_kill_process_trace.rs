@@ -146,6 +146,7 @@ pub(crate) proof fn kill_enter_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_i
             &&& process.view().children.view()[child_index as int] == child_ptr
             &&& krnl.prc_mp.dom().contains(child_ptr)
             &&& !krnl.prc_mp.spec_index(child_ptr).being_killed()
+            &&& !krnl.prc_mp.spec_index(child_ptr).locked()
         }),
     ensures
         ({
@@ -171,6 +172,7 @@ pub(crate) proof fn kill_enter_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_i
             &&& process.children[child_index as int] == child_ptr
             &&& u.process_map.dom().contains(child_ptr)
             &&& !u.process_map[child_ptr].killed
+            &&& u.process_map[child_ptr].lock_state is Unlocked
         }),
         kill_process_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child_index) is Success,
 { kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_thread_projection_at(krnl, thrd_ptr); kernel_process_projection_at(krnl, prc_ptr); kernel_process_projection_at(krnl, child_ptr); }
@@ -182,10 +184,14 @@ pub(crate) proof fn kill_mark_child_pre_from_k(krnl: &KernelK, target: RwLockPro
         krnl.prc_mp.dom().contains(child_ptr),
         0 < krnl.prc_mp.spec_index(target).view().children.view().len(),
         krnl.prc_mp.spec_index(target).view().children.view()[0] == child_ptr,
+        !krnl.prc_mp.spec_index(child_ptr).locked(),
+        !krnl.prc_mp.spec_index(child_ptr).being_killed(),
     ensures
         0 < kernel_k_to_kernel_u(*krnl).process_map[target].children.len(),
         kernel_k_to_kernel_u(*krnl).process_map[target].children[0] == child_ptr,
         kernel_k_to_kernel_u(*krnl).process_map.dom().contains(child_ptr),
+        kernel_k_to_kernel_u(*krnl).process_map[child_ptr].lock_state is Unlocked,
+        !kernel_k_to_kernel_u(*krnl).process_map[child_ptr].killed,
 { kernel_process_projection_at(krnl, target); kernel_process_projection_at(krnl, child_ptr); }
 
 /// The unlocked first thread `victim_ptr` of the childless target on `krnl`, waiting for a reply, is so on the projection.
@@ -219,6 +225,8 @@ pub(crate) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockPr
         0 < krnl.prc_mp.spec_index(target).view().owned_threads.view().len(),
         krnl.prc_mp.spec_index(target).view().owned_threads.view()[0] == victim_ptr,
         !krnl.thrd_mp.spec_index(victim_ptr).view().state.is_reply_waiting(),
+        !krnl.thrd_mp.spec_index(victim_ptr).locked(),
+        krnl.thrd_mp.spec_index(victim_ptr).view().syscall_progress.view() is None,
     ensures
         ({
             let u = kernel_k_to_kernel_u(*krnl);
@@ -227,6 +235,8 @@ pub(crate) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockPr
             &&& u.process_map[target].owned_threads[0] == victim_ptr
             &&& u.thread_map.dom().contains(victim_ptr)
             &&& !u.thread_map[victim_ptr].state.is_reply_waiting()
+            &&& u.thread_map[victim_ptr].lock_state is Unlocked
+            &&& u.thread_map[victim_ptr].syscall_progress is None
         }),
 { kernel_process_projection_at(krnl, target); kernel_thread_projection_at(krnl, victim_ptr); }
 
@@ -251,12 +261,22 @@ pub(crate) proof fn kill_victim_pre_from_k(
         kill_target(kernel_k_to_kernel_u(*krnl), cpu_id) == target,
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().owned_threads.view().contains(victim_ptr),
+        state is RUNNING ==> index_valid(NUM_CPUS, state->RUNNING_cpu_id),
+        state is RUNNING ==> !krnl.cpu_arr.spec_index(state->RUNNING_cpu_id).view().locked() && !(krnl.cpu_op.view().view()[state->RUNNING_cpu_id as int] is InStep),
+        state.is_endpoint_waiting() && endpoint is Some ==> krnl.ep_mp.dom().contains(endpoint->Some_0) && !krnl.ep_mp.spec_index(endpoint->Some_0).locked(),
     ensures
         kill_process_victim_marked(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].state == state,
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].owning_container == ctn_ptr,
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].blocking_endpoint_ptr == endpoint,
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); kernel_process_projection_at(krnl, target); }
+        state is RUNNING ==> kernel_k_to_kernel_u(*krnl).cpu_array[state->RUNNING_cpu_id as int].lock_state is Unlocked,
+        state is RUNNING ==> !(kernel_k_to_kernel_u(*krnl).cpu_array[state->RUNNING_cpu_id as int].op is InStep),
+        state.is_endpoint_waiting() && endpoint is Some ==> kernel_k_to_kernel_u(*krnl).endpoint_map[endpoint->Some_0].lock_state is Unlocked,
+{
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); kernel_process_projection_at(krnl, target);
+    if state is RUNNING { kernel_cpu_projection_at(krnl, state->RUNNING_cpu_id); }
+    if state.is_endpoint_waiting() && endpoint is Some { kernel_endpoint_projection_at(krnl, endpoint->Some_0); }
+}
 
 /// The killer's write-held cpu, process, and thread, with its progress walking its own process, are so on the
 /// projection.
@@ -303,6 +323,9 @@ pub(crate) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockPro
         krnl.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         !krnl.prc_mp.spec_index(target).view().zombie,
         krnl.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
+        !krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).locked(),
+        krnl.prc_mp.spec_index(target).view().iommu_table matches Some(it) ==> krnl.it_mp.dom().contains(it) && !krnl.it_mp.spec_index(it).locked(),
     ensures
         ({
             let process = kernel_k_to_kernel_u(*krnl).process_map[target];
@@ -311,8 +334,13 @@ pub(crate) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockPro
             &&& !process.zombie
             &&& process.owned_pci_functions.is_empty()
             &&& process.pagetable is Some
+            &&& process.pagetable->Some_0.lock_state is Unlocked
+            &&& process.iommu_table is Some ==> process.iommu_table->Some_0.lock_state is Unlocked
         }),
-{ kernel_process_projection_at(krnl, target); }
+{
+    kernel_process_projection_at(krnl, target); kernel_pagetable_mappings_projection_at(krnl, target);
+    if krnl.prc_mp.spec_index(target).view().iommu_table is Some { kernel_iommu_table_mappings_projection_at(krnl, target); }
+}
 
 /// The empty zombie target owning no PCI function on `krnl` is so on the projection.
 pub(crate) proof fn kill_zombie_retire_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
@@ -475,6 +503,7 @@ pub(crate) proof fn kill_enter_step_from_u(
             &&& process.children[child_index as int] == child_ptr
             &&& pre.process_map.dom().contains(child_ptr)
             &&& !pre.process_map[child_ptr].killed
+            &&& pre.process_map[child_ptr].lock_state is Unlocked
         },
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
@@ -503,6 +532,8 @@ pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, p
         0 < pre.process_map[target].children.len(),
         pre.process_map[target].children[0] == child_ptr,
         pre.process_map.dom().contains(child_ptr),
+        pre.process_map[child_ptr].lock_state is Unlocked,
+        !pre.process_map[child_ptr].killed,
         marked == (KernelU { process_map: pre.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[child_ptr] }), ..pre }),
         post == (KernelU { thread_map: marked.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, child_ptr, KillStage::Walk), ..marked.thread_map[thrd_ptr] }), ..marked }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
@@ -549,6 +580,8 @@ pub(crate) proof fn kill_mark_thread_step_from_u(
         pre.process_map[target].owned_threads[0] == victim_ptr,
         pre.thread_map.dom().contains(victim_ptr),
         !pre.thread_map[victim_ptr].state.is_reply_waiting(),
+        pre.thread_map[victim_ptr].lock_state is Unlocked,
+        pre.thread_map[victim_ptr].syscall_progress is None,
         victim_ptr != thrd_ptr,
         marked == (KernelU { thread_map: pre.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.thread_map[victim_ptr] }), ..pre }),
         post == (KernelU {
@@ -589,6 +622,7 @@ pub(crate) proof fn kill_dequeue_endpoint_step_from_u(pre: KernelU, post: Kernel
         pre.thread_map[victim_ptr].state.is_endpoint_waiting(),
         pre.thread_map[victim_ptr].blocking_endpoint_ptr == Some(ep_ptr),
         pre.endpoint_map.dom().contains(ep_ptr),
+        pre.endpoint_map[ep_ptr].lock_state is Unlocked,
         post == (KernelU {
             endpoint_map: pre.endpoint_map.insert(ep_ptr, EndpointU { queue: pre.endpoint_map[ep_ptr].queue.remove_value(victim_ptr), ..pre.endpoint_map[ep_ptr] }),
             thread_map: pre.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, blocking_endpoint_ptr: None, ..pre.thread_map[victim_ptr] }),
@@ -606,6 +640,8 @@ pub(crate) proof fn kill_cpu_to_idle_step_from_u(pre: KernelU, post: KernelU, cp
         pre.thread_map[victim_ptr].state == (ThreadState::RUNNING { cpu_id: remote }),
         index_valid(NUM_CPUS, remote),
         remote != cpu_id,
+        pre.cpu_array[remote as int].lock_state is Unlocked,
+        !(pre.cpu_array[remote as int].op is InStep),
         post == (KernelU {
             cpu_array: pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }),
             thread_map: pre.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[victim_ptr] }),
@@ -748,6 +784,8 @@ pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu
         !pre.process_map[target].zombie,
         pre.process_map[target].owned_pci_functions.is_empty(),
         pre.process_map[target].pagetable is Some,
+        pre.process_map[target].pagetable->Some_0.lock_state is Unlocked,
+        pre.process_map[target].iommu_table is Some ==> pre.process_map[target].iommu_table->Some_0.lock_state is Unlocked,
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Reclaim { flushed: false }), ..pre.thread_map[thrd_ptr] }),
             process_map: pre.process_map.insert(target, ProcessU {
@@ -851,6 +889,7 @@ pub(crate) proof fn kill_quota_step_from_u(
         kill_process_reclaim_step_pre(pre, cpu_id, stage),
         kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
         pre.container_map.dom().contains(pre.process_map[target].owning_container),
+        pre.process_map[target].iommu_table is Some ==> process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         ({
             let process = pre.process_map[target];
             let container = pre.container_map[process.owning_container];

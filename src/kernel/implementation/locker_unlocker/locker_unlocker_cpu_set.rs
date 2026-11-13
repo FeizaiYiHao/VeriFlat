@@ -154,6 +154,7 @@ impl KernelK {
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).view_rodata() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).view_rodata(),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).view_ghost() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).view_ghost(),
             !old(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
+            !old(self).cpu_set_mp.spec_index(cpu_set_ptr).locked(),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).killer_info() == Some(killer_info),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),

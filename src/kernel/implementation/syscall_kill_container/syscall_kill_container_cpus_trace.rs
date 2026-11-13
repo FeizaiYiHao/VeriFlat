@@ -9,7 +9,8 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::kill_killer;
 verus! {
 /// The killer on `cpu_id` write-holding its cpu, its cpu's container, its process `prc_ptr`, itself `thrd_ptr`,
 /// and the marked container `ctn_ptr` below its cpu's container satisfies the container kill's step precondition
-/// on `krnl` with that container at `stage`, and the container's children and processes project as they are.
+/// on `krnl` with that container at `stage`, the container's children and processes project as they are, and its cpu
+/// set, when unlocked, projects unlocked.
 pub(crate) proof fn kill_container_cpus_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, stage: ContainerKillStage,
 )
@@ -36,6 +37,7 @@ pub(crate) proof fn kill_container_cpus_pre_from_k(
             &&& u.cpu_array[cpu_id as int].owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
             &&& u.container_map[ctn_ptr].children == krnl.ctn_mp.spec_index(ctn_ptr).view().children.view()
             &&& u.container_map[ctn_ptr].owned_processes == krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view()
+            &&& !krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locked() ==> u.container_map[ctn_ptr].cpu_set_lock is Unlocked
         }),
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
@@ -72,6 +74,7 @@ pub(crate) proof fn kill_container_cpus_step_from_u(pre: KernelU, marked: Kernel
         kill_container_stage(pre, cpu_id) is Walk,
         pre.container_map[ctn_ptr].children.len() == 0,
         pre.container_map[ctn_ptr].owned_processes.is_empty(),
+        pre.container_map[ctn_ptr].cpu_set_lock is Unlocked,
         marked == (KernelU {
             container_map: pre.container_map.insert(ctn_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id }, cpu_set_killed: true, ..pre.container_map[ctn_ptr] }), ..pre
         }),

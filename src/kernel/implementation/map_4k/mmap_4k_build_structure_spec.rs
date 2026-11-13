@@ -44,7 +44,7 @@ pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &L
 }
 
 /// A directory step starts under the three mmap locks, before the recorded range is fully mapped,
-/// with quota for one directory page beyond one per unmapped page.
+/// with quota for one directory page beyond one per unmapped page and, while filling, a window of the range missing.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -53,11 +53,12 @@ pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& progress is Mmap4k
     &&& progress->Mmap4k_mapped < progress->Mmap4k_range.len
     &&& thread.quota_4k > progress->Mmap4k_range.len - progress->Mmap4k_mapped
+    &&& progress->Mmap4k_phase is Fill ==> !pagetable_range_windows_exist(old_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks, progress->Mmap4k_range)
 }
 
 /// A directory page consumes one 4K quota and records its level in the same phase: an L4 or L3 directory
-/// while filling, and a deeper level than the last recorded one otherwise. A new L2 page adds its windows to
-/// the table, those of the recorded range held.
+/// while filling, never two L4 directories in a row, and a deeper level than the last recorded one otherwise. A new
+/// L2 page adds its windows to the table, among them a missing window of the recorded range, those of the range held.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -69,9 +70,9 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let table = process.pagetable->Some_0;
     let old_windows = table.pagetable_window_locks;
     let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
-    &&& progress->Mmap4k_phase is Fill ==> dir is L4 || dir is L3
+    &&& progress->Mmap4k_phase is Fill ==> dir is L3 || (dir is L4 && !(progress->Mmap4k_directory is L4))
     &&& !(progress->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(dir)
-    &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
+    &&& dir is L3 ==> !new_windows.dom().filter(|w: WindowVa| va_range_2m_windows(progress->Mmap4k_range).contains(w)).subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap4k_range, cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows
@@ -91,7 +92,7 @@ pub open spec fn mmap_2m_progress_after_directory(progress: Option<SyscallProgre
 }
 
 /// A directory step starts in the fill phase under the three mmap locks, before the recorded range is fully mapped, with
-/// quota for one directory page.
+/// quota for one directory page and a window of the range missing.
 #[verifier::opaque]
 pub open spec fn mmap_2m_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -101,10 +102,11 @@ pub open spec fn mmap_2m_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& progress->Mmap2m_phase is Fill
     &&& progress->Mmap2m_mapped < progress->Mmap2m_range.len
     &&& thread.quota_4k >= 1
+    &&& !pagetable_range_windows_exist(old_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks, progress->Mmap2m_range.covering_4k_range())
 }
 
-/// A directory page consumes one 4K quota and records an L4 or L3 directory in the same phase. A new L2 page adds its windows
-/// to the table, those of the recorded range held.
+/// A directory page consumes one 4K quota and records an L4 or L3 directory in the same phase, never two L4 directories in a
+/// row. A new L2 page adds its windows to the table, among them a missing window of the recorded range, those of the range held.
 #[verifier::opaque]
 pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -116,8 +118,8 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let table = process.pagetable->Some_0;
     let old_windows = table.pagetable_window_locks;
     let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
-    &&& dir is L4 || dir is L3
-    &&& dir is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
+    &&& dir is L3 || (dir is L4 && !(progress->Mmap2m_directory is L4))
+    &&& dir is L3 ==> !new_windows.dom().filter(|w: WindowVa| va_range_2m_windows(progress->Mmap2m_range.covering_4k_range()).contains(w)).subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap2m_range.covering_4k_range(), cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows

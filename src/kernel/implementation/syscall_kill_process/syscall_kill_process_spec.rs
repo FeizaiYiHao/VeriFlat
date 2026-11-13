@@ -53,7 +53,7 @@ pub open spec fn kill_killer_at(u: KernelU, cpu_id: CpuId, process: RwLockProces
 }
 
 /// The live cpu runs a live thread of a live process that has no syscall in progress, and the process's child at
-/// `child_index` is live. The cpu, the process, and the thread are unlocked.
+/// `child_index` is live. The cpu, the process, the thread, and that child are unlocked.
 #[verifier::opaque]
 pub open spec fn kill_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -66,6 +66,7 @@ pub open spec fn kill_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, chil
     &&& child_index < process.children.len()
     &&& old_u.process_map.dom().contains(process.children[child_index as int])
     &&& !old_u.process_map[process.children[child_index as int]].killed
+    &&& old_u.process_map[process.children[child_index as int]].lock_state is Unlocked
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, the process, and the thread, marks the child at
@@ -113,7 +114,8 @@ pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress is KillContainer ==> u.container_map[progress->KillContainer_container].lock_state is WriteLocked
 }
 
-/// The kill descends from its target into the target's first child, which it marks and write-locks.
+/// The kill descends from its target into the target's first child, unlocked and unmarked, which it marks and
+/// write-locks.
 #[verifier::opaque]
 pub open spec fn kill_process_mark_child_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
@@ -121,6 +123,8 @@ pub open spec fn kill_process_mark_child_step(old_u: KernelU, new_u: KernelU, cp
     &&& kill_stage(old_u, cpu_id) is Walk
     &&& 0 < target.children.len()
     &&& old_u.process_map.dom().contains(child_ptr)
+    &&& old_u.process_map[child_ptr].lock_state is Unlocked
+    &&& !old_u.process_map[child_ptr].killed
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..old_u.process_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, child_ptr, KillStage::Walk)),
@@ -163,8 +167,8 @@ pub open spec fn kill_process_dangling_step(old_u: KernelU, new_u: KernelU, cpu_
     })
 }
 
-/// The target's first thread, not waiting for a reply, is marked for the kill and write-locked, and the kill records
-/// it.
+/// The target's first thread, not waiting for a reply, unlocked and without a syscall in progress, is marked for the kill
+/// and write-locked, and the kill records it.
 #[verifier::opaque]
 pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -172,6 +176,8 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
     let victim = old_u.thread_map[victim_ptr];
     &&& kill_process_target_has_thread(old_u, cpu_id)
     &&& !victim.state.is_reply_waiting()
+    &&& victim.lock_state is Unlocked
+    &&& victim.syscall_progress is None
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..victim }) .insert(kill_killer(old_u, cpu_id), kill_killer_at(old_u, cpu_id, prc_ptr, KillStage::Thread { thread: victim_ptr })),
         ..old_u
@@ -207,7 +213,7 @@ pub open spec fn kill_process_dequeue_scheduled_step(old_u: KernelU, new_u: Kern
     })
 }
 
-/// The marked victim waiting in an endpoint's queue leaves the queue and becomes killed.
+/// The marked victim waiting in an unlocked endpoint's queue leaves the queue and becomes killed.
 #[verifier::opaque]
 pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
@@ -218,6 +224,7 @@ pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: Kerne
     &&& victim.state.is_endpoint_waiting()
     &&& victim.blocking_endpoint_ptr is Some
     &&& old_u.endpoint_map.dom().contains(ep_ptr)
+    &&& endpoint.lock_state is Unlocked
     &&& new_u == (KernelU {
         endpoint_map: old_u.endpoint_map.insert(ep_ptr, EndpointU { queue: endpoint.queue.remove_value(victim_ptr), ..endpoint }),
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, blocking_endpoint_ptr: None, ..victim }),
@@ -225,8 +232,8 @@ pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: Kerne
     })
 }
 
-/// Another cpu running the marked victim is forced from running to idle without a process or thread, and the victim
-/// becomes killed.
+/// Another cpu running the marked victim, unlocked and outside a kernel step, is forced from running to idle without a
+/// process or thread, and the victim becomes killed.
 #[verifier::opaque]
 pub open spec fn kill_process_cpu_to_idle_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
@@ -236,6 +243,8 @@ pub open spec fn kill_process_cpu_to_idle_step(old_u: KernelU, new_u: KernelU, c
     &&& victim.state is RUNNING
     &&& index_valid(NUM_CPUS, remote)
     &&& remote != cpu_id
+    &&& old_u.cpu_array[remote as int].lock_state is Unlocked
+    &&& !(old_u.cpu_array[remote as int].op is InStep)
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[remote as int] }),
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, ..victim }),
@@ -305,7 +314,7 @@ pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: Ker
     })
 }
 
-/// The empty live target owning no PCI function write-locks its page table and IOMMU table to reclaim them.
+/// The empty live target owning no PCI function write-locks its unlocked page table and IOMMU table to reclaim them.
 #[verifier::opaque]
 pub open spec fn kill_process_lock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -315,6 +324,8 @@ pub open spec fn kill_process_lock_table_step(old_u: KernelU, new_u: KernelU, cp
     &&& !target.zombie
     &&& target.owned_pci_functions.is_empty()
     &&& target.pagetable is Some
+    &&& target.pagetable->Some_0.lock_state is Unlocked
+    &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is Unlocked
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..target.pagetable->Some_0 }),
@@ -393,8 +404,8 @@ pub open spec fn kill_process_quota_stage_after(stage: KillStage) -> Option<Kill
     }
 }
 
-/// The target returns the next size of quota after the kill's stage: the target's whole quota of that size moves to its
-/// container.
+/// The target, whose IOMMU table keeps no 4K mapping, returns the next size of quota after the kill's stage: the target's
+/// whole quota of that size moves to its container.
 #[verifier::opaque]
 pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -405,6 +416,7 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
     &&& old_u.container_map.dom().contains(target.owning_container)
     &&& kill_process_quota_stage_after(stage) is Some
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, stage)
+    &&& target.iommu_table is Some ==> process_iommu_4k_unmapped(target.iommu_table->Some_0)
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, match size {
             PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + target.quota_4k) as usize, ..container },

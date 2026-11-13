@@ -178,6 +178,7 @@ impl KernelK {
             },
             ret is Some ==> {
                 &&& !old(self).prc_mp.spec_index(prc_ptr).being_killed()
+                &&& !old(self).prc_mp.spec_index(prc_ptr).locked()
                 &&& final(self).prc_mp.spec_index(prc_ptr).being_killed()
                 &&& final(self).prc_mp.spec_index(prc_ptr).killer_info() == Some(killer_info)
                 &&& final(self).prc_mp.spec_index(prc_ptr).view().state.view() == if old(self).prc_mp.spec_index(prc_ptr).view().zombie { ProcessState::Zombie } else { ProcessState::Killing }

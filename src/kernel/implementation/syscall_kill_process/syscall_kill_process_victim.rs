@@ -201,6 +201,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
             let after = final(krnl).thrd_mp.spec_index(victim_ptr);
             &&& victim.view().blocking_endpoint_ptr is Some
             &&& old(krnl).ep_mp.dom().contains(ep_ptr)
+            &&& !before.locked()
             &&& *final(krnl) == (KernelK { ep_mp: final(krnl).ep_mp, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, ep_ptr)
             &&& after_endpoint.view().queue.view() == before.view().queue.view().remove_value(victim_ptr)
@@ -281,6 +282,8 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
             let after_cpu = final(krnl).cpu_arr.spec_index(remote).value.view().view();
             &&& index_valid(NUM_CPUS, remote)
             &&& remote != old(lctx).cpu_id()
+            &&& !old(krnl).cpu_arr.spec_index(remote).view().locked()
+            &&& !(old(krnl).cpu_op.view().view()[remote as int] is InStep)
             &&& final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int] == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int]
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, cpu_op: final(krnl).cpu_op, cpu_trap_frame: final(krnl).cpu_trap_frame, thrd_mp: final(krnl).thrd_mp, ..*old(krnl) })
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(remote as int, CpuOpState::Idle)

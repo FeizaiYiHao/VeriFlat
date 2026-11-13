@@ -16,7 +16,8 @@ pub open spec fn split_2m_syscall_result(pre: KernelU, cpu_id: CpuId, n: usize, 
     }
 }
 
-/// A concrete quota exchange on the running thread. The label supplies the actual count.
+/// A concrete quota exchange on the running thread, which records no progress: the first section starts from the trap
+/// path with the cpu and thread unlocked, a later one with both write-held by the cpu. The label supplies the actual count.
 pub open spec fn split_2m_step_pre(pre: KernelU, cpu_id: CpuId, m: usize) -> bool {
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
@@ -26,20 +27,24 @@ pub open spec fn split_2m_step_pre(pre: KernelU, cpu_id: CpuId, m: usize) -> boo
     &&& cpu.current_thread is Some
     &&& pre.thread_map.dom().contains(cpu.current_thread->Some_0)
     &&& !thread.killed
+    &&& thread.syscall_progress is None
+    &&& if cpu.lock_state is Unlocked { cpu.op is Trap && thread.lock_state is Unlocked } else { cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) && cpu.op is InStep && thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) }
     &&& m <= usize::MAX / 512
     &&& thread.quota_2m >= m
     &&& thread.quota_4k + 512 * m <= usize::MAX
 }
 
+/// Each section keeps the cpu and thread write-held inside the kernel step, or releases both and returns the cpu to its
+/// trap path.
 pub open spec fn split_2m_step(pre: KernelU, post: KernelU, cpu_id: CpuId, m: usize) -> bool {
     let thrd_ptr = pre.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = pre.thread_map[thrd_ptr];
     let cpu = pre.cpu_array[cpu_id as int];
+    let held = post.cpu_array[cpu_id as int].lock_state is WriteLocked;
+    let lock = if held { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked };
     post == (KernelU {
-        cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_array[cpu_id as int].lock_state, op: post.cpu_array[cpu_id as int].op, ..cpu }),
-        thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
-            lock_state: post.thread_map[thrd_ptr].lock_state, quota_4k: (thread.quota_4k + 512 * m) as usize, quota_2m: (thread.quota_2m - m) as usize, ..thread
-        }), ..pre
+        cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: lock, op: if held { CpuOpState::InStep } else { CpuOpState::Trap }, ..cpu }),
+        thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: lock, quota_4k: (thread.quota_4k + 512 * m) as usize, quota_2m: (thread.quota_2m - m) as usize, ..thread }), ..pre
     })
 }
 

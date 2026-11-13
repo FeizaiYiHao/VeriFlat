@@ -40,6 +40,10 @@ pub(super) fn cpu_offline_check_continue(
         old(krnl).cpu_offline_mp.dom().contains(flags_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
+        ({
+            let ct = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_thread;
+            &&& ct is Some && old(steps).snapshot_k().thrd_mp.dom().contains(ct->Some_0) ==> !old(steps).snapshot_k().thrd_mp.spec_index(ct->Some_0).wlocked_by_thread(cpu_id)
+        }),
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         flag_lock_perm is Some ==> {
@@ -202,7 +206,10 @@ pub(super) fn cpu_offline_check_recheck(
         ret == cpu_offline_check_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         ret is Off ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
 {
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    proof {
+        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
+        if current_thread is Some { krnl.thrd_mp.typed_lock_map_aligned_locked_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread.unwrap()); }
+    }
     proof {
         assert({
             &&& krnl.ctn_mp.dom().contains(ctn_ptr)
@@ -282,6 +289,10 @@ pub(super) fn cpu_offline_check_lock_and_commit(
         old(krnl).inv(),
         *old(krnl) == (KernelK { prc_mp: old(krnl).prc_mp, thrd_mp: old(krnl).thrd_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
+        ({
+            let ct = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_thread;
+            &&& ct is Some && old(steps).snapshot_k().thrd_mp.dom().contains(ct->Some_0) ==> !old(steps).snapshot_k().thrd_mp.spec_index(ct->Some_0).wlocked_by_thread(cpu_id)
+        }),
         old(krnl).prc_mp.dom() == old(steps).snapshot_k().prc_mp.dom(),
         old(krnl).thrd_mp.dom() == old(steps).snapshot_k().thrd_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)]

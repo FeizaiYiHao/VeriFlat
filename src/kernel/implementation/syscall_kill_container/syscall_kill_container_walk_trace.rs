@@ -86,6 +86,7 @@ pub(crate) proof fn kill_container_enter_pre_from_k(
             &&& container.view().children.view()[child_index as int] == child_ptr
             &&& krnl.ctn_mp.dom().contains(child_ptr)
             &&& !krnl.ctn_mp.spec_index(child_ptr).being_killed()
+            &&& !krnl.ctn_mp.spec_index(child_ptr).locked()
         }),
     ensures
         ({
@@ -116,6 +117,7 @@ pub(crate) proof fn kill_container_enter_pre_from_k(
             &&& container.children[child_index as int] == child_ptr
             &&& u.container_map.dom().contains(child_ptr)
             &&& !u.container_map[child_ptr].killed
+            &&& u.container_map[child_ptr].lock_state is Unlocked
             &&& process.depth == krnl.prc_mp.spec_index(prc_ptr).view_rodata().view().depth
         }),
         kill_container_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child_index) is Success,
@@ -160,6 +162,7 @@ pub(crate) proof fn kill_container_enter_step_from_u(
             &&& container.children[child_index as int] == child_ptr
             &&& pre.container_map.dom().contains(child_ptr)
             &&& !pre.container_map[child_ptr].killed
+            &&& pre.container_map[child_ptr].lock_state is Unlocked
         }),
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
@@ -196,22 +199,33 @@ pub(crate) proof fn kill_container_trace_enter_step(steps: &KernelSteps, before:
     ensures kill_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id, KillTraceCtx::Container { child_index }),
 { reveal(kill_partial_trace); reveal(kill_container_partial_trace); }
 
-/// The container `child_ptr` on `krnl` is a container on the projection.
+/// The unlocked and unmarked container `child_ptr` on `krnl` is an unlocked and unmarked container on the projection.
 pub(crate) proof fn kill_container_mark_child_pre_from_k(krnl: &KernelK, child_ptr: RwLockContainerPtr)
-    requires krnl.ctn_mp.dom().contains(child_ptr),
-    ensures kernel_k_to_kernel_u(*krnl).container_map.dom().contains(child_ptr),
-{ kernel_u_domains_projection(krnl); }
+    requires
+        krnl.ctn_mp.dom().contains(child_ptr),
+        !krnl.ctn_mp.spec_index(child_ptr).locked(),
+        !krnl.ctn_mp.spec_index(child_ptr).being_killed(),
+    ensures
+        kernel_k_to_kernel_u(*krnl).container_map.dom().contains(child_ptr),
+        kernel_k_to_kernel_u(*krnl).container_map[child_ptr].lock_state is Unlocked,
+        !kernel_k_to_kernel_u(*krnl).container_map[child_ptr].killed,
+{ kernel_container_projection_at(krnl, child_ptr); }
 
-/// The root process `root_ptr` of the target `target` on `krnl` is its root process on the projection.
+/// The unlocked and unmarked root process `root_ptr` of the target `target` on `krnl` is its unlocked and unmarked root
+/// process on the projection.
 pub(crate) proof fn kill_container_mark_root_pre_from_k(krnl: &KernelK, target: RwLockContainerPtr, root_ptr: RwLockProcessPtr)
     requires
         krnl.ctn_mp.dom().contains(target),
         krnl.ctn_mp.spec_index(target).view().root_process == root_ptr,
         krnl.prc_mp.dom().contains(root_ptr),
+        !krnl.prc_mp.spec_index(root_ptr).locked(),
+        !krnl.prc_mp.spec_index(root_ptr).being_killed(),
     ensures
         kernel_k_to_kernel_u(*krnl).container_map[target].root_process == root_ptr,
         kernel_k_to_kernel_u(*krnl).process_map.dom().contains(root_ptr),
-{ kernel_container_projection_at(krnl, target); kernel_u_domains_projection(krnl); }
+        kernel_k_to_kernel_u(*krnl).process_map[root_ptr].lock_state is Unlocked,
+        !kernel_k_to_kernel_u(*krnl).process_map[root_ptr].killed,
+{ kernel_container_projection_at(krnl, target); kernel_process_projection_at(krnl, root_ptr); }
 
 /// Marking and write-locking the first child `child_ptr` of the target `target` and walking the child is a middle step
 /// of the container kill.
@@ -226,6 +240,8 @@ pub(crate) proof fn kill_container_mark_child_step_from_u(
         0 < pre.container_map[target].children.len(),
         pre.container_map[target].children[0] == child_ptr,
         pre.container_map.dom().contains(child_ptr),
+        pre.container_map[child_ptr].lock_state is Unlocked,
+        !pre.container_map[child_ptr].killed,
         marked == (KernelU {
             container_map: pre.container_map.insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.container_map[child_ptr] }), ..pre
         }),
@@ -250,6 +266,8 @@ pub(crate) proof fn kill_container_mark_root_step_from_u(
         !pre.container_map[target].owned_processes.is_empty(),
         pre.container_map[target].root_process == root_ptr,
         pre.process_map.dom().contains(root_ptr),
+        pre.process_map[root_ptr].lock_state is Unlocked,
+        !pre.process_map[root_ptr].killed,
         marked == (KernelU {
             process_map: pre.process_map.insert(root_ptr, ProcessU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, killed: true, ..pre.process_map[root_ptr] }), ..pre
         }),
