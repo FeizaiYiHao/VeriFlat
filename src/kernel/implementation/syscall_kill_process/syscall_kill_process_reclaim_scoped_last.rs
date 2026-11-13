@@ -23,6 +23,7 @@ pub(crate) fn kill_reclaim_last_held_4k_mapping_scoped(
     Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>, Ghost(entry_lctx): Ghost<LocalContext>,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -183,6 +184,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
     Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>, Ghost(entry_lctx): Ghost<LocalContext>,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,

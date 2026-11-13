@@ -96,6 +96,7 @@ pub(super) fn thread_exit_reclaim(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + thread_exit_reclaim_step_bound(),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
@@ -153,6 +154,10 @@ pub(super) fn thread_exit_reclaim(
     thread_exit_reclaim_return_quota(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, pagetable, Ghost(cr3), Ghost(pcid), Ghost(entry_k),
         Ghost(entry_lctx), Ghost(pt_entry), Ghost(emptied_pt), iommu_table, Ghost(table_lctx), Ghost(it_entry), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
         Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm), Ghost(start), Ghost(pre));
+    proof {
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), old(steps).view())) by { reveal(kernel_steps_prefix_unchanged); };
+        steps_extended_implies_thread_exit_reclaim_count_le_len_added(old(steps).view(), steps.view(), start, cpu_id);
+    }
 }
 
 /// Write-lock the process's page table, record that nothing is flushed yet, and, for a process with an IOMMU table,
@@ -312,7 +317,7 @@ fn thread_exit_reclaim_lock_table(
         final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
-        old(steps).view().len() <= final(steps).view().len(),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
 {
     proof { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr); }
@@ -581,7 +586,7 @@ fn thread_exit_reclaim_hide_roots(
         final(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr == prc_ptr,
         final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..entry_k.thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
-        old(steps).view().len() <= final(steps).view().len(),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 512 - KERNEL_MEM_END_L4INDEX,
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),

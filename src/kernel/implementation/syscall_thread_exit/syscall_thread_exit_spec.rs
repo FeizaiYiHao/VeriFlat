@@ -495,7 +495,27 @@ pub open spec fn thread_exit_partial_trace(trace: Seq<KernelStep>, pre: KernelU,
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> thread_exit_middle_step(trace[j], cpu_id)
 }
 
-/// Complete trace of the call: on an exit, the partial trace followed by the finish step; a stutter otherwise.
+/// A step that starts while the running thread reclaims its process's tables or returns its quota.
+pub open spec fn thread_exit_reclaim_phase_step(step: KernelStep, cpu_id: CpuId) -> bool {
+    let progress = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0).syscall_progress;
+    &&& progress is Some
+    &&& progress->Some_0 is ThreadExitReclaim || progress->Some_0 is ThreadExitQuota
+}
+
+/// The number of steps after the first in `trace` that start while the running thread reclaims or returns quota.
+#[verifier::opaque]
+pub open spec fn thread_exit_reclaim_count(trace: Seq<KernelStep>, cpu_id: CpuId) -> nat
+    decreases trace.len(),
+{
+    if trace.len() <= 1 { 0 } else { thread_exit_reclaim_count(trace.drop_last(), cpu_id) + if thread_exit_reclaim_phase_step(trace.last(), cpu_id) { 1nat } else { 0nat } }
+}
+
+/// At most this many steps of an exit reclaim or return quota: 512 * 512 * 512 * 513 = 68,853,694,464 IOMMU cursor positions
+/// plus 10,000 for locking the tables, the hidden root entries, the TLB flushes, the refunds, and the quota and unlock steps.
+pub open spec fn thread_exit_reclaim_step_bound() -> nat { 68_853_704_464 }
+
+/// Complete trace of the call: on an exit, the partial trace followed by the finish step, with at most
+/// `thread_exit_reclaim_step_bound()` steps that reclaim or return quota; a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn thread_exit_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, exited: bool) -> bool {
     if exited {
@@ -505,6 +525,7 @@ pub open spec fn thread_exit_syscall_trace(trace: Seq<KernelStep>, pre: KernelU,
         &&& trace.last().new_u == post
         &&& thread_exit_finish_step_pre(trace.last().old_u, cpu_id)
         &&& thread_exit_finish_step(trace.last().old_u, post, cpu_id)
+        &&& thread_exit_reclaim_count(trace.drop_last(), cpu_id) <= thread_exit_reclaim_step_bound()
     } else {
         &&& trace.len() == 0
         &&& post == pre

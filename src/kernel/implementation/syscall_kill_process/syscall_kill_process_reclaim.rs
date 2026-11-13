@@ -42,6 +42,8 @@ pub(crate) fn kill_reclaim_target(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) <= kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + kill_process_target_step_bound(),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
         chain.len() > 1 ==> parent != prc_ptr,
@@ -77,9 +79,14 @@ pub(crate) fn kill_reclaim_target(
         kill_reclaim_live(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm),
             Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     }
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof {
+        process_perms_wf_at(krnl.prc_mp, target);
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), old(steps).view())) by { reveal(kernel_steps_prefix_unchanged); };
+        steps_extended_implies_kill_process_retire_count_monotone(old(steps).view(), steps.view(), start, cpu_id);
+    }
     let parent = kill_retire_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&mut *chain_perms),
         Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+    proof { steps_extended_implies_kill_process_table_count_le_len_added(old(steps).view(), steps.view(), start, cpu_id); }
     parent
 }
 
@@ -115,6 +122,7 @@ pub(crate) fn kill_reassign_functions(
         final(steps).snapshot_k() == *final(krnl),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
         old(steps).view().len() <= final(steps).view().len(),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target).view() == (Process { pci_cleared: Ghost(true), ..old(krnl).prc_mp.spec_index(target).view() }),
@@ -218,6 +226,7 @@ fn kill_reassign_owned_functions(
         final(steps).snapshot_k() == *final(krnl),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
         old(steps).view().len() <= final(steps).view().len(),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target).view() == (Process { pci_cleared: Ghost(true), ..before.prc_mp.spec_index(target).view() }),
@@ -374,6 +383,7 @@ pub(crate) fn kill_retire_zombie(
         final(steps).snapshot_k() == *final(krnl),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
         old(steps).view().len() <= final(steps).view().len(),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         ({
@@ -449,6 +459,7 @@ pub(crate) fn kill_reclaim_live(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + 68_853_694_464 + 4 * MAX_CONTAINER_TREE_DEPTH + NUM_CPUS + 522,
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target).view().zombie,
         final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
@@ -546,6 +557,7 @@ pub(crate) fn kill_reclaim_lock_table(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm,
             *chain_perms, pagetable, iommu_table, ret.0.view(), ret.1.view()),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),

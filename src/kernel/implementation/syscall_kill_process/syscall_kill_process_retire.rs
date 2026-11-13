@@ -46,6 +46,8 @@ pub(crate) fn kill_retire_target(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH + 2,
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
@@ -78,7 +80,11 @@ pub(crate) fn kill_retire_target(
     proof { process_perms_wf_at(krnl.prc_mp, target); }
     kill_retire_structure_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(&page_perms), Tracked(&pt_perm), Tracked(&it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof {
+        process_perms_wf_at(krnl.prc_mp, target);
+        assert(kernel_steps_prefix_unchanged(old(steps).view(), old(steps).view())) by { reveal(kernel_steps_prefix_unchanged); };
+        steps_extended_implies_kill_process_retire_count_monotone(old(steps).view(), steps.view(), start, cpu_id);
+    }
     kill_retire_process(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(&mut *chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx))
 }
@@ -240,6 +246,8 @@ pub(crate) fn kill_retire_process(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { prc_ptr } else { chain[chain.len() - 2] },
@@ -409,6 +417,8 @@ pub(crate) fn kill_retire_end_step(
         old(steps).view().len() <= final(steps).view().len(),
         forall|b: Seq<KernelStep>| kernel_steps_prefix_unchanged(b, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(b, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 1,
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) + 1 <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),

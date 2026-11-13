@@ -238,6 +238,7 @@ fn kill_reclaim_last_held_2m_mapping_scoped(
     Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>, Ghost(entry_lctx): Ghost<LocalContext>,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -400,6 +401,7 @@ pub(crate) fn kill_reclaim_held_2m_page_scoped(
     Ghost(stage): Ghost<KillStage>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }),
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),

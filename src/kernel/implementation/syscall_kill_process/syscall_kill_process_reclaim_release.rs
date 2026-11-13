@@ -67,6 +67,7 @@ pub(crate) fn kill_reclaim_hide_roots(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + 512 - KERNEL_MEM_END_L4INDEX,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
@@ -150,6 +151,7 @@ pub(crate) fn kill_reclaim_flush(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        final(steps).view().len() <= old(steps).view().len() + NUM_CPUS + 1,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
@@ -234,6 +236,7 @@ pub(crate) fn kill_reclaim_flush(
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
             iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && krnl.it_mp.spec_index(iommu_table->Some_0).view().did is None,
             c <= NUM_CPUS,
+            steps.view().len() <= old(steps).view().len() + c,
             krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
             krnl.pt_mp.spec_index(pagetable).view().higher.pcid == Some(pcid),
             page_ptr_valid(cr3),
@@ -434,6 +437,7 @@ pub(crate) fn kill_reclaim_held_leaves(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + 3 * (MAX_CONTAINER_TREE_DEPTH + 1),
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
@@ -577,6 +581,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + 68_853_694_464 + MAX_CONTAINER_TREE_DEPTH + 1,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             Some(iommu_table), *pagetable_perm, Some(*iommu_perm)),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
@@ -659,6 +664,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             pei_valid(cursor.1),
             pei_valid(cursor.2),
             cursor.3 <= 512,
+            scope is Subtree ==> steps.view().len() <= old(steps).view().len() + spec_l4_index_path_rank(cursor),
             found is Some ==> {
                 let next = found->Some_0;
                 &&& pei_valid(next.0)

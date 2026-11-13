@@ -111,6 +111,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view().len() == old(steps).view().len() + hidden.view().len(),
+        hidden.view().len() <= 512 - KERNEL_MEM_END_L4INDEX,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|k: int| #![trigger hidden.view()[k]] 0 <= k < hidden.view().len() ==> {
             &&& final(steps).view()[old(steps).view().len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden.view()[k].1), new_u: kernel_k_to_kernel_u(hidden.view()[k].2) })
@@ -206,6 +207,7 @@ pub fn hide_user_l4_entries(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
             old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
             steps.view().len() == old(steps).view().len() + hidden.len(),
+            hidden.len() <= l4i - KERNEL_MEM_END_L4INDEX,
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|k: int| #![trigger hidden[k]] 0 <= k < hidden.len() ==> {
                 &&& steps.view()[old(steps).view().len() + k] == (KernelStep { old_u: kernel_k_to_kernel_u(hidden[k].1), new_u: kernel_k_to_kernel_u(hidden[k].2) })

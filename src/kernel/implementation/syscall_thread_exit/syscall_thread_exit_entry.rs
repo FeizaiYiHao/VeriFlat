@@ -52,6 +52,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id)
+            &&& thread_exit_reclaim_count(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), cpu_id) == 0
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom() =~= set![e.container_ptr]
             &&& final(lctx).process_lock_map().dom() =~= set![e.process_ptr]
@@ -204,11 +205,13 @@ fn thread_exit_reclaim_dangling_caller(
         typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(dangling_ptr)),
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![dangling_ptr]),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
 {
     let ghost reclaim_before = steps.view();
     proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
     reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, dangling_ptr, Tracked(dangling_lock_perm));
-    assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+    assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)
+        && thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == thread_exit_reclaim_count(reclaim_before.subrange(start, reclaim_before.len() as int), cpu_id)) by {
         thread_exit_drop_step_pre_from_k(old(krnl), old(lctx), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, 0);
         thread_exit_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(*old(krnl)), cpu_id, ctn_ptr, prc_ptr);
     };

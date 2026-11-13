@@ -68,6 +68,7 @@ pub(super) fn thread_exit_drop_descriptors(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
@@ -143,6 +144,7 @@ pub(super) fn thread_exit_drop_descriptors(
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             recorded <= index <= MAX_NUM_ENDPOINT_DESCRIPTORS,
             thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
+            thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
@@ -181,7 +183,8 @@ pub(super) fn thread_exit_drop_descriptors(
                 let drop_post = *krnl;
                 assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
                 krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-                assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+                assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)
+                    && thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == thread_exit_reclaim_count(drop_before.subrange(start, drop_before.len() as int), cpu_id)) by {
                     thread_exit_drop_step_pre_from_k(&drop_pre, &drop_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, recorded);
                     if released {
                         kernel_endpoint_released_implies_u_step(&drop_pre, &drop_post, thrd_ptr, ep_ptr, index);

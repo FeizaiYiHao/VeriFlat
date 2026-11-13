@@ -24,6 +24,7 @@ pub(super) fn thread_exit_finish(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![ctn_ptr],
         old(lctx).process_lock_map().dom() =~= set![prc_ptr],

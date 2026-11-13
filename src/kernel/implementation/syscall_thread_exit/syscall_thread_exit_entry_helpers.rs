@@ -298,6 +298,7 @@ pub(super) fn thread_exit_enter_with_caller(
             let thread = final(krnl).thrd_mp.spec_index(thrd_ptr).view();
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(pre), cpu_id)
+            &&& thread_exit_reclaim_count(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), cpu_id) == 0
             &&& thread_exit_syscall_result(kernel_k_to_kernel_u(pre), cpu_id) == RetValueType::CpuIdle
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom() =~= set![ctn_ptr]

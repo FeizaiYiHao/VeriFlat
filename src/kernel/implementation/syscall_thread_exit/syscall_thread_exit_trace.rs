@@ -945,7 +945,7 @@ pub(super) proof fn thread_exit_unlock_table_step_from_u(pre: KernelU, post: Ker
         thread_exit_unlock_table_step(pre, post, cpu_id),
 { reveal(thread_exit_unlock_table_step); }
 
-/// The one step pushed since `before` is the partial trace after entering.
+/// The one step pushed since `before` is the partial trace after entering, which counts no reclaim step.
 pub(super) proof fn thread_exit_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
@@ -953,9 +953,11 @@ pub(super) proof fn thread_exit_trace_enter_step(steps: &KernelSteps, before: Se
         thread_exit_enter_step(pre, post, cpu_id),
     ensures
         thread_exit_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id),
-{ reveal(thread_exit_partial_trace); }
+        thread_exit_reclaim_count(steps.view().subrange(before.len() as int, steps.view().len() as int), cpu_id) == 0,
+{ reveal(thread_exit_partial_trace); reveal(thread_exit_reclaim_count); }
 
-/// A middle step pushed after the partial trace that starts at `start` extends it.
+/// A middle step pushed after the partial trace that starts at `start` extends it. It adds at most one reclaim step, and
+/// none when it drops a descriptor, locks the tables, or locks the PCID allocator.
 pub(super) proof fn thread_exit_trace_push(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId)
     requires
         0 <= start <= before.len(),
@@ -964,14 +966,22 @@ pub(super) proof fn thread_exit_trace_push(steps: &KernelSteps, before: Seq<Kern
         thread_exit_middle_step(KernelStep { old_u: step_pre, new_u: step_post }, cpu_id),
     ensures
         thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) <= thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) + 1,
+        thread_exit_drop_step_pre(step_pre, cpu_id) || thread_exit_lock_table_step_pre(step_pre, cpu_id) || thread_exit_lock_pcid_allocator_step_pre(step_pre, cpu_id)
+            ==> thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id),
 {
     reveal(thread_exit_partial_trace);
-    assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: step_pre, new_u: step_post }));
+    let step = KernelStep { old_u: step_pre, new_u: step_post };
+    assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(step));
+    trace_push_implies_thread_exit_reclaim_count_step_added(before.subrange(start, before.len() as int), step, cpu_id);
+    if thread_exit_drop_step_pre(step_pre, cpu_id) || thread_exit_lock_table_step_pre(step_pre, cpu_id) || thread_exit_lock_pcid_allocator_step_pre(step_pre, cpu_id) {
+        assert(!thread_exit_reclaim_phase_step(step, cpu_id)) by { reveal(thread_exit_drop_step_pre); reveal(thread_exit_lock_table_step_pre); reveal(thread_exit_lock_pcid_allocator_step_pre); reveal(thread_exit_finish_step_pre); };
+    }
 }
 
 /// Steps reclaiming killed threads of the running thread's container `ctn_ptr`, recorded after the partial trace
 /// that starts at `start` while the running thread's cpu, the thread, and the lock modes of its process and container keep
-/// their projection at `entry`, extend it.
+/// their projection at `entry`, extend it without adding a reclaim step.
 pub(super) proof fn thread_exit_trace_from_killed_thread_reclaim(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr,
     prc_ptr: RwLockProcessPtr,
@@ -1001,9 +1011,11 @@ pub(super) proof fn thread_exit_trace_from_killed_thread_reclaim(
         },
     ensures
         thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id),
 {
     reveal(thread_exit_partial_trace); reveal(thread_exit_drop_step_pre); reveal(kernel_steps_prefix_unchanged);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
+    steps_extended_outside_reclaim_phase_implies_thread_exit_reclaim_count_unchanged(before, steps.view(), start, cpu_id);
 }
 
 /// TLB flushes of the PCID of the running last thread's process, recorded after the partial trace that starts at
@@ -1095,11 +1107,13 @@ pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, 
     ensures thread_exit_refund_step(pre, post, cpu_id),
 { reveal(thread_exit_refund_step); }
 
-/// The finish step pushed after the partial trace that starts at `start` completes the trace of an exit.
+/// The finish step pushed after the partial trace that starts at `start`, with at most `thread_exit_reclaim_step_bound()`
+/// reclaim steps, completes the trace of an exit.
 pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
         0 <= start <= before.len(),
         thread_exit_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         thread_exit_finish_step_pre(finish_pre, cpu_id),
         thread_exit_finish_step(finish_pre, post, cpu_id),
@@ -1108,6 +1122,7 @@ pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: S
 {
     reveal(thread_exit_partial_trace); reveal(thread_exit_syscall_trace);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: finish_pre, new_u: post }));
+    assert(steps.view().subrange(start, steps.view().len() as int).drop_last() =~= before.subrange(start, before.len() as int));
 }
 
 /// A rejected call records no step.
@@ -1117,4 +1132,49 @@ pub(super) proof fn thread_exit_trace_stutter(trace: Seq<KernelStep>, pre: Kerne
     ensures
         thread_exit_syscall_trace(trace, pre, pre, cpu_id, false),
 { reveal(thread_exit_syscall_trace); }
+
+/// A step pushed onto a nonempty trace adds one reclaim step exactly when it starts while the thread reclaims or returns quota.
+pub(super) proof fn trace_push_implies_thread_exit_reclaim_count_step_added(trace: Seq<KernelStep>, step: KernelStep, cpu_id: CpuId)
+    requires 1 <= trace.len(),
+    ensures thread_exit_reclaim_count(trace.push(step), cpu_id) == thread_exit_reclaim_count(trace, cpu_id) + if thread_exit_reclaim_phase_step(step, cpu_id) { 1nat } else { 0nat },
+{ reveal(thread_exit_reclaim_count); assert(trace.push(step).drop_last() =~= trace); }
+
+/// Extending `before` to `after` adds at most as many reclaim steps after `start` as it adds steps.
+pub(super) proof fn steps_extended_implies_thread_exit_reclaim_count_le_len_added(before: Seq<KernelStep>, after: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, after),
+    ensures
+        before.len() <= after.len(),
+        thread_exit_reclaim_count(after.subrange(start, after.len() as int), cpu_id) <= thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) + (after.len() - before.len()),
+    decreases after.len() - before.len(),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        let shorter = after.drop_last();
+        steps_extended_implies_thread_exit_reclaim_count_le_len_added(before, shorter, start, cpu_id);
+        reveal(thread_exit_reclaim_count);
+        assert(after.subrange(start, after.len() as int).drop_last() =~= shorter.subrange(start, shorter.len() as int));
+    }
+}
+
+/// Extending `before` to `after` with steps that all start outside reclaiming keeps the reclaim count after `start`.
+pub(super) proof fn steps_extended_outside_reclaim_phase_implies_thread_exit_reclaim_count_unchanged(before: Seq<KernelStep>, after: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, after),
+        forall|j: int| #![trigger after[j]] before.len() <= j < after.len() ==> !thread_exit_reclaim_phase_step(after[j], cpu_id),
+    ensures thread_exit_reclaim_count(after.subrange(start, after.len() as int), cpu_id) == thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id),
+    decreases after.len() - before.len(),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        let shorter = after.drop_last();
+        steps_extended_outside_reclaim_phase_implies_thread_exit_reclaim_count_unchanged(before, shorter, start, cpu_id);
+        reveal(thread_exit_reclaim_count);
+        assert(after.subrange(start, after.len() as int).drop_last() =~= shorter.subrange(start, shorter.len() as int));
+    }
+}
 } // verus!

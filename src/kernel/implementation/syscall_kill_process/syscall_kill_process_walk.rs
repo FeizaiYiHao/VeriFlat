@@ -40,6 +40,8 @@ pub(crate) fn kill_mark_child(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain.push(ret), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *final(chain_perms)),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
@@ -157,6 +159,8 @@ pub(crate) fn kill_first_thread(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
@@ -305,6 +309,8 @@ pub(crate) fn kill_finish_marked_victim(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()
@@ -385,6 +391,8 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, Some(victim_ptr), KillStage::Thread { thread: victim_ptr }, *cpu_perm, *process_perm,
             *thread_perm, *chain_perms),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -522,6 +530,8 @@ pub(crate) fn kill_release_victim_caller(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, Some(victim_ptr), KillStage::Thread { thread: victim_ptr }, *cpu_perm, *process_perm,
             *thread_perm, *chain_perms),
         ({
@@ -626,6 +636,8 @@ pub(crate) fn kill_unlink_victim(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, Some(victim_ptr), KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).thrd_mp.dom().contains(victim_ptr),
         final(krnl).thrd_mp.spec_index(victim_ptr).view() == (Thread {
@@ -734,6 +746,8 @@ pub(crate) fn kill_reclaim_victim(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == kill_process_table_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        kill_process_retire_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= kill_process_retire_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         ({
             &&& final(krnl).prc_mp.spec_index(prc_ptr).view_lock() == old(krnl).prc_mp.spec_index(prc_ptr).view_lock()

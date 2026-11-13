@@ -121,6 +121,7 @@ pub(super) fn thread_exit_enter_record_progress(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).snapshot_k() == *final(krnl),
         thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(pre), cpu_id),
+        thread_exit_reclaim_count(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), cpu_id) == 0,
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -161,7 +162,8 @@ pub(super) fn thread_exit_enter_record_progress(
         let entered_k = *krnl;
         let enter_before = steps.view();
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(pre), cpu_id)) by {
+        assert(thread_exit_partial_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(pre), cpu_id)
+            && thread_exit_reclaim_count(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), cpu_id) == 0) by {
             thread_exit_enter_step_pre_from_k(&pre, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, caller, dangling);
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&pre, &held_k, &held_lctx, cpu_id, prc_ptr, thrd_ptr, None, true, Some(ctn_ptr), false, None);
             if let Some(caller_ptr) = caller {

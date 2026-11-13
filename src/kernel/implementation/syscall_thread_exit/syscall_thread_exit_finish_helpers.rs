@@ -178,6 +178,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         page_ptr_valid(thrd_ptr),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
+        thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &finish_lctx),
         typed_lock_map_contains_mode(finish_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(finish_lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),

@@ -69,6 +69,7 @@ pub(crate) fn kill_retire_structure_pages(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH + 1,
         kill_retire_held_state(*final(krnl), *final(lctx), prc_ptr, thrd_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(final(krnl), final(lctx), PAGETABLE_PAGE_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
@@ -223,6 +224,7 @@ pub(crate) fn kill_retire_table_pages(
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        scope is Subtree ==> final(steps).view().len() == old(steps).view().len(),
         kill_retire_held_state(*final(krnl), *final(lctx), prc_ptr, thrd_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(final(krnl), final(lctx), PAGE_TABLE_LOCK_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thrd_ptr],
@@ -327,6 +329,7 @@ pub(crate) fn kill_retire_table_pages(
             kill_chain_state(*krnl, *lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
             0 < chain.len(),
             same == (scope is Subtree),
+            same ==> steps.view().len() == old(steps).view().len(),
             target == chain[chain.len() - 1],
             ({
                 &&& krnl.prc_mp.spec_index(target).view() == old(krnl).prc_mp.spec_index(target).view()

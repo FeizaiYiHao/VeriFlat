@@ -518,13 +518,14 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// A refund grows the 4K, 2M, or 1G quota of the target's container or of one of its ancestors. Unlike thread_exit's refund it
-/// carries no `flushed` stage and unlocks no window: the kill refunds only after every table it reclaims is unlocked.
+/// A refund, once the flush is recorded or while the target retires, grows the 4K, 2M, or 1G quota of the target's container or
+/// of one of its ancestors. Unlike thread_exit's refund it unlocks no window: the kill refunds only after every table it reclaims
+/// is unlocked.
 #[verifier::opaque]
 pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
-        || kernel_u_container_quota_2m_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
-        || kernel_u_container_quota_1g_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
+    let ctn_ptr = old_u.process_map[kill_target(old_u, cpu_id)].owning_container;
+    &&& kill_stage(old_u, cpu_id) == (KillStage::Reclaim { flushed: true }) || kill_stage(old_u, cpu_id) is Retire
+    &&& kernel_u_container_quota_4k_increased(old_u, new_u, ctn_ptr) || kernel_u_container_quota_2m_increased(old_u, new_u, ctn_ptr) || kernel_u_container_quota_1g_increased(old_u, new_u, ctn_ptr)
 }
 
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
@@ -615,7 +616,36 @@ pub open spec fn kill_partial_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id
     }
 }
 
-/// Complete trace of the call: on a kill, the partial trace followed by the finish step; a stutter otherwise.
+/// The stages in which the kill works on the tables of its target: reclaiming, returning quota, making a zombie, and
+/// retiring.
+pub open spec fn kill_stage_tables_phase(stage: KillStage) -> bool { stage is Reclaim || stage is Quota || stage is Zombie || stage is Retire }
+
+/// A step that starts while the kill works on the tables of its target.
+pub open spec fn kill_process_table_phase_step(step: KernelStep, cpu_id: CpuId) -> bool { kill_stage_tables_phase(kill_stage(step.old_u, cpu_id)) }
+
+/// The number of steps after the first in `trace` that start while the kill works on the tables of its target.
+#[verifier::opaque]
+pub open spec fn kill_process_table_count(trace: Seq<KernelStep>, cpu_id: CpuId) -> nat
+    decreases trace.len(),
+{
+    if trace.len() <= 1 { 0 } else { kill_process_table_count(trace.drop_last(), cpu_id) + if kill_process_table_phase_step(trace.last(), cpu_id) { 1nat } else { 0nat } }
+}
+
+/// The number of steps after the first in `trace` that retire a target.
+#[verifier::opaque]
+pub open spec fn kill_process_retire_count(trace: Seq<KernelStep>, cpu_id: CpuId) -> nat
+    decreases trace.len(),
+{
+    if trace.len() <= 1 { 0 } else { kill_process_retire_count(trace.drop_last(), cpu_id) + if kill_process_retire_step(trace.last().old_u, trace.last().new_u, cpu_id) { 1nat } else { 0nat } }
+}
+
+/// At most this many steps of a process kill work on the tables of one target: 512 * 512 * 512 * 513 = 68,853,694,464 IOMMU
+/// cursor positions plus 10,000 for the hidden root entries, the TLB flushes, the refunds, the quota, unlock, zombie, and retire
+/// steps, and the walk steps that reclaim the target.
+pub open spec fn kill_process_target_step_bound() -> nat { 68_853_704_464 }
+
+/// Complete trace of the call: on a kill, the partial trace followed by the finish step, where each retired target accounts for
+/// at most `kill_process_target_step_bound()` steps that work on tables; a stutter otherwise.
 #[verifier::opaque]
 pub open spec fn kill_process_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize, killed: bool) -> bool {
     if killed {
@@ -625,6 +655,7 @@ pub open spec fn kill_process_syscall_trace(trace: Seq<KernelStep>, pre: KernelU
         &&& trace.last().new_u == post
         &&& kill_process_finish_step_pre(trace.last().old_u, cpu_id)
         &&& kill_process_finish_step(trace.last().old_u, post, cpu_id)
+        &&& kill_process_table_count(trace.drop_last(), cpu_id) <= kill_process_target_step_bound() * kill_process_retire_count(trace.drop_last(), cpu_id)
     } else {
         &&& trace.len() == 0
         &&& post == pre

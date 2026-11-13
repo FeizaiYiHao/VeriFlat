@@ -991,14 +991,17 @@ pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, 
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_zombie_retire_step); }
 
-/// The one step pushed since `before` is the partial trace after entering.
+/// The one step pushed since `before` is the partial trace after entering, which counts no table-phase or retire step.
 pub(crate) proof fn kill_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         kill_process_enter_step_pre(pre, cpu_id, child_index),
         kill_process_enter_step(pre, post, cpu_id, child_index),
-    ensures kill_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
-{ reveal(kill_partial_trace); reveal(kill_process_partial_trace); }
+    ensures
+        kill_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
+        kill_process_table_count(steps.view().subrange(before.len() as int, steps.view().len() as int), cpu_id) == 0,
+        kill_process_retire_count(steps.view().subrange(before.len() as int, steps.view().len() as int), cpu_id) == 0,
+{ reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_process_table_count); reveal(kill_process_retire_count); }
 
 /// Retiring the empty zombie target, which raises its container's 4K quota to `quota`, and walking its parent again is a
 /// middle step.
@@ -1036,26 +1039,39 @@ pub(crate) proof fn kill_retire_step_from_u(
             thread_map: retired.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, parent_ptr, KillStage::Walk), ..retired.thread_map[thrd_ptr] }),
             ..retired
         }),
-    ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
+    ensures
+        kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
+        kill_process_retire_step(pre, post, cpu_id),
 { reveal(kill_process_retire_step); }
 
-/// A middle step pushed after the partial trace that starts at `start` extends it.
+/// A middle step pushed after the partial trace that starts at `start` extends it. It adds at most one table-phase step and
+/// none when it starts walking or working on a thread, and adds one retire step when it retires the target.
 pub(crate) proof fn kill_trace_push(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx)
     requires
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == before.push(KernelStep { old_u: step_pre, new_u: step_post }),
         kill_process_middle_step(KernelStep { old_u: step_pre, new_u: step_post }, cpu_id),
-    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+    ensures
+        kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+        kill_process_table_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) <= kill_process_table_count(before.subrange(start, before.len() as int), cpu_id) + 1,
+        kill_stage(step_pre, cpu_id) is Walk || kill_stage(step_pre, cpu_id) is Thread
+            ==> kill_process_table_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == kill_process_table_count(before.subrange(start, before.len() as int), cpu_id),
+        kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_retire_count(steps.view().subrange(start, steps.view().len() as int), cpu_id),
+        kill_process_retire_step(step_pre, step_post, cpu_id)
+            ==> kill_process_retire_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) + 1,
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);
-    assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: step_pre, new_u: step_post }));
+    let step = KernelStep { old_u: step_pre, new_u: step_post };
+    assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(step));
+    trace_push_implies_kill_process_table_count_step_added(before.subrange(start, before.len() as int), step, cpu_id);
+    trace_push_implies_kill_process_retire_count_step_added(before.subrange(start, before.len() as int), step, cpu_id);
 }
 
 /// Steps reclaiming killed threads of `victim_container`, the target's container, recorded after the partial trace that
 /// starts at `start` while the killer's cpu, the killer, the lock modes, kill marks, and owning containers of its held
 /// processes, and the lock mode and upper tree of the victim container of `scope` keep their projection at `entry`,
-/// extend it.
+/// extend it. They add no retire step, and no table-phase step while the kill walks or works on a thread.
 pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, prc_ptr: RwLockProcessPtr,
     target: RwLockProcessPtr, victim_container: RwLockContainerPtr, stage: KillStage, scope: KillScope,
@@ -1090,10 +1106,15 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
             &&& scope matches KillScope::Container { container } ==> old_u.container_map.dom().contains(container) && old_u.container_map[container].lock_state == entry.container_map[container].lock_state
                 && old_u.container_map[container].uppertree_seq == entry.container_map[container].uppertree_seq
         },
-    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+    ensures
+        kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+        stage is Walk || stage is Thread ==> kill_process_table_count(steps.view().subrange(start, steps.view().len() as int), cpu_id) == kill_process_table_count(before.subrange(start, before.len() as int), cpu_id),
+        kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_retire_count(steps.view().subrange(start, steps.view().len() as int), cpu_id),
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace); reveal(kill_process_step_pre); reveal(kernel_steps_prefix_unchanged);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
+    steps_extended_implies_kill_process_retire_count_monotone(before, steps.view(), start, cpu_id);
+    if stage is Walk || stage is Thread { steps_extended_outside_table_phase_implies_kill_process_table_count_unchanged(before, steps.view(), start, cpu_id); }
 }
 
 /// A section that flushes cpu `c`'s TLB for `pcid` and changes only cpu state, TLBs, needflush flags, and page-table ghost
@@ -1140,7 +1161,7 @@ pub(crate) proof fn kill_tlb_flush_step_from_k(pre: &KernelK, post: &KernelK, c:
 }
 
 /// A flush step of the target's PCID `pcid`, recorded after the partial trace that starts at `start` once every user 4K
-/// leaf of the target is cleared, extends it.
+/// leaf of the target is cleared, extends it by at most one step.
 pub(crate) proof fn kill_trace_push_tlb_flush(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, pcid: Pcid,
 )
@@ -1152,7 +1173,9 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
         kill_process_step_pre(step_pre, cpu_id),
         kill_process_flush_step_pre(step_pre, cpu_id),
         step_pre.process_map[kill_target(step_pre, cpu_id)].pcid == pcid,
-    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+    ensures
+        kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+        before.len() <= steps.view().len() <= before.len() + 1,
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);
     if step_pre == step_post { assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int)); }
@@ -1224,13 +1247,14 @@ pub(crate) proof fn hidden_root_steps_implies_kill_trace(
 
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
-/// mode and its progress at `stage` in `scope`, each growing the 4K, 2M, or 1G quota of the target's container `ctn_ptr`, the
-/// container of the killer's cpu, extend it.
+/// mode and its progress at `stage`, after the flush is recorded or while retiring, in `scope`, each growing the 4K, 2M, or 1G
+/// quota of the target's container `ctn_ptr`, the container of the killer's cpu, extend it.
 pub(crate) proof fn kill_trace_from_refund(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, ctn_ptr: RwLockContainerPtr, scope: KillScope,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }) || stage is Retire,
         0 <= start <= before.len() <= steps.view().len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
@@ -1264,13 +1288,14 @@ pub(crate) proof fn kill_trace_from_refund(
 }
 
 /// One step pushed after the partial trace that starts at `start`, from the projection of `krnl` while the kill holds its
-/// cpu, process, thread, and target at `stage` in `scope`, that grows the 4K, 2M, or 1G quota of the target's container or of one of
-/// its ancestors, extends it.
+/// cpu, process, thread, and target at `stage`, after the flush is recorded or while retiring, in `scope`, that grows the 4K, 2M,
+/// or 1G quota of the target's container or of one of its ancestors, extends it.
 pub(crate) proof fn kill_trace_from_scoped_credit(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post_u: KernelU, krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctx: KillTraceCtx,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
 )
     requires
+        stage == (KillStage::Reclaim { flushed: true }) || stage is Retire,
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*krnl), new_u: post_u }),
@@ -1298,20 +1323,24 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
     kill_refund_step_from_u(kernel_k_to_kernel_u(*krnl), post_u, cpu_id); kill_trace_push(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), post_u, cpu_id, ctx);
 }
 
-/// Growing the 4K, 2M, or 1G quota of the target's container or of one of its ancestors, and nothing else, is a refund step.
+/// Growing the 4K, 2M, or 1G quota of the target's container or of one of its ancestors, and nothing else, after the flush is
+/// recorded or while retiring, is a refund step.
 pub(crate) proof fn kill_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
     requires
+        kill_stage(pre, cpu_id) == (KillStage::Reclaim { flushed: true }) || kill_stage(pre, cpu_id) is Retire,
         kernel_u_container_quota_4k_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container)
             || kernel_u_container_quota_2m_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container)
             || kernel_u_container_quota_1g_increased(pre, post, pre.process_map[kill_target(pre, cpu_id)].owning_container),
     ensures kill_process_refund_step(pre, post, cpu_id),
 { reveal(kill_process_refund_step); }
 
-/// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.
+/// The finish step pushed after the partial trace that starts at `start`, in which each retired target accounts for at most
+/// `kill_process_target_step_bound()` table-phase steps, completes the trace of a kill.
 pub(crate) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
     requires
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
+        kill_process_table_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_target_step_bound() * kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         kill_process_finish_step_pre(finish_pre, cpu_id),
         kill_process_finish_step(finish_pre, post, cpu_id),
@@ -1319,6 +1348,7 @@ pub(crate) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<Kern
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_process_syscall_trace);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: finish_pre, new_u: post }));
+    assert(steps.view().subrange(start, steps.view().len() as int).drop_last() =~= before.subrange(start, before.len() as int));
 }
 
 /// A rejected call records no step.
@@ -1326,4 +1356,76 @@ pub(crate) proof fn kill_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu
     requires trace.len() == 0,
     ensures kill_process_syscall_trace(trace, pre, pre, cpu_id, child_index, false),
 { reveal(kill_process_syscall_trace); }
+
+/// A step pushed onto a nonempty trace adds one table-phase step exactly when it starts in the table phase.
+pub(crate) proof fn trace_push_implies_kill_process_table_count_step_added(trace: Seq<KernelStep>, step: KernelStep, cpu_id: CpuId)
+    requires 1 <= trace.len(),
+    ensures kill_process_table_count(trace.push(step), cpu_id) == kill_process_table_count(trace, cpu_id) + if kill_process_table_phase_step(step, cpu_id) { 1nat } else { 0nat },
+{ reveal(kill_process_table_count); assert(trace.push(step).drop_last() =~= trace); }
+
+/// A step pushed onto a nonempty trace adds one retire step exactly when it retires a target.
+pub(crate) proof fn trace_push_implies_kill_process_retire_count_step_added(trace: Seq<KernelStep>, step: KernelStep, cpu_id: CpuId)
+    requires 1 <= trace.len(),
+    ensures kill_process_retire_count(trace.push(step), cpu_id) == kill_process_retire_count(trace, cpu_id) + if kill_process_retire_step(step.old_u, step.new_u, cpu_id) { 1nat } else { 0nat },
+{ reveal(kill_process_retire_count); assert(trace.push(step).drop_last() =~= trace); }
+
+/// Extending `before` to `after` adds at most as many table-phase steps after `start` as it adds steps.
+pub(crate) proof fn steps_extended_implies_kill_process_table_count_le_len_added(before: Seq<KernelStep>, after: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, after),
+    ensures
+        before.len() <= after.len(),
+        kill_process_table_count(after.subrange(start, after.len() as int), cpu_id) <= kill_process_table_count(before.subrange(start, before.len() as int), cpu_id) + (after.len() - before.len()),
+    decreases after.len() - before.len(),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        let shorter = after.drop_last();
+        steps_extended_implies_kill_process_table_count_le_len_added(before, shorter, start, cpu_id);
+        reveal(kill_process_table_count);
+        assert(after.subrange(start, after.len() as int).drop_last() =~= shorter.subrange(start, shorter.len() as int));
+    }
+}
+
+/// Extending `before` to `after` with steps that all start outside the table phase keeps the table-phase count after `start`.
+pub(crate) proof fn steps_extended_outside_table_phase_implies_kill_process_table_count_unchanged(before: Seq<KernelStep>, after: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, after),
+        forall|j: int| #![trigger after[j]] before.len() <= j < after.len() ==> !kill_process_table_phase_step(after[j], cpu_id),
+    ensures kill_process_table_count(after.subrange(start, after.len() as int), cpu_id) == kill_process_table_count(before.subrange(start, before.len() as int), cpu_id),
+    decreases after.len() - before.len(),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        let shorter = after.drop_last();
+        assert(shorter.subrange(0, before.len() as int) =~= before);
+        steps_extended_outside_table_phase_implies_kill_process_table_count_unchanged(before, shorter, start, cpu_id);
+        reveal(kill_process_table_count);
+        assert(after.subrange(start, after.len() as int).drop_last() =~= shorter.subrange(start, shorter.len() as int));
+        assert(after.subrange(start, after.len() as int).last() == after[after.len() - 1]);
+    }
+}
+
+/// Extending `before` to `after` never lowers the retire count after `start`.
+pub(crate) proof fn steps_extended_implies_kill_process_retire_count_monotone(before: Seq<KernelStep>, after: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, after),
+    ensures kill_process_retire_count(before.subrange(start, before.len() as int), cpu_id) <= kill_process_retire_count(after.subrange(start, after.len() as int), cpu_id),
+    decreases after.len() - before.len(),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if after.len() == before.len() { assert(after.subrange(start, after.len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        let shorter = after.drop_last();
+        assert(shorter.subrange(0, before.len() as int) =~= before);
+        steps_extended_implies_kill_process_retire_count_monotone(before, shorter, start, cpu_id);
+        reveal(kill_process_retire_count);
+        assert(after.subrange(start, after.len() as int).drop_last() =~= shorter.subrange(start, shorter.len() as int));
+    }
+}
 } // verus!
