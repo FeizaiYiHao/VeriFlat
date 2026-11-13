@@ -137,6 +137,8 @@ verus! {
                 && (old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
                     ==> old(krnl).thrd_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thrd_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread)
                 && (progress_thread == quota_thrd_ptr || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is None)
+                && write_held && (!(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages)
+                    ==> old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > 1)
                 && (level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w)]
                     w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
                         ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi)) ==> {
@@ -405,6 +407,8 @@ verus! {
             && (old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
                 ==> old(krnl).thrd_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thrd_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread)
             && (progress_thread == quota_thrd_ptr || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is None)
+            && write_held && (!(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages)
+                ==> old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > 1)
             && (level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w)]
                 w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi));

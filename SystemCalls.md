@@ -93,24 +93,25 @@ pres name `cpu.current_process` and `cpu.owning_container` directly instead of
 - `Unlocked(x)` for every U-visible object the step newly acquires;
 - the phase condition (for example `mapped < len`).
 
-**R5 Locks outside U.** Allocator quota/cache/pool, scheduler shard, PCID
-allocator, PCID-needflush, and page locks are invisible in U. The U fields
-they guard are container `quota_*` (allocator quota), container `scheduler`
-(one run queue per cpu, `scheduler[c]` guarded by shard `c`), container
-`free_pcids` (PCID allocator), and `cpu_tlb` (PCID needflush). The CPU-set lock is visible as `ContainerU.cpu_set_lock` (`CS(c)`)
-and guards the `owning_container` of the container's Off CPUs.
+**R5 Locks outside U.** Allocator quota/cache/pool, scheduler shard,
+PCID-needflush, and page locks are invisible in U. The U fields they guard are
+container `quota_*` (allocator quota), container `scheduler` (one run queue
+per cpu, `scheduler[c]` guarded by shard `c`), and `cpu_tlb` (PCID
+needflush). The CPU-set lock is visible as `ContainerU.cpu_set_lock` (`CS(c)`)
+and guards the `owning_container` of the container's Off CPUs. The PCID
+allocator lock is visible as `ContainerU.pcid_allocator_lock` (`PA(c)`) and
+guards `free_pcids`.
 
 - A step may change such a field without a U-visible lock only when the
   change happens inside that one step. Its pre still states the field's
   precondition (for example a non-empty `free_pcids`).
 - When a non-U lock stays held across steps, a U-visible lock that the caller
   holds over the same interval must also cover the guarded fields.
-- Exception (approved 2026-09-30): new_process holds the PCID allocator of `C`
-  from enter to publish with `C` unlocked (§9), so no U lock covers
-  `C.free_pcids` over that interval. Its enter pre states a non-empty
-  `free_pcids`, and publish removes exactly one PCID. The allocator's major
-  (107) sits above `T` (106): it is taken after `P` and `T`, so a process's
-  last exiting thread can release the PCID under `P` and `T` (§17).
+- `PA(C)` is held across steps by new_process from enter to publish (§9) and
+  by a last exiting thread from its lock step to finish (§17). The
+  allocator's major (107) sits above `T` (106): it is taken after `P` and
+  `T`, so a process's last exiting thread can release the PCID under `P` and
+  `T`.
 
 **R6 Errors.** A rejection before any recorded change stutters: the trace is
 empty and `post == pre`. A rejection with a visible effect is an explicit step
@@ -864,11 +865,10 @@ finish.
 - Arguments: `va`, `range`, `regs`, optional `endpoint_index`; the entry point
   fixes `with_iommu`. `base = 6` with IOMMU, otherwise `4`; the publish cost is
   `base - 1`.
-- U locks: enter write-locks `cpu`, `P`, `PT(P)`, `T`, and the endpoint; the
-  container `C` is never locked. Publish releases `P` and creates the child
-  `D` and `PT(D)` (and its IOMMU table) write-locked. Finish releases the
-  rest. Non-U: the PCID allocator (taken after `T`, held from enter to
-  publish, guards `C.free_pcids`; the R5 exception), the scheduler, the
+- U locks: enter write-locks `cpu`, `P`, `PT(P)`, `T`, `PA(C)`, and the
+  endpoint; the container `C` is never locked. Publish releases `P` and
+  `PA(C)` and creates the child `D` and `PT(D)` (and its IOMMU table)
+  write-locked. Finish releases the rest. Non-U: the scheduler, the
   allocator, and the staged pages. `C.owned_processes` is
   lock-free ghost state, so publish adds `D` without `C`'s lock. A future
   container kill must not rely on a one-shot snapshot of `owned_processes`.
@@ -879,7 +879,7 @@ finish.
 **Enter**
 
 - Pre: `Caller`, `prog is None`; `!killed` for `P`, `T`; `Unlocked` for
-  `cpu`, `P`, `PT(P)`, `T`, and the endpoint; `R.wf()`, `R.len > 0`,
+  `cpu`, `P`, `PT(P)`, `T`, `PA(C)`, and the endpoint; `R.wf()`, `R.len > 0`,
   `R.len <= (usize::MAX - base) / 3`, `UserVa(u, R)`; `C.free_pcids` is
   nonempty; the endpoint descriptor is present when requested;
   `thr.quota_4k >= base + 3 * R.len`; every VA of `R` is mapped in `PT(P)`.
@@ -887,11 +887,11 @@ finish.
 
 **Publish**
 
-- Pre: `prog is NewProcess`; `W` for `cpu`, `P`, `PT(P)`, `T`.
+- Pre: `prog is NewProcess`; `W` for `cpu`, `P`, `PT(P)`, `T`, `PA(C)`.
 - Effect: creates `D` as the last child of `P` with empty write-locked tables,
   depth `P.depth + 1`, and `P`'s ancestry; updates ancestor `subtree_set`s;
   adds `D` to `C.owned_processes`; removes exactly one PCID from
-  `C.free_pcids`; `thr.quota_4k - (base - 1)`; unlocks `P`;
+  `C.free_pcids`; `thr.quota_4k - (base - 1)`; unlocks `P` and `PA(C)`;
   `prog = Share4k { R, R, 0, NewProcess(record with child: Some(D)) }`.
 
 **Share steps**: §8 with origin NewProcess.
@@ -920,9 +920,9 @@ Status: conforms, including R9 (Batch 2 validation, §2).
 - U locks: enter write-locks `cpu`, `C`, `CS(C)`, `P`, `PT(P)`, `T`, and
   `E(endpoint_index)` for the endpoint variant. Publish
   acquires and releases `transfer_cpu`, releases `CS(C)`, and creates the
-  child container `CC` (with `CS(CC)` unlocked), its root process `D`, and
-  `PT(D)` write-locked. Finish releases the rest. Non-U: the PCID allocator
-  and 2M tails, the schedulers, and the staged pages.
+  child container `CC` (with `CS(CC)` and `PA(CC)` unlocked), its root
+  process `D`, and `PT(D)` write-locked. Finish releases the rest. Non-U: 2M
+  tails, the schedulers, and the staged pages.
 - Progress: `NewContainer(NewContainerProgress { range, funding,
   process_quota, transfer_cpu, regs, endpoint_index, child_container: None })`,
   then `Share4k` whose origin is the same record with
@@ -1367,6 +1367,10 @@ These changes were approved on 2026-09-29 and are all applied.
 `ContainerU.cpu_set_lock` (approved 2026-09-30) projects the container's
 CPU-set lock mode; new_container (§10) and IPC Cpu (§11) state it.
 
+`ContainerU.pcid_allocator_lock` projects the lock mode of the container's PCID
+allocator; new_process (§9), new_container (§10), thread_exit (§17),
+kill_process zombify (§18), and kill_container retire (§19) state it.
+
 `ContainerU.cpu_offline_requests: Seq<bool>` (approved 2026-10-03 with the cpu
 hotplug plan) projects the container's per-cpu offline request table
 (`cpu_offline_requests_of(cpu_offline_mp[cpu_offline_flags_ptr(c)])`); the
@@ -1714,8 +1718,10 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
 - U locks retained from enter to finish: `cpu` (major 1), `C` (101), `P`
   (105), and `T` (106). When `T` is `P`'s last thread, reclaim also holds
   `PT(P)` (10004) and, when `P` has one, its IOMMU table `IT(P)` (10006) from
-  its lock-table step to its unlock-table step. Finish
-  releases `cpu`, `C`, and `P`; `T`'s lock goes with `T`. Enter acquires and
+  its lock-table step to its unlock-table step. For `P`'s last thread, `PA(C)`
+  (107) is taken first in finish, or in the lock-PCID-allocator step when
+  finish first drains a full cache, and finish releases it. Finish releases
+  `cpu`, `C`, and `P`; `T`'s lock goes with `T`. Enter acquires and
   releases the caller `R` (blocked-thread major 10003), and each drop step
   acquires and releases `E(index)` (10001).
 - Non-U: in enter, when `R` exists, shard `cpu_id` of `C`'s scheduler
@@ -1727,8 +1733,7 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   of its owner's 4K allocator cache (10012), and that allocator's pool
   (10015, only to drain a full cache); per flushed cpu, its `(cpu', pcid)`
   needflush cell (30001); and the 4K, 2M, and 1G allocator quota of `C`
-  and of its ancestors (20002, 20003, 20004), one at a time. In finish: for
-  `P`'s last thread, `C`'s PCID allocator (107) before anything else; `T`'s page
+  and of its ancestors (20002, 20003, 20004), one at a time. In finish: `T`'s page
   (allocated-page major 1000), shard `cpu_id` of the 4K allocator cache of
   the page's owner (10012), that allocator's global pool (10015, only to
   drain a full cache), its quota (20002), and the
@@ -1829,20 +1834,31 @@ leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference
   `PT(P)`, and no 4K mapping left in `IT(P)` when present; effect: unlocks
   `PT(P)` and `IT(P)` and sets `prog = ThreadExitZombie`.
 
+**Lock PCID allocator** (`thread_exit_lock_pcid_allocator_step_pre`,
+`thread_exit_lock_pcid_allocator_step`)
+
+- Pre: the finish pre holds, `T` is `P`'s last thread, and `PA(C)` is
+  unlocked.
+- Effect: `PA(C)` becomes `WriteLocked { writer: cpu_id }`; nothing else
+  changes. The code records this step when it drains a full cache before
+  finishing (a boundary it records while holding `PA(C)`); otherwise it takes
+  and releases `PA(C)` inside the finish step.
+
 **Finish** (`thread_exit_finish_step_pre`, `thread_exit_finish_step`)
 
 - Pre: `W` for `cpu`, `C`, `P`, and `T`; `thr.caller is None`; every
   descriptor is `None`. A thread with siblings finishes with
   `prog is ThreadExit`; `P`'s last thread finishes with
-  `prog == ThreadExitZombie` and no quota of any size left in `T` or `P`.
+  `prog == ThreadExitZombie`, no quota of any size left in `T` or `P`, and
+  `PA(C)` either unlocked or write-held by `cpu_id`.
 - Effect: `kernel_u_thread_exit_changed` on the state with `cpu`, `C`, and
-  `P` unlocked: `cpu` becomes Idle with no current process or thread; `T`
+  `P` unlocked, and `PA(C)` unlocked when `T` was `P`'s last thread: `cpu` becomes Idle with no current process or thread; `T`
   leaves the thread map, `P.owned_threads`, and `C.owned_threads`; `P`
   absorbs `T`'s `quota_4k`, `quota_2m`, and `quota_1g`; the container whose
   `owned_pages` holds `T`'s page gains one `quota_4k`. If `T` was `P`'s last
   thread, `P` becomes a zombie whose `pagetable` and `iommu_table` project
-  as `None`, and `P.pcid` joins `C.free_pcids` (in K, `C`'s PCID allocator
-  releases it); if `P` is also `C.root_process`, `C` becomes a zombie. The
+  as `None`, and `P.pcid` joins `C.free_pcids`; if `P` is also
+  `C.root_process`, `C` becomes a zombie. The
   `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is emptied or kept: the step is
   the disjunction over `flushed_default_pcid`, and in K it is emptied exactly
   when that needflush bit was set. Nothing else changes.
@@ -1896,7 +1912,6 @@ steps use anchor DIDs.
 - Non-U, each taken and released inside one atomic section: the locks of the
   killed-thread reclaim and of the leaf reclaim as in §17; the root table
   (10005) and, under it, `IT(L)` (10006) when `L` has one, in the reassign
-  step; `C`'s PCID allocator (107) in the zombify
   step; and the structure-page, root-page, cache, pool, and quota locks of
   the retire stage. Across the retire stage's sections the killer holds `L`'s
   process page, the object pages of `PT(L)` and `IT(L)`, and both tables
@@ -2063,10 +2078,11 @@ children and no threads)
   - Unlock table (`kill_process_unlock_table_step`): `Quota { returned: 1G }`,
     no valid user 4K mapping left in `PT(L)`, and none in `IT(L)`; unlocks
     both and sets `prog = Zombie`.
-- Zombify (`kill_process_zombify_step`): `prog` at `Zombie`, `!L.zombie`;
-  `L` becomes a zombie whose `pagetable` and `iommu_table` project as
-  `None`, `L.pcid` joins `C.free_pcids`, and `prog = { L, Retire }`. Non-U:
-  `C`'s PCID allocator (107).
+- Zombify (`kill_process_zombify_step`): `prog` at `Zombie`, `!L.zombie`,
+  `PA(C)` unlocked; `L` becomes a zombie whose `pagetable` and `iommu_table`
+  project as `None`, `L.pcid` joins `C.free_pcids`, and
+  `prog = { L, Retire }`. `PA(C)` (107) is taken and released inside the
+  step, so it is unlocked after it.
 
 **Retire** (stage `Retire`)
 
@@ -2184,8 +2200,8 @@ noninterference coverage of those reused steps.
   the Pages stage's first section until after its retire-stage step, `L`'s 4K
   and 2M allocator caches on every cpu (10012, 10013) and the 4K and 2M global
   pools (10015, 10016) and quotas (20002, 20003) of both `L`'s and `C`'s
-  allocators; inside the retire step, `L`'s request cells (104) and PCID
-  allocator (107), its five 4K object pages and two 2M object heads (1000),
+  allocators; inside the retire step, `L`'s request cells (104) and `PA(L)`
+  (107, gone with `L` after the step), its five 4K object pages and two 2M object heads (1000),
   its scheduler shards (10011), its 4K, 2M, and 1G caches (10012–10014), the
   4K and 2M pools and quotas of `L` and `C`, `L`'s 1G pool and quota (10017,
   20004), and the merged tails of both 2M heads (30000).
@@ -2331,7 +2347,8 @@ noninterference coverage of those reused steps.
 **Retire** (stage `Retire`)
 
 - Retire (`kill_container_retire_step`): pre `L` has no children and no
-  processes, `L.parent is Some` and present, and `C != L`; effect: `L` leaves
+  processes, `L.parent is Some` and present, `C != L`, and `PA(L)` is
+  unlocked; effect: `L` leaves
   the container map, its parent's `children`, and the `subtree_set` of every
   container in `L.uppertree_seq`; `C.owned_pages` gains `L.owned_pages`;
   `C.quota_4k` and `C.quota_2m` grow by amounts the spec leaves open;

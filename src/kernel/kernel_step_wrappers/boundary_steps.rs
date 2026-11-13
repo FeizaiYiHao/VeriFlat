@@ -15,7 +15,6 @@ impl KernelK {
             old(self).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
             old(self).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
             old(self).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
-            kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(self)),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures

@@ -88,6 +88,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator == pcid_allc_ptr
             &&& krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().pcid_is_free(pcid)
+            &&& krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None
             &&& krnl.prc_mp.dom().contains(prc_ptr)
             &&& process.locking_thread() is None
             &&& !process.being_killed()
@@ -110,6 +111,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
     reveal(new_process_enter_step_pre); thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id);
     assert(PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(pcid));
     kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, ep_ptr); kernel_l4_end_projection_at(krnl, pagetable_ptr); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_container_projection_at(krnl, ctn_ptr);
 }
 
 /// Acquiring the caller's context locks and the source windows over `range`, which turn `old_windows` into `windows`, and
@@ -130,6 +132,9 @@ pub(super) proof fn new_process_enter_step_from_u(
         windows == pagetable_window_locks_after_locking_range(old_windows, range, cpu_id),
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
+            container_map: pre.container_map.insert(pre.thread_map[thrd_ptr].owning_container, ContainerU {
+                pcid_allocator_lock: LockStateU::WriteLocked { writer: cpu_id }, ..pre.container_map[pre.thread_map[thrd_ptr].owning_container]
+            }),
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: cpu_id },
                 pagetable: Some(PageTableU { lock_state: pre.process_map[prc_ptr].pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: windows, ..pre.process_map[prc_ptr].pagetable->Some_0 }),
@@ -166,8 +171,10 @@ pub(super) proof fn new_process_publish_step_pre_from_k(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        lctx.cpu_id() == cpu_id,
         typed_lock_maps_aligned(krnl, lctx),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pcid_allocator_lock_map(), krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), parent_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable, TypedLockMode::Read),
@@ -182,6 +189,7 @@ pub(super) proof fn new_process_publish_step_pre_from_k(
 {
     reveal(new_process_publish_step_pre); kernel_write_held_context_projection(krnl, lctx, cpu_id, parent_ptr, thrd_ptr, None); kernel_u_domains_projection(krnl);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, parent_ptr);
+    krnl.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator); kernel_container_projection_at(krnl, ctn_ptr);
 }
 
 /// Publishing the staged child while releasing the parent is the publish step on `pre`/`post`.
@@ -228,7 +236,7 @@ pub(super) proof fn new_process_publish_step_from_u(
                 process_map: post.process_map,
                 container_map: pre.container_map.insert(ctn_ptr, ContainerU {
                     owned_processes: pre.container_map[ctn_ptr].owned_processes.insert(child_ptr),
-                    free_pcids: post.container_map[ctn_ptr].free_pcids, ..pre.container_map[ctn_ptr]
+                    free_pcids: post.container_map[ctn_ptr].free_pcids, pcid_allocator_lock: LockStateU::Unlocked, ..pre.container_map[ctn_ptr]
                 }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
                     quota_4k: (pre.thread_map[thrd_ptr].quota_4k - cost) as usize, syscall_progress: Some(sharing), ..pre.thread_map[thrd_ptr]

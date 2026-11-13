@@ -11,7 +11,7 @@ verus! {
 /// lower half and its window lock states without changing its present mappings. `lctx` is aligned with `post`.
 pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
-    ep_ptr: Option<RwLockEndpointPtr>, container: Option<RwLockContainerPtr>, cpu_set_unlocked: Option<KernelK>,
+    ep_ptr: Option<RwLockEndpointPtr>, container: Option<RwLockContainerPtr>, cpu_set_unlocked: Option<KernelK>, pcid_locked: Option<RwLockContainerPtr>,
 )
     requires
         (post.cpu_op.view().view()[cpu_id as int] is User) == (pre.cpu_op.view().view()[cpu_id as int] is User),
@@ -55,7 +55,19 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
                 &&& typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), s, TypedLockMode::Write)
                 &&& kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)
             },
-            None => kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+            None => match pcid_locked {
+                Some(_) => kernel_container_nonlock_fields_and_quotas_unchanged(pre, &KernelK { pcid_allc_mp: pre.pcid_allc_mp, ..*post }),
+                None => kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+            },
+        },
+        pcid_locked matches Some(c) ==> {
+            let a = pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator;
+            &&& container is None && cpu_set_unlocked is None
+            &&& pre.ctn_mp.dom().contains(c)
+            &&& container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)
+            &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, a)
+            &&& post.pcid_allc_mp.spec_index(a).view() == pre.pcid_allc_mp.spec_index(a).view()
+            &&& typed_lock_map_contains_mode(lctx.pcid_allocator_lock_map(), a, TypedLockMode::Write)
         },
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
@@ -81,7 +93,10 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
                         lock_state: mode, lock_process_owner: post.ctn_mp.spec_index(c).lock_process_owner_u(),
                         cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
                     }),
-                    None => old_u.container_map,
+                    None => match pcid_locked {
+                        Some(c) => old_u.container_map.insert(c, ContainerU { pcid_allocator_lock: mode, ..old_u.container_map[c] }),
+                        None => old_u.container_map,
+                    },
                 },
                 process_map: old_u.process_map.insert(prc_ptr, ProcessU {
                     lock_state: mode, pagetable: Some(PageTableU {
@@ -154,7 +169,14 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     let mode = LockStateU::WriteLocked { writer: cpu_id };
     kernel_cpu_lock_mode_changed_implies_u_cpu_array(pre, post, cpu_id, mode);
-    kernel_container_lock_mode_changed_implies_u_container_map(pre, post, container, mode, cpu_set_unlocked);
+    if let Some(c) = pcid_locked {
+        let mid = KernelK { pcid_allc_mp: pre.pcid_allc_mp, ..*post };
+        post.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator);
+        kernel_container_lock_mode_changed_implies_u_container_map(pre, &mid, container, mode, cpu_set_unlocked);
+        kernel_pcid_allocator_lock_mode_changed_implies_u_step(&mid, post, c);
+    } else {
+        kernel_container_lock_mode_changed_implies_u_container_map(pre, post, container, mode, cpu_set_unlocked);
+    }
     kernel_thread_lock_mode_changed_implies_u_thread_map(pre, post, thrd_ptr, mode);
     kernel_endpoint_lock_mode_changed_implies_u_endpoint_map(pre, post, ep_ptr, mode);
     let old_u = kernel_k_to_kernel_u(*pre);

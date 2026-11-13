@@ -60,7 +60,7 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
         *final(krnl) == (KernelK { cpu_offline_mp: final(krnl).cpu_offline_mp, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl) }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
-        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*final(krnl) }),
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
@@ -82,6 +82,9 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
             let pcid_ptr = old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator;
             &&& final(krnl).cpu_offline_mp.dom() == old(krnl).cpu_offline_mp.dom()
             &&& final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom()
+            &&& final(krnl).pcid_allc_mp.unchanged_except(&old(krnl).pcid_allc_mp, pcid_ptr)
+            &&& final(krnl).pcid_allc_mp.spec_index(pcid_ptr).view() == old(krnl).pcid_allc_mp.spec_index(pcid_ptr).view()
+            &&& old(krnl).pcid_allc_mp.spec_index(pcid_ptr).locking_thread() is None
             &&& forall|x: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger final(lctx).cpu_offline_flag_lock_map().dom().contains(x)]
                 final(lctx).cpu_offline_flag_lock_map().dom().contains(x) ==> x.0 == flags_ptr && index_valid(NUM_CPUS, x.1)
             &&& forall|i: CpuId| #![trigger final(flag_perms).dom().contains(i)] #![trigger final(flag_perms)[i]] index_valid(NUM_CPUS, i) ==> {
@@ -203,11 +206,12 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
         }
         c = c + 1;
     }
+    let ghost flags_k = *krnl;
     let ret = krnl.wlock_pcid_allocator(pcid_ptr, Tracked(&mut *lctx));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert((KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl }) == flags_k);
         assert(lctx.pcid_allocator_lock_map().dom() =~= set![pcid_ptr]);
     }
     ret

@@ -52,6 +52,7 @@ pub proof fn kernel_container_user_projection_at(krnl: &KernelK, ptr: RwLockCont
                 cpu_offline_requests: cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ptr))),
                 scheduler: scheduler_shards_of(krnl.sched_mp.spec_index(c_ro.scheduler)),
                 free_pcids: PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).view().ref_counters.view()),
+                pcid_allocator_lock: krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).lock_state_u(),
                 quota_4k: krnl.allc_4k_mp.spec_index(c_ro.allocator_ptr_4k).quota.view().view(),
                 quota_2m: krnl.allc_2m_mp.spec_index(c_ro.allocator_ptr_2m).quota.view().view(),
                 quota_1g: krnl.allc_1g_mp.spec_index(c_ro.allocator_ptr_1g).quota.view().view(),

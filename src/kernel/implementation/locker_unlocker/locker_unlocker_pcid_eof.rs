@@ -17,13 +17,11 @@ pub(super) proof fn pcid_allocator_lock_op_eof(pre: KernelK, post: KernelK, allc
         post.pcid_allc_mp.spec_index(allc_ptr).being_killed() == pre.pcid_allc_mp.spec_index(allc_ptr).being_killed(),
     ensures
         post.inv(),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pcid_allc_mp, post.pcid_allc_mp, pre.pg_arr, post.pg_arr); };
     assert(post.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_pcid_allocator_wf); };
 }
 
 /// Closes `inv()` after `wlock_pcid_needflush`: the entry is write-held and names its holder cpu; every view is unchanged.

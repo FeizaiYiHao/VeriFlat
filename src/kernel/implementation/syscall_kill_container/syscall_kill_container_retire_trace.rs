@@ -58,31 +58,35 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
     reveal(kill_container_step_pre);
 }
 
-/// Retiring the empty marked container `ctn_ptr` with parent `parent_ptr`, which gives its pages to the killer's
-/// container and raises that container's 4K and 2M quota to `quota_4k` and `quota_2m`, and walking the parent again
-/// is a middle step of the container kill.
+/// Retiring the empty marked container `ctn_ptr` with parent `parent_ptr`, from `pre` with its PCID allocator free
+/// through `locked` with that allocator write-held by `cpu_id`, which gives its pages to the killer's container and
+/// raises that container's 4K and 2M quota to `quota_4k` and `quota_2m`, and walking the parent again is a middle step
+/// of the container kill.
 pub(crate) proof fn kill_container_retire_step_from_u(
-    pre: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr,
+    pre: KernelU, locked: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr,
     owner_ptr: RwLockContainerPtr, quota_4k: usize, quota_2m: usize,
 )
     requires
-        kill_container_step_pre(pre, cpu_id),
-        kill_killer(pre, cpu_id) == thrd_ptr,
-        kill_container_target(pre, cpu_id) == ctn_ptr,
-        kill_container_stage(pre, cpu_id) is Retire,
-        pre.cpu_array[cpu_id as int].owning_container == owner_ptr,
+        pre.container_map.dom().contains(ctn_ptr),
+        pre.container_map[ctn_ptr].pcid_allocator_lock is Unlocked,
+        locked == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock: LockStateU::WriteLocked { writer: cpu_id }, ..pre.container_map[ctn_ptr] }), ..pre }),
+        kill_container_step_pre(locked, cpu_id),
+        kill_killer(locked, cpu_id) == thrd_ptr,
+        kill_container_target(locked, cpu_id) == ctn_ptr,
+        kill_container_stage(locked, cpu_id) is Retire,
+        locked.cpu_array[cpu_id as int].owning_container == owner_ptr,
         owner_ptr != ctn_ptr,
-        pre.container_map[ctn_ptr].children.len() == 0,
-        pre.container_map[ctn_ptr].owned_processes.is_empty(),
-        pre.container_map[ctn_ptr].parent == Some(parent_ptr),
-        pre.container_map.dom().contains(parent_ptr),
-        pre.container_map[owner_ptr].quota_4k < quota_4k,
-        pre.container_map[owner_ptr].quota_2m < quota_2m,
+        locked.container_map[ctn_ptr].children.len() == 0,
+        locked.container_map[ctn_ptr].owned_processes.is_empty(),
+        locked.container_map[ctn_ptr].parent == Some(parent_ptr),
+        locked.container_map.dom().contains(parent_ptr),
+        locked.container_map[owner_ptr].quota_4k < quota_4k,
+        locked.container_map[owner_ptr].quota_2m < quota_2m,
         ({
-            let target = pre.container_map[ctn_ptr];
+            let target = locked.container_map[ctn_ptr];
             retired == (KernelU {
-                container_map: Map::new(pre.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
-                    let container = pre.container_map[c];
+                container_map: Map::new(locked.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
+                    let container = locked.container_map[c];
                     ContainerU {
                         children: if c == parent_ptr { container.children.remove_value(ctn_ptr) } else { container.children },
                         subtree_set: if target.uppertree_seq.contains(c) { container.subtree_set.remove(ctn_ptr) } else { container.subtree_set },
@@ -92,7 +96,7 @@ pub(crate) proof fn kill_container_retire_step_from_u(
                         ..container
                     }
                 }),
-                ..pre
+                ..locked
             })
         }),
         post == (KernelU {
@@ -101,7 +105,19 @@ pub(crate) proof fn kill_container_retire_step_from_u(
         }),
     ensures kill_container_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 {
-    assert(post.container_map[owner_ptr].quota_4k == quota_4k && post.container_map[owner_ptr].quota_2m == quota_2m) by { reveal(kill_container_step_pre); };
+    let target = pre.container_map[ctn_ptr];
+    assert(retired.container_map =~= Map::new(pre.container_map.dom().remove(ctn_ptr), |c: RwLockContainerPtr| {
+        let container = pre.container_map[c];
+        ContainerU {
+            children: if c == parent_ptr { container.children.remove_value(ctn_ptr) } else { container.children },
+            subtree_set: if target.uppertree_seq.contains(c) { container.subtree_set.remove(ctn_ptr) } else { container.subtree_set },
+            owned_pages: if c == owner_ptr { container.owned_pages.union(target.owned_pages) } else { container.owned_pages },
+            quota_4k: if c == owner_ptr { quota_4k } else { container.quota_4k },
+            quota_2m: if c == owner_ptr { quota_2m } else { container.quota_2m },
+            ..container
+        }
+    }));
+    assert(kill_container_step_pre(pre, cpu_id) && post.container_map[owner_ptr].quota_4k == quota_4k && post.container_map[owner_ptr].quota_2m == quota_2m) by { reveal(kill_container_step_pre); };
     reveal(kill_container_retire_step);
 }
 } // verus!

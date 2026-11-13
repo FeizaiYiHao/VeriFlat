@@ -67,7 +67,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& final(krnl).pcid_allc_mp.unchanged_except(&old(krnl).pcid_allc_mp, x.pcid_allocator_ptr)
             &&& kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl))
             &&& kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp)
-            &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl))
+            &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*final(krnl) })
             &&& old(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None
             &&& old(krnl).prc_mp.spec_index(x.parent_ptr).locking_thread() is None
             &&& old(krnl).thrd_mp.spec_index(x.current_thread_ptr).locking_thread() is None
@@ -223,10 +223,12 @@ pub(super) fn new_process_lock_cpu_owner(
         return Err(RetValueType::ErrorThreadKilled);
     }
     let Tracked(current_thread_lock_perm) = thread_res.unwrap();
+    let ghost unlocked_k = *krnl;
     let Tracked(pcid_allocator_lock_perm) = krnl.wlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &unlocked_k)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(unlocked_k == KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl });
     }
     Ok(NewProcessOwnerLocked {
         container_ptr: ctn_ptr, parent_ptr, current_thread_ptr: current_thrd_ptr, scheduler_ptr: sched_ptr, allocator_ptr: allc_ptr, pcid_allocator_ptr: pcid_allc_ptr, source_range, cpu_lock_perm: Tracked(cpu_lock_perm),

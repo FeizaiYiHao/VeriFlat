@@ -119,6 +119,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl) }),
         final(krnl).prc_mp.spec_index(parent_ptr).view() == old(krnl).prc_mp.spec_index(parent_ptr).view(),
         final(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view() == old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view(),
+        final(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None,
 {
     hide(Seq::no_duplicates);
     proof { assert(old(krnl).prc_mp.spec_index(parent_ptr).view().iommu_table != Some(iommu_table_ptr)) by { process_iommu_table_wf_process_at(old(krnl).prc_mp, old(krnl).it_mp, parent_ptr); process_iommu_table_wf_process_at(old(krnl).prc_mp, old(krnl).it_mp, child_ptr); }; }

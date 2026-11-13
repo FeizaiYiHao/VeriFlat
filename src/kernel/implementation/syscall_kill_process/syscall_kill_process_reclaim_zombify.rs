@@ -723,7 +723,7 @@ pub(crate) fn kill_reclaim_zombify(
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;
-    proof { process_perms_wf_map(krnl.prc_mp); }
+    proof { process_perms_wf_map(krnl.prc_mp); assert(entry_k.pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None); }
     pcid_allocator_map_release(&mut krnl.pcid_allc_mp, pcid_allc_ptr, target, pcid, Tracked(&*lctx), Tracked(&pcid_allocator_perm));
     {
         let tracked target_perm = chain_perms.tracked_borrow(target);

@@ -668,6 +668,7 @@ pub open spec fn kernel_u_container_root_published(
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id },
         cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+        pcid_allocator_lock: LockStateU::Unlocked,
         quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
     })
     &&& post == (KernelU {
@@ -731,6 +732,7 @@ pub open spec fn kernel_u_container_root_created(
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
         cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+        pcid_allocator_lock: LockStateU::Unlocked,
         quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
     })
     &&& post == (KernelU {

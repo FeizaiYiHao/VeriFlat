@@ -30,7 +30,38 @@ pub(crate) fn kill_container_retire_commit_and_record(
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
-        old(steps).snapshot_k() == *old(krnl),
+        ({
+            let snap = old(steps).snapshot_k();
+            let pcid_ptr = old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator;
+            let mid = KernelK { pcid_allc_mp: snap.pcid_allc_mp, ..*old(krnl) };
+            &&& kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &mid)
+            &&& kernel_endpoint_nonlock_fields_unchanged(snap.ep_mp, mid.ep_mp)
+            &&& mid.irt.view().owners() == snap.irt.view().owners() && mid.irt.view().iommu_roots() == snap.irt.view().iommu_roots()
+            &&& mid.cpu_tlb.view() == snap.cpu_tlb.view() && mid.iommu_tlb.view() == snap.iommu_tlb.view() && mid.cpu_op.view().view() == snap.cpu_op.view().view()
+            &&& kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &mid)
+            &&& forall|p: RwLockContainerPtr| #![trigger mid.ctn_mp.spec_index(p)] mid.ctn_mp.dom().contains(p) && snap.ctn_mp.dom().contains(p) ==> {
+                &&& mid.ctn_mp.spec_index(p).lock_state_u() == snap.ctn_mp.spec_index(p).lock_state_u()
+                &&& mid.ctn_mp.spec_index(p).lock_process_owner_u() == snap.ctn_mp.spec_index(p).lock_process_owner_u()
+            }
+            &&& forall|p: RwLockProcessPtr| #![trigger mid.prc_mp.spec_index(p)]
+                mid.prc_mp.dom().contains(p) && snap.prc_mp.dom().contains(p) ==> mid.prc_mp.spec_index(p).lock_state_u() == snap.prc_mp.spec_index(p).lock_state_u()
+            &&& forall|p: RwLockPageTableRoot| #![trigger mid.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) && snap.pt_mp.dom().contains(p) ==> {
+                &&& mid.pt_mp.spec_index(p).lock_state_u() == snap.pt_mp.spec_index(p).lock_state_u()
+                &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), p).lower.pagetable_window_locks
+            }
+            &&& forall|p: RwLockPageTableRoot| #![trigger mid.it_mp.spec_index(p)]
+                mid.it_mp.dom().contains(p) && snap.it_mp.dom().contains(p) ==> mid.it_mp.spec_index(p).lock_state_u() == snap.it_mp.spec_index(p).lock_state_u()
+            &&& forall|p: RwLockThreadPtr| #![trigger mid.thrd_mp.spec_index(p)]
+                mid.thrd_mp.dom().contains(p) && snap.thrd_mp.dom().contains(p) ==> mid.thrd_mp.spec_index(p).lock_state_u() == snap.thrd_mp.spec_index(p).lock_state_u()
+            &&& forall|p: RwLockEndpointPtr| #![trigger mid.ep_mp.spec_index(p)]
+                mid.ep_mp.dom().contains(p) && snap.ep_mp.dom().contains(p) ==> mid.ep_mp.spec_index(p).lock_state_u() == snap.ep_mp.spec_index(p).lock_state_u()
+            &&& forall|i: CpuId| #![trigger mid.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> mid.cpu_arr.spec_index(i).value.lock_state_u() == snap.cpu_arr.spec_index(i).value.lock_state_u()
+            &&& old(krnl).pcid_allc_mp.unchanged_except(&snap.pcid_allc_mp, pcid_ptr)
+            &&& old(krnl).pcid_allc_mp.spec_index(pcid_ptr).view() == snap.pcid_allc_mp.spec_index(pcid_ptr).view()
+            &&& snap.pcid_allc_mp.spec_index(pcid_ptr).locking_thread() is None
+            &&& snap.thrd_mp.dom().contains(thrd_ptr)
+            &&& snap.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()
+        }),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         ctx is Container,
@@ -136,22 +167,25 @@ pub(crate) fn kill_container_retire_commit_and_record(
     let ghost base = *krnl;
     let ghost base_lctx = *lctx;
     let ghost base_steps = steps.view();
+    let ghost snap = steps.snapshot_k();
     kill_container_retire_commit(krnl, Tracked(&mut *lctx), ctn_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
         Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms), Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(pools_4k),
         Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g), Tracked(page_perms));
     let ghost retired_k = *krnl;
     krnl.set_thread_syscall_progress(thrd_ptr, Ghost(kill_container_progress(parent_ptr, ContainerKillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     proof {
-        let pre_u = kernel_k_to_kernel_u(base);
         let post_u = kernel_k_to_kernel_u(*krnl);
+        let mid = KernelK { pcid_allc_mp: snap.pcid_allc_mp, ..base };
+        base.pcid_allc_mp.typed_lock_map_aligned_write_at(base_lctx.pcid_allocator_lock_map(), base_lctx.thread_id(), base.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator);
+        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&snap, &mid); kernel_pcid_allocator_lock_mode_changed_implies_u_step(&mid, &base, ctn_ptr);
         let owner_ro = base.ctn_mp.spec_index(owner_ptr).view_rodata().view();
         kill_container_retire_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr);
         kernel_container_retired_implies_u_step(&base, &retired_k, ctn_ptr, parent_ptr, owner_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thrd_ptr);
-        kill_container_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thrd_ptr, ctn_ptr, parent_ptr, owner_ptr,
+        kill_container_retire_step_from_u(kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(base), kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thrd_ptr, ctn_ptr, parent_ptr, owner_ptr,
             retired_k.allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view(), retired_k.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view());
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
-        kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
+        kill_container_trace_push(&*steps, base_steps, start, pre, kernel_k_to_kernel_u(snap), post_u, cpu_id, ctx);
     }
 }
 } // verus!

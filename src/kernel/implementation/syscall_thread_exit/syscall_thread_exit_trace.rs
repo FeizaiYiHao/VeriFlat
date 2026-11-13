@@ -248,8 +248,13 @@ pub(super) proof fn thread_exit_finish_step_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
+        krnl.ctn_mp.dom().contains(ctn_ptr),
         krnl.prc_mp.dom().contains(prc_ptr),
         krnl.thrd_mp.dom().contains(thrd_ptr),
+        krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1 ==> {
+            let lock = krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).lock_state_u();
+            lock is Unlocked || lock == (LockStateU::WriteLocked { writer: cpu_id })
+        },
         {
             let process = krnl.prc_mp.spec_index(prc_ptr).view();
             let thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
@@ -274,7 +279,7 @@ pub(super) proof fn thread_exit_finish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == ctn_ptr,
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
-    kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr); kernel_container_projection_at(krnl, ctn_ptr);
     reveal(thread_exit_finish_step_pre);
 }
 
@@ -290,13 +295,74 @@ pub(super) proof fn thread_exit_finish_step_from_u(
         pre.cpu_array[cpu_id as int].owning_container == ctn_ptr,
         kernel_u_thread_exit_changed(KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[ctn_ptr] }),
+            container_map: pre.container_map.insert(ctn_ptr, ContainerU {
+                lock_state: LockStateU::Unlocked, lock_process_owner: None,
+                pcid_allocator_lock: if pre.process_map[prc_ptr].owned_threads.remove_value(thrd_ptr).len() == 0 { LockStateU::Unlocked } else { pre.container_map[ctn_ptr].pcid_allocator_lock },
+                ..pre.container_map[ctn_ptr]
+            }),
             process_map: pre.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..pre.process_map[prc_ptr] }),
             ..pre
         }, post, cpu_id, thrd_ptr, flushed_default_pcid),
     ensures
         thread_exit_finish_step(pre, post, cpu_id),
 { reveal(thread_exit_finish_step); }
+
+/// A state holding the cpu, `ctn_ptr`, `prc_ptr`, and the running `thrd_ptr`, the process's last thread ready to finish,
+/// with the container's PCID allocator free, gives the precondition of the step that write-locks that allocator.
+pub(super) proof fn thread_exit_lock_pcid_allocator_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
+)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == ctn_ptr,
+        krnl.ctn_mp.dom().contains(ctn_ptr),
+        krnl.prc_mp.dom().contains(prc_ptr),
+        krnl.thrd_mp.dom().contains(thrd_ptr),
+        krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1,
+        krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).locking_thread() is None,
+        {
+            let process = krnl.prc_mp.spec_index(prc_ptr).view();
+            let thread = krnl.thrd_mp.spec_index(thrd_ptr).view();
+            &&& thread.owning_container == ctn_ptr
+            &&& thread.caller is None
+            &&& thread.syscall_progress.view() is Some
+            &&& forall|j: int| #![trigger thread.endpoint_descriptors.view()[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> thread.endpoint_descriptors.view()[j] is None
+            &&& if process.owned_threads.view().len() == 1 {
+                &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie)
+                &&& process.quota_4k == 0
+                &&& process.quota_2m == 0
+                &&& process.quota_1g == 0
+                &&& thread.quota_4k == 0
+                &&& thread.quota_2m == 0
+                &&& thread.quota_1g == 0
+            } else { thread.syscall_progress.view() matches Some(SyscallProgress::ThreadExit { .. }) }
+        },
+    ensures
+        thread_exit_lock_pcid_allocator_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == ctn_ptr,
+        kernel_k_to_kernel_u(*krnl).container_map[ctn_ptr].pcid_allocator_lock is Unlocked,
+{
+    thread_exit_finish_step_pre_from_k(krnl, lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr);
+    kernel_process_projection_at(krnl, prc_ptr); kernel_container_projection_at(krnl, ctn_ptr);
+    reveal(thread_exit_lock_pcid_allocator_step_pre);
+}
+
+/// Write-locking, on `post`, the PCID allocator of `ctn_ptr`, the running thread's container on `pre`, by the last
+/// thread ready to finish is a middle step of the exit.
+pub(super) proof fn thread_exit_lock_pcid_allocator_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr)
+    requires
+        thread_exit_lock_pcid_allocator_step_pre(pre, cpu_id),
+        pre.cpu_array[cpu_id as int].owning_container == ctn_ptr,
+        post == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock: LockStateU::WriteLocked { writer: cpu_id }, ..pre.container_map[ctn_ptr] }), ..pre }),
+    ensures thread_exit_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
+{ reveal(thread_exit_lock_pcid_allocator_step); }
 
 /// A state holding the cpu, `ctn_ptr`, `prc_ptr`, and the running `thrd_ptr`, the process's last thread
 /// that has released every descriptor and has no caller, with the process's page table and IOMMU table unlocked, gives

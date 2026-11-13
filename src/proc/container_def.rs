@@ -67,6 +67,7 @@ pub ghost struct ContainerU {
     pub cpu_set_lock: LockStateU,
     pub cpu_offline_requests: Seq<bool>,
     pub free_pcids: Set<Pcid>,
+    pub pcid_allocator_lock: LockStateU,
     pub quota_4k: usize,
     pub quota_2m: usize,
     pub quota_1g: usize,

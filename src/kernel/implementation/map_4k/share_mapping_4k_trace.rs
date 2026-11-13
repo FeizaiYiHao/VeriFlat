@@ -67,6 +67,8 @@ pub proof fn share_4k_leaf_step_from_u(
         progress->Some_0->Share4k_source_range.view()[progress->Some_0->Share4k_shared as int] == source_va,
         progress->Some_0->Share4k_target_range.view()[progress->Some_0->Share4k_shared as int] == target_va,
         new_progress == share_4k_progress_after_leaf(progress),
+        progress->Some_0->Share4k_origin is IpcPages ==> pre.process_map[target].pagetable->Some_0.lock_state.read_held_by(cpu_id),
+        !(progress->Some_0->Share4k_origin is IpcPages) ==> pre.process_map[target].pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
         source != target,
         ({
             &&& pre.process_map.dom().contains(source) && pre.process_map.dom().contains(target)
@@ -92,7 +94,8 @@ pub proof fn share_4k_leaf_step_from_u(
 { reveal(share_4k_leaf_step_pre); reveal(share_4k_leaf_step); reveal(share_4k_leaf_pre_at); reveal(share_4k_leaf_at); }
 
 /// Copying the next recorded present source leaf into the absent target address of `target`, with both tables held by
-/// this thread in either mode, and advancing `progress_thread`'s share progress is one share leaf step.
+/// this thread, the target table read-held for IPC and write-held otherwise, and advancing `progress_thread`'s share
+/// progress is one share leaf step.
 pub proof fn share_4k_leaf_step_from_k(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, progress_thread: RwLockThreadPtr, source_thread: RwLockThreadPtr, source: RwLockProcessPtr,
     target: RwLockProcessPtr, source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot, source_va: VAddr, target_va: VAddr,
@@ -135,6 +138,11 @@ pub proof fn share_4k_leaf_step_from_k(
         pre.prc_mp.spec_index(target).view().pagetable == target_table,
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write),
+        lctx.cpu_id() == cpu_id,
+        pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages
+            ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Read),
+        !(pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages)
+            ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k().dom().contains(source_va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va].present,
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().dom().contains(target_va),
@@ -156,6 +164,12 @@ pub proof fn share_4k_leaf_step_from_k(
 {
     kernel_4k_mapping_copied_implies_u_step(pre, post, lctx, source, target, source_table, target_table, source_va, target_va, progress_thread);
     share_4k_leaf_step_pre_from_k(pre, lctx, cpu_id, progress_thread, source_thread, source, target);
+    if pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages {
+        pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table);
+    } else {
+        pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table);
+    }
+    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, target); kernel_process_projection_at(pre, target);
     share_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, progress_thread, source_thread, source, target, source_va, target_va,
         pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view(), post.thrd_mp.spec_index(progress_thread).view().syscall_progress.view());
 }
@@ -189,7 +203,7 @@ pub proof fn share_4k_range_steps_from_leaf(steps: &KernelSteps, before: Seq<Ker
 /// The running thread's share installs one target directory page funded by `quota_thrd_ptr` (`pre` to `mid`), moving its
 /// backing page to the target container when there is a transfer source, and records the installed level in its progress
 /// (`mid` to `post`); a new L2 page under L3 entry `(l4i, l3i)` adds its windows with `lo..=hi`, the target range's windows
-/// there, held. The transition is one share directory step.
+/// there, held. The target table is write-held by this cpu. The transition is one share directory step.
 pub proof fn share_4k_directory_step_from_k(
     pre: &KernelK, mid: &KernelK, post: &KernelK, pre_lctx: &LocalContext, lctx: &LocalContext, cpu_id: CpuId, progress_thread: RwLockThreadPtr,
     quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
@@ -218,8 +232,9 @@ pub proof fn share_4k_directory_step_from_k(
         pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
         transfer_source matches Some(source) ==> pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent == Some(source),
         !pre.prc_mp.spec_index(prc_ptr).view().zombie && pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
-        typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) || typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
+        pre_lctx.cpu_id() == cpu_id && typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
         transfer_source matches Some(source) ==> typed_lock_map_contains_mode(pre_lctx.container_lock_map(), source, TypedLockMode::Write) && typed_lock_map_contains_mode(pre_lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
+        !(pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages) ==> pre.thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > 1,
         kernel_thread_quota_4k_changed(pre, mid, quota_thrd_ptr, -1),
         mid.thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress == pre.thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress,
         transfer_source is None ==> {
@@ -315,9 +330,8 @@ pub proof fn share_4k_directory_step_from_k(
         let range = pre.thrd_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_target_range;
         assert(whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range, cpu_id));
     }
-    if !typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write) {
-        pre.pt_mp.typed_lock_map_aligned_read_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr); kernel_process_projection_at(pre, prc_ptr);
-    }
+    pre.pt_mp.typed_lock_map_aligned_write_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr);
+    kernel_thread_projection_at(pre, quota_thrd_ptr); kernel_thread_projection_at(pre, progress_thread);
     reveal(share_4k_objects_k);
 }
 } // verus!

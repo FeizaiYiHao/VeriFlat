@@ -681,6 +681,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.ctn_mp.spec_index(child).view_rodata().view().depth == before.ctn_mp.spec_index(parent).view_rodata().view().depth + 1,
         scheduler_shards_of(after.sched_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().scheduler)) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         after.ctn_mp.spec_index(child).view_rodata().view().pcid_allocator == pcid_allocator,
+        after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
         after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(1usize) == 1,
         forall|pcid: Pcid| #![trigger after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid)]
             pcid_valid(pcid) && pcid != 1usize ==> after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid) == 0,
@@ -690,7 +691,8 @@ pub proof fn kernel_container_root_published_implies_u_step(
         forall|p: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(p)] before.sched_mp.dom().contains(p) ==>
             scheduler_shards_of(after.sched_mp.spec_index(p)) == scheduler_shards_of(before.sched_mp.spec_index(p)),
         forall|p: RwLockPcidAllocatorPtr| #![trigger after.pcid_allc_mp.spec_index(p)] before.pcid_allc_mp.dom().contains(p) ==>
-            after.pcid_allc_mp.spec_index(p).view().ref_counters.view() == before.pcid_allc_mp.spec_index(p).view().ref_counters.view(),
+            after.pcid_allc_mp.spec_index(p).view().ref_counters.view() == before.pcid_allc_mp.spec_index(p).view().ref_counters.view()
+            && after.pcid_allc_mp.spec_index(p).locking_thread() == before.pcid_allc_mp.spec_index(p).locking_thread(),
         before.allc_4k_mp.dom().subset_of(after.allc_4k_mp.dom()),
         forall|p: RwLockPageAllocatorPtr| #![trigger after.allc_4k_mp.spec_index(p)] before.allc_4k_mp.dom().contains(p) ==>
             after.allc_4k_mp.spec_index(p).quota.view().view() == before.allc_4k_mp.spec_index(p).quota.view().view(),
@@ -919,6 +921,7 @@ proof fn kernel_container_root_published_implies_u_container_map(
         after.ctn_mp.spec_index(child).view_rodata().view().depth == before.ctn_mp.spec_index(parent).view_rodata().view().depth + 1,
         scheduler_shards_of(after.sched_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().scheduler)) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         after.ctn_mp.spec_index(child).view_rodata().view().pcid_allocator == pcid_allocator,
+        after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
         after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(1usize) == 1,
         forall|pcid: Pcid| #![trigger after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid)]
             pcid_valid(pcid) && pcid != 1usize ==> after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid) == 0,
@@ -928,7 +931,8 @@ proof fn kernel_container_root_published_implies_u_container_map(
         forall|p: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(p)] before.sched_mp.dom().contains(p) ==>
             scheduler_shards_of(after.sched_mp.spec_index(p)) == scheduler_shards_of(before.sched_mp.spec_index(p)),
         forall|p: RwLockPcidAllocatorPtr| #![trigger after.pcid_allc_mp.spec_index(p)] before.pcid_allc_mp.dom().contains(p) ==>
-            after.pcid_allc_mp.spec_index(p).view().ref_counters.view() == before.pcid_allc_mp.spec_index(p).view().ref_counters.view(),
+            after.pcid_allc_mp.spec_index(p).view().ref_counters.view() == before.pcid_allc_mp.spec_index(p).view().ref_counters.view()
+            && after.pcid_allc_mp.spec_index(p).locking_thread() == before.pcid_allc_mp.spec_index(p).locking_thread(),
         before.allc_4k_mp.dom().subset_of(after.allc_4k_mp.dom()),
         forall|p: RwLockPageAllocatorPtr| #![trigger after.allc_4k_mp.spec_index(p)] before.allc_4k_mp.dom().contains(p) ==>
             after.allc_4k_mp.spec_index(p).quota.view().view() == before.allc_4k_mp.spec_index(p).quota.view().view(),
@@ -960,6 +964,7 @@ proof fn kernel_container_root_published_implies_u_container_map(
                 parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
                 cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked { writer: cpu_id },
                 cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+                pcid_allocator_lock: LockStateU::Unlocked,
                 quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
             })
         }),

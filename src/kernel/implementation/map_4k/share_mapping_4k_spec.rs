@@ -117,10 +117,10 @@ pub open spec fn share_4k_leaf_at(old_u: KernelU, new_u: KernelU, progress_threa
     })
 }
 
-/// A directory step runs before the next recorded page is shared, while the target page table is
-/// read- or write-locked and the quota thread can pay for one target directory page. The target process belongs
-/// to the target container. With a transfer source, the target container is a child of the source and
-/// both are write-locked.
+/// A directory step runs before the next recorded page is shared, while this cpu write-holds the target page table and
+/// the quota thread can pay for one target directory page; outside IPC it keeps one quota for the leaf of the next recorded
+/// page. The target process belongs to the target container. With a transfer source, the target container is a child of
+/// the source and both are write-locked.
 #[verifier::opaque]
 pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -130,9 +130,10 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& share_4k_locked(old_u, cpu_id)
     &&& progress->Share4k_shared < progress->Share4k_source_range.len
     &&& share_4k_directory_pre_at(old_u, caller, objects.quota_thread)
+    &&& !(progress->Share4k_origin is IpcPages) ==> old_u.thread_map[objects.quota_thread].quota_4k > 1
     &&& old_u.process_map.dom().contains(objects.target)
     &&& target.pagetable is Some
-    &&& (target.pagetable->Some_0.lock_state is ReadLocked || target.pagetable->Some_0.lock_state is WriteLocked)
+    &&& target.pagetable->Some_0.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& target.owning_container == objects.target_container
     &&& objects.transfer_source matches Some(source) ==> {
         &&& old_u.container_map.dom().contains(source)
@@ -153,13 +154,17 @@ pub open spec fn share_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id:
 }
 
 /// A leaf step shares the next recorded source page into the next recorded target address of a
-/// process of the target container. With a transfer source, the target container is its child.
+/// process of the target container. With a transfer source, the target container is its child. IPC shares
+/// under this cpu's read hold of the target table, the other origins under its write hold.
 #[verifier::opaque]
 pub open spec fn share_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
+    let target_lock = old_u.process_map[objects.target].pagetable->Some_0.lock_state;
     &&& share_4k_locked(old_u, cpu_id)
     &&& share_4k_leaf_pre_at(old_u, caller, old_u.thread_map[objects.source_thread].owning_proc, objects.target)
+    &&& old_u.thread_map[caller].syscall_progress->Some_0->Share4k_origin is IpcPages ==> target_lock.read_held_by(cpu_id)
+    &&& !(old_u.thread_map[caller].syscall_progress->Some_0->Share4k_origin is IpcPages) ==> target_lock == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.process_map[objects.target].owning_container == objects.target_container
     &&& objects.transfer_source matches Some(source)
         ==> old_u.container_map.dom().contains(objects.target_container) && old_u.container_map[objects.target_container].parent == Some(source)

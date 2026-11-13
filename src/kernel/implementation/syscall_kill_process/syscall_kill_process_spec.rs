@@ -458,8 +458,8 @@ pub open spec fn kill_process_unlock_table_step(old_u: KernelU, new_u: KernelU, 
     })
 }
 
-/// The reclaimed target becomes a zombie that hides its tables and releases its PCID to its container, and the kill
-/// starts retiring it.
+/// The reclaimed target becomes a zombie that hides its tables and releases its PCID to its container, whose PCID allocator
+/// is unlocked, and the kill starts retiring it.
 #[verifier::opaque]
 pub open spec fn kill_process_zombify_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -468,6 +468,7 @@ pub open spec fn kill_process_zombify_step(old_u: KernelU, new_u: KernelU, cpu_i
     &&& kill_stage(old_u, cpu_id) is Zombie
     &&& !target.zombie
     &&& old_u.container_map.dom().contains(target.owning_container)
+    &&& container.pcid_allocator_lock is Unlocked
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, ContainerU { free_pcids: container.free_pcids.insert(target.pcid), ..container }),
         process_map: old_u.process_map.insert(prc_ptr, ProcessU { zombie: true, pagetable: None, iommu_table: None, ..target }),

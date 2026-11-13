@@ -29,7 +29,11 @@ pub(super) fn thread_exit_destroy(
         old(krnl).ctn_mp.dom().contains(ctn_ptr),
         old(krnl).prc_mp.dom().contains(prc_ptr),
         *old(krnl) == (KernelK { pg_arr: old(krnl).pg_arr, allc_4k_mp: old(krnl).allc_4k_mp, pcid_needflush: old(krnl).pcid_needflush, pcid_allc_mp: old(krnl).pcid_allc_mp, ..start }),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&start, old(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&start, &KernelK { pcid_allc_mp: start.pcid_allc_mp, ..*old(krnl) }),
+        old(krnl).pcid_allc_mp.unchanged_except(&start.pcid_allc_mp, pcid_allc_ptr),
+        old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view() == start.pcid_allc_mp.spec_index(pcid_allc_ptr).view(),
+        old(krnl).prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 1
+            ==> old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() == start.pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![ctn_ptr],
         old(lctx).process_lock_map().dom() =~= set![prc_ptr],
@@ -147,6 +151,7 @@ pub(super) fn thread_exit_destroy(
         let tracked pcid_allocator_lock_perm = pcid_allocator_lock_perm.tracked_unwrap();
         krnl.wunlock_pcid_allocator(pcid_allc_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
     }
+    let ghost unlocked_k = *krnl;
     krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_lock_perm));
     krnl.wunlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
     krnl.wunlock_allocator_cache_4k(allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
@@ -156,6 +161,8 @@ pub(super) fn thread_exit_destroy(
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&unlocked_k, &*krnl));
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &KernelK { pcid_allc_mp: mid.pcid_allc_mp, ..*krnl })) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         thread_exit_destroy_eof_fields(start, *old(krnl), mid, *krnl, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr);
     }
 }

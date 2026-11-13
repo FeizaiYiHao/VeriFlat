@@ -380,13 +380,18 @@ pub(crate) proof fn kill_retire_pre_from_k(krnl: &KernelK, target: RwLockProcess
         }),
 { kernel_process_projection_at(krnl, target); }
 
-/// The live target on `krnl` is live on the projection.
+/// The live target on `krnl`, whose container's PCID allocator is free, is live on the projection with that
+/// allocator free.
 pub(crate) proof fn kill_zombify_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         !krnl.prc_mp.spec_index(target).view().zombie,
-    ensures !kernel_k_to_kernel_u(*krnl).process_map[target].zombie,
-{ kernel_process_projection_at(krnl, target); }
+        krnl.ctn_mp.dom().contains(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container),
+        krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().pcid_allocator).locking_thread() is None,
+    ensures
+        !kernel_k_to_kernel_u(*krnl).process_map[target].zombie,
+        kernel_k_to_kernel_u(*krnl).container_map[kernel_k_to_kernel_u(*krnl).process_map[target].owning_container].pcid_allocator_lock is Unlocked,
+{ kernel_process_projection_at(krnl, target); kernel_container_projection_at(krnl, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container); }
 
 /// The live target's page table `pagetable` and IOMMU table `iommu_table`, write-held by the killer `thrd_ptr` on
 /// `cpu_id` that reclaims the target at `stage`, are write-locked on the projection, which shows the target's PCID.
@@ -950,6 +955,7 @@ pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, p
         kill_stage(pre, cpu_id) is Zombie,
         !pre.process_map[target].zombie,
         pre.container_map.dom().contains(pre.process_map[target].owning_container),
+        pre.container_map[pre.process_map[target].owning_container].pcid_allocator_lock is Unlocked,
         ({
             let process = pre.process_map[target];
             let container = pre.container_map[process.owning_container];

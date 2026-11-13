@@ -108,6 +108,7 @@ pub(crate) fn kill_container_retire(
     }
     let tracked mut flag_perms: Map<CpuId, LockPerm> = Map::tracked_empty();
     let Tracked(pcid_perm) = kill_container_retire_lock_flags_pcid(krnl, Tracked(&mut *lctx), thrd_ptr, ctn_ptr, Tracked(&mut flag_perms));
+    let ghost flags_k = *krnl;
     let Tracked(page_perms) = kill_container_retire_lock_object_pages(krnl, Tracked(&mut *lctx), thrd_ptr, ctn_ptr);
     let tracked mut shard_perms: Map<CpuId, LockPerm> = Map::tracked_empty();
     kill_container_retire_lock_shards(krnl, Tracked(&mut *lctx), thrd_ptr, ctn_ptr, Tracked(&mut shard_perms));
@@ -124,8 +125,11 @@ pub(crate) fn kill_container_retire(
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&entry, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(entry.ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&entry, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
+        let mid = KernelK { pcid_allc_mp: entry.pcid_allc_mp, ..*krnl };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&flags_k, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&KernelK { pcid_allc_mp: entry.pcid_allc_mp, ..flags_k }, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&entry, &mid)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&entry, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
     }
     kill_container_retire_commit_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ctn_ptr, parent_ptr, owner_ptr, cpu_set_ptr,
         Tracked(thread_perm), Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm), Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms),

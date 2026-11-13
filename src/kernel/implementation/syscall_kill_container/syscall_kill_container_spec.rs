@@ -269,9 +269,9 @@ pub open spec fn kill_container_retire_stage_step(old_u: KernelU, new_u: KernelU
     &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Retire)), ..old_u })
 }
 
-/// Retiring the empty target removes it from the container map, from its parent's children, and from every
-/// ancestor's subtree; the killer's container takes over every page the target owns and its 4K and 2M quota rise by
-/// amounts left open, and the kill walks the parent again.
+/// Retiring the empty target, whose PCID allocator is free, removes it from the container map, from its parent's
+/// children, and from every ancestor's subtree; the killer's container takes over every page the target owns and its
+/// 4K and 2M quota rise by amounts left open, and the kill walks the parent again.
 #[verifier::opaque]
 pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -284,6 +284,7 @@ pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_
     &&& kill_container_stage(old_u, cpu_id) is Retire
     &&& target.children.len() == 0
     &&& target.owned_processes.is_empty()
+    &&& target.pcid_allocator_lock is Unlocked
     &&& target.parent is Some
     &&& old_u.container_map.dom().contains(parent_ptr)
     &&& owner_ptr != ctn_ptr

@@ -111,7 +111,9 @@ pub(super) fn finish_staged_container_publish(
         thread_page_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
     ensures
-        kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
+        final(krnl).pcid_allc_mp.unchanged_except(&old(krnl).pcid_allc_mp, pcid_allocator_page),
+        final(krnl).pcid_allc_mp.spec_index(pcid_allocator_page).view() == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_page).view(),
+        final(krnl).pcid_allc_mp.spec_index(pcid_allocator_page).locking_thread() is None,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -165,7 +167,6 @@ pub(super) fn finish_staged_container_publish(
         finish_staged_container_publish_eof(*old(krnl), *krnl);
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_page, Tracked(&mut *lctx), Tracked(child_pcid_allocator_lock_perm));
-    proof { kernel_page_then_pcid_allocator_unlocks_implies_u_eq(old(krnl), &*krnl); }
     (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm))
 }
 

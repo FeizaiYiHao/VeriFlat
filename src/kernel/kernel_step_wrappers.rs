@@ -23,8 +23,6 @@ pub mod boundary_endpoint_thread_exit;
 pub mod end_kernel_step_ipc;
 /// `KernelSteps` recorders of the quota, cpu offline/online, PCI attach, and cpu-off steps.
 pub mod end_kernel_step_quota_cpu;
-/// K->U equalities of sections that only release locks.
-pub mod release;
 /// K->U lemmas for the steps that reclaim write-held killed threads or release the reclaiming cpu and thread, and the
 /// lock-mode projections of held processes and containers.
 pub mod killed_thread;
@@ -94,7 +92,6 @@ pub use projection_publish::*;
 pub use boundary::*;
 pub use boundary_steps::*;
 pub use boundary_endpoint_thread_exit::*;
-pub use release::*;
 pub use killed_thread::*;
 pub use kill::*;
 pub use kill_reclaim::*;
@@ -223,6 +220,7 @@ impl KernelSteps {
                 Some(p) => {
                     &&& krnl.pcid_allc_mp.unchanged_except(&old(self).snapshot_k().pcid_allc_mp, p)
                     &&& krnl.pcid_allc_mp.spec_index(p).view() == old(self).snapshot_k().pcid_allc_mp.spec_index(p).view()
+                    &&& krnl.pcid_allc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pcid_allc_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.pcid_allc_mp == old(self).snapshot_k().pcid_allc_mp,
             },
@@ -336,6 +334,7 @@ impl KernelSteps {
                 Some(p) => {
                     &&& krnl.pcid_allc_mp.unchanged_except(&old(self).snapshot_k().pcid_allc_mp, p)
                     &&& krnl.pcid_allc_mp.spec_index(p).view() == old(self).snapshot_k().pcid_allc_mp.spec_index(p).view()
+                    &&& krnl.pcid_allc_mp.spec_index(p).lock_state_u() == old(self).snapshot_k().pcid_allc_mp.spec_index(p).lock_state_u()
                 },
                 None => krnl.pcid_allc_mp == old(self).snapshot_k().pcid_allc_mp,
             },

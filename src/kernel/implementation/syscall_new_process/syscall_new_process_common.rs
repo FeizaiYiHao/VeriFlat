@@ -104,7 +104,7 @@ fn new_process_lock_entry(
             &&& final(krnl).irt.view().iommu_roots() == old(krnl).irt.view().iommu_roots()
             &&& final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view()
             &&& final(krnl).iommu_tlb.view() == old(krnl).iommu_tlb.view()
-            &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl))
+            &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*final(krnl) })
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& x.cpu_lock_perm.view().state() is WriteLock
             &&& x.cpu_lock_perm.view().thread_id() == final(lctx).thread_id()
@@ -114,6 +114,8 @@ fn new_process_lock_entry(
             &&& final(krnl).ctn_mp.spec_index(x.container_ptr).view_rodata().view().allocator_ptr_4k == x.allocator_ptr
             &&& final(krnl).ctn_mp.spec_index(x.container_ptr).view_rodata().view().pcid_allocator == x.pcid_allocator_ptr
             &&& final(krnl).pcid_allc_mp.dom().contains(x.pcid_allocator_ptr)
+            &&& final(krnl).pcid_allc_mp.unchanged_except(&old(krnl).pcid_allc_mp, x.pcid_allocator_ptr)
+            &&& final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view() == old(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view()
             &&& typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), x.pcid_allocator_ptr, TypedLockMode::Write)
             &&& final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).view().pcid_is_free(x.pcid)
             &&& x.pcid_allocator_lock_perm.view().state() is WriteLock
@@ -227,6 +229,7 @@ fn new_process_lock_entry(
     let Tracked(parent_lock_perm) = parent_lock_perm;
     let Tracked(current_thread_lock_perm) = current_thread_lock_perm;
     let Tracked(pcid_allocator_lock_perm) = pcid_allocator_lock_perm;
+    let ghost owner_k = *krnl;
     let base_quota: usize = if with_iommu { 6usize } else { 4usize };
     let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allc_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
     let free_pcid = pcid_allocator.find_lowest_free_nonzero();
@@ -278,7 +281,13 @@ fn new_process_lock_entry(
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&owner_k, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..owner_k }, &KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl })) by {
+            reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+        };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &KernelK { pcid_allc_mp: old(krnl).pcid_allc_mp, ..*krnl })) by {
+            broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
+        };
     }
     proof { new_process_result_from_k(old(krnl), cpu_id, va, range, ep_idx, with_iommu, RetValueType::Success, pcid); }
     let (endpoint, endpoint_slot) = match ep_idx { Some(index) => (Some(ep_ptr), index), None => (None, 0) };

@@ -383,7 +383,8 @@ pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id:
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
 /// its last descriptor, or, for a process's last thread, locking the process's tables, hiding one root entry of the page
 /// table, flushing one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, refunding 4K quota
-/// to the thread's container chain, returning one size of quota, or unlocking the tables.
+/// to the thread's container chain, returning one size of quota, unlocking the tables, or write-locking the container's
+/// PCID allocator.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -400,11 +401,33 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, flushed) && thread_exit_refund_step(old_u, new_u, cpu_id)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)
+    ||| thread_exit_lock_pcid_allocator_step_pre(old_u, cpu_id) && thread_exit_lock_pcid_allocator_step(old_u, new_u, cpu_id)
+}
+
+/// The process's last thread, ready to finish, write-locks its container's PCID allocator before a step that the code
+/// records while it holds that allocator.
+#[verifier::opaque]
+pub open spec fn thread_exit_lock_pcid_allocator_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    &&& thread_exit_finish_step_pre(old_u, cpu_id)
+    &&& old_u.process_map.spec_index(cpu.current_process->Some_0).owned_threads.len() == 1
+    &&& old_u.container_map.spec_index(cpu.owning_container).pcid_allocator_lock is Unlocked
+}
+
+/// The running thread write-locks its container's PCID allocator; nothing else changes.
+#[verifier::opaque]
+pub open spec fn thread_exit_lock_pcid_allocator_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let ctn_ptr = old_u.cpu_array[cpu_id as int].owning_container;
+    new_u == (KernelU {
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.container_map.spec_index(ctn_ptr) }),
+        ..old_u
+    })
 }
 
 /// Finishing runs while the running thread records an exit with every descriptor released and no caller, and holds the
 /// cpu, its container, its process, and itself. A thread with siblings finishes right after its descriptors; a
-/// process's last thread finishes after reclaiming, when neither it nor its process keeps any quota.
+/// process's last thread finishes after reclaiming, when neither it nor its process keeps any quota, with its
+/// container's PCID allocator free or write-held by this cpu.
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -427,6 +450,8 @@ pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> thread.endpoint_descriptors[j] is None
     &&& if process.owned_threads.len() == 1 {
         &&& thread.syscall_progress->Some_0 == SyscallProgress::ThreadExitZombie
+        &&& old_u.container_map.spec_index(ctn_ptr).pcid_allocator_lock is Unlocked
+            || old_u.container_map.spec_index(ctn_ptr).pcid_allocator_lock == (LockStateU::WriteLocked { writer: cpu_id })
         &&& process.quota_4k == 0
         &&& process.quota_2m == 0
         &&& process.quota_1g == 0
@@ -438,16 +463,19 @@ pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
 
 /// The running thread leaves the kernel and its cpu goes idle: its process absorbs its quota and becomes a zombie
 /// without threads, a zombie root process makes its container a zombie, the container owning the thread's page regains
-/// one 4K quota, at most the cpu's kernel TLB entry is flushed, and the cpu, the container, and the process are
-/// released.
+/// one 4K quota, at most the cpu's kernel TLB entry is flushed, and the cpu, the container, the process, and, for the
+/// last thread, the container's PCID allocator are released.
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let ctn_ptr = cpu.owning_container;
     let prc_ptr = cpu.current_process->Some_0;
+    let container = old_u.container_map.spec_index(ctn_ptr);
+    let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(cpu.current_thread->Some_0).len() == 0;
+    let pcid_allocator_lock = if zombie { LockStateU::Unlocked } else { container.pcid_allocator_lock };
     let unlocked = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..cpu }),
-        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(ctn_ptr) }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, pcid_allocator_lock, ..container }),
         process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map.spec_index(prc_ptr) }),
         ..old_u
     };

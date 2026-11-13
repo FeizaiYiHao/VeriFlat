@@ -905,7 +905,7 @@ fn commit_new_container_publish_staged(
             *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt)) by {
             let progress = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0,
                 directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(container_page), ..record }) });
-            new_container_root_published_from_k(&publish_k, &publish_ks.0, &publish_ks.1, &publish_ks.2, parent_ctn_ptr, current_thrd_ptr, transfer_cpu_id,
+            new_container_root_published_from_k(&publish_k, &publish_ks.0, &publish_ks.1, &published_k, parent_ctn_ptr, current_thrd_ptr, transfer_cpu_id,
                 container_page, pcid_allocator_page, pages_4k.view(), funding_page_count, funding_pages, allocator_quota_4k, process_quota_4k, progress, caller_cpu_id);
             kernel_container_publication_composes(steps.view().last().old_u, kernel_k_to_kernel_u(published_k), steps.view().last().new_u,
                 parent_ctn_ptr, container_page, child_prc_ptr, current_thrd_ptr, transfer_cpu_id, funding_page_count,

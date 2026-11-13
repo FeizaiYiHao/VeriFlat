@@ -38,8 +38,8 @@ pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAd
 /// a nonempty well-formed user range whose every page the process maps; the thread's container has a
 /// free PCID; the thread's 4K quota pays for the new process's pages and three directory pages per
 /// shared page; a present `ep_idx` names a live descriptor. The cpu, the process, the thread,
-/// and that endpoint are unlocked, the page table is not write-locked and its existing windows over `range` are unlocked, and
-/// the container is never locked.
+/// and that endpoint are unlocked, the page table is not write-locked and its existing windows over `range` are unlocked, the
+/// container's PCID allocator is unlocked, and the container is never locked.
 #[verifier::opaque]
 pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, ep_idx: Option<EndpointIdx>, with_iommu: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -55,6 +55,7 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
     &&& thread.lock_state is Unlocked
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& !container.free_pcids.is_empty()
+    &&& container.pcid_allocator_lock is Unlocked
     &&& process.lock_state is Unlocked
     &&& !process.killed
     &&& process.pagetable is Some
@@ -73,7 +74,7 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
     }
 }
 
-/// Entering write-locks the cpu, the process, the thread, and the endpoint at `ep_idx`,
+/// Entering write-locks the cpu, the process, the thread, the container's PCID allocator, and the endpoint at `ep_idx`,
 /// read-locks the process's page table and write-locks its existing windows over `range`, and records the call's arguments in
 /// the thread's progress.
 #[verifier::opaque]
@@ -85,6 +86,9 @@ pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let progress = SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: None });
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
+            pcid_allocator_lock: LockStateU::WriteLocked { writer: cpu_id }, ..old_u.container_map[thread.owning_container]
+        }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::WriteLocked { writer: cpu_id }, pagetable: Some(PageTableU {
                 lock_state: process.pagetable->Some_0.lock_state.with_reader(cpu_id), pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range, cpu_id),
@@ -101,7 +105,7 @@ pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
 }
 
 /// Publication runs while the running thread records a process creation and holds the cpu, its
-/// process, a read lock on that process's page table, and itself.
+/// process, its container's PCID allocator, a read lock on that process's page table, and itself.
 #[verifier::opaque]
 pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -115,6 +119,7 @@ pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& thread.syscall_progress is Some
     &&& thread.syscall_progress->Some_0 is NewProcess
     &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& old_u.container_map[thread.owning_container].pcid_allocator_lock == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is WriteLocked
     &&& process.pagetable is Some
@@ -123,7 +128,7 @@ pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
 
 /// Publication creates the child as the process's last child with empty write-locked tables,
 /// consumes one free PCID of the container and the thread's 4K quota for the child's pages,
-/// releases the process, and starts sharing the recorded range into the child.
+/// releases the process and the PCID allocator, and starts sharing the recorded range into the child.
 #[verifier::opaque]
 pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -160,7 +165,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
         process_map: new_u.process_map,
         container_map: old_u.container_map.insert(container, ContainerU {
             owned_processes: old_u.container_map[container].owned_processes.insert(child), free_pcids: old_u.container_map[container].free_pcids.remove(cp),
-            ..old_u.container_map[container]
+            pcid_allocator_lock: LockStateU::Unlocked, ..old_u.container_map[container]
         }),
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - cost) as usize, syscall_progress: Some(sharing), ..thread }),
         ..old_u

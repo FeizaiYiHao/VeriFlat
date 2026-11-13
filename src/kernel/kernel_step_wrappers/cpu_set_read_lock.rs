@@ -35,6 +35,39 @@ pub proof fn kernel_cpu_set_lock_mode_changed_implies_u_step(before: &KernelK, a
     kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
+/// Changing only the lock mode of the PCID allocator of the container `ctn_ptr` changes only that container's PCID
+/// allocator lock mode in the projection.
+pub proof fn kernel_pcid_allocator_lock_mode_changed_implies_u_step(before: &KernelK, after: &KernelK, ctn_ptr: RwLockContainerPtr)
+    requires
+        container_pcid_allocator_wf(after.ctn_mp, after.pcid_allc_mp),
+        *after == (KernelK { pcid_allc_mp: after.pcid_allc_mp, ..*before }),
+        before.ctn_mp.dom().contains(ctn_ptr),
+        after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator),
+        after.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view()
+            == before.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view(),
+    ensures
+        kernel_k_to_kernel_u(*before).container_map.dom().contains(ctn_ptr),
+        kernel_k_to_kernel_u(*before).container_map[ctn_ptr].pcid_allocator_lock == before.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).lock_state_u(),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let pcid_allocator_lock = after.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).lock_state_u();
+            kernel_k_to_kernel_u(*after) == (KernelU { container_map: pre.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock, ..pre.container_map[ctn_ptr] }), ..pre })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let pcid_allocator_lock = after.pcid_allc_mp.spec_index(before.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).lock_state_u();
+    container_pcid_allocator_wf_container_at(after.ctn_mp, after.pcid_allc_mp, ctn_ptr); kernel_container_projection_at(before, ctn_ptr);
+    assert_maps_equal!(post.container_map, pre.container_map.insert(ctn_ptr, ContainerU { pcid_allocator_lock, ..pre.container_map[ctn_ptr] }), c => {
+        if before.ctn_mp.dom().contains(c) {
+            kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); container_pcid_allocator_wf_container_at(after.ctn_mp, after.pcid_allc_mp, c);
+        }
+    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
+}
+
 /// After a TLB flush recorded at `snap`, page-table ghost changes keeping lock states, mappings, window locks with `cpu_id` releasing its read hold on `ctn_ptr`'s cpu set (`pre`) drop that reader; then changing only `thrd_ptr`'s syscall progress (`post`) also sets that progress.
 pub proof fn kernel_cpu_tlb_flushed_cpu_set_runlocked_and_progress_changed_implies_u_step(
     snap: &KernelK, pre: &KernelK, post: &KernelK, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, thrd_ptr: RwLockThreadPtr,

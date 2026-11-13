@@ -63,6 +63,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, pcid_allocator),
         PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(pcid),
         after.pcid_allc_mp.spec_index(pcid_allocator).view().alloc_ensures(&before.pcid_allc_mp.spec_index(pcid_allocator).view(), child, pcid),
+        after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
         after.pt_mp.dom() == before.pt_mp.dom().insert(table),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
@@ -125,7 +126,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
                 process_map: post.process_map,
                 container_map: pre.container_map.insert(container, ContainerU {
                     owned_processes: pre.container_map[container].owned_processes.insert(child),
-                    free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
+                    free_pcids: post.container_map[container].free_pcids, pcid_allocator_lock: LockStateU::Unlocked, ..pre.container_map[container]
                 }),
                 thread_map: pre.thread_map.insert(thread, ThreadU { quota_4k: (pre.thread_map[thread].quota_4k - cost) as usize, syscall_progress: progress, ..pre.thread_map[thread] }),
                 ..pre
@@ -194,6 +195,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
         after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, pcid_allocator),
         PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(pcid),
         after.pcid_allc_mp.spec_index(pcid_allocator).view().alloc_ensures(&before.pcid_allc_mp.spec_index(pcid_allocator).view(), child, pcid),
+        after.pcid_allc_mp.spec_index(pcid_allocator).locking_thread() is None,
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
@@ -201,7 +203,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
             &&& pre.container_map[container].free_pcids.contains(pcid)
             &&& post.container_map[container].free_pcids == pre.container_map[container].free_pcids.remove(pcid)
             &&& post.container_map == pre.container_map.insert(container, ContainerU {
-                owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
+                owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, pcid_allocator_lock: LockStateU::Unlocked,
+                ..pre.container_map[container]
             })
         }),
 {
@@ -209,7 +212,8 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
-        owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
+        owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, pcid_allocator_lock: LockStateU::Unlocked,
+        ..pre.container_map[container]
     }), c => { if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); reveal(container_pcid_allocator_wf); } });
     assert(post.container_map[container].free_pcids =~= pre.container_map[container].free_pcids.remove(pcid)) by { pcid_allocator_perms_wf_at(before.pcid_allc_mp, pcid_allocator); };
 }

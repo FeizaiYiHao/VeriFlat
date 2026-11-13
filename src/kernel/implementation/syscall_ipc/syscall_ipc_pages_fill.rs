@@ -65,6 +65,7 @@ pub(super) fn ipc_pages_fill_target_page(
             ==> old(krnl).thrd_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thrd_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == current_thrd_ptr,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view() is Some,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()->Some_0 is Share4k,
+        old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()->Some_0->Share4k_origin is IpcPages,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()->Some_0->Share4k_target_range == *target_range,
         old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()->Some_0->Share4k_shared < old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().syscall_progress.view()->Some_0->Share4k_source_range.len,
         current_thrd_ptr == target_thread || old(krnl).thrd_mp.spec_index(target_thread).view().syscall_progress.view() is None,

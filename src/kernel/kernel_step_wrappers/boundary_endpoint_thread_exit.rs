@@ -229,7 +229,8 @@ pub proof fn kernel_thread_exit_fields_and_unlocks_implies_u_step(
             let mode = LockStateU::Unlocked;
             kernel_u_thread_exit_changed(KernelU {
                 cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
-                container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[ctn_ptr] }),
+                container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: mode, lock_process_owner: None,
+                    pcid_allocator_lock: if old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0 { LockStateU::Unlocked } else { old_u.container_map[ctn_ptr].pcid_allocator_lock }, ..old_u.container_map[ctn_ptr] }),
                 process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: mode, ..old_u.process_map[prc_ptr] }),
                 ..old_u
             }, kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, flushed_default_pcid)
@@ -240,7 +241,8 @@ pub proof fn kernel_thread_exit_fields_and_unlocks_implies_u_step(
     let mode = LockStateU::Unlocked;
     let pre_u = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
-        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[ctn_ptr] }),
+        container_map: old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: mode, lock_process_owner: None,
+            pcid_allocator_lock: if old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0 { LockStateU::Unlocked } else { old_u.container_map[ctn_ptr].pcid_allocator_lock }, ..old_u.container_map[ctn_ptr] }),
         process_map: old_u.process_map.insert(prc_ptr, ProcessU { lock_state: mode, ..old_u.process_map[prc_ptr] }),
         ..old_u
     };
@@ -298,8 +300,9 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_container_map(
     ensures
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
-            let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[ctn_ptr] });
             let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0;
+            let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None,
+                pcid_allocator_lock: if zombie { LockStateU::Unlocked } else { old_u.container_map[ctn_ptr].pcid_allocator_lock }, ..old_u.container_map[ctn_ptr] });
             let pcid = old_u.process_map.spec_index(prc_ptr).pcid;
             kernel_k_to_kernel_u(*post).container_map == Map::new(containers.dom(), |c: RwLockContainerPtr| {
                 let container = containers.spec_index(c);
@@ -316,8 +319,9 @@ proof fn kernel_thread_exit_fields_and_unlocks_implies_u_container_map(
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     reveal(kernel_thread_exit_fields);
     let old_u = kernel_k_to_kernel_u(*pre);
-    let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[ctn_ptr] });
     let zombie = old_u.process_map.spec_index(prc_ptr).owned_threads.remove_value(thrd_ptr).len() == 0;
+    let containers = old_u.container_map.insert(ctn_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None,
+        pcid_allocator_lock: if zombie { LockStateU::Unlocked } else { old_u.container_map[ctn_ptr].pcid_allocator_lock }, ..old_u.container_map[ctn_ptr] });
     let pcid = old_u.process_map.spec_index(prc_ptr).pcid;
     kernel_process_projection_at(pre, prc_ptr);
     assert_maps_equal!(kernel_k_to_kernel_u(*post).container_map, Map::new(containers.dom(), |c: RwLockContainerPtr| {

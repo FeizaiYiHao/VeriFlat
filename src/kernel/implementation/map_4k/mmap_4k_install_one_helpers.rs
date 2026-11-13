@@ -153,6 +153,7 @@ verus! {
                 &&& old(krnl).ctn_mp.dom().contains(ctn_ptr)
                 &&& !old(krnl).prc_mp.spec_index(prc_ptr).view().zombie && old(krnl).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
                 &&& progress_thread == quota_thrd_ptr || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is None
+                &&& write_held && (!(progress->Some_0->Share4k_origin is IpcPages) ==> old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > 1)
             },
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -768,8 +769,8 @@ verus! {
                 &&& pre.ctn_mp.dom().contains(ctn_ptr)
                 &&& pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr
                 &&& !pre.prc_mp.spec_index(prc_ptr).view().zombie && pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
-                &&& typed_lock_map_contains_mode(share_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read)
-                    || typed_lock_map_contains_mode(share_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
+                &&& share_lctx.cpu_id() == cpu_id && typed_lock_map_contains_mode(share_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
+                &&& !(progress->Some_0->Share4k_origin is IpcPages) ==> pre.thrd_mp.spec_index(quota_thrd_ptr).view().quota_4k > 1
                 &&& old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress == pre.thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress
                 &&& transfer_source matches Some(source) ==> {
                     &&& pre.ctn_mp.spec_index(ctn_ptr).view_rodata().view().parent == Some(source)

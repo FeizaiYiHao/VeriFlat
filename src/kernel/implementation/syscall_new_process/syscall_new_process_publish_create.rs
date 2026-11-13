@@ -147,6 +147,7 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).pcid_allc_mp.unchanged_except(&old(krnl).pcid_allc_mp, pcid_allc_ptr),
         PcidAllocator::free_pcids(old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().ref_counters.view()).contains(pcid),
         final(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view().alloc_ensures(&old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view(), ret.0, pcid),
+        final(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).locking_thread() is None,
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom().insert(ret.1),
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)] old(krnl).pt_mp.dom().contains(p)
             ==> final(krnl).pt_mp.spec_index(p) == old(krnl).pt_mp.spec_index(p) && final(krnl).pt_lower.view().spec_index(p) == old(krnl).pt_lower.view().spec_index(p),

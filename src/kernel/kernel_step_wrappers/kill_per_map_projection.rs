@@ -299,6 +299,7 @@ pub proof fn kernel_process_zombified_implies_u_container_map(pre: &KernelK, pos
         *post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..*pre }),
         post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, allc_ptr),
         post.pcid_allc_mp.spec_index(allc_ptr).view().release_ensures(&pre.pcid_allc_mp.spec_index(allc_ptr).view(), prc_ptr, pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid),
+        post.pcid_allc_mp.spec_index(allc_ptr).lock_state_u() == pre.pcid_allc_mp.spec_index(allc_ptr).lock_state_u(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);

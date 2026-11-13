@@ -597,7 +597,11 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
     requires
         entry.inv(),
         entry == (KernelK { pg_arr: entry.pg_arr, allc_4k_mp: entry.allc_4k_mp, pcid_needflush: entry.pcid_needflush, pcid_allc_mp: entry.pcid_allc_mp, ..start }),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&start, &entry),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&start, &KernelK { pcid_allc_mp: start.pcid_allc_mp, ..entry }),
+        entry.pcid_allc_mp.unchanged_except(&start.pcid_allc_mp, entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator),
+        entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view() == start.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view(),
+        entry.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 1
+            ==> entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).locking_thread() == start.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).locking_thread(),
         thread_exit_destroy_eof_transition_framing(entry, mid, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr),
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(thrd_ptr),
@@ -648,21 +652,39 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
         post.prc_mp.spec_index(prc_ptr).view_rodata() == mid.prc_mp.spec_index(prc_ptr).view_rodata(),
         post.prc_mp.spec_index(prc_ptr).view_ghost() == mid.prc_mp.spec_index(prc_ptr).view_ghost(),
         post.prc_mp.spec_index(prc_ptr).being_killed() == mid.prc_mp.spec_index(prc_ptr).being_killed(),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &post),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &KernelK { pcid_allc_mp: mid.pcid_allc_mp, ..post }),
+        entry.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1 ==> post.pcid_allc_mp.unchanged_except(&mid.pcid_allc_mp, entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator),
+        entry.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 1 ==> post.pcid_allc_mp == mid.pcid_allc_mp,
+        post.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view() == mid.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).view(),
+        post.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).locking_thread()
+            == if entry.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 1 { RwLockState::None } else { mid.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator).locking_thread() },
     ensures kernel_thread_exit_fields(&start, &post, cpu_id, thrd_ptr, entry.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush),
 {
     reveal(thread_exit_destroy_eof_transition_framing); reveal(kernel_thread_exit_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
+    let masked_entry = KernelK { pcid_allc_mp: start.pcid_allc_mp, ..entry };
+    let masked_post = KernelK { pcid_allc_mp: mid.pcid_allc_mp, ..post };
+    assert(masked_entry.ctn_mp == entry.ctn_mp && masked_entry.sched_mp == entry.sched_mp && masked_entry.allc_4k_mp == entry.allc_4k_mp && masked_entry.allc_2m_mp == entry.allc_2m_mp
+        && masked_entry.allc_1g_mp == entry.allc_1g_mp && masked_entry.cpu_set_mp == entry.cpu_set_mp && masked_entry.cpu_offline_mp == entry.cpu_offline_mp);
+    assert(masked_post.ctn_mp == post.ctn_mp && masked_post.sched_mp == post.sched_mp && masked_post.allc_4k_mp == post.allc_4k_mp && masked_post.allc_2m_mp == post.allc_2m_mp
+        && masked_post.allc_1g_mp == post.allc_1g_mp && masked_post.cpu_set_mp == post.cpu_set_mp && masked_post.cpu_offline_mp == post.cpu_offline_mp);
     page_ptr_roundtrip();
     reveal(container_owned_pages_wf); reveal(container_allocator_wf);
     let pcid_allc_ptr = entry.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator;
     let zombie = mid.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0;
     let pcid = entry.prc_mp.spec_index(prc_ptr).view().pcid;
     assert(entry.prc_mp.spec_index(prc_ptr).view_rodata().view().pcid == pcid) by { reveal(process_pagetable_wf); };
-    assert forall|c: RwLockContainerPtr| #![trigger mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)] entry.ctn_mp.dom().contains(c) implies
-        PcidAllocator::free_pcids(mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()) == if zombie && c == ctn_ptr {
-                PcidAllocator::free_pcids(entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()).insert(pcid)
-            } else { PcidAllocator::free_pcids(entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view()) } by {
+    assert forall|c: RwLockContainerPtr| #![trigger mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)]
+        #![trigger post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)] entry.ctn_mp.dom().contains(c) implies {
+        let e = entry.pcid_allc_mp.spec_index(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator);
+        let a = start.pcid_allc_mp.spec_index(start.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator);
+        let b = post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator);
+        &&& PcidAllocator::free_pcids(mid.pcid_allc_mp.spec_index(mid.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+            == if zombie && c == ctn_ptr { PcidAllocator::free_pcids(e.view().ref_counters.view()).insert(pcid) } else { PcidAllocator::free_pcids(e.view().ref_counters.view()) }
+        &&& PcidAllocator::free_pcids(b.view().ref_counters.view())
+            == if zombie && c == ctn_ptr { PcidAllocator::free_pcids(a.view().ref_counters.view()).insert(pcid) } else { PcidAllocator::free_pcids(a.view().ref_counters.view()) }
+        &&& b.lock_state_u() == if zombie && c == ctn_ptr { LockStateU::Unlocked } else { a.lock_state_u() }
+    } by {
         if c != ctn_ptr {
             assert(entry.pcid_allc_mp.dom().contains(entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator) && entry.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator != pcid_allc_ptr) by { reveal(container_pcid_allocator_wf); };
         } else if zombie {

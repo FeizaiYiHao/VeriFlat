@@ -35,9 +35,13 @@ pub(super) fn enter_new_process_commit(
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), &KernelK { pcid_allc_mp: old(steps).snapshot_k().pcid_allc_mp, ..*old(krnl) }),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).pcid_allc_mp.dom().contains(pcid_allc_ptr),
+        old(krnl).ctn_mp.dom().contains(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container),
+        old(krnl).ctn_mp.spec_index(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container).view_rodata().view().pcid_allocator == pcid_allc_ptr,
+        old(krnl).pcid_allc_mp.unchanged_except(&old(steps).snapshot_k().pcid_allc_mp, pcid_allc_ptr),
+        old(krnl).pcid_allc_mp.spec_index(pcid_allc_ptr).view() == old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allc_ptr).view(),
         typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allc_ptr, TypedLockMode::Write),
         old(krnl).prc_mp.dom().contains(parent_ptr),
         !old(krnl).prc_mp.spec_index(parent_ptr).view().zombie,
@@ -125,7 +129,7 @@ pub(super) fn enter_new_process_commit(
             *source_range, regs, endpoint_index_opt, with_iommu)) by {
             process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, endpoint,
-                None, None);
+                None, None, Some(old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().owning_container));
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thrd_ptr);
             new_process_enter_step_from_u(entry_u, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, parent_ptr, current_thrd_ptr, endpoint,
                 *source_range, regs, endpoint_index_opt, with_iommu,

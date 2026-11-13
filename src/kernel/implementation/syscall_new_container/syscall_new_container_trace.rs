@@ -391,7 +391,8 @@ pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelSte
 { reveal(new_container_syscall_trace); }
 
 /// Publishing the staged container root from `staged` to `published`, where `staged` is `pre` with its transfer cpu write-locked
-/// and `post` is `published` with `progress` recorded, is the root publication on the user views of `pre` and `post`.
+/// and `post` is `published` with `progress` recorded and the child's PCID allocator released, is the root publication on the user
+/// views of `pre` and `post`.
 pub(super) proof fn new_container_root_published_from_k(
     pre: &KernelK, staged: &KernelK, published: &KernelK, post: &KernelK, parent: RwLockContainerPtr, thread: RwLockThreadPtr, transfer_cpu: CpuId,
     container_page: PagePtr, pcid_allocator_page: PagePtr, pages: Seq<PagePtr>, funding: usize, funding_pages: Seq<PagePtr>, allocator_quota_4k: usize,
@@ -409,7 +410,10 @@ pub(super) proof fn new_container_root_published_from_k(
         publish_staged_container_root_eof_preconditions(*staged, parent, thread, container_page, pcid_allocator_page, pages[0], pages[1], pages[2],
             pages[3], pages[8], pages[4], pages[5], pages[6], pages[7], funding_pages, allocator_quota_4k, process_quota_4k),
         *staged == (KernelK { pg_arr: staged.pg_arr, cpu_arr: staged.cpu_arr, ..*pre }),
-        *post == (KernelK { pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, ..*published }),
+        *post == (KernelK { pg_arr: post.pg_arr, thrd_mp: post.thrd_mp, pcid_allc_mp: post.pcid_allc_mp, ..*published }),
+        post.pcid_allc_mp.unchanged_except(&published.pcid_allc_mp, pcid_allocator_page),
+        post.pcid_allc_mp.spec_index(pcid_allocator_page).view() == published.pcid_allc_mp.spec_index(pcid_allocator_page).view(),
+        post.pcid_allc_mp.spec_index(pcid_allocator_page).locking_thread() is None,
         kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, staged.cpu_arr),
         staged.cpu_arr.spec_index(transfer_cpu).value.view().view().state is Off,
         staged.cpu_arr.spec_index(transfer_cpu).value.wlocked_by_thread(cpu_id),

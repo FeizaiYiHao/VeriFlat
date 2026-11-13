@@ -527,6 +527,33 @@ pub proof fn thread_exit_unlock_table_step_iso(old_u: KernelU, new_u: KernelU, c
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
+/// The exiting last thread on a cpu of `a` write-locking its container's PCID allocator changes only that lock of a
+/// container of `a`, so it leaves the view of `b` unchanged.
+pub proof fn thread_exit_lock_pcid_allocator_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_lock_pcid_allocator_step_pre(old_u, cpu_id),
+        thread_exit_lock_pcid_allocator_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(thread_exit_lock_pcid_allocator_step_pre); reveal(thread_exit_lock_pcid_allocator_step); reveal(kernel_u_cpu_ownership_wf); }
+
+/// The step of `thread_exit_lock_pcid_allocator_step_lr` preserves isolation.
+pub proof fn thread_exit_lock_pcid_allocator_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_lock_pcid_allocator_step_pre(old_u, cpu_id),
+        thread_exit_lock_pcid_allocator_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{
+    reveal(thread_exit_lock_pcid_allocator_step_pre); reveal(thread_exit_lock_pcid_allocator_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
 /// Finishing an exit on a cpu of `a` removes the exiting thread, changes its cpu, process, and container, and returns
 /// its page to that container, all of `a`, so it leaves the view of `b` unchanged.
 pub proof fn thread_exit_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

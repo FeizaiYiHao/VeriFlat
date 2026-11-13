@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_thread_exit_spec::*;
+use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_finish_helpers::{thread_exit_finish_lock_page_and_cache, thread_exit_finish_destroy_and_record};
 
 verus! {
@@ -107,18 +108,38 @@ pub(super) fn thread_exit_finish(
     let (owner, allc_ptr, pcid_allc_ptr, Tracked(page_lock_perm), Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), full) =
         thread_exit_finish_lock_page_and_cache(krnl, Tracked(&mut *lctx), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, last);
     if full {
+        let ghost locked_k = *krnl;
         let Tracked(pool_lock_perm) = krnl.wlock_allocator_global_pool_4k(allc_ptr, Tracked(&mut *lctx));
+        let ghost snap = steps.snapshot_k();
+        let ghost drain_before = steps.view();
+        let ghost drain_k = *krnl;
         proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            if last {
+                let mid = KernelK { pcid_allc_mp: snap.pcid_allc_mp, ..*krnl };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&locked_k, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&KernelK { pcid_allc_mp: snap.pcid_allc_mp, ..locked_k }, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &mid)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+                kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&snap, &mid);
+                krnl.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), pcid_allc_ptr);
+                kernel_pcid_allocator_lock_mode_changed_implies_u_step(&mid, &*krnl, ctn_ptr);
+                thread_exit_lock_pcid_allocator_step_pre_from_k(&snap, &finish_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr);
+                thread_exit_lock_pcid_allocator_step_from_u(kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(*krnl), cpu_id, ctn_ptr);
+            } else {
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+                kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&snap, &*krnl);
+            }
         }
         drain_4k_cache_batch(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cache_lock_perm), Tracked(&pool_lock_perm));
+        proof { if last { thread_exit_trace_push(&*steps, drain_before, start, pre, kernel_k_to_kernel_u(snap), kernel_k_to_kernel_u(drain_k), cpu_id); } }
         krnl.wunlock_allocator_global_pool_4k(allc_ptr, Tracked(&mut *lctx), Tracked(pool_lock_perm));
         proof {
             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             finish_lctx = *lctx;
+            assert((KernelK { pcid_allc_mp: krnl.pcid_allc_mp, ..*krnl }) == *krnl);
+            if last { krnl.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), pcid_allc_ptr); }
         }
     }
     thread_exit_finish_destroy_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(finish_lctx), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr,

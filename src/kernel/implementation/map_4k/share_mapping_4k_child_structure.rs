@@ -101,6 +101,7 @@ fn build_new_child_page_structure(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_1g.view().len() == 0,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         thread_effective_quota_4k(old(krnl).thrd_mp.spec_index(thrd_ptr)) >= 3,
+        old(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k >= 4,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, directory: old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
         origin is NewProcess || origin is NewContainer,
         thread_lock_perm.state() is WriteLock,
