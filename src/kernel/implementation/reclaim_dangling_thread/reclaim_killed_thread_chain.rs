@@ -35,7 +35,7 @@ pub(super) fn release_killed_thread_descriptors(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).view().len() <= final(steps).view().len(),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + MAX_NUM_ENDPOINT_DESCRIPTORS,
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
@@ -78,7 +78,7 @@ pub(super) fn release_killed_thread_descriptors(
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.kernel_view_locking_state() is Acquire,
             steps.snapshot_k() == *krnl,
-            old(steps).view().len() <= steps.view().len(),
+            old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + index,
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kernel_steps_prefix_unchanged(old(steps).view(), steps.view()),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
@@ -177,7 +177,7 @@ pub fn release_killed_thread_caller(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).view().len() <= final(steps).view().len(),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
@@ -313,7 +313,7 @@ pub fn reclaim_killed_thread_chain(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).view().len() < final(steps).view().len(),
+        old(steps).view().len() < final(steps).view().len() <= old(steps).view().len() + 34 * (old(krnl).thrd_mp.spec_index(thrd_ptr).view().call_depth.view() + 1),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kernel_steps_prefix_unchanged(old(steps).view(), final(steps).view()),
         final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
@@ -361,6 +361,7 @@ pub fn reclaim_killed_thread_chain(
             krnl.thrd_mp.spec_index(cur).view().quota_4k == 0,
             krnl.thrd_mp.spec_index(cur).view().quota_2m == 0,
             krnl.thrd_mp.spec_index(cur).view().quota_1g == 0,
+            steps.view().len() + 34 * krnl.thrd_mp.spec_index(cur).view().call_depth.view() <= old(steps).view().len() + 34 * old(krnl).thrd_mp.spec_index(thrd_ptr).view().call_depth.view(),
             forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)]
                 lctx.thread_lock_map().dom().contains(held_thread) ==> !(krnl.thrd_mp.spec_index(held_thread).view().state is KILLED) || krnl.thrd_mp.spec_index(held_thread).being_killed() || held_thread == cur,
         invariant
@@ -417,7 +418,7 @@ pub fn reclaim_killed_thread_chain(
             killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container),
         ensures
             typed_lock_maps_removed(old(lctx), lctx, KernelObjId::Thread(thrd_ptr)),
-            old(steps).view().len() < steps.view().len(),
+            old(steps).view().len() < steps.view().len() <= old(steps).view().len() + 34 * (old(krnl).thrd_mp.spec_index(thrd_ptr).view().call_depth.view() + 1),
         decreases krnl.thrd_mp.spec_index(cur).view().call_depth.view(),
     {
         let ghost iter_k = *krnl;

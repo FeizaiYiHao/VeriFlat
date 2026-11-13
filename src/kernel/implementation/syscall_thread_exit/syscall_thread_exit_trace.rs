@@ -1108,17 +1108,18 @@ pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, 
 { reveal(thread_exit_refund_step); }
 
 /// The finish step pushed after the partial trace that starts at `start`, with at most `thread_exit_reclaim_step_bound()`
-/// reclaim steps, completes the trace of an exit.
-pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId)
+/// reclaim steps and fewer than `bound` steps, completes the trace of an exit with at most `bound` steps.
+pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, bound: nat)
     requires
         0 <= start <= before.len(),
+        before.len() - start + 1 <= bound,
         thread_exit_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id),
         thread_exit_reclaim_count(before.subrange(start, before.len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         thread_exit_finish_step_pre(finish_pre, cpu_id),
         thread_exit_finish_step(finish_pre, post, cpu_id),
     ensures
-        thread_exit_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, post, cpu_id, true),
+        thread_exit_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, post, cpu_id, true, bound),
 {
     reveal(thread_exit_partial_trace); reveal(thread_exit_syscall_trace);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: finish_pre, new_u: post }));
@@ -1126,11 +1127,11 @@ pub(super) proof fn thread_exit_trace_finish_step(steps: &KernelSteps, before: S
 }
 
 /// A rejected call records no step.
-pub(super) proof fn thread_exit_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId)
+pub(super) proof fn thread_exit_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, bound: nat)
     requires
         trace.len() == 0,
     ensures
-        thread_exit_syscall_trace(trace, pre, pre, cpu_id, false),
+        thread_exit_syscall_trace(trace, pre, pre, cpu_id, false, bound),
 { reveal(thread_exit_syscall_trace); }
 
 /// A step pushed onto a nonempty trace adds one reclaim step exactly when it starts while the thread reclaims or returns quota.

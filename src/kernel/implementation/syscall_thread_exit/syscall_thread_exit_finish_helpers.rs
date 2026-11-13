@@ -166,7 +166,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
     ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr,
     pcid_allc_ptr: RwLockPcidAllocatorPtr, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(container_lock_perm): Tracked<LockPerm>,
     Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(page_lock_perm): Tracked<LockPerm>,
-    Tracked(cache_lock_perm): Tracked<LockPerm>, Tracked(pcid_allocator_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
+    Tracked(cache_lock_perm): Tracked<LockPerm>, Tracked(pcid_allocator_lock_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(bound): Ghost<nat>,
 )
     requires
         old(krnl).inv(),
@@ -179,6 +179,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
         thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        old(steps).view().len() - start + 1 <= bound,
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &finish_lctx),
         typed_lock_map_contains_mode(finish_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(finish_lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
@@ -293,7 +294,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true),
+        thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true, bound),
 {
     let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_4k(allc_ptr, Tracked(&mut *lctx));
     let Tracked(needflush_lock_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
@@ -311,11 +312,11 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         Tracked(quota_lock_perm), Tracked(needflush_lock_perm), Tracked(pcid_allocator_lock_perm));
     proof {
         steps.end_kernel_step_thread_exit(&*krnl, &*lctx, cpu_id, thrd_ptr, flushed);
-        assert(thread_exit_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, true)) by {
+        assert(thread_exit_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, true, bound)) by {
             thread_exit_finish_step_pre_from_k(&finish_k, &finish_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr);
             kernel_thread_exit_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, flushed);
             thread_exit_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, flushed);
-            thread_exit_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id);
+            thread_exit_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, bound);
         };
     }
 }

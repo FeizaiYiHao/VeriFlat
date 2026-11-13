@@ -12,7 +12,7 @@ verus! {
 pub(super) fn thread_exit_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, last: bool, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(container_lock_perm): Tracked<LockPerm>,
-    Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(thread_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
+    Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(thread_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(bound): Ghost<nat>,
 )
     requires
         old(krnl).inv(),
@@ -25,6 +25,7 @@ pub(super) fn thread_exit_finish(
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
         thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id) <= thread_exit_reclaim_step_bound(),
+        old(steps).view().len() - start + 3 <= bound,
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![ctn_ptr],
         old(lctx).process_lock_map().dom() =~= set![prc_ptr],
@@ -103,7 +104,7 @@ pub(super) fn thread_exit_finish(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true),
+        thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true, bound),
 {
     let ghost mut finish_lctx = *lctx;
     let (owner, allc_ptr, pcid_allc_ptr, Tracked(page_lock_perm), Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), full) =
@@ -145,6 +146,6 @@ pub(super) fn thread_exit_finish(
     }
     thread_exit_finish_destroy_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(finish_lctx), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr,
         pcid_allc_ptr, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(page_lock_perm),
-        Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), Ghost(start), Ghost(pre));
+        Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), Ghost(start), Ghost(pre), Ghost(bound));
 }
 } // verus!

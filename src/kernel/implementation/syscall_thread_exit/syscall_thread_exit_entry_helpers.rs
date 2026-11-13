@@ -36,7 +36,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& thread_exit_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
-                kernel_k_to_kernel_u(*final(krnl)), cpu_id, false)
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, false, thread_exit_step_bound(*old(krnl), cpu_id))
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0;
@@ -115,7 +115,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
     let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
     if cpu_lock_res.is_none() {
         proof {
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
             thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::CpuIdle);
         }
         return Err(RetValueType::CpuIdle);
@@ -157,7 +157,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
-                thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+                thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
                 thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorContainerKilled);
             }
             return Err(RetValueType::ErrorContainerKilled);
@@ -166,7 +166,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), None, None, None, None, None);
-                thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+                thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
                 thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorContainerLockOrderConflict);
             }
             return Err(RetValueType::ErrorContainerLockOrderConflict);
@@ -178,7 +178,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), None, None, None, None);
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
             thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorProcessKilled);
         }
         return Err(RetValueType::ErrorProcessKilled);
@@ -191,7 +191,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
             thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorThreadKilled);
         }
         return Err(RetValueType::ErrorThreadKilled);
@@ -297,6 +297,7 @@ pub(super) fn thread_exit_enter_with_caller(
             let dp = ret->Some_0.1.view();
             let thread = final(krnl).thrd_mp.spec_index(thrd_ptr).view();
             &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(steps).view().len() <= old(steps).view().len() + 1
             &&& thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(pre), cpu_id)
             &&& thread_exit_reclaim_count(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), cpu_id) == 0
             &&& thread_exit_syscall_result(kernel_k_to_kernel_u(pre), cpu_id) == RetValueType::CpuIdle
@@ -358,6 +359,7 @@ pub(super) fn thread_exit_enter_with_caller(
                 &&& dangling.state is KILLED && dangling.callee is None && dangling.proc_linkedlist_node.is_init()
                 &&& dangling.owning_container == ctn_ptr
                 &&& dangling.temp_alloc_clean() && dangling.free_quota_pending_clean() && dangling.quota_4k == 0 && dangling.quota_2m == 0 && dangling.quota_1g == 0
+                &&& dangling.call_depth.view() + 1 == pre.thrd_mp.spec_index(thrd_ptr).view().call_depth.view()
             }
         }),
 {
@@ -372,6 +374,7 @@ pub(super) fn thread_exit_enter_with_caller(
             &&& krnl.thrd_mp.spec_index(caller_ptr).view().state.is_reply_waiting()
             &&& krnl.thrd_mp.spec_index(caller_ptr).view().callee == Some(thrd_ptr)
             &&& krnl.thrd_mp.spec_index(caller_ptr).view().owning_container == ctn_ptr
+            &&& krnl.thrd_mp.spec_index(thrd_ptr).view().call_depth.view() == krnl.thrd_mp.spec_index(caller_ptr).view().call_depth.view() + 1
         })) by { thread_caller_callee_wf_at(krnl.thrd_mp, thrd_ptr); };
     }
     let mut dangling: Option<RwLockThreadPtr> = None;

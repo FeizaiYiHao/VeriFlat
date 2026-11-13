@@ -40,7 +40,8 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         ret == thread_exit_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         thread_exit_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
+            thread_exit_step_bound(*old(krnl), cpu_id)),
 {
     let entry = match thread_exit_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) { Ok(entry) => entry, Err(ret) => return ret };
     let ThreadExitEntered { container_ptr: ctn_ptr, process_ptr: prc_ptr, thread_ptr: thrd_ptr, cpu_lock_perm, container_lock_perm, process_lock_perm, thread_lock_perm } = entry;
@@ -60,7 +61,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
     }
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     thread_exit_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, last, Tracked(cpu_lock_perm), Tracked(container_lock_perm),
-        Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+        Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre), Ghost(thread_exit_step_bound(*old(krnl), cpu_id)));
     proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); }
     RetValueType::CpuIdle
 }

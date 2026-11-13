@@ -42,7 +42,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& final(lctx).no_locks_held()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& thread_exit_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
-                kernel_k_to_kernel_u(*final(krnl)), cpu_id, false)
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, false, thread_exit_step_bound(*old(krnl), cpu_id))
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0;
@@ -53,6 +53,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& thread_exit_partial_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id)
             &&& thread_exit_reclaim_count(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), cpu_id) == 0
+            &&& final(steps).view().len() <= old(steps).view().len() + 1 + 34 * thread_exit_entry_call_depth(*old(krnl), cpu_id)
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom() =~= set![e.container_ptr]
             &&& final(lctx).process_lock_map().dom() =~= set![e.process_ptr]
@@ -116,7 +117,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
                 krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(ctn_ptr), Some(prc_ptr), Some(thrd_ptr), None, None, None);
-                    thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+                    thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, thread_exit_step_bound(*old(krnl), cpu_id));
                 }
                 Err(RetValueType::ErrorIpcPeerKilled)
             } else {
@@ -206,6 +207,7 @@ fn thread_exit_reclaim_dangling_caller(
         held_threads_unchanged_except(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx), set![dangling_ptr]),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
         thread_exit_reclaim_count(final(steps).view().subrange(start, final(steps).view().len() as int), cpu_id) == thread_exit_reclaim_count(old(steps).view().subrange(start, old(steps).view().len() as int), cpu_id),
+        final(steps).view().len() <= old(steps).view().len() + 34 * (old(krnl).thrd_mp.spec_index(dangling_ptr).view().call_depth.view() + 1),
 {
     let ghost reclaim_before = steps.view();
     proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }

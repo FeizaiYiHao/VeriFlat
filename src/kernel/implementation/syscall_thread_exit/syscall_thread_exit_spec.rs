@@ -514,11 +514,23 @@ pub open spec fn thread_exit_reclaim_count(trace: Seq<KernelStep>, cpu_id: CpuId
 /// plus 10,000 for locking the tables, the hidden root entries, the TLB flushes, the refunds, and the quota and unlock steps.
 pub open spec fn thread_exit_reclaim_step_bound() -> nat { 68_853_704_464 }
 
-/// Complete trace of the call: on an exit, the partial trace followed by the finish step, with at most
-/// `thread_exit_reclaim_step_bound()` steps that reclaim or return quota; a stutter otherwise.
+/// The call depth in `k` of the thread running on cpu `cpu_id`.
+pub open spec fn thread_exit_entry_call_depth(k: KernelK, cpu_id: CpuId) -> nat {
+    k.thrd_mp.spec_index(k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().call_depth.view()
+}
+
+/// At most this many steps of a call that starts in `k`: the reclaim bound, 40 for entering, the descriptors, locking the
+/// tables, and finishing, and 34 per killed caller in the chain the running thread takes over.
+pub open spec fn thread_exit_step_bound(k: KernelK, cpu_id: CpuId) -> nat {
+    thread_exit_reclaim_step_bound() + 40 + 34 * thread_exit_entry_call_depth(k, cpu_id)
+}
+
+/// Complete trace of the call, with at most `bound` steps: on an exit, the partial trace followed by the finish step, with at
+/// most `thread_exit_reclaim_step_bound()` steps that reclaim or return quota; a stutter otherwise.
 #[verifier::opaque]
-pub open spec fn thread_exit_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, exited: bool) -> bool {
-    if exited {
+pub open spec fn thread_exit_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, exited: bool, bound: nat) -> bool {
+    &&& trace.len() <= bound
+    &&& if exited {
         // the enter step, any middle steps, and the finish step
         &&& 2 <= trace.len()
         &&& thread_exit_partial_trace(trace.drop_last(), pre, cpu_id)
