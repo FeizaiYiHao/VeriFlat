@@ -25,7 +25,7 @@ members = [
     "crates/veriflat_syscall_cpu_hotplug",
     "crates/veriflat_syscall_pci",
 ]
-exclude = ["verus", "noninterference", "boot"]
+exclude = ["verus", "noninterference", "liveness", "boot"]
 
 [package]
 name = "VeriFlat"
