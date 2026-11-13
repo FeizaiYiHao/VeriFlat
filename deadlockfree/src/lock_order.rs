@@ -19,14 +19,7 @@
 //! - Allocator quota / cache / global pool per size `allc_*_mp[a].{quota.lock_id(), cpu_caches.lock_id_by_index,
 //!   global_pool.lock_id()}`, locker_unlocker_quota_ordered.rs:45, _allocator_cache*.rs, _allocator_global_pool*.rs, `=`
 //!
-//! Not covered: that a spinning cpu meets these hypotheses (its contract-time wanted id is the current K id, or below
-//! it for containers, and all contexts align with one K state at that instant: the step-atomicity TCB); a wait on a
-//! per-cpu reader-lock writer that has not yet taken the whole lock is covered only as a same-want edge, since the
-//! pending state is not in `KernelK`; waits that are not lock spins: remote TLB flushes (served by the target's NMI
-//! handler, which takes no lock and runs with interrupts off), the running-to-idle acknowledgement (the target is
-//! outside a kernel step, holds no lock and takes the maskable IPI), the IOMMU invalidation spin lock of the boot glue
-//! (its holder only polls hardware), and halts of cpus that hold no lock; primitives that never wait (downgrade,
-//! retype-born locks, `l2_entry_lock` of an unpublished L2 page).
+//! What these theorems leave to the TCB or to written argument is listed in the crate docs (`lib.rs`).
 use vstd::prelude::*;
 use crate::*;
 
