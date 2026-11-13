@@ -1,0 +1,21 @@
+# Lock-order deadlock freedom over the kernel's `KernelK` and `LocalContext`. This is its own Cargo workspace and not a
+# member of the kernel workspace, so neither `verify-workspace.sh`, `verify-pipeline.sh`, nor the monolith verifies it.
+# Run `deadlockfree/verify-deadlockfree.sh`.
+[workspace]
+members = ["."]
+
+[package]
+name = "veriflat_deadlockfree"
+version = "0.1.0"
+license = "MIT"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+vstd = { path = "../verus/source/vstd" }
+veriflat_kernel_core = { path = "../crates/veriflat_kernel_core" }
+
+[package.metadata.verus]
+verify = true
