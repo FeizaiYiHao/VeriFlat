@@ -195,17 +195,17 @@ pub(super) fn publish_staged_process(
 {
     hide(Seq::contains);
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    let (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm)) = create_and_release_staged_process(
+        krnl, Tracked(&mut *lctx), cpu_id, ctn_ptr, parent_ptr, current_thrd_ptr, pcid_allc_ptr, source_pagetable_ptr, pcid, process_pg_ptr,
+        pagetable_pg_ptr, l4_pg_ptr, process_page_lock_perm, pagetable_page_lock_perm, l4_page_lock_perm, pcid_allocator_lock_perm, parent_lock_perm,
+        Tracked(current_thread_lock_perm),
+    );
     proof {
         assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
             process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
             new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, false);
         };
     }
-    let (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm)) = create_and_release_staged_process(
-        krnl, Tracked(&mut *lctx), cpu_id, ctn_ptr, parent_ptr, current_thrd_ptr, pcid_allc_ptr, source_pagetable_ptr, pcid, process_pg_ptr,
-        pagetable_pg_ptr, l4_pg_ptr, process_page_lock_perm, pagetable_page_lock_perm, l4_page_lock_perm, pcid_allocator_lock_perm, parent_lock_perm,
-        Tracked(current_thread_lock_perm),
-    );
     end_new_process_publish_step(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, parent_ptr, child_ptr, current_thrd_ptr, pcid_allc_ptr, source_pagetable_ptr,
         target_pagetable_ptr, None, source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(ep_idx),

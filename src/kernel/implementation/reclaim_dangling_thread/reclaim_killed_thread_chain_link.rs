@@ -116,10 +116,11 @@ pub(super) fn reclaim_killed_thread_link(
     let ghost desc_steps = steps.view();
     let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, Tracked(&thread_lock_perm));
     let ghost caller_steps = steps.view();
+    proof { krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr); }
     reclaim_dangling_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, Tracked(thread_lock_perm));
     let ghost reclaim_snap = steps.snapshot_k();
     proof {
-        kernel_dangling_thread_reclaimed_implies_u_step(&reclaim_snap, &*krnl, thrd_ptr);
+        kernel_dangling_thread_reclaimed_implies_u_step(&reclaim_snap, &*krnl, cpu_id, thrd_ptr);
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
         assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container)) by {
             let processes = old(lctx).process_lock_map().dom();

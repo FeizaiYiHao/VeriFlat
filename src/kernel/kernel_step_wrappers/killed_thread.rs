@@ -5,13 +5,13 @@ use crate::*;
 verus! {
 /// Releasing descriptor `index` of the write-held killed thread `thrd_ptr` projects to
 /// `kernel_u_killed_descriptor_dropped`, changes the projection, and changes no thread outside `thrd_ptr`'s container.
-pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
+pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
         *after == (KernelK { thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, ..*before }),
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
-        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().len() == MAX_NUM_ENDPOINT_DESCRIPTORS,
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[index as int] == Some(ep_ptr),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
@@ -30,7 +30,7 @@ pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, a
         after.ep_mp.spec_index(ep_ptr).locking_thread() == before.ep_mp.spec_index(ep_ptr).locking_thread(),
         after.ep_mp.spec_index(ep_ptr).being_killed() == before.ep_mp.spec_index(ep_ptr).being_killed(),
     ensures
-        kernel_u_killed_descriptor_dropped(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        kernel_u_killed_descriptor_dropped(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
@@ -58,7 +58,7 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.dom().contains(caller_ptr),
         before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
-        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         before.thrd_mp.spec_index(thrd_ptr).view().caller == Some(caller_ptr),
         before.thrd_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
         before.thrd_mp.spec_index(caller_ptr).view().callee == Some(thrd_ptr),
@@ -109,7 +109,7 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
         before.thrd_mp.dom().contains(caller_ptr),
         thrd_ptr != caller_ptr,
         before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
-        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         before.thrd_mp.spec_index(thrd_ptr).view().caller == Some(caller_ptr),
         before.thrd_mp.spec_index(caller_ptr).view().state is DANGLING,
         before.thrd_mp.spec_index(caller_ptr).view().callee == Some(thrd_ptr),
@@ -233,10 +233,12 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
 
 /// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed` and changes or removes no thread
 /// outside its container.
-pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, after: &KernelK, dangling_ptr: RwLockThreadPtr)
-    requires kernel_dangling_thread_reclaimed_fields(before, after, dangling_ptr),
+pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, dangling_ptr: RwLockThreadPtr)
+    requires
+        kernel_dangling_thread_reclaimed_fields(before, after, dangling_ptr),
+        before.thrd_mp.spec_index(dangling_ptr).wlocked_by_thread(cpu_id),
     ensures
-        kernel_u_dangling_thread_reclaimed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        kernel_u_dangling_thread_reclaimed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);

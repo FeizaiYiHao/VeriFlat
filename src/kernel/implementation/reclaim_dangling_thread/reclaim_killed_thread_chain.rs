@@ -132,9 +132,9 @@ pub(super) fn release_killed_thread_descriptors(
             proof {
                 drop_pre.thrd_mp.typed_lock_map_aligned_write_at(drop_lctx.thread_lock_map(), drop_lctx.thread_id(), thrd_ptr);
                 if released {
-                    kernel_killed_endpoint_released_implies_u_step(&drop_pre, &*krnl, thrd_ptr, ep_ptr, index);
+                    kernel_killed_endpoint_released_implies_u_step(&drop_pre, &*krnl, cpu_id, thrd_ptr, ep_ptr, index);
                 } else {
-                    kernel_killed_descriptor_dropped_implies_u_step(&drop_pre, &*krnl, thrd_ptr, ep_ptr, index);
+                    kernel_killed_descriptor_dropped_implies_u_step(&drop_pre, &*krnl, cpu_id, thrd_ptr, ep_ptr, index);
                 }
                 krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
                 assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(),

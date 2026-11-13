@@ -221,10 +221,6 @@ pub(super) fn publish_staged_process_with_iommu(
     let tracked iommu_table_page_lock_perm = iommu_table_page_lock_perm.get();
     let tracked iommu_l4_page_lock_perm = iommu_l4_page_lock_perm.get();
     proof {
-        assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
-            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
-            new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, true);
-        };
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
             let uppers = krnl.prc_mp.spec_index(parent_ptr).view().uppertree_seq.view();
             assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
@@ -235,6 +231,10 @@ pub(super) fn publish_staged_process_with_iommu(
                 per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, c); process_uppertree_seq_wf_implies_ancestors_in_dom(krnl.ctn_mp.spec_index(c).view().root_process, tree, krnl.prc_mp, parent_ptr);
                 distinct_process_or_thread_ptrs_implies_seq_len_le_num_pages(&*krnl, uppers);
             };
+        };
+        assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
+            process_thread_wf_thread_at(old(krnl).prc_mp, old(krnl).thrd_mp, current_thrd_ptr);
+            new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thrd_ptr, ctn_ptr, *source_range, regs, ep_idx, true);
         };
         assert(page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(pagetable_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(l4_pg_ptr)
             && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_table_pg_ptr) && page_ptr2page_index(process_pg_ptr) != page_ptr2page_index(iommu_l4_pg_ptr)

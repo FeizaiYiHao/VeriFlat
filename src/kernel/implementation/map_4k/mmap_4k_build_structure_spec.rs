@@ -143,16 +143,16 @@ pub open spec fn mmap_4k_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Releasing happens with the cpu and its running thread write-locked and no mmap progress recorded.
+/// Releasing happens with the cpu and its running thread write-locked by this cpu and no mmap progress recorded.
 #[verifier::opaque]
 pub open spec fn mmap_4k_release_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& cpu.lock_state is WriteLocked
+    &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& cpu.current_thread is Some
     &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
-    &&& thread.lock_state is WriteLocked
+    &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& thread.syscall_progress is None
 }
 

@@ -100,6 +100,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
             &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
             &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
             &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },
@@ -203,6 +204,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
             krnl.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.view().contains(local_cpu),
             krnl.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() == steps.snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().with_reader(local_cpu),
             local_cpu < cpu_id ==> steps.snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u().read_held_by(local_cpu),
+            !(steps.snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() is WriteLocked),
             krnl.cpu_set_mp.spec_index(cpu_set_ptr).read_lock_perm_match(&cpu_set_perm),
             cpu_set_perm.state() is ReadLock,
             cpu_set_perm.thread_id() == lctx.thread_id(),

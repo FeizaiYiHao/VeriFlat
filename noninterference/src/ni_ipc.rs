@@ -260,7 +260,7 @@ pub proof fn ipc_reply_dangling_reclaimed_step_lr(old_u: KernelU, new_u: KernelU
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(ipc_reply_dangling_caller_held_step_pre); reveal(kernel_u_cpu_ownership_wf);
-    if kernel_u_killed_descriptor_dropped(old_u, new_u) {
+    if kernel_u_killed_descriptor_dropped(old_u, new_u, cpu_id) {
         reveal(kernel_u_killed_descriptor_dropped); reveal(kernel_u_endpoint_ownership_wf);
         let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
         assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies domain_view(new_u, b) =~~= domain_view(old_u, b) by {
@@ -276,7 +276,7 @@ pub proof fn ipc_reply_dangling_reclaimed_step_lr(old_u: KernelU, new_u: KernelU
         reveal(kernel_u_killed_caller_taken_over);
         let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
         if !(domain_view(new_u, b) =~~= domain_view(old_u, b)) { assert(taken =~= Set::<RwLockThreadPtr>::empty()); }
-    } else if kernel_u_dangling_thread_reclaimed(old_u, new_u) {
+    } else if kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id) {
         reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_object_page_owner_wf);
         let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
         if !(domain_view(new_u, b) =~~= domain_view(old_u, b)) { assert(removed =~= Set::<RwLockThreadPtr>::empty()); }
@@ -303,7 +303,7 @@ pub proof fn ipc_reply_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Kernel
         kernel_u_ownership_wf(new_u),
     ensures isolated(new_u, a, b),
 {
-    if kernel_u_killed_descriptor_dropped(old_u, new_u) {
+    if kernel_u_killed_descriptor_dropped(old_u, new_u, cpu_id) {
         reveal(kernel_u_killed_descriptor_dropped);
         let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
         assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
@@ -331,7 +331,7 @@ pub proof fn ipc_reply_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Kernel
             memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
         };
         if !isolated(new_u, a, b) { assert(taken =~= Set::<RwLockThreadPtr>::empty()); }
-    } else if kernel_u_dangling_thread_reclaimed(old_u, new_u) {
+    } else if kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id) {
         reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_endpoint_ownership_wf);
         let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
         assert forall|t: RwLockThreadPtr| #![trigger removed.contains(t)] removed.contains(t) implies isolated(new_u, a, b) by {

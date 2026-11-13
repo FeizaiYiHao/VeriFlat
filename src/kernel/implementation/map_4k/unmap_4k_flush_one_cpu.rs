@@ -34,6 +34,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu<const WRITE: bool>(krnl: &mut KernelK, 
             == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).being_killed(),
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locking_thread() is Read,
         old(krnl).cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() == old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u().with_reader(local_cpu),
+        !(old(steps).snapshot_k().cpu_set_mp.spec_index(old(krnl).ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).lock_state_u() is WriteLocked),
         old(krnl).inv(),
         entry.inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -113,6 +114,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu<const WRITE: bool>(krnl: &mut KernelK, 
             &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
             &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
             &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
             &&& typed_lock_map_contains_mode(held.container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },

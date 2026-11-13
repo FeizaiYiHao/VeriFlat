@@ -991,10 +991,11 @@ pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cp
     })
 }
 
-/// One killed dangling thread, write-locked and linked to no thread, leaves the thread map and its container's thread
-/// set, and the container owning its page regains one 4K quota; the kernel chooses the dangling thread (R1).
+/// One killed dangling thread, write-locked by `cpu_id` and linked to no thread, leaves the thread map and its
+/// container's thread set, and the container owning its page regains one 4K quota; the kernel chooses the dangling
+/// thread (R1).
 #[verifier::opaque]
-pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU) -> bool {
+pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
     &&& new_u.thread_map.dom().subset_of(old_u.thread_map.dom())
     &&& removed.len() == 1
@@ -1002,7 +1003,7 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
         removed.contains(dangling_ptr) ==> {
             let dangling = old_u.thread_map.spec_index(dangling_ptr);
             &&& dangling.state is KILLED
-            &&& dangling.lock_state is WriteLocked
+            &&& dangling.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& dangling.caller is None
             &&& dangling.callee is None
             &&& new_u == (KernelU {
@@ -1043,17 +1044,17 @@ pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thrd
     &&& new_u == (KernelU { container_map: new_u.container_map, thread_map: new_u.thread_map, endpoint_map: new_u.endpoint_map, ..old_u })
 }
 
-/// One write-locked killed thread releases one descriptor: the descriptor is cleared and its unlocked endpoint, still held
-/// elsewhere, drops the reference; the kernel chooses the thread and the descriptor (R1).
+/// One killed thread write-locked by `cpu_id` releases one descriptor: the descriptor is cleared and its unlocked
+/// endpoint, still held elsewhere, drops the reference; the kernel chooses the thread and the descriptor (R1).
 #[verifier::opaque]
-pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU) -> bool {
+pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     &&& changed.len() == 1
     &&& forall|thrd_ptr: RwLockThreadPtr| #![trigger changed.contains(thrd_ptr)] changed.contains(thrd_ptr) ==> {
         let thread = old_u.thread_map[thrd_ptr];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thrd_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         &&& thread.state is KILLED
-        &&& thread.lock_state is WriteLocked
+        &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
         &&& dropped.len() == 1
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
             let ep_ptr = thread.endpoint_descriptors[index]->Some_0;
@@ -1071,17 +1072,18 @@ pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: Kerne
     }
 }
 
-/// One write-locked killed thread releases the descriptor holding the last reference of its unlocked endpoint: the
-/// descriptor is cleared and the endpoint is released; the kernel chooses the thread and the descriptor (R1).
+/// One killed thread write-locked by `cpu_id` releases the descriptor holding the last reference of its unlocked
+/// endpoint: the descriptor is cleared and the endpoint is released; the kernel chooses the thread and the descriptor
+/// (R1).
 #[verifier::opaque]
-pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: KernelU) -> bool {
+pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     &&& changed.len() == 1
     &&& forall|thrd_ptr: RwLockThreadPtr| #![trigger changed.contains(thrd_ptr)] changed.contains(thrd_ptr) ==> {
         let thread = old_u.thread_map[thrd_ptr];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thrd_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
         &&& thread.state is KILLED
-        &&& thread.lock_state is WriteLocked
+        &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
         &&& dropped.len() == 1
         &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
             &&& kernel_u_endpoint_released(old_u, new_u, thrd_ptr, index)
@@ -1090,9 +1092,9 @@ pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: Kernel
     }
 }
 
-/// The unlocked caller of one write-locked killed thread, waiting for its reply, is scheduled on shard `cpu_id` of its
-/// container with `ErrorIpcCalleeExited`, and the killed thread drops its caller; the kernel chooses the killed thread
-/// (R1).
+/// The unlocked caller of one killed thread write-locked by `cpu_id`, waiting for its reply, is scheduled on shard
+/// `cpu_id` of its container with `ErrorIpcCalleeExited`, and the killed thread drops its caller; the kernel chooses
+/// the killed thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let woken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is WAITING_REPLY && new_u.thread_map[t].state is SCHEDULED);
@@ -1105,7 +1107,7 @@ pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cp
         &&& caller.callee is Some
         &&& old_u.thread_map.dom().contains(thrd_ptr)
         &&& thread.state is KILLED
-        &&& thread.lock_state is WriteLocked
+        &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
         &&& thread.caller == Some(caller_ptr)
         &&& caller.lock_state is Unlocked
         &&& new_u == (KernelU {
@@ -1120,8 +1122,9 @@ pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cp
     }
 }
 
-/// The unlocked dangling thread of the killed caller of one write-locked killed thread is taken over as a write-locked killed thread
-/// without a callee, and the killed thread drops its caller; the kernel chooses the killed thread (R1).
+/// The unlocked dangling thread of the killed caller of one killed thread write-locked by `cpu_id` is taken over as a
+/// write-locked killed thread without a callee, and the killed thread drops its caller; the kernel chooses the killed
+/// thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
@@ -1133,7 +1136,7 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
         &&& caller.callee is Some
         &&& old_u.thread_map.dom().contains(thrd_ptr)
         &&& thread.state is KILLED
-        &&& thread.lock_state is WriteLocked
+        &&& thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
         &&& thread.caller == Some(caller_ptr)
         &&& caller.lock_state is Unlocked
         &&& new_u == (KernelU {
@@ -1147,11 +1150,11 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
 /// taking over the dangling thread of a killed caller, reclaiming a killed dangling thread, or releasing an endpoint with
 /// its last descriptor.
 pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    ||| kernel_u_killed_descriptor_dropped(old_u, new_u)
+    ||| kernel_u_killed_descriptor_dropped(old_u, new_u, cpu_id)
     ||| kernel_u_killed_caller_woken(old_u, new_u, cpu_id)
     ||| kernel_u_killed_caller_taken_over(old_u, new_u, cpu_id)
-    ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
-    ||| kernel_u_killed_endpoint_released(old_u, new_u)
+    ||| kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id)
+    ||| kernel_u_killed_endpoint_released(old_u, new_u, cpu_id)
 }
 
 /// A killed-thread reclaim step that removes or changes only threads owned by `container`.

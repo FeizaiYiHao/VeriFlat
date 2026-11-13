@@ -167,7 +167,7 @@ pub(super) proof fn mmap_4k_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
             &&& pre.container_map.dom().contains(thread.owning_container)
             &&& !(phase is Filled)
             &&& phase is Read ==> cpu.lock_state is Unlocked && thread.lock_state is Unlocked && !(pagetable.lock_state is WriteLocked)
-            &&& phase is Fill ==> cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && pagetable.lock_state is Unlocked
+            &&& phase is Fill ==> cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) && thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) && pagetable.lock_state is Unlocked
             &&& post == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
@@ -218,7 +218,7 @@ pub(super) proof fn mmap_4k_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
             &&& thread.syscall_progress is None
             &&& thread.owning_proc == prc_ptr
             &&& pre.container_map.dom().contains(thread.owning_container)
-            &&& cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && process.pagetable->Some_0.lock_state is Unlocked
+            &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) && thread.lock_state == (LockStateU::WriteLocked { writer: cpu_id }) && process.pagetable->Some_0.lock_state is Unlocked
             &&& mid == (KernelU {
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, op: CpuOpState::InStep, ..cpu }),
                 thread_map: pre.thread_map.insert(thrd_ptr, ThreadU {
@@ -289,25 +289,28 @@ pub(super) proof fn mmap_4k_hold_step_from_u(pre: KernelU, post: KernelU, cpu_id
     ensures mmap_4k_hold_step(pre, post, cpu_id),
 { reveal(mmap_4k_hold_step); }
 
-/// Unlocking the caller's write-locked cpu and its current thread `thrd_ptr` with no progress recorded, returning the cpu to
-/// its trap path, and changing nothing else is the release step on `pre`/`post`.
-pub(super) proof fn mmap_4k_release_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr)
+/// Unlocking the caller's cpu and its current thread `thrd_ptr`, both write-held by this cpu in `krnl`, with no progress recorded,
+/// returning the cpu to its trap path, and changing nothing else is the release step from `krnl`'s projection to `post`.
+pub(super) proof fn mmap_4k_release_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        pre.cpu_array[cpu_id as int].lock_state is WriteLocked,
-        pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
-        pre.thread_map.dom().contains(thrd_ptr),
-        pre.thread_map.spec_index(thrd_ptr).lock_state is WriteLocked,
-        pre.thread_map.spec_index(thrd_ptr).syscall_progress is None,
-        post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
-            thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map.spec_index(thrd_ptr) }),
-            ..pre
-        }),
+        krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(cpu_id),
+        krnl.thrd_mp.dom().contains(thrd_ptr),
+        krnl.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
+        {
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
+            &&& pre.thread_map.spec_index(thrd_ptr).syscall_progress is None
+            &&& post == (KernelU {
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
+                thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map.spec_index(thrd_ptr) }),
+                ..pre
+            })
+        },
     ensures
-        mmap_4k_release_step_pre(pre, cpu_id),
-        mmap_4k_release_step(pre, post, cpu_id),
-{ reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); }
+        mmap_4k_release_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        mmap_4k_release_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
+{ kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thrd_ptr); reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); }
 
 /// Turning the fill phase's write lock on the pagetable `pagetable_ptr` into a read lock with its window locks kept as `windows` is
 /// the downgrade step from `krnl`'s projection to `post`.

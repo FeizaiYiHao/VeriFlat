@@ -123,7 +123,7 @@ pub(super) fn mmap_2m_fill_enter(
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
             assert(mmap_2m_syscall_failure_trace(steps.view(), cpu_id, va, range) && steps.view()[1].old_u == kernel_k_to_kernel_u(old(steps).snapshot_k())) by {
                 kernel_cpu_thread_lock_states_changed_implies_u_step(&old(steps).snapshot_k(), &*krnl, &entry_lctx, cpu_id, thrd_ptr, Some(pagetable_ptr));
-                mmap_2m_release_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr);
+                mmap_2m_release_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(*krnl), cpu_id, thrd_ptr);
                 mmap_2m_trace_release_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, va, range);
             };
         }

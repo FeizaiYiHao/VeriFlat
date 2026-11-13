@@ -91,13 +91,13 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
 
 /// Releasing the endpoint held only at descriptor `index` of the write-held killed thread `thrd_ptr` projects to
 /// `kernel_u_killed_endpoint_released`, changes the projection, and changes no thread outside `thrd_ptr`'s container.
-pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, after: &KernelK, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
+pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
         *after == (KernelK { ctn_mp: after.ctn_mp, thrd_mp: after.thrd_mp, ep_mp: after.ep_mp, pg_arr: after.pg_arr, allc_4k_mp: after.allc_4k_mp, ..*before }),
         before.thrd_mp.dom().contains(thrd_ptr),
         before.thrd_mp.spec_index(thrd_ptr).view().state is KILLED,
-        before.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
+        before.thrd_mp.spec_index(thrd_ptr).wlocked_by_thread(cpu_id),
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view().len() == MAX_NUM_ENDPOINT_DESCRIPTORS,
         before.thrd_mp.spec_index(thrd_ptr).view().endpoint_descriptors.view()[index as int] == Some(ep_ptr),
         after.thrd_mp.unchanged_except(&before.thrd_mp, thrd_ptr),
@@ -127,7 +127,7 @@ pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, af
                     == before.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if a.view().owned_pages.view().contains(ep_ptr) { 1int } else { 0int }
             },
     ensures
-        kernel_u_killed_endpoint_released(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        kernel_u_killed_endpoint_released(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);

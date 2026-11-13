@@ -10,13 +10,14 @@ verus! {
 /// The killer on `cpu_id` write-holding its cpu, its cpu's container, its process `prc_ptr`, itself `thrd_ptr`,
 /// and the marked container `ctn_ptr` below its cpu's container satisfies the container kill's step precondition
 /// on `krnl` with that container at `stage`, the container's children and processes project as they are, and its cpu
-/// set, when unlocked, projects unlocked.
+/// set, when unlocked, projects unlocked, and when write-held, projects write-locked by `cpu_id`.
 pub(crate) proof fn kill_container_cpus_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, stage: ContainerKillStage,
 )
     requires
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == lctx.cpu_id(),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
@@ -38,11 +39,18 @@ pub(crate) proof fn kill_container_cpus_pre_from_k(
             &&& u.container_map[ctn_ptr].children == krnl.ctn_mp.spec_index(ctn_ptr).view().children.view()
             &&& u.container_map[ctn_ptr].owned_processes == krnl.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view()
             &&& !krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set).locked() ==> u.container_map[ctn_ptr].cpu_set_lock is Unlocked
+            &&& typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set, TypedLockMode::Write)
+                ==> u.container_map[ctn_ptr].cpu_set_lock == (LockStateU::WriteLocked { writer: cpu_id })
         }),
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
     krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), owner); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
+    krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
+    kernel_process_projection_at(krnl, prc_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
+    assert(krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
+    let set_ptr = krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().cpu_set;
+    if typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), set_ptr, TypedLockMode::Write) { krnl.cpu_set_mp.typed_lock_map_aligned_write_at(lctx.cpu_set_lock_map(), lctx.thread_id(), set_ptr); }
     kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_u_domains_projection(krnl);
     reveal(kill_container_step_pre);
 }
@@ -92,6 +100,7 @@ pub(crate) proof fn kill_container_move_cpu_step_from_u(pre: KernelU, post: Kern
         kill_container_step_pre(pre, cpu_id),
         kill_container_target(pre, cpu_id) == ctn_ptr,
         kill_container_stage(pre, cpu_id) is Cpus,
+        pre.container_map[ctn_ptr].cpu_set_lock == (LockStateU::WriteLocked { writer: cpu_id }),
         pre.cpu_array[cpu_id as int].owning_container == owner_ptr,
         owner_ptr != ctn_ptr,
         index_valid(NUM_CPUS, moved),
@@ -126,6 +135,7 @@ pub(crate) proof fn kill_container_pages_step_from_u(pre: KernelU, post: KernelU
         kill_killer(pre, cpu_id) == thrd_ptr,
         kill_container_target(pre, cpu_id) == ctn_ptr,
         kill_container_stage(pre, cpu_id) is Cpus,
+        pre.container_map[ctn_ptr].cpu_set_lock == (LockStateU::WriteLocked { writer: cpu_id }),
         forall|i: int| #![trigger pre.cpu_array[i]] 0 <= i < NUM_CPUS ==> pre.cpu_array[i].owning_container != ctn_ptr,
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_container_progress(ctn_ptr, ContainerKillStage::Pages), ..pre.thread_map[thrd_ptr] }),

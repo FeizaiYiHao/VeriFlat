@@ -105,7 +105,8 @@ pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
 }
 
 /// Publication runs while the running thread records a process creation and holds the cpu, its
-/// process, its container's PCID allocator, a read lock on that process's page table, and itself.
+/// process, its container's PCID allocator, a read lock on that process's page table, and itself, and the
+/// process's depth leaves room for a child.
 #[verifier::opaque]
 pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -122,6 +123,7 @@ pub open spec fn new_process_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& old_u.container_map[thread.owning_container].pcid_allocator_lock == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is WriteLocked
+    &&& process.depth < usize::MAX
     &&& process.pagetable is Some
     &&& process.pagetable->Some_0.lock_state is ReadLocked
 }

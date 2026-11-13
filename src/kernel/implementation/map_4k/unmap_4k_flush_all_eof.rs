@@ -66,6 +66,7 @@ pub(super) open spec fn flush_pagetable_tlbs_eol_loop_framing(pre: KernelK, cur:
         &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
         &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
         &&& old_u.container_map.dom().contains(ctn_ptr)
+        &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
         &&& typed_lock_map_contains_mode(held.container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
         &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
     }
@@ -125,6 +126,7 @@ pub(super) proof fn flush_pagetable_tlbs_eol_flush_step(pre: KernelK, mid: Kerne
             &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
             &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
             &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
             &&& typed_lock_map_contains_mode(held.container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },
@@ -229,6 +231,7 @@ pub(super) proof fn flush_pagetable_tlbs_eol_exit(pre: KernelK, cur: KernelK, po
             &&& typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[prc_ptr].pagetable == entry_u.process_map[prc_ptr].pagetable
             &&& old_u.process_map[prc_ptr].pcid == entry_u.process_map[prc_ptr].pcid
             &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
             &&& typed_lock_map_contains_mode(pre_lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write) ==> old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },

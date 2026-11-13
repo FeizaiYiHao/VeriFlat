@@ -288,6 +288,7 @@ pub(crate) proof fn kill_container_finish_pre_from_k(
     requires
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == lctx.cpu_id(),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
@@ -299,21 +300,24 @@ pub(crate) proof fn kill_container_finish_pre_from_k(
     ensures
         ({
             let u = kernel_k_to_kernel_u(*krnl);
-            &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
+            &&& u.cpu_array[cpu_id as int].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.cpu_array[cpu_id as int].owning_container == ctn_ptr
             &&& u.cpu_array[cpu_id as int].current_process == Some(prc_ptr)
             &&& u.cpu_array[cpu_id as int].current_thread == Some(thrd_ptr)
             &&& u.container_map.dom().contains(ctn_ptr)
-            &&& u.container_map[ctn_ptr].lock_state is WriteLocked
+            &&& u.container_map[ctn_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.process_map.dom().contains(prc_ptr)
-            &&& u.process_map[prc_ptr].lock_state is WriteLocked
+            &&& u.process_map[prc_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.thread_map.dom().contains(thrd_ptr)
-            &&& u.thread_map[thrd_ptr].lock_state is WriteLocked
+            &&& u.thread_map[thrd_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.thread_map[thrd_ptr].syscall_progress == kill_container_progress(ctn_ptr, ContainerKillStage::Walk)
         }),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_cpu_projection_at(krnl, cpu_id);
     krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr); kernel_container_projection_at(krnl, ctn_ptr);
+    krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
+    kernel_process_projection_at(krnl, prc_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
+    assert(krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
 }
 
 /// Clearing the progress and unlocking the thread, the process, the cpu's container `ctn_ptr`, and the cpu is the
@@ -325,17 +329,17 @@ pub(crate) proof fn kill_container_finish_step_from_u(
         index_valid(NUM_CPUS, cpu_id),
         ({
             let cpu = pre.cpu_array[cpu_id as int];
-            &&& cpu.lock_state is WriteLocked
+            &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& cpu.owning_container == ctn_ptr
             &&& cpu.current_process == Some(prc_ptr)
             &&& cpu.current_thread == Some(thrd_ptr)
         }),
         pre.container_map.dom().contains(ctn_ptr),
-        pre.container_map[ctn_ptr].lock_state is WriteLocked,
+        pre.container_map[ctn_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
         pre.process_map.dom().contains(prc_ptr),
-        pre.process_map[prc_ptr].lock_state is WriteLocked,
+        pre.process_map[prc_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
         pre.thread_map.dom().contains(thrd_ptr),
-        pre.thread_map[thrd_ptr].lock_state is WriteLocked,
+        pre.thread_map[thrd_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
         pre.thread_map[thrd_ptr].syscall_progress == kill_container_progress(ctn_ptr, ContainerKillStage::Walk),
         cleared == (KernelU { thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: None, ..pre.thread_map[thrd_ptr] }), ..pre }),
         post == (KernelU {

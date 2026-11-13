@@ -91,19 +91,19 @@ pub open spec fn kill_container_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     let killer = u.thread_map[kill_killer(u, cpu_id)];
     let target = u.container_map[kill_container_target(u, cpu_id)];
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& cpu.lock_state is WriteLocked
+    &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
     &&& u.container_map.dom().contains(cpu.owning_container)
-    &&& u.container_map[cpu.owning_container].lock_state is WriteLocked
+    &&& u.container_map[cpu.owning_container].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& u.process_map.dom().contains(cpu.current_process->Some_0)
-    &&& u.process_map[cpu.current_process->Some_0].lock_state is WriteLocked
+    &&& u.process_map[cpu.current_process->Some_0].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& u.thread_map.dom().contains(kill_killer(u, cpu_id))
-    &&& killer.lock_state is WriteLocked
+    &&& killer.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& killer.syscall_progress is Some
     &&& killer.syscall_progress->Some_0 is KillContainer
     &&& u.container_map.dom().contains(kill_container_target(u, cpu_id))
-    &&& target.lock_state is WriteLocked
+    &&& target.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& target.killed
     &&& target.uppertree_seq.contains(cpu.owning_container)
 }
@@ -191,8 +191,8 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// One unlocked Idle or Off cpu of the target moves, in the same state, to the killer's container, and the target drops
-/// its offline request for that cpu.
+/// While the killer write-holds the target's cpu set, one unlocked Idle or Off cpu of the target moves, in the same state,
+/// to the killer's container, and the target drops its offline request for that cpu.
 #[verifier::opaque]
 pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
@@ -200,6 +200,7 @@ pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cp
     let owner_ptr = old_u.cpu_array[cpu_id as int].owning_container;
     let moved = Set::range(0usize, NUM_CPUS).filter(|i: CpuId| old_u.cpu_array[i as int] != new_u.cpu_array[i as int]);
     &&& kill_container_stage(old_u, cpu_id) is Cpus
+    &&& target.cpu_set_lock == (LockStateU::WriteLocked { writer: cpu_id })
     &&& new_u.cpu_array.len() == old_u.cpu_array.len()
     &&& moved.len() == 1
     &&& forall|i: CpuId| #![trigger moved.contains(i)] moved.contains(i) ==> {
@@ -218,11 +219,12 @@ pub open spec fn kill_container_move_cpu_step(old_u: KernelU, new_u: KernelU, cp
     })
 }
 
-/// The target owning no cpu moves on to its free pages.
+/// The target owning no cpu, whose cpu set the killer write-holds, moves on to its free pages.
 #[verifier::opaque]
 pub open spec fn kill_container_pages_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let ctn_ptr = kill_container_target(old_u, cpu_id);
     &&& kill_container_stage(old_u, cpu_id) is Cpus
+    &&& old_u.container_map[ctn_ptr].cpu_set_lock == (LockStateU::WriteLocked { writer: cpu_id })
     &&& forall|i: int| #![trigger old_u.cpu_array[i]] 0 <= i < NUM_CPUS ==> old_u.cpu_array[i].owning_container != ctn_ptr
     &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, ctn_ptr, ContainerKillStage::Pages)), ..old_u })
 }
@@ -341,15 +343,15 @@ pub open spec fn kill_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -
     let prc_ptr = cpu.current_process->Some_0;
     let thrd_ptr = cpu.current_thread->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& cpu.lock_state is WriteLocked
+    &&& cpu.lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& cpu.current_process is Some
     &&& cpu.current_thread is Some
     &&& old_u.container_map.dom().contains(cpu.owning_container)
-    &&& old_u.container_map[cpu.owning_container].lock_state is WriteLocked
+    &&& old_u.container_map[cpu.owning_container].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.process_map.dom().contains(prc_ptr)
-    &&& old_u.process_map[prc_ptr].lock_state is WriteLocked
+    &&& old_u.process_map[prc_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.thread_map.dom().contains(thrd_ptr)
-    &&& old_u.thread_map[thrd_ptr].lock_state is WriteLocked
+    &&& old_u.thread_map[thrd_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
     &&& old_u.thread_map[thrd_ptr].syscall_progress == kill_container_progress(cpu.owning_container, ContainerKillStage::Walk)
 }
 

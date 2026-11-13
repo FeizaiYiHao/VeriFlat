@@ -8,13 +8,21 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk_spec::{KillScope, kill_scope_progress};
 
 verus! {
-/// The killer's write-held cpu container and the marked container `ctn_ptr` below it on `krnl`, and the empty
-/// zombie root `target` of `ctn_ptr`, which has no parent and owns no PCI function, are so on the projection.
-pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, target: RwLockProcessPtr)
+/// The killer's cpu, its process `prc_ptr`, itself `thrd_ptr`, its cpu's container, and the marked container `ctn_ptr`
+/// below that container, all write-held on `krnl`, are write-locked by `cpu_id` on the projection, and the empty zombie
+/// root `target` of `ctn_ptr`, which has no parent and owns no PCI function, is so on the projection.
+pub(crate) proof fn kill_container_retire_root_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, ctn_ptr: RwLockContainerPtr, target: RwLockProcessPtr,
+)
     requires
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == lctx.cpu_id(),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
         krnl.ctn_mp.dom().contains(ctn_ptr),
         krnl.ctn_mp.spec_index(ctn_ptr).being_killed(),
         krnl.ctn_mp.spec_index(ctn_ptr).view().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
@@ -30,9 +38,13 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: 
             let u = kernel_k_to_kernel_u(*krnl);
             let owner = u.cpu_array[cpu_id as int].owning_container;
             let process = u.process_map[target];
+            &&& u.cpu_array[cpu_id as int].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
+            &&& u.process_map[prc_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
+            &&& u.thread_map[thrd_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.container_map.dom().contains(owner)
-            &&& u.container_map[owner].lock_state is WriteLocked
+            &&& u.container_map[owner].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.container_map.dom().contains(ctn_ptr)
+            &&& u.container_map[ctn_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& u.container_map[ctn_ptr].killed
             &&& u.container_map[ctn_ptr].uppertree_seq.contains(owner)
             &&& process.children.len() == 0
@@ -45,7 +57,11 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: 
 {
     let owner = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
     kernel_cpu_projection_at(krnl, cpu_id); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), owner);
+    krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), ctn_ptr);
+    krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), prc_ptr); krnl.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thrd_ptr);
     kernel_container_projection_at(krnl, owner); kernel_container_projection_at(krnl, ctn_ptr); kernel_process_projection_at(krnl, target);
+    kernel_process_projection_at(krnl, prc_ptr); kernel_thread_projection_at(krnl, thrd_ptr);
+    assert(krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
 }
 
 /// Retiring the empty zombie root `target` of the marked container `ctn_ptr`, which raises the container's 4K
@@ -57,10 +73,14 @@ pub(crate) proof fn kill_container_retire_root_step_from_u(
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thrd_ptr,
         pre.thread_map[thrd_ptr].syscall_progress == kill_scope_progress(KillScope::Container { container: ctn_ptr }, target, KillStage::Retire),
+        pre.cpu_array[cpu_id as int].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
+        pre.process_map[pre.cpu_array[cpu_id as int].current_process->Some_0].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
+        pre.thread_map[thrd_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id }),
         ({
             let owner_ptr = pre.cpu_array[cpu_id as int].owning_container;
             &&& pre.container_map.dom().contains(owner_ptr)
-            &&& pre.container_map[owner_ptr].lock_state is WriteLocked
+            &&& pre.container_map[owner_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
+            &&& pre.container_map[ctn_ptr].lock_state == (LockStateU::WriteLocked { writer: cpu_id })
             &&& pre.container_map[ctn_ptr].killed
             &&& pre.container_map[ctn_ptr].uppertree_seq.contains(owner_ptr)
         }),

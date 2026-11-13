@@ -184,10 +184,12 @@ pub(super) proof fn new_process_publish_step_pre_from_k(
         krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: None })),
         krnl.ctn_mp.dom().contains(ctn_ptr),
         !krnl.prc_mp.spec_index(parent_ptr).view().zombie,
+        krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX,
     ensures
         new_process_publish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
 {
     reveal(new_process_publish_step_pre); kernel_write_held_context_projection(krnl, lctx, cpu_id, parent_ptr, thrd_ptr, None); kernel_u_domains_projection(krnl);
+    kernel_process_projection_at(krnl, parent_ptr);
     krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, parent_ptr);
     krnl.pcid_allc_mp.typed_lock_map_aligned_write_at(lctx.pcid_allocator_lock_map(), lctx.thread_id(), krnl.ctn_mp.spec_index(ctn_ptr).view_rodata().view().pcid_allocator); kernel_container_projection_at(krnl, ctn_ptr);
 }

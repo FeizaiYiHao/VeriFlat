@@ -251,7 +251,7 @@ pub(crate) fn kill_container_retire_root_process(
         let pre_u = kernel_k_to_kernel_u(base);
         let post_u = kernel_k_to_kernel_u(*krnl);
         kill_step_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Retire, scope);
-        process_pci_cleared_implies_no_owned_pci_functions(base, target); kill_container_retire_root_pre_from_k(&base, &base_lctx, cpu_id, ctn_ptr, target);
+        process_pci_cleared_implies_no_owned_pci_functions(base, target); kill_container_retire_root_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, target);
         kernel_zombie_root_process_retired_implies_u_step(&base, &retired_k, target, ctn_ptr, allc_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thrd_ptr);
         kill_container_retire_root_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thrd_ptr, ctn_ptr, target,

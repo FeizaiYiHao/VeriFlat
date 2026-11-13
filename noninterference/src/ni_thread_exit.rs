@@ -47,7 +47,7 @@ pub proof fn thread_exit_descriptor_dropped_step_lr(old_u: KernelU, new_u: Kerne
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_reclaim_in_container(old_u, new_u, cpu_id),
-        kernel_u_killed_descriptor_dropped(old_u, new_u),
+        kernel_u_killed_descriptor_dropped(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(thread_exit_drop_step_pre); reveal(kernel_u_killed_descriptor_dropped); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
@@ -66,7 +66,7 @@ pub proof fn thread_exit_descriptor_dropped_step_iso(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
-        kernel_u_killed_descriptor_dropped(old_u, new_u),
+        kernel_u_killed_descriptor_dropped(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_killed_descriptor_dropped);
@@ -163,7 +163,7 @@ pub proof fn thread_exit_dangling_reclaimed_step_lr(old_u: KernelU, new_u: Kerne
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_reclaim_in_container(old_u, new_u, cpu_id),
-        kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(thread_exit_drop_step_pre); reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_object_page_owner_wf);
@@ -180,7 +180,7 @@ pub proof fn thread_exit_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
-        kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_dangling_thread_reclaimed); reveal(kernel_u_endpoint_ownership_wf);
@@ -202,7 +202,7 @@ pub proof fn thread_exit_endpoint_released_step_lr(old_u: KernelU, new_u: Kernel
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_reclaim_in_container(old_u, new_u, cpu_id),
-        kernel_u_killed_endpoint_released(old_u, new_u),
+        kernel_u_killed_endpoint_released(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
     reveal(thread_exit_drop_step_pre); reveal(kernel_u_killed_endpoint_released); reveal(kernel_u_endpoint_released); reveal(kernel_u_cpu_ownership_wf);
@@ -223,7 +223,7 @@ pub proof fn thread_exit_endpoint_released_step_iso(old_u: KernelU, new_u: Kerne
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
-        kernel_u_killed_endpoint_released(old_u, new_u),
+        kernel_u_killed_endpoint_released(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
     reveal(kernel_u_killed_endpoint_released); reveal(kernel_u_endpoint_released); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_endpoint_wait_wf);

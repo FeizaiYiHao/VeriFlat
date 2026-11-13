@@ -1034,6 +1034,7 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
             &&& old_u.process_map[prc_ptr].pagetable == entry.process_map[prc_ptr].pagetable
             &&& old_u.process_map[prc_ptr].pcid == entry.process_map[prc_ptr].pcid
             &&& old_u.container_map.dom().contains(ctn_ptr)
+            &&& !(old_u.container_map[ctn_ptr].cpu_set_lock is WriteLocked)
             &&& old_u.container_map[ctn_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry.kernel_l4_end
         },
