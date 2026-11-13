@@ -50,6 +50,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         console::init();
         logging::init();
         power::disable_turbo(0);
+        interrupt::switch_to_x2apic_if_requested();
     }
 
     log::info!("VeriFlat trap layer: command line {:?}", boot::get_raw_command_line());

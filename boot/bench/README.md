@@ -181,6 +181,19 @@ size .. does not divide the 4 KiB request` and leaves the controller disabled, a
 `NVME_BLOCK_SIZE=4096 boot/run.sh` formats the emulated namespace with 4 KiB LBAs (default 512);
 `VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
 
+Which drive: every NVMe test and benchmark of dom0 (this one, `parallel_nvme`, `parallel_nvme_xproc`) drives the one
+function that `boot/dom0/src/nvme/pci.rs` `selected_nvme` picks, and all of them write to it from LBA 0 on, destroying
+its contents. `VERIFLAT_NVME_BDF=<bus>:<dev>.<fn>` of the dom0 build (hexadecimal, as `lspci` prints it, e.g.
+`VERIFLAT_NVME_BDF=3c:00.0`) names it; without it, under a hypervisor (CPUID.01H:ECX bit 31) the recorded NVMe function
+number `VERIFLAT_NVME_INDEX` in B/D/F order is used (default 0, the lowest B/D/F: `boot/run.sh` behaves as before),
+and on bare metal none is: before touching any controller each of them logs one line such as `nvme bench skipped: bare
+metal and no NVMe function named; build dom0 with VERIFLAT_NVME_BDF=<bus:dev.fn> to pick one; recorded NVMe
+functions: 3b:00.0 8086:0b60 3c:00.0 8086:0b60` (bus:dev.fn vendor:device; model and serial are not shown because
+reading them needs an Identify command to the controller). A `VERIFLAT_NVME_BDF` that names no recorded NVMe function
+skips them likewise. `VERIFLAT_NVME_ASSUME_BARE_METAL=1` makes dom0 take the bare-metal branch under QEMU too. On a
+real machine, name the drive that holds nothing: find the boot disk with `findmnt /` and `lsblk`, and the PCI address
+of each NVMe with `readlink /sys/class/nvme/nvme*/device` (`cloudlab_tools/node-check.sh` prints both).
+
 Configurations, in this order, each with read and write at submission batch 1 and 32:
 
 | line | configuration | sample |
@@ -233,8 +246,8 @@ write. Per op and batch (read 1, read 32, write 1, write 32), each worker runs a
 | `parallel_nvme cpu=k op=<read\|write> batch=b alone=A conc=C ratio=R` | IOPS of worker k alone and with all workers at once; `ratio` = conc / alone |
 | `parallel_nvme summary op=.. batch=b n=.. total_conc=T sum_alone=.. median_alone=M scaling=S ...` | `total_conc`: every completion of the concurrent phase over its span from the first worker's start to the last one's end; `scaling` = T / M; the ratios' min and median; the share of the span in which all workers ran (`overlap`) |
 
-It drives the recorded NVMe function number `VERIFLAT_NVME_INDEX` (default 0, the lowest B/D/F) and leaves other NVMe
-functions alone, so with two SSDs it measures one of them; without that function it logs `parallel_nvme skipped`.
+It drives the NVMe function picked as above (`VERIFLAT_NVME_BDF`, required on bare metal) and leaves other NVMe
+functions alone, so with two SSDs it measures one of them; without a picked function it logs `parallel_nvme skipped`.
 Under QEMU every doorbell is a VM exit into QEMU's one NVMe device thread, so the total stays near the
 single-queue rate whatever the CPU count (2026-11-12, KVM, SMP 1/2/4/8: total_conc at read batch 32 74K / 58K /
 74K / 58K IOPS, each worker's ratio about 1/n); these runs show only that the queues work. Like the other NVMe
@@ -273,7 +286,7 @@ cross-process IOPS, and their ratio is the cost of the IPC. `nvme_xproc` alone r
   is one round trip per request; at batch 32 one round trip per group of completions.
 
 Workers = min(CPUs, the queue pairs the controller allocates, 24), as for `parallel_nvme`; LBA ranges, ops, batches,
-phases and `VERIFLAT_NVME_PARALLEL_MS` / `VERIFLAT_NVME_INDEX` are the same. The lines are those of `parallel_nvme`
+phases, `VERIFLAT_NVME_PARALLEL_MS` and the drive selection are the same. The lines are those of `parallel_nvme`
 with the prefix `parallel_nvme_xproc` (`total_conc` is the total IOPS of the concurrent phase), plus per run
 `parallel_nvme_xproc calls op=.. batch=b n=.. calls=C per_call=P`: the round trips of the concurrent phase and its
 completions per round trip. Afterwards the driver process is killed, which returns the function to dom0, and dom0
@@ -364,6 +377,15 @@ them before it enters dom0 and again where the RAM log is finalised (exit, panic
 and logs "effective frequency: CPU 0 <f> MHz = TSC <t> MHz (from <source>) x APERF/MPERF <ratio> (<dA> / <dM>),
 unhalted <p>% of <c> TSC cycles", the mean frequency while CPU 0 was not halted (`boot/kernel/src/power.rs`); without
 the CPUID bit, as under KVM, it logs once that the frequency is not measured.
+
+The local APIC runs in the mode the firmware hands over: xAPIC as before, or x2APIC, which the kernel then keeps on
+every CPU (`boot/kernel/src/interrupt/lapic.rs`); the boot option `x2apic=on` switches it from xAPIC to x2APIC when
+CPUID.01H:ECX bit 21 reports x2APIC (`x2apic=off`, the default, keeps the firmware's mode), e.g. `boot/run.sh -append
+x2apic=on` under KVM, whose `-cpu host` reports it. The kernel logs "x2apic=on: switched the local APIC from xAPIC to
+x2APIC mode" when it switches and always "local APIC mode: <xAPIC|x2APIC>, boot CPU APIC ID <id>". The loader takes
+processors from MADT local APIC (type 0) and local x2APIC (type 9) entries and logs "MADT: <a> local APIC and <b>
+local x2APIC entries, <n> enabled processors taken"; an APIC ID above 254 is refused with a warning and that processor
+stays down. The loader accepts up to 16 VT-d remapping units (`MAX_IOMMU_UNITS`) and panics on more.
 
 1. Keep the buffer out of Linux's memory with the kernel parameter `memmap=16M!0x140000000` (in
    `GRUB_CMDLINE_LINUX` of `/etc/default/grub`, then `update-grub`); Linux then shows it as `/dev/pmem0`.

@@ -20,7 +20,7 @@
 
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::nvme_test::{report, run_blocktest_raw_with_delay, Samples};
-use super::pci::{find_nvme, NvmeFunction, PciBarAddr};
+use super::pci::{selected_nvme, NvmeFunction, PciBarAddr};
 use super::ring_buffer::GenericRingBuffer;
 use super::time::{rdtsc, tsc_hz, tsc_rate};
 use super::{BlockOp, BlockReq};
@@ -87,10 +87,9 @@ fn ring() -> &'static mut Ring {
     unsafe { &mut *(RING_VA as *mut Ring) }
 }
 
-/// Runs the three configurations, or logs that it skips them when the loader recorded no NVMe function.
+/// Runs the three configurations on the NVMe function `pci::selected_nvme` picks, or logs that it skips them.
 pub fn run(image: usize, pages: usize) {
-    let Some(f) = find_nvme() else {
-        log::info!("nvme bench skipped: no NVMe function recorded");
+    let Some(f) = selected_nvme("nvme bench") else {
         return;
     };
     let Some((hz, source)) = tsc_rate() else {

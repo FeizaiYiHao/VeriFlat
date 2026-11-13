@@ -14,13 +14,13 @@
 //! requests sequentially within its own 1/n of namespace 1's LBAs. Batch b means at most b requests in flight on
 //! the worker's queue: each round reaps every posted completion, refills up to b, and writes each doorbell at
 //! most once. Per (op, batch), each worker runs alone for `WINDOW_MS` while the others spin, then all at once
-//! until one shared deadline. The function is the recorded NVMe function number `VERIFLAT_NVME_INDEX` (default 0,
-//! the lowest B/D/F); other NVMe functions stay untouched.
+//! until one shared deadline. The function is the one `pci::selected_nvme` picks (`VERIFLAT_NVME_BDF`, required on
+//! bare metal, else under a hypervisor `VERIFLAT_NVME_INDEX`); other NVMe functions stay untouched.
 
 use super::cmd as nvme_cmd;
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::dma::{allocate_dma, Dma, NvmeCommand, NvmeCompletion};
-use super::pci::find_nvme_index;
+use super::pci::{find_nvme_index, selected_nvme};
 use super::queue::QUEUE_DEPTH;
 use super::time::{rdtsc, tsc_hz, tsc_rate};
 use crate::{check, current_cpu, hundredths, Hundredths, MAX_PAIRS, PAIRS, PHASE_NVME_FIRST};
@@ -41,18 +41,13 @@ pub(super) const WINDOW_MS: u64 = match option_env!("VERIFLAT_NVME_PARALLEL_MS")
     Some(s) => parse_decimal(s),
     None => 1000,
 };
-/// Which recorded NVMe function in B/D/F order the benchmark drives, from `VERIFLAT_NVME_INDEX` (default 0).
-pub(super) const NVME_INDEX: usize = match option_env!("VERIFLAT_NVME_INDEX") {
-    Some(s) => parse_decimal(s) as usize,
-    None => 0,
-};
 
 const fn parse_decimal(s: &str) -> u64 {
     let b = s.as_bytes();
     let mut i = 0;
     let mut v = 0;
     while i < b.len() {
-        assert!(b[i].is_ascii_digit(), "VERIFLAT_NVME_PARALLEL_MS and VERIFLAT_NVME_INDEX must be decimal numbers");
+        assert!(b[i].is_ascii_digit(), "VERIFLAT_NVME_PARALLEL_MS must be a decimal number");
         v = v * 10 + (b[i] - b'0') as u64;
         i += 1;
     }
@@ -113,20 +108,19 @@ fn fail(what: core::fmt::Arguments) -> ! {
     unsafe { sys_debug_exit(1) };
 }
 
-/// Runs the benchmark over the first `n` parallel call pairs, or logs that it skips it when the loader recorded
-/// no NVMe function `NVME_INDEX`.
+/// Runs the benchmark over the first `n` parallel call pairs on the NVMe function `pci::selected_nvme` picks, or logs
+/// that it skips it.
 pub fn run(n: usize) {
-    let Some(f) = find_nvme_index(NVME_INDEX) else {
-        log::info!("parallel_nvme skipped: no NVMe function {} recorded", NVME_INDEX);
+    let Some(f) = selected_nvme("parallel_nvme") else {
         return;
     };
     let Some((hz, source)) = tsc_rate() else {
         fail(format_args!("no CPUID source gives the TSC rate; build dom0 with VERIFLAT_TSC_MHZ set to it"));
     };
-    let others = find_nvme_index(NVME_INDEX + 1).is_some() || NVME_INDEX > 0;
+    let others = find_nvme_index(1).is_some();
     log::info!(
-        "parallel_nvme: NVMe function {} ({:02x}:{:02x}.{}, vendor {:04x} device {:04x}, BAR0 {:#x}){}, TSC {} MHz from {}",
-        NVME_INDEX, f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys,
+        "parallel_nvme: NVMe function {:02x}:{:02x}.{} (vendor {:04x} device {:04x}, BAR0 {:#x}){}, TSC {} MHz from {}",
+        f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys,
         if others { "; other NVMe functions stay untouched" } else { "" }, hz / 1_000_000, source
     );
     if !HEAP_READY.swap(true, Ordering::SeqCst) {

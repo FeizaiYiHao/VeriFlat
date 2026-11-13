@@ -35,8 +35,8 @@
 use super::cmd as nvme_cmd;
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::dma::{allocate_dma, Dma, NvmeCommand, NvmeCompletion};
-use super::parallel::{time_run, Measured, MAX_BATCH, MAX_QUEUES, NVME_INDEX, RUNS, WINDOW_MS};
-use super::pci::{find_nvme_index, NvmeFunction};
+use super::parallel::{time_run, Measured, MAX_BATCH, MAX_QUEUES, RUNS, WINDOW_MS};
+use super::pci::{choose_nvme, selected_nvme, NvmeFunction};
 use super::queue::QUEUE_DEPTH;
 use super::time::{rdtsc, tsc_hz, tsc_rate};
 use crate::{current_cpu, entry, fund, image_range, quiet, quiet_value, stack_top, wait_for, wait_yield, PAIRS};
@@ -144,10 +144,10 @@ fn fail(what: core::fmt::Arguments) -> ! {
 }
 
 /// Whether the parallel call timing must hand `HANDOFF_ENDPOINT` to its clients: when the build runs this benchmark
-/// (the caller checks) and the loader recorded NVMe function `NVME_INDEX`. Creates the endpoint in dom0's first
-/// thread, funded by it.
+/// (the caller checks) and `pci::choose_nvme` picks an NVMe function. Creates the endpoint in dom0's first thread,
+/// funded by it.
 pub fn prepare_handoff() -> bool {
-    if find_nvme_index(NVME_INDEX).is_none() {
+    if choose_nvme().is_err() {
         return false;
     }
     fund("parallel_nvme_xproc handoff endpoint funding", 1);
@@ -161,11 +161,10 @@ pub fn handoff() -> bool {
     HANDOFF.load(Ordering::SeqCst)
 }
 
-/// Runs the benchmark over the first `n` parallel call pairs, or logs that it skips it when the loader recorded no
-/// NVMe function `NVME_INDEX` or its LBA size exceeds 4 KiB.
+/// Runs the benchmark over the first `n` parallel call pairs on the NVMe function `pci::selected_nvme` picks, or logs
+/// that it skips it (also when its LBA size exceeds 4 KiB).
 pub fn run(n: usize) {
-    let Some(f) = find_nvme_index(NVME_INDEX) else {
-        log::info!("parallel_nvme_xproc skipped: no NVMe function {} recorded", NVME_INDEX);
+    let Some(f) = selected_nvme("parallel_nvme_xproc") else {
         return;
     };
     if !handoff() {
@@ -175,8 +174,8 @@ pub fn run(n: usize) {
         fail(format_args!("no CPUID source gives the TSC rate; build dom0 with VERIFLAT_TSC_MHZ set to it"));
     };
     log::info!(
-        "parallel_nvme_xproc: NVMe function {} ({:02x}:{:02x}.{}, vendor {:04x} device {:04x}, BAR0 {:#x}), TSC {} MHz from {}",
-        NVME_INDEX, f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys, hz / 1_000_000, source
+        "parallel_nvme_xproc: NVMe function {:02x}:{:02x}.{} (vendor {:04x} device {:04x}, BAR0 {:#x}), TSC {} MHz from {}",
+        f.bus, f.dev, f.fun, f.vendor, f.device, f.bar_phys, hz / 1_000_000, source
     );
 
     // The driver process: dom0's image, its own IOMMU table, the handoff endpoint; then the function and BAR0.

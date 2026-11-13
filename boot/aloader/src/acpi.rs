@@ -144,20 +144,43 @@ fn tables() -> AcpiTables<NullAcpiHandler> {
     }
 }
 
-/// Local APIC IDs of the enabled processors listed in the MADT, in table order.
+/// Local APIC IDs of the enabled processors listed in the MADT, in table order: Processor Local APIC (type 0) and
+/// Processor Local x2APIC (type 9) entries alike, since firmware that hands over in x2APIC mode may list processors only
+/// as type 9; an ID listed twice counts once. IDs above 254 are refused with a warning (the processor stays down):
+/// the kernel takes 8-bit IDs and 255 is the xAPIC broadcast ID.
 pub fn probe_cpus() -> ArrayVec<u8, MAX_CPUS> {
     let acpi = tables();
     let madt = acpi.find_table::<Madt>().expect("failed to find MADT");
 
-    let mut ids = ArrayVec::new();
+    let mut ids: ArrayVec<u8, MAX_CPUS> = ArrayVec::new();
+    let (mut type0, mut type9) = (0usize, 0usize);
     for entry in madt.get().entries() {
-        if let MadtEntry::LocalApic(lapic) = entry {
-            let (apic_id, flags) = (lapic.apic_id, lapic.flags);
-            if flags & 1 != 0 && ids.push(apic_id).is_err() {
-                log::warn!("more than {} processors; ignoring APIC ID {}", MAX_CPUS, apic_id);
+        let (apic_id, flags) = match entry {
+            MadtEntry::LocalApic(lapic) => {
+                type0 += 1;
+                (lapic.apic_id as u32, lapic.flags)
             }
+            MadtEntry::LocalX2Apic(x2apic) => {
+                type9 += 1;
+                (x2apic.x2apic_id, x2apic.flags)
+            }
+            _ => continue,
+        };
+        if flags & 1 == 0 {
+            continue;
+        }
+        if apic_id > 254 {
+            log::warn!("APIC ID {} is above 254, which VeriFlat does not support; that processor stays down", apic_id);
+            continue;
+        }
+        if ids.iter().any(|&id| id as u32 == apic_id) {
+            continue;
+        }
+        if ids.push(apic_id as u8).is_err() {
+            log::warn!("more than {} processors; ignoring APIC ID {}", MAX_CPUS, apic_id);
         }
     }
+    log::info!("MADT: {} local APIC and {} local x2APIC entries, {} enabled processors taken", type0, type9, ids.len());
     ids
 }
 

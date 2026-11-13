@@ -195,7 +195,7 @@ pub unsafe fn init() {
             *MAX_CPUS.lock() = n;
         }
         for option in start_info.command_line().split_ascii_whitespace() {
-            if ["serial=", "ramlog=", "reset_after=", "turbo="].iter().any(|p| option.starts_with(p)) {
+            if ["serial=", "ramlog=", "reset_after=", "turbo=", "x2apic="].iter().any(|p| option.starts_with(p)) {
                 let mut options = KERNEL_OPTIONS.lock();
                 let pushed = (options.is_empty() || options.push(' ').is_ok()) && options.push_str(option).is_ok();
                 assert!(pushed, "boot options for the kernel are longer than 256 bytes");

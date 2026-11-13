@@ -41,6 +41,10 @@ pub struct KernelCommandLine {
 
     /// Disable turbo on every CPU (`turbo=off`; `turbo=on` leaves it as the firmware set it).
     pub turbo_off: bool,
+
+    /// Switch the local APICs to x2APIC mode when CPUID reports it (`x2apic=on`; `x2apic=off`, the default, keeps the
+    /// mode the firmware handed over: xAPIC, or x2APIC, which the kernel never leaves).
+    pub x2apic_on: bool,
 }
 
 impl KernelCommandLine {
@@ -56,6 +60,7 @@ impl KernelCommandLine {
             ramlog: None,
             reset_after: None,
             turbo_off: false,
+            x2apic_on: false,
         }
     }
 
@@ -110,6 +115,13 @@ impl KernelCommandLine {
                             _ => return Err(Error::InvalidCommandLineOption(component)),
                         };
                         crate::power::TURBO_OFF.store(self.turbo_off, core::sync::atomic::Ordering::Relaxed);
+                    }
+                    "x2apic" => {
+                        self.x2apic_on = match value {
+                            "on" => true,
+                            "off" => false,
+                            _ => return Err(Error::InvalidCommandLineOption(component)),
+                        };
                     }
                     _ => {
                         return Err(Error::InvalidCommandLineOption(component));

@@ -13,8 +13,11 @@ pub const MAX_PAGES: usize = 1024 * 1024;
 /// The most processors the loader reports. Must equal `veriflat_monolith::NUM_CPUS`.
 pub const MAX_CPUS: usize = 40;
 
-/// The most VT-d remapping units (DMAR DRHD entries) the loader reports.
-pub const MAX_IOMMU_UNITS: usize = 8;
+/// The most VT-d remapping units (DMAR DRHD entries) the loader reports; it panics on more. Sized for a two-socket
+/// server (one unit per PCIe stack plus accelerator stacks per socket). What scales with it: `BootInfo.iommu_units`
+/// (8 bytes each) and the kernel's `iommu::UNITS` (8 bytes each); the work per invalidation and the loader's one
+/// mapped register page per unit follow the units present, not this bound. Boot-only: the verified kernel never sees it.
+pub const MAX_IOMMU_UNITS: usize = 16;
 
 /// The most PCI functions with a device BAR0 the loader records.
 pub const MAX_PCI_DEVICES: usize = 16;
