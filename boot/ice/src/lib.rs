@@ -24,6 +24,7 @@ pub mod bench;
 pub mod ctx;
 pub mod desc;
 mod device;
+pub mod maglev;
 pub mod packet;
 mod queue;
 pub mod regs;

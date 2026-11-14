@@ -74,16 +74,64 @@ impl<'p, P: Platform> TxQueue<'p, P> {
         k * self.batch
     }
 
-    /// Queues one descriptor per frame of `frames` (IOVA, length), each asking for a write-back as the Linux driver
-    /// does per frame, as many as the ring has room for, and rings the doorbell once; returns the frames queued. A
-    /// queue that sends this way reclaims with `clean_frames`, never with `clean`.
+    /// As `send_batches`, but descriptor i of the stream points at copy `(*cursor + i) % count` of `count` copies of the
+    /// frame, `slot` bytes apart from `iova`; `cursor` advances past the descriptors queued. Reclaims with `clean`.
+    pub fn send_batches_pool(&mut self, iova: u64, slot: usize, count: usize, len: u16, cursor: &mut usize, batches: usize) -> usize {
+        let free_batches = (self.ring.size() - self.ring.distance(self.next_to_clean, self.next_to_use)) / self.batch - 1;
+        let k = batches.min(free_batches);
+        if k == 0 {
+            return 0;
+        }
+        let mut c = *cursor;
+        for _ in 0..k {
+            for j in 0..self.batch {
+                let d = TxDesc::data(iova + (c * slot) as u64, len, j == self.batch - 1);
+                c = if c + 1 >= count { 0 } else { c + 1 };
+                unsafe { ptr::write_volatile(self.desc(self.next_to_use), d) };
+                self.next_to_use = self.ring.add(self.next_to_use, 1);
+            }
+        }
+        *cursor = c;
+        fence(Ordering::Release);
+        self.p.write32(regs::qtx_comm_dbell(self.index), self.next_to_use as u32);
+        k * self.batch
+    }
+
+    /// As `send_batches`, but descriptor i of the stream points at `frames[(*cursor + i) % frames.len()]`, and
+    /// `cursor` advances past the descriptors queued: a sender that stands in for several Rx queues of a reflected
+    /// stream. Reclaims with `clean`.
+    pub fn send_batches_from(&mut self, frames: &[(u64, u16)], cursor: &mut usize, batches: usize) -> usize {
+        let free_batches = (self.ring.size() - self.ring.distance(self.next_to_clean, self.next_to_use)) / self.batch - 1;
+        let k = batches.min(free_batches);
+        if k == 0 || frames.is_empty() {
+            return 0;
+        }
+        for _ in 0..k {
+            for j in 0..self.batch {
+                let (iova, len) = frames[*cursor];
+                *cursor = if *cursor + 1 == frames.len() { 0 } else { *cursor + 1 };
+                unsafe { ptr::write_volatile(self.desc(self.next_to_use), TxDesc::data(iova, len, j == self.batch - 1)) };
+                self.next_to_use = self.ring.add(self.next_to_use, 1);
+            }
+        }
+        fence(Ordering::Release);
+        self.p.write32(regs::qtx_comm_dbell(self.index), self.next_to_use as u32);
+        k * self.batch
+    }
+
+    /// Queues one descriptor per frame of `frames` (IOVA, length), as many as the ring has room for, and rings the
+    /// doorbell once; returns the frames queued. Only the last descriptor of each aligned batch of `batch` asks for a
+    /// write-back (as DPDK's `tx_rs_thresh`), so a batch is reclaimed once its whole batch has been queued: a write-back
+    /// per frame, 16-byte device writes into lines the CPU polls, held the whole port to about 11.5 Mpps on c6620
+    /// (2026-11-14, 28 queues). A queue that sends this way reclaims with `clean_frames`.
     pub fn send_frames(&mut self, frames: &[(u64, u16)]) -> usize {
         let k = frames.len().min(self.ring.free(self.next_to_use, self.next_to_clean));
         if k == 0 {
             return 0;
         }
         for &(iova, len) in &frames[..k] {
-            unsafe { ptr::write_volatile(self.desc(self.next_to_use), TxDesc::data(iova, len, true)) };
+            let rs = (self.next_to_use + 1) % self.batch == 0;
+            unsafe { ptr::write_volatile(self.desc(self.next_to_use), TxDesc::data(iova, len, rs)) };
             self.next_to_use = self.ring.add(self.next_to_use, 1);
         }
         fence(Ordering::Release);
@@ -91,19 +139,9 @@ impl<'p, P: Platform> TxQueue<'p, P> {
         k
     }
 
-    /// Reclaims, in order, every frame `send_frames` queued that the device reported sent; returns how many.
+    /// Reclaims, in order, every whole batch `send_frames` queued that the device reported sent; returns the frames.
     pub fn clean_frames(&mut self) -> usize {
-        let mut n = 0;
-        while self.next_to_clean != self.next_to_use {
-            let qw1 = unsafe { ptr::read_volatile(&(*self.desc(self.next_to_clean)).cmd_type_offset_bsz) };
-            if !TxDesc::is_done(qw1) {
-                break;
-            }
-            self.next_to_clean = self.ring.add(self.next_to_clean, 1);
-            n += 1;
-        }
-        self.completed += n as u64;
-        n
+        self.clean()
     }
 
     /// Descriptors queued and not reclaimed yet.
@@ -140,13 +178,16 @@ pub struct RxQueue<'p, P: Platform> {
     next_to_clean: usize,
     /// The first descriptor taken and not given back yet; `next_to_clean` when none is held.
     next_to_arm: usize,
+    /// The Rx tail `give_back` wrote last.
+    tail: usize,
     pub counts: RxCounts,
 }
 
 impl<'p, P: Platform> RxQueue<'p, P> {
     /// A queue whose descriptor `i` uses `bufs[i]`. Arms every descriptor; the device gets them with `start`.
     pub(crate) fn new(p: &'p P, index: usize, descs: DmaRegion, bufs: alloc::vec::Vec<DmaRegion>) -> Self {
-        let q = RxQueue { p, index, ring: Ring::new(bufs.len()), descs, bufs, next_to_clean: 0, next_to_arm: 0, counts: RxCounts::default() };
+        let tail = bufs.len() - 1;
+        let q = RxQueue { p, index, ring: Ring::new(bufs.len()), descs, bufs, next_to_clean: 0, next_to_arm: 0, tail, counts: RxCounts::default() };
         for i in 0..q.ring.size() {
             q.arm(i);
         }
@@ -204,7 +245,8 @@ impl<'p, P: Platform> RxQueue<'p, P> {
             // device ignores the low 3 bits of the Rx tail (the Linux driver bumps it in steps of 8), which only hands
             // it fewer descriptors than written, never more.
             fence(Ordering::Release);
-            self.p.write32(regs::qrx_tail(self.index), self.ring.sub(self.next_to_clean, 1) as u32);
+            self.tail = self.ring.sub(self.next_to_clean, 1);
+            self.p.write32(regs::qrx_tail(self.index), self.tail as u32);
         }
         self.next_to_arm = self.next_to_clean;
         n
@@ -247,8 +289,38 @@ impl<'p, P: Platform> RxQueue<'p, P> {
             self.arm(self.next_to_arm);
             self.next_to_arm = self.ring.add(self.next_to_arm, 1);
         }
-        fence(Ordering::Release);
-        self.p.write32(regs::qrx_tail(self.index), self.ring.sub(self.next_to_clean, 1) as u32);
+        // The device ignores the low 3 bits of the Rx tail (see `poll`): a write that leaves the rest unchanged hands it
+        // nothing, so it is skipped (a request of one frame would otherwise write the tail per frame).
+        let tail = self.ring.sub(self.next_to_clean, 1);
+        if tail & !7 != self.tail & !7 {
+            fence(Ordering::Release);
+            self.p.write32(regs::qrx_tail(self.index), tail as u32);
+            self.tail = tail;
+        }
+    }
+
+    /// The next descriptor `take` looks at: `give_back_to` this position hands back every frame taken so far.
+    pub fn position(&self) -> usize {
+        self.next_to_clean
+    }
+
+    /// Re-arms the descriptors taken before position `end` (an earlier `position`, in take order) and hands them back
+    /// to the device; frames taken after `end` stay the reader's.
+    pub fn give_back_to(&mut self, end: usize) {
+        debug_assert!(self.ring.distance(self.next_to_arm, end) <= self.ring.distance(self.next_to_arm, self.next_to_clean));
+        if self.next_to_arm == end {
+            return;
+        }
+        while self.next_to_arm != end {
+            self.arm(self.next_to_arm);
+            self.next_to_arm = self.ring.add(self.next_to_arm, 1);
+        }
+        let tail = self.ring.sub(end, 1);
+        if tail & !7 != self.tail & !7 {
+            fence(Ordering::Release);
+            self.p.write32(regs::qrx_tail(self.index), tail as u32);
+            self.tail = tail;
+        }
     }
 
     /// The received frame at descriptor `i` as the device wrote it, for tests and debugging: (length, status, bytes).

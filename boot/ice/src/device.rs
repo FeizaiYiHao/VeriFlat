@@ -88,6 +88,15 @@ pub struct PortStats {
     pub tx_broadcast: u64,
     pub crc_errors: u64,
     pub illegal_bytes: u64,
+    /// Flow control frames: XOFF and XON received, XOFF sent.
+    pub rx_xoff: u64,
+    pub rx_xon: u64,
+    pub tx_xoff: u64,
+    /// Priority flow control XOFF frames received, all priorities.
+    pub rx_pfc_xoff: u64,
+    /// Frames the VSI dropped for want of an Rx descriptor, and frames the receive packet buffer dropped.
+    pub rx_no_desc: u64,
+    pub rx_buf_drops: u64,
 }
 
 impl PortStats {
@@ -106,6 +115,12 @@ impl PortStats {
             tx_broadcast: d40(self.tx_broadcast, earlier.tx_broadcast),
             crc_errors: d32(self.crc_errors, earlier.crc_errors),
             illegal_bytes: d32(self.illegal_bytes, earlier.illegal_bytes),
+            rx_xoff: d32(self.rx_xoff, earlier.rx_xoff),
+            rx_xon: d32(self.rx_xon, earlier.rx_xon),
+            tx_xoff: d32(self.tx_xoff, earlier.tx_xoff),
+            rx_pfc_xoff: self.rx_pfc_xoff.wrapping_sub(earlier.rx_pfc_xoff),
+            rx_no_desc: d32(self.rx_no_desc, earlier.rx_no_desc),
+            rx_buf_drops: d32(self.rx_buf_drops, earlier.rx_buf_drops),
         }
     }
 }
@@ -634,7 +649,21 @@ impl<'p, P: Platform> Device<'p, P> {
             tx_broadcast: self.stat40(glprt_bptcl(lp)),
             crc_errors: self.p.read32(glprt_crcerrs(lp)) as u64,
             illegal_bytes: self.p.read32(glprt_illerrc(lp)) as u64,
+            rx_xoff: self.p.read32(glprt_lxoffrxc(lp)) as u64,
+            rx_xon: self.p.read32(glprt_lxonrxc(lp)) as u64,
+            tx_xoff: self.p.read32(glprt_lxofftxc(lp)) as u64,
+            rx_pfc_xoff: (0..8).map(|j| self.p.read32(glprt_pxoffrxc(lp, j)) as u64).sum(),
+            rx_no_desc: self.p.read32(glv_rdpc(self.info.vsi_num as usize)) as u64,
+            rx_buf_drops: self.p.read32(PRTRPB_RDPC) as u64,
         }
+    }
+
+    /// Link XOFF and priority XOFF frames received, summed over all eight port counters (a check that pauses are
+    /// not counted under another port index than `lport`).
+    pub fn xoff_all_ports(&self) -> (u64, u64) {
+        let lfc = (0..8).map(|i| self.p.read32(glprt_lxoffrxc(i)) as u64).sum();
+        let pfc = (0..8).flat_map(|i| (0..8).map(move |j| (i, j))).map(|(i, j)| self.p.read32(glprt_pxoffrxc(i, j)) as u64).sum();
+        (lfc, pfc)
     }
 
     /// Stops everything with a PF reset. The queues taken out must not be used afterwards.

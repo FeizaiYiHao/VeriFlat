@@ -413,9 +413,9 @@ so never run it on a machine whose NVMe SSD has data.
 ## E810 (ice) driver benchmark
 
 A polling, multi-queue user-level driver for the Intel E810 (PCI 8086:1591..1593 E810-C, 1599..159b E810-XXV), for
-throughput scaling with cores on a CloudLab c6620. Nothing of it has run on an E810 yet: no such device or QEMU model
-was available, so it is built and reviewed against the Linux `ice` headers (read as a reference) and tested on a
-software device model only.
+throughput scaling with cores on a CloudLab c6620. It was written against the Linux `ice` headers (read as a reference)
+and a software device model, and has run on an E810-C (firmware 7.10.1, 100G) on c6620 er042 since 2026-11-14, from
+Linux user space and from dom0 (bare-metal scripts and results: the artifact repository's `baremetal/nic-*`).
 
 - `boot/ice/`: the hardware-independent core (no_std). Its only hardware access is the `Platform` trait (32-bit BAR0
   read/write, zeroed DMA allocation returning VA and IOVA, delay, TSC). `Device::new` does a PF reset, the control
@@ -434,31 +434,52 @@ software device model only.
   first and alone, finds the E810 with `sys_pci_info` (`VERIFLAT_ICE_BDF=bb:dd.f`, else the first E810-C, else the
   first E810), attaches it with `pci_attach_dma`, drives BAR0 at `0xd0_0000_0000 + base` and takes DMA memory from
   the heap (IOVA = VA). Worker k runs on CPU k (placed as the parallel call timing places its clients) and owns
-  queue pair k. Build-time settings: `VERIFLAT_ICE_SECS` (5), `VERIFLAT_ICE_QUEUES` (one per CPU),
-  `VERIFLAT_ICE_FRAME` (64, with CRC), `VERIFLAT_ICE_MODE` (`tx`, `rx`, `both`, default `both`), `VERIFLAT_ICE_DST` or
+  queue pair k. The device comes up once with one queue pair per worker; then one round runs per frame size, mode and
+  queue count. Build-time settings: `VERIFLAT_ICE_SECS` (5, per round), the comma-separated lists
+  `VERIFLAT_ICE_QUEUES` (one per CPU), `VERIFLAT_ICE_FRAME` (64, with CRC) and `VERIFLAT_ICE_MODE` (`tx`, `rx`,
+  `both`, default `both`; `rx` adds a sender on the last CPU that sends the measured queues' frames in turn, so it needs
+  a CPU besides the measured queues), `VERIFLAT_ICE_POOL` (64, copies of each queue's frame), `VERIFLAT_ICE_DST` or
   `VERIFLAT_ICE_PEER` (+ `VERIFLAT_ICE_PEER_QUEUES`), `VERIFLAT_ICE_STEER` (`mac`, `promisc`), `VERIFLAT_ICE_LINK_SECS`
-  (15). Without an E810 it logs `ice bench skipped: no E810 function recorded`; the default dom0 test logs the same, or
+  (15). Mode `fwd` (last in the list, it leaves the Tx rings off their batch alignment) forwards instead
+  (`ice::bench::run_forwarder`, the per-packet work of Atmosphere's maglev benchmark in `ice::maglev`: flow hash, flow
+  cache, 65537-entry lookup table over 3 backends, MAC rewrite, zero-copy transmit) to `VERIFLAT_ICE_FWD_DST`: worker k
+  of n forwards what queues k, k + n, .. receive, so a generator that spreads its frames over all steering MACs loads
+  every worker count fully; the extra line is `ice fwd: <n> workers, <pps> pps forwarded, <c> TSC cycles per
+  forwarded frame per worker`. `ice-linux --mode fwd --fwd-workers n --fwd-dst MAC` runs the same, and
+  `ice-linux --mode tx --gen-peer MAC --pool 1024` is the generator (a flow per frame copy, spread over the peer's
+  28 steering MACs). Without an E810 it logs `ice bench skipped: no E810 function recorded`; the default dom0 test logs the same, or
   the E810 functions the loader recorded.
 - `boot/dom0/src/ice_xproc.rs`: the IPC variant, feature `ice-xproc` (`ICE_XPROC=1 boot/run.sh`, skipped likewise
   without an E810). Application thread k (dom0, CPU k) hands up to 1 or 32 frames per batch to the driver's queue pair
   k and reads back what that queue received, through `ice::xfer` (a mailbox page and Tx slots per pair, Rx buffers
-  handed out in place and re-armed at the next request, zero copy both ways): first `ice_linked`, the driver called
+  handed out in place and re-armed at the next request, zero copy both ways; a Tx write-back once per 32 descriptors
+  and Rx tail writes only when they hand the device more descriptors, since a write-back per frame held the whole port
+  to about 11.5 Mpps): first `ice_linked`, the driver called
   directly, then `ice_xproc`, the driver in a child process (`new_process_with_iommu_and_endpoint`) with one thread per
   pair, one `call` + `reply_and_receive` round trip per batch on the pair's endpoint, CPU k switching straight between
   the two threads. The driver process gets the function (`send_pci`, then its own `pci_attach_dma`), BAR0 and the
   shared region (`send_pages`, the same pages mapped in both; it maps the region into its IOMMU table at IOVA = VA) and
-  the endpoints (`send_endpoint`). At most 31 cross-process pairs (endpoint descriptors per thread). Lines:
+  the endpoints (`send_endpoint`). At most 31 cross-process pairs (endpoint descriptors per thread).
+  `VERIFLAT_ICE_QUEUES` lists pair counts c at which the first c pairs also run at once before all do
+  (`ice_linked|ice_xproc conc batch=b n=c total_conc=.. rx_total_conc=..`). Lines:
   `ice_linked|ice_xproc cpu=k batch=b alone=<pps> conc=<pps> ratio=<alone/conc> ..`, a summary per batch size with
   the total pps, and `ice_ipc_cost` comparing both. `ICE_MOCK=1` (feature `ice-mock`) runs both on the device model
   (`ice::mock`, each queue's frames looped back to itself and checked by sequence number): numbers of the IPC and the
   model, not a NIC. The E810 benchmarks run on a kernel without the timer (`run.sh` builds it so), since a tick on
   CPU 0 could let a CPU coming online pull dom0's first thread instead of thread k.
 
-Each queue sends one fixed UDP frame (one descriptor per frame, all pointing at the same buffer, report status on the
-last of each 32-descriptor batch) and counts what its Rx queue receives (buffers re-armed in place). The result lines
-are `ice queue <q> cpu <q>: tx <pps> pps, rx <pps> pps, rx errors <n>`, `ice total: tx .. pps, rx .. pps over <n>
-queues; line rate of <s>-byte frames at <Mb/s> is <pps> pps`, and `ice port: ..` with the port counters over the run
-(`GLPRT_*`); the Linux program prints the same without the `ice` prefix.
+Each queue sends one fixed UDP frame from its steering MAC (so that a reflector which swaps the MACs returns it to
+the same queue), one descriptor per frame cycling over the frame's 64 copies (`VERIFLAT_ICE_POOL`, `--pool`; one
+buffer sent over and over reaches only 12 to 26 Mpps per queue in dom0), report status on the last of each
+32-descriptor batch, and counts what its Rx queue receives (buffers re-armed in place). A queue that only receives
+waits 4000 TSC cycles after a poll that found fewer than 32 frames (`RX_HOLDOFF_CYCLES` in `ice/src/bench.rs`):
+polling the descriptor the NIC writes back without a pause slows the whole port. The result lines are
+`ice queue <q> cpu <q>: tx <pps> pps, rx <pps> pps, rx errors <n>`, `ice total: mode <m> queues <n> frame <s>: tx ..
+pps, rx .. pps over <n> queues; line rate of <s>-byte frames at <Mb/s> is <pps> pps`, `ice sender cpu <k>: ..` (mode
+`rx`), and `ice port: ..` with the port counters over the round (`GLPRT_*`, flow control, and the VSI's and Rx packet
+buffer's drops); the Linux program prints the same without the `ice` prefix. 64-byte transmit tops out at 117.2 Mpps
+on this E810 from Linux and dom0 alike (not flow control, ring or batch size, or PCIe; 128-byte frames reach line
+rate), so 64-byte rates at that value are the NIC's, not the kernel's.
 
 Receive spreading. RSS hashing on E810 needs the DDP package downloaded to the device and RSS flow profiles programmed
 through it (the Linux driver's `ice_flex_pipe`/`ice_flow` code); without a package the Linux driver runs in "safe mode"

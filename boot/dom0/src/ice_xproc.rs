@@ -41,12 +41,14 @@
 //! Build-time settings (environment of the dom0 build), besides those of the line-rate benchmark that apply
 //! (`VERIFLAT_ICE_FRAME`, `VERIFLAT_ICE_DST`, `VERIFLAT_ICE_PEER`, `VERIFLAT_ICE_PEER_QUEUES`, `VERIFLAT_ICE_STEER`,
 //! `VERIFLAT_ICE_BDF`, `VERIFLAT_ICE_LINK_SECS`): `VERIFLAT_ICE_WINDOW_MS`, the timed window of each phase (default
-//! 100).
+//! 100); `VERIFLAT_ICE_QUEUES`, pair counts (comma-separated) at which the first pairs also run at once before all of
+//! them do, one `ice_linked|ice_xproc conc batch=b n=c total_conc=.. rx_total_conc=.. overlap=..` line each.
 
-use crate::ice_bench::{count_cpus, env_mac, env_num, fail, find_e810, pick, IceFunction, MAX_WORKERS};
+use crate::ice_bench::{bar_va, count_cpus, env_list, env_mac, env_num, fail, find_e810, pick, IceFunction, MAX_WORKERS};
 use crate::nvme::time::{rdtsc, tsc_rate};
 use crate::{check, current_cpu, entry, fund, quiet, stack_top, wait_for, wait_yield};
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use ice::packet::{steering_mac, UdpFrame};
@@ -212,7 +214,8 @@ impl Settings {
         };
         UdpFrame {
             dst_mac: dst,
-            src_mac: mac,
+            // On the NIC queue q sends from its own steering MAC, so a reflector that swaps the MACs returns it to q.
+            src_mac: if !cfg!(feature = "ice-mock") && self.steering == RxSteering::PerQueueMac { steering_mac(mac, q) } else { mac },
             src_ip: [10, 10, 0, 1 + q as u8],
             dst_ip: [10, 10, 1, 1 + q as u8],
             src_port: 1024 + q as u16,
@@ -288,8 +291,13 @@ struct Linked {
     drv: DriverQueue<'static, XPlatform>,
 }
 
-fn phase_of(mode: usize, batch: usize, conc: bool) -> usize {
-    1 + (mode * BATCHES.len() + batch) * 2 + conc as usize
+/// Phases per repetition: alone and at once, per mode and batch size.
+const PHASES: usize = MODE_NAMES.len() * BATCHES.len() * 2;
+
+/// The phase number of `mode` at batch size `BATCHES[batch]`, alone or at once, in repetition `rep` (each pair count
+/// of an at-once sweep is a repetition of its own, so that a waiting thread sees a new number).
+fn phase_of(mode: usize, batch: usize, conc: bool, rep: usize) -> usize {
+    1 + rep * PHASES + (mode * BATCHES.len() + batch) * 2 + conc as usize
 }
 
 fn bad_frame(k: usize, e: BadFrame) -> ! {
@@ -299,7 +307,7 @@ fn bad_frame(k: usize, e: BadFrame) -> ! {
 
 /// Runs phase `phase` of application thread k, whose descriptor `ep` holds its pair endpoint.
 fn run_phase(k: usize, ep: usize, phase: usize) {
-    let index = phase - 1;
+    let index = (phase - 1) % PHASES;
     let (mode, batch) = (index / 2 / BATCHES.len(), BATCHES[index / 2 % BATCHES.len()]);
     if mode == MODE_LINKED {
         let l = unsafe { &mut *(LINKED[k].load(Ordering::SeqCst) as *mut Linked) };
@@ -398,7 +406,9 @@ struct Measured {
 }
 
 /// Times `n` pairs in `mode` at batch size `BATCHES[b]`: each alone, then all at once in one window, and logs them.
-fn time_mode(n: usize, mode: usize, b: usize, window: u64, out: &mut [Measured]) {
+/// Before all n at once, the first c pairs run at once for each c of `counts` below n, each logged as one
+/// `<mode> conc batch=b n=c` line.
+fn time_mode(n: usize, mode: usize, b: usize, window: u64, counts: &[usize], out: &mut [Measured]) {
     let name = MODE_NAMES[mode];
     let ep0 = PAIR_EP;
     for k in 0..n {
@@ -406,7 +416,7 @@ fn time_mode(n: usize, mode: usize, b: usize, window: u64, out: &mut [Measured])
         let start = rdtsc() + window / 4;
         pair.start.store(start, Ordering::SeqCst);
         pair.end.store(start + window, Ordering::SeqCst);
-        let phase = phase_of(mode, b, false);
+        let phase = phase_of(mode, b, false, 0);
         if k == 0 {
             run_phase(0, ep0, phase);
         } else {
@@ -418,48 +428,57 @@ fn time_mode(n: usize, mode: usize, b: usize, window: u64, out: &mut [Measured])
         out[k].rx_alone = pps(pair.received.load(Ordering::SeqCst), cycles);
         out[k].cycles_per_batch = cycles / pair.batches.load(Ordering::SeqCst).max(1);
     }
-    // One window for all pairs, far enough that every pair is released before it opens.
-    let start = rdtsc() + (window / 4).max(TSC_HZ.load(Ordering::SeqCst) / 1000);
-    let phase = phase_of(mode, b, true);
-    for pair in &PAIRS[..n] {
-        pair.start.store(start, Ordering::SeqCst);
-        pair.end.store(start + window, Ordering::SeqCst);
-    }
-    for pair in &PAIRS[1..n] {
-        pair.go.store(phase, Ordering::SeqCst);
-    }
-    run_phase(0, ep0, phase);
-    for pair in &PAIRS[1..n] {
-        wait_for("the ice pairs at once", || pair.done.load(Ordering::SeqCst) == phase);
-    }
-
     let batch = BATCHES[b];
-    let (mut total_alone, mut total_conc, mut rx_total) = (0, 0, 0);
-    let mut ratios = [0u64; MAX_WORKERS];
-    let (mut max_begin, mut min_finish, mut min_begin, mut max_finish) = (0, u64::MAX, u64::MAX, 0);
-    for k in 0..n {
-        let pair = &PAIRS[k];
-        let (begin, finish) = (pair.begin.load(Ordering::SeqCst), pair.finish.load(Ordering::SeqCst));
-        (max_begin, min_finish, min_begin, max_finish) = (max_begin.max(begin), min_finish.min(finish), min_begin.min(begin), max_finish.max(finish));
-        out[k].conc = pps(pair.sent.load(Ordering::SeqCst), finish - begin);
-        out[k].rx_conc = pps(pair.received.load(Ordering::SeqCst), finish - begin);
-        ratios[k] = hundredths(out[k].alone, out[k].conc);
-        total_alone += out[k].alone;
-        total_conc += out[k].conc;
-        rx_total += out[k].rx_conc;
+    let mut sweep: Vec<usize> = counts.iter().copied().filter(|&c| 0 < c && c < n).collect();
+    sweep.push(n);
+    for (rep, &c) in sweep.iter().enumerate() {
+        // One window for the first c pairs, far enough that every pair is released before it opens.
+        let start = rdtsc() + (window / 4).max(TSC_HZ.load(Ordering::SeqCst) / 1000);
+        let phase = phase_of(mode, b, true, rep);
+        for pair in &PAIRS[..c] {
+            pair.start.store(start, Ordering::SeqCst);
+            pair.end.store(start + window, Ordering::SeqCst);
+        }
+        for pair in &PAIRS[1..c] {
+            pair.go.store(phase, Ordering::SeqCst);
+        }
+        run_phase(0, ep0, phase);
+        for pair in &PAIRS[1..c] {
+            wait_for("the ice pairs at once", || pair.done.load(Ordering::SeqCst) == phase);
+        }
+        let (mut total_conc, mut rx_total) = (0, 0);
+        let (mut max_begin, mut min_finish, mut min_begin, mut max_finish) = (0, u64::MAX, u64::MAX, 0);
+        for k in 0..c {
+            let pair = &PAIRS[k];
+            let (begin, finish) = (pair.begin.load(Ordering::SeqCst), pair.finish.load(Ordering::SeqCst));
+            (max_begin, min_finish, min_begin, max_finish) = (max_begin.max(begin), min_finish.min(finish), min_begin.min(begin), max_finish.max(finish));
+            out[k].conc = pps(pair.sent.load(Ordering::SeqCst), finish - begin);
+            out[k].rx_conc = pps(pair.received.load(Ordering::SeqCst), finish - begin);
+            total_conc += out[k].conc;
+            rx_total += out[k].rx_conc;
+        }
+        let overlap = if max_begin < min_finish { hundredths(min_finish - max_begin, max_finish - min_begin) } else { 0 };
+        if c < n {
+            log::info!("{} conc batch={} n={} total_conc={} rx_total_conc={} overlap={}", name, batch, c, total_conc, rx_total, Hundredths(overlap));
+            continue;
+        }
+        let (mut total_alone, mut ratios) = (0, [0u64; MAX_WORKERS]);
+        for k in 0..n {
+            ratios[k] = hundredths(out[k].alone, out[k].conc);
+            total_alone += out[k].alone;
+            log::info!(
+                "{} cpu={} batch={} alone={} conc={} ratio={} rx_alone={} rx_conc={} cycles_per_batch_alone={}",
+                name, k, batch, out[k].alone, out[k].conc, Hundredths(ratios[k]), out[k].rx_alone, out[k].rx_conc, out[k].cycles_per_batch
+            );
+        }
+        let ratios = &mut ratios[..n];
+        ratios.sort_unstable();
         log::info!(
-            "{} cpu={} batch={} alone={} conc={} ratio={} rx_alone={} rx_conc={} cycles_per_batch_alone={}",
-            name, k, batch, out[k].alone, out[k].conc, Hundredths(ratios[k]), out[k].rx_alone, out[k].rx_conc, out[k].cycles_per_batch
+            "{} summary batch={} n={} total_alone={} total_conc={} rx_total_conc={} min_ratio={} max_ratio={} median_ratio={} overlap={}",
+            name, batch, n, total_alone, total_conc, rx_total, Hundredths(ratios[0]), Hundredths(ratios[n - 1]),
+            Hundredths((ratios[(n - 1) / 2] + ratios[n / 2]) / 2), Hundredths(overlap)
         );
     }
-    let overlap = if max_begin < min_finish { hundredths(min_finish - max_begin, max_finish - min_begin) } else { 0 };
-    let ratios = &mut ratios[..n];
-    ratios.sort_unstable();
-    log::info!(
-        "{} summary batch={} n={} total_alone={} total_conc={} rx_total_conc={} min_ratio={} max_ratio={} median_ratio={} overlap={}",
-        name, batch, n, total_alone, total_conc, rx_total, Hundredths(ratios[0]), Hundredths(ratios[n - 1]),
-        Hundredths((ratios[(n - 1) / 2] + ratios[n / 2]) / 2), Hundredths(overlap)
-    );
 }
 
 /// The settings of this build for `n` pairs at TSC rate `hz`.
@@ -493,6 +512,8 @@ fn settings(n: usize, hz: u64) -> Settings {
 /// The benchmark (feature `ice-xproc`): logs that it is skipped when the loader recorded no E810 function, unless
 /// it runs on the device model (feature `ice-mock`).
 pub fn run() {
+    // find_e810 allocates once an E810 is recorded: the heap comes first (init is idempotent).
+    crate::slab_alloc::init();
     let f = if cfg!(feature = "ice-mock") {
         None
     } else {
@@ -546,9 +567,10 @@ pub fn run() {
         }
     }
 
+    let counts: Vec<usize> = env_list("VERIFLAT_ICE_QUEUES", option_env!("VERIFLAT_ICE_QUEUES"), n as u64).into_iter().map(|c| c as usize).collect();
     let mut results = [[[Measured::default(); MAX_WORKERS]; 2]; 2];
-    run_linked(f, &s, n, &mut results[MODE_LINKED]);
-    run_xproc(f, &s, m, &mut results[MODE_XPROC]);
+    run_linked(f, &s, n, &counts, &mut results[MODE_LINKED]);
+    run_xproc(f, &s, m, &counts, &mut results[MODE_XPROC]);
 
     // The cost of the round trip: totals over the pairs both modes ran, and per pair the TSC cycles per batch alone.
     for (b, batch) in BATCHES.iter().enumerate() {
@@ -606,8 +628,8 @@ fn empty_mailbox() -> Mailbox {
 
 /// `ice_linked`: the driver linked into dom0 with one queue pair per CPU; each pair's mailbox, Tx slots and Rx
 /// buffers in dom0's heap. Resets the PF afterwards.
-fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, out: &mut [[Measured; MAX_WORKERS]; 2]) {
-    let bar = f.map_or(0, |f| PCI_BAR_WINDOW_BASE + f.bar_phys);
+fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, counts: &[usize], out: &mut [[Measured; MAX_WORKERS]; 2]) {
+    let bar = f.map_or(0, |f| bar_va(&f));
     if let Some(f) = f {
         check("ice pci_attach_dma (dom0)", unsafe { sys_pci_attach_dma(f.bus, f.dev, f.fun) });
     }
@@ -623,7 +645,7 @@ fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, out: &mut [[Measur
         LINKED[k].store(Box::into_raw(Box::new(Linked { mb, app, drv })) as usize, Ordering::SeqCst);
     }
     for (b, measured) in out.iter_mut().enumerate() {
-        time_mode(n, MODE_LINKED, b, s.window, measured);
+        time_mode(n, MODE_LINKED, b, s.window, counts, measured);
     }
     if let Err(e) = dev.shutdown() {
         log::warn!("ice: PF reset after ice_linked: {}", e);
@@ -633,7 +655,7 @@ fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, out: &mut [[Measur
 /// `ice_xproc`: the driver in a child process with one thread per pair, `m` pairs. dom0 maps the shared region,
 /// starts the driver process and hands it the function, BAR0, the shared region and the pair endpoints over pair
 /// endpoint 0, then times the pairs, and at the end has the driver reset the PF and kills it.
-fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, out: &mut [[Measured; MAX_WORKERS]; 2]) {
+fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], out: &mut [[Measured; MAX_WORKERS]; 2]) {
     let pages = shared_pages(m);
     fund("ice xproc shared region funding", 4 * pages);
     check("ice xproc mmap_4k (shared region)", unsafe { sys_mmap_4k(SHARED_VA, pages) });
@@ -651,7 +673,7 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, out: &mut [[Measure
     });
     if let Some(f) = f {
         check("ice xproc send_pci", unsafe { sys_send_pci(PAIR_EP, f.bus, f.dev, f.fun) });
-        check("ice xproc send_pages (BAR0)", unsafe { sys_send_pages(PAIR_EP, PCI_BAR_WINDOW_BASE + f.bar_phys, f.bar_pages) });
+        check("ice xproc send_pages (BAR0)", unsafe { sys_send_pages(PAIR_EP, bar_va(&f), f.bar_pages) });
     }
     check("ice xproc send_pages (shared region)", unsafe { sys_send_pages(PAIR_EP, SHARED_VA, pages) });
     for k in 1..m {
@@ -671,7 +693,7 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, out: &mut [[Measure
         XAPP[k].store(Box::into_raw(Box::new(app)) as usize, Ordering::SeqCst);
     }
     for (b, measured) in out.iter_mut().enumerate() {
-        time_mode(m, MODE_XPROC, b, s.window, measured);
+        time_mode(m, MODE_XPROC, b, s.window, counts, measured);
         for k in 0..m {
             let cpu = DRV_SERVED_ON[k].load(Ordering::SeqCst);
             if cpu != k + 1 {

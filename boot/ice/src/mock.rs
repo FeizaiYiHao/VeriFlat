@@ -748,6 +748,37 @@ mod tests {
     }
 
     #[test]
+    fn forwarder_rewrites_and_returns_buffers() {
+        use crate::bench::run_forwarder;
+        use crate::maglev::{populate_lut, Maglev, CACHE_ENTRIES, TABLE_SIZE};
+        let m = Mock::new(true);
+        let cfg = Config { queues: 3, tx_ring: 128, rx_ring: 64, tx_batch: 16, ..Default::default() };
+        let mut dev = Device::new(&m, cfg).unwrap();
+        let mut q = dev.take_queues();
+        let mut lut = vec![0i8; TABLE_SIZE];
+        populate_lut(&mut lut);
+        let mut cache = vec![[0u64; 2]; CACHE_ENTRIES];
+        let mut mg = Maglev::new(&lut, &mut cache);
+        let bufs: Vec<TxFrame> = (0..48u16)
+            .map(|i| TxFrame::new(&m, &UdpFrame { src_port: 1000 + i, ..frame(steering_mac(MOCK_MAC, 1), 0) }).unwrap())
+            .collect();
+        let list: Vec<(u64, u16)> = bufs.iter().map(|f| (f.buf.iova, f.len)).collect();
+        // Queue 0 sends 48 frames to queue 1; the forwarder on Tx queue 2 sends them on to queue 0's steering MAC.
+        assert_eq!(q[0].0.send_frames(&list), 48);
+        let (a, b) = q.split_at_mut(2);
+        let (rx1, tx2) = (&mut a[1].1, &mut b[0].0);
+        let r = run_forwarder(&m, tx2, &mut [rx1], &mut mg, [2, 2, 2, 2, 2, 2], steering_mac(MOCK_MAC, 0), 100_000);
+        assert_eq!(r.rx.packets, 48);
+        assert_eq!(r.tx_packets, 48);
+        let mut seen = 0;
+        q[0].1.take(64, |f| {
+            assert_eq!(unsafe { core::slice::from_raw_parts(f.va.add(6), 6) }, &[2, 2, 2, 2, 2, 2]);
+            seen += 1;
+        });
+        assert_eq!(seen, 48);
+    }
+
+    #[test]
     fn frames_sent_one_by_one_and_taken_until_given_back() {
         let m = Mock::new(true);
         let cfg = Config { queues: 2, tx_ring: 64, rx_ring: 64, tx_batch: 16, ..Default::default() };
@@ -763,8 +794,8 @@ mod tests {
         let list: Vec<(u64, u16)> = bufs.iter().map(|f| (f.buf.iova, f.len)).collect();
         // The tail of 63 leaves the device descriptors 0..56 (it ignores the low 3 bits).
         assert_eq!(q[0].0.send_frames(&list), 40);
-        assert_eq!(q[0].0.clean_frames(), 40);
-        assert_eq!(q[0].0.completed, 40);
+        assert_eq!(q[0].0.clean_frames(), 32); // only whole batches of 32 are written back
+        assert_eq!(q[0].0.completed, 32);
         let mut seen = Vec::new();
         assert_eq!(q[1].1.take(10, |f| seen.push(unsafe { *f.va.add(50) })), 10);
         assert_eq!(q[1].1.take(64, |f| seen.push(unsafe { *f.va.add(50) })), 30);

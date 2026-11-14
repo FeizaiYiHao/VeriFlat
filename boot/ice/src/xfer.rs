@@ -208,7 +208,8 @@ mod tests {
         for (_, app, _) in &pairs {
             assert_eq!(app.received, 100 * 33);
             assert_eq!(app.sent, 100 * 33);
-            assert!(app.completed >= app.sent - 32);
+            // Write-backs come per aligned batch of 32 and are reclaimed at the next request: up to 63 frames behind.
+            assert!(app.completed >= app.sent - 63);
         }
         assert!(m.rxqs().values().all(|r| r.dropped == 0));
     }

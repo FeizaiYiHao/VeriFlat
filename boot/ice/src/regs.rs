@@ -98,3 +98,23 @@ pub const fn glprt_crcerrs(p: usize) -> usize {
 pub const fn glprt_illerrc(p: usize) -> usize {
     0x0038_01C0 + p * 8
 }
+/// Link flow control: XOFF and XON frames received, XOFF frames sent (32-bit).
+pub const fn glprt_lxoffrxc(p: usize) -> usize {
+    0x0038_02C0 + p * 8
+}
+pub const fn glprt_lxonrxc(p: usize) -> usize {
+    0x0038_0280 + p * 8
+}
+pub const fn glprt_lxofftxc(p: usize) -> usize {
+    0x0038_1180 + p * 8
+}
+/// Frames of VSI `v` dropped for want of an Rx descriptor (32-bit).
+pub const fn glv_rdpc(v: usize) -> usize {
+    0x0029_4C04 + v * 4
+}
+/// Frames the port's receive packet buffer dropped (32-bit).
+pub const PRTRPB_RDPC: usize = 0x000A_C260;
+/// Priority flow control XOFF frames received for priority `j` (32-bit).
+pub const fn glprt_pxoffrxc(p: usize, j: usize) -> usize {
+    0x0038_0500 + p * 8 + j * 64
+}

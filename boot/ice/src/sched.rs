@@ -35,6 +35,8 @@ pub const TOPO_BRANCH_BYTES: usize = GRP_HDR_BYTES + MAX_LAYERS * ELEM_DATA_BYTE
 /// Query Scheduler Resource Allocation response: 32 bytes of generic properties, then 32 bytes per layer.
 pub const RES_GENERIC_BYTES: usize = 32;
 pub const RES_LAYER_BYTES: usize = 32;
+/// `max_sibl_grp_sz` in a layer's properties (after layer, chunk size, two node counts and 4 reserved bytes).
+pub const LAYER_MAX_SIBL: usize = 10;
 pub const RES_BUF_BYTES: usize = RES_GENERIC_BYTES + MAX_LAYERS * RES_LAYER_BYTES;
 
 fn le16(b: &[u8], o: usize) -> u16 {
@@ -75,7 +77,7 @@ impl SchedResources {
         }
         let mut max_children = [0u16; MAX_LAYERS];
         for (i, m) in max_children.iter_mut().enumerate().take(layers - 1) {
-            *m = le16(buf, RES_GENERIC_BYTES + (i + 1) * RES_LAYER_BYTES + 12);
+            *m = le16(buf, RES_GENERIC_BYTES + (i + 1) * RES_LAYER_BYTES + LAYER_MAX_SIBL);
         }
         Some(SchedResources { layers, max_children })
     }
@@ -204,7 +206,7 @@ pub(crate) mod canned {
         for (i, m) in max_sibl.iter().enumerate() {
             let o = RES_GENERIC_BYTES + i * RES_LAYER_BYTES;
             buf[o] = i as u8;
-            buf[o + 12..o + 14].copy_from_slice(&m.to_le_bytes());
+            buf[o + LAYER_MAX_SIBL..o + LAYER_MAX_SIBL + 2].copy_from_slice(&m.to_le_bytes());
         }
         buf
     }
