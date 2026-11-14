@@ -542,9 +542,12 @@ fn nvme_workers_only() -> bool {
     PARALLEL.split(',').all(|listed| matches!(listed.trim(), "nvme" | "nvme_xproc"))
 }
 
-/// The most pairs this build places: `MAX_PAIRS` when `nvme_workers_only`, else `MAX_ENDPOINT_PAIRS`.
+/// The most pairs this build places: `MAX_PAIRS` when `nvme_workers_only`, else `MAX_ENDPOINT_PAIRS`, and at most
+/// `VERIFLAT_PARALLEL_PAIRS` when the build sets it (at least 1), so a run can place fewer workers than CPUs.
 fn pair_limit() -> usize {
-    if nvme_workers_only() { MAX_PAIRS } else { MAX_ENDPOINT_PAIRS }
+    let limit = if nvme_workers_only() { MAX_PAIRS } else { MAX_ENDPOINT_PAIRS };
+    let cap = ice_bench::env_num("VERIFLAT_PARALLEL_PAIRS", option_env!("VERIFLAT_PARALLEL_PAIRS"), limit as u64) as usize;
+    limit.min(cap.max(1))
 }
 /// dom0's descriptor of pair k's endpoint is `PAIR_ENDPOINT + k`; the pair's other threads hold it in
 /// descriptor 0.
