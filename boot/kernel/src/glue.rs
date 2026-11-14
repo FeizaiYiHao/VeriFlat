@@ -10,7 +10,7 @@
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
 
-use astd::boot::{BootInfo, PhysicalMemoryType, MAX_PAGES};
+use astd::boot::{BootInfo, PhysicalMemoryType, MAX_PAGES, PCI_BAR_WINDOW_BASE};
 use veriflat_monolith::*;
 use vstd::prelude::{Ghost, Tracked};
 
@@ -118,8 +118,9 @@ unsafe fn entry(table: usize, index: usize) -> u64 {
     ptr::read_volatile((table as *const u64).add(index))
 }
 
-/// Marks the dom0 page-table closure and its user leaves.
-unsafe fn walk_dom0(dom0_pml4: usize) -> (usize, usize) {
+/// Marks the dom0 page-table closure and its user leaves, except under the L4 slots in `skip`: those hold the loader's
+/// mapping of a high BAR0 (above the page array), whose table pages stay Unavailable and which the kernel never models.
+unsafe fn walk_dom0(dom0_pml4: usize, skip: &[usize]) -> (usize, usize) {
     let mut tables = 0;
     let mut leaves = 0;
     let mut mark_table = |addr: u64| {
@@ -132,7 +133,7 @@ unsafe fn walk_dom0(dom0_pml4: usize) -> (usize, usize) {
     mark_table(dom0_pml4 as u64);
     for l4i in KERNEL_MEM_END_L4INDEX..512 {
         let e4 = entry(dom0_pml4, l4i);
-        if e4 & PTE_PRESENT == 0 {
+        if e4 & PTE_PRESENT == 0 || skip.contains(&l4i) {
             continue;
         }
         let l3 = (e4 & PTE_ADDR_MASK) as usize;
@@ -312,7 +313,19 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     }
     // BAR0 pages of the recorded PCI functions: above RAM, so the loader typed them Reserved.
     let mut io_pages = 0usize;
-    for device in boot_info.pci_devices.iter() {
+    // High BAR0s (above the page array): the loader mapped each into its own dom0 L4 slot; no page object, no io page.
+    let mut high_slots = [usize::MAX; astd::boot::MAX_PCI_DEVICES];
+    for (k, device) in boot_info.pci_devices.iter().enumerate() {
+        if device.bar0_base as usize + device.bar0_pages as usize * PAGE_SIZE > NUM_PAGES * PAGE_SIZE {
+            let slot = ((PCI_BAR_WINDOW_BASE + device.bar0_base) >> 39) as usize;
+            assert!(slot >= 2 && slot < 256, "high BAR0 {:#x} outside a free dom0 L4 slot", device.bar0_base);
+            log::info!(
+                "PCI {:02x}:{:02x}.{}: high BAR0 {:#x} ({} pages) mapped by the loader in dom0 L4 slot {}, outside the kernel's model",
+                device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, device.bar0_base, device.bar0_pages, slot
+            );
+            high_slots[k] = slot;
+            continue;
+        }
         for page in 0..device.bar0_pages as usize {
             let i = index_of(device.bar0_base + (page * PAGE_SIZE) as u64);
             assert!(kinds[i] == Kind::Unavailable, "BAR0 page {:#x} is {:?}", i * PAGE_SIZE, kinds[i]);
@@ -321,7 +334,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         }
     }
     let dom0_pml4 = boot_info.dom0_pml4 as usize;
-    let (tables, leaves) = walk_dom0(dom0_pml4);
+    let (tables, leaves) = walk_dom0(dom0_pml4, &high_slots);
     assert!(!kinds.contains(&Kind::IoUnmapped), "a BAR0 page is not mapped in dom0's BAR0 window");
     for k in kinds.iter_mut() {
         if *k == Kind::DomainSpare {

@@ -528,9 +528,24 @@ fn time_mmap_only() {
     }
 }
 
-/// Client/server pairs of the parallel call timing: at most one per CPU, and at most 24, since pair k uses
-/// descriptor `PAIR_ENDPOINT + k`, which must stay below `MAX_NUM_ENDPOINT_DESCRIPTORS` (32).
-const MAX_PAIRS: usize = 24;
+/// Client/server pairs of the parallel call timing: at most one per CPU, and at most `MAX_ENDPOINT_PAIRS` = 24,
+/// since pair k uses descriptor `PAIR_ENDPOINT + k`, which must stay below `MAX_NUM_ENDPOINT_DESCRIPTORS` (32).
+/// A build whose only parallel timings are `nvme` and `nvme_xproc` uses the clients only as workers on their CPUs and
+/// makes no call over the pair endpoints: it places up to `MAX_PAIRS` (one per CPU of `NUM_CPUS` = 40), creates no
+/// pair server at all, and client k >= 24 shares the endpoint of pair k - 24, over which it only receives the
+/// `nvme_xproc` handoff endpoint (`nvme_workers_only`).
+const MAX_PAIRS: usize = 40;
+const MAX_ENDPOINT_PAIRS: usize = 24;
+
+/// Whether this build's only parallel timings are `nvme` and `nvme_xproc`, whose workers need no pair server.
+fn nvme_workers_only() -> bool {
+    PARALLEL.split(',').all(|listed| matches!(listed.trim(), "nvme" | "nvme_xproc"))
+}
+
+/// The most pairs this build places: `MAX_PAIRS` when `nvme_workers_only`, else `MAX_ENDPOINT_PAIRS`.
+fn pair_limit() -> usize {
+    if nvme_workers_only() { MAX_PAIRS } else { MAX_ENDPOINT_PAIRS }
+}
 /// dom0's descriptor of pair k's endpoint is `PAIR_ENDPOINT + k`; the pair's other threads hold it in
 /// descriptor 0.
 const PAIR_ENDPOINT: usize = 8;
@@ -718,11 +733,13 @@ extern "C" fn pair_client() -> ! {
         });
     }
     pair.client_cpu.store(current_cpu() + 1, Ordering::SeqCst);
-    fund("pair client funding", 1);
-    let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[k] });
-    quiet("pair client new_thread_with_endpoint (server)", unsafe { sys_new_thread_with_endpoint(0, entry(pair_server), sp) });
-    // The server, the only other thread of this CPU's shard, runs until it blocks.
-    unsafe { sys_schedule() };
+    if k < MAX_ENDPOINT_PAIRS && !nvme_workers_only() {
+        fund("pair client funding", 1);
+        let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[k] });
+        quiet("pair client new_thread_with_endpoint (server)", unsafe { sys_new_thread_with_endpoint(0, entry(pair_server), sp) });
+        // The server, the only other thread of this CPU's shard, runs until it blocks.
+        unsafe { sys_schedule() };
+    }
     pair.ready.store(true, Ordering::SeqCst);
     // dom0 releases the next phase only once this client finished the last one, so none is missed.
     let mut last = 0;
@@ -826,7 +843,7 @@ fn time_pair(k: usize, endpoint: usize, phase: usize) {
 fn time_parallel_call() {
     // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
     let mut n = 1;
-    while n < MAX_PAIRS {
+    while n < pair_limit() {
         let ret = unsafe { sys_cpu_offline_request(n) };
         if error_name(ret) == "InvalidArgument" {
             break;
@@ -838,25 +855,29 @@ fn time_parallel_call() {
     let handoff = runs_parallel("nvme_xproc") && nvme::parallel_xproc::prepare_handoff();
     // The endpoints, the n - 1 clients, and server 0; each client funds its own server.
     fund("parallel call funding", 2 * n);
-    for k in 0..n {
+    for k in 0..n.min(MAX_ENDPOINT_PAIRS) {
         quiet("new_endpoint (pair)", unsafe { sys_new_endpoint(PAIR_ENDPOINT + k) });
     }
     NEXT_PAIR.store(0, Ordering::SeqCst);
-    let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[0] });
-    quiet("new_thread_with_endpoint (pair server 0)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT, entry(pair_server), sp) });
-    // Server 0 runs until it blocks, which empties CPU 0's shard: a CPU coming online pulls the head
-    // of the lowest-numbered other nonempty shard, which must be the next client.
-    unsafe { sys_schedule() };
+    if !nvme_workers_only() {
+        let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[0] });
+        quiet("new_thread_with_endpoint (pair server 0)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT, entry(pair_server), sp) });
+        // Server 0 runs until it blocks, which empties CPU 0's shard: a CPU coming online pulls the head
+        // of the lowest-numbered other nonempty shard, which must be the next client.
+        unsafe { sys_schedule() };
+    }
     for k in 1..n {
         let pair = &PAIRS[k];
         NEXT_PAIR.store(k, Ordering::SeqCst);
         let sp = stack_top(unsafe { &raw const PAIR_CLIENT_STACKS[k] });
-        quiet("new_thread_with_endpoint (pair client)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT + k, entry(pair_client), sp) });
+        quiet("new_thread_with_endpoint (pair client)", unsafe {
+            sys_new_thread_with_endpoint(PAIR_ENDPOINT + k % MAX_ENDPOINT_PAIRS, entry(pair_client), sp)
+        });
         if handoff {
             // The client runs until it blocks for the handoff endpoint; sending it queues the client on CPU 0 again,
             // the only thread there besides this one, for CPU k to pull.
             unsafe { sys_schedule() };
-            quiet("send_endpoint (nvme_xproc handoff)", unsafe { sys_send_endpoint(PAIR_ENDPOINT + k, nvme::parallel_xproc::HANDOFF_ENDPOINT) });
+            quiet("send_endpoint (nvme_xproc handoff)", unsafe { sys_send_endpoint(PAIR_ENDPOINT + k % MAX_ENDPOINT_PAIRS, nvme::parallel_xproc::HANDOFF_ENDPOINT) });
         }
         quiet("cpu_online (pair client)", unsafe { sys_cpu_online(k) });
         wait_for("a pair client", || pair.client_cpu.load(Ordering::SeqCst) != 0);
@@ -2823,7 +2844,11 @@ pub extern "C" fn _start() -> ! {
     // 9c. Atmosphere's NVMe driver benchmark in its three configurations; skipped without an NVMe function.
     nvme::client::run(image, pages);
 
-    // 9d. Whether the loader recorded an E810 for the ice benchmark (feature `ice-bench` runs it).
+    // 9d. Whether the loader recorded an E810 for the ice benchmark (feature `ice-bench` runs it). Its list of
+    // functions lives on the heap, which nothing set up yet when the NVMe benchmark was skipped.
+    slab_alloc::init();
+    #[cfg(feature = "bar-probe")]
+    bar_probe();
     ice_bench::probe();
 
     // 10. new_thread cost, last because the threads it creates keep yielding on this CPU.
@@ -2831,6 +2856,37 @@ pub extern "C" fn _start() -> ! {
 
     log::info!("dom0 test passed");
     unsafe { sys_debug_exit(0) };
+}
+
+/// Feature `bar-probe`: for every recorded Intel Ethernet function, reads E810 registers the Linux ice driver reads
+/// first through dom0's BAR0 window at `PCI_BAR_WINDOW_BASE + base` (the same address for a BAR0 below and above 4 GiB)
+/// and logs them, to compare with the values Linux reads through the function's sysfs resource0.
+#[cfg(feature = "bar-probe")]
+fn bar_probe() {
+    use core::fmt::Write;
+    const REGS: [(&str, usize); 6] = [
+        ("GL_FWSTS", 0x8_3048), ("GLGEN_RSTAT", 0xB_8188), ("GLNVM_GENS", 0xB_6100), ("PF_FUNC_RID", 0x9_E880), ("GLPCI_CNF2", 0xB_E004),
+        ("PFGEN_PORTNUM", 0x1D_2400),
+    ];
+    for bus in 0..256 {
+        for dev in 0..32 {
+            for fun in 0..8 {
+                let (rax, base, pages) = unsafe { sys_pci_info(bus, dev, fun) };
+                if rax < 0 || (rax as usize >> 16) & 0xffff != 0x8086 || (rax as usize >> 48) & 0xff != 2 {
+                    continue;
+                }
+                let va = PCI_BAR_WINDOW_BASE + base;
+                let mut line = alloc::string::String::new();
+                for (name, off) in REGS {
+                    if off + 4 <= pages * 4096 {
+                        let value = unsafe { core::ptr::read_volatile((va + off) as *const u32) };
+                        let _ = write!(line, " {}={:#010x}", name, value);
+                    }
+                }
+                log::info!("bar-probe {:02x}:{:02x}.{} BAR0 {:#x} ({} pages) at VA {:#x}:{}", bus, dev, fun, base, pages, va, line);
+            }
+        }
+    }
 }
 
 #[panic_handler]

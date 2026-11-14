@@ -24,7 +24,7 @@ pub use exception::Exception;
 use exception::EXCEPTION_MAX;
 use idt::Idt;
 #[allow(unused_imports)]
-pub use lapic::{boot_ap, current_apic_id, disarm_timer, end_of_interrupt, send_ipi, send_nmi, set_timer, switch_to_x2apic_if_requested, x2apic_mode};
+pub use lapic::{arm_tsc_deadline, boot_ap, current_apic_id, disarm_timer, end_of_interrupt, send_ipi, send_nmi, set_timer, switch_to_x2apic_if_requested, x2apic_mode};
 use veriflat_monolith::Registers;
 
 /// The IRQ offset.

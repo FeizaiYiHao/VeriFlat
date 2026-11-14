@@ -69,6 +69,23 @@ const ASSUME_BARE_METAL: bool = match option_env!("VERIFLAT_NVME_ASSUME_BARE_MET
     None => false,
 };
 
+/// `VERIFLAT_NVME_OPS=read|write` of the dom0 build: the NVMe benchmarks run only their read or only their write
+/// points (unset: both, reads first), so a read boot can follow a discard without earlier write points changing what
+/// the reads find on the disk.
+const NVME_OPS: u8 = match option_env!("VERIFLAT_NVME_OPS") {
+    None => 0,
+    Some(s) => match s.as_bytes() {
+        b"read" => 1,
+        b"write" => 2,
+        _ => panic!("VERIFLAT_NVME_OPS must be read or write"),
+    },
+};
+
+/// Whether the NVMe benchmarks run their points of this kind (`VERIFLAT_NVME_OPS`).
+pub const fn op_selected(is_write: bool) -> bool {
+    NVME_OPS == 0 || (NVME_OPS == 2) == is_write
+}
+
 const fn hex_digit(c: u8) -> usize {
     match c {
         b'0'..=b'9' => (c - b'0') as usize,

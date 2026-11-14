@@ -252,8 +252,25 @@ pub extern "C" fn main() -> ! {
     }
 
     // Every recorded BAR0 page in dom0's BAR0 window: user, writable, execute-disabled, no PCD (the MTRRs make it UC).
+    // A high BAR0 (above 4 GiB, outside the kernel's page array) goes into its own L4 slot of dom0's table, uncached by
+    // PCD|PWT, with 2M pages where it is 2M aligned; the kernel's boot glue skips that slot.
     for device in boot_info.pci_devices.iter() {
         let (base, pages) = (device.bar0_base, device.bar0_pages);
+        if let Some(slot) = high_bar_slot(base, pages * PAGE_SIZE as u64) {
+            let (size, va) = (pages * PAGE_SIZE as u64, PCI_BAR_WINDOW_BASE + base);
+            let huge = base % (2 << 20) == 0 && size % (2 << 20) == 0;
+            let step = if huge { 2u64 << 20 } else { PAGE_SIZE as u64 };
+            let mut off = 0;
+            while off < size {
+                unsafe { dom0_space.map_user_mmio_uc(bootstrap_allocator, va + off, base + off, huge) };
+                off += step;
+            }
+            log::info!(
+                "dom0 high BAR0: {:02x}:{:02x}.{} {:#x}..{:#x} -> PA {:#x} ({} {} pages, uncached, L4 slot {})",
+                device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, va, va + size, base, size / step, if huge { "2M" } else { "4K" }, slot
+            );
+            continue;
+        }
         unsafe {
             for page in 0..pages {
                 let paddr = base + page * PAGE_SIZE as u64;
@@ -442,4 +459,17 @@ fn panic(info: &PanicInfo) -> ! {
     loop {
         unsafe { asm!("hlt") };
     }
+}
+
+/// The dom0 L4 slot of a high BAR0 at `base` (`size` bytes): `Some` when the BAR lies at or above 4 GiB (outside the
+/// kernel's page array) and its window `PCI_BAR_WINDOW_BASE + base` fits one L4 slot of user space other than slot 0
+/// (the kernel) and the slot of `PCI_BAR_WINDOW_BASE` itself (dom0's image, heap, test windows and low BARs).
+pub fn high_bar_slot(base: u64, size: u64) -> Option<usize> {
+    if base < 1 << 32 || size == 0 {
+        return None;
+    }
+    let (first, last) = (PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + size - 1);
+    let slot = (first >> 39) as usize;
+    let ok = slot == (last >> 39) as usize && slot >= 2 && slot < 256 && slot != (PCI_BAR_WINDOW_BASE >> 39) as usize;
+    ok.then_some(slot)
 }

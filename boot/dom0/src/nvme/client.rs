@@ -20,7 +20,7 @@
 
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::nvme_test::{report, run_blocktest_raw_with_delay, Samples};
-use super::pci::{selected_nvme, NvmeFunction, PciBarAddr};
+use super::pci::{op_selected, selected_nvme, NvmeFunction, PciBarAddr};
 use super::ring_buffer::GenericRingBuffer;
 use super::time::{rdtsc, tsc_hz, tsc_rate};
 use super::{BlockOp, BlockReq};
@@ -120,7 +120,9 @@ pub fn run(image: usize, pages: usize) {
         }
         log::info!("nvme: LBA size {} bytes, {} LBAs per 4 KiB request", 1u64 << lba_shift(), 4096 >> lba_shift());
         for (is_write, batch) in RUNS {
-            run_blocktest_raw_with_delay(&mut dev, NVME_BENCH_SECS, batch, is_write, false, 0);
+            if op_selected(is_write) {
+                run_blocktest_raw_with_delay(&mut dev, NVME_BENCH_SECS, batch, is_write, false, 0);
+            }
         }
         dev.shutdown();
     }
@@ -137,6 +139,8 @@ pub fn run(image: usize, pages: usize) {
 }
 
 /// Takes CPU 1 Off: an offline request succeeds once and then fails with ErrorCpuAlreadyOff once it is Off.
+/// dom0's main thread may itself run on CPU 1 by now (on a machine with many CPUs the earlier tests migrate it), and
+/// CPU 1 only goes Off once its thread gives it up, so each retry schedules: the thread then continues elsewhere.
 fn take_driver_cpu_off() {
     check("nvme cpu_offline_request(1)", unsafe { sys_cpu_offline_request(DRIVER_CPU) });
     let start = rdtsc();
@@ -148,12 +152,13 @@ fn take_driver_cpu_off() {
         if ret < 0 || rdtsc() - start > crate::WAIT_LIMIT {
             expect_error("nvme cpu_offline_request until CPU 1 is Off", ret, "ErrorCpuAlreadyOff");
         }
-        core::hint::spin_loop();
+        unsafe { sys_schedule() };
     }
 }
 
 fn ring_configuration(f: &NvmeFunction, mode: usize, image: usize, pages: usize) {
-    let (config, expected_cpu) = if mode == MODE_IPC { ("ipc", 0) } else { ("twocore", DRIVER_CPU) };
+    // ipc: the driver serves on the client's CPU (direct switch), which need not be CPU 0 on a machine with many CPUs.
+    let (config, expected_cpu) = if mode == MODE_IPC { ("ipc", current_cpu()) } else { ("twocore", DRIVER_CPU) };
     ring().init();
     MODE.store(mode, Ordering::SeqCst);
     for flag in [&DRIVER_READY, &STOP, &STOPPED] {
@@ -177,7 +182,9 @@ fn ring_configuration(f: &NvmeFunction, mode: usize, image: usize, pages: usize)
     }
 
     for (is_write, batch) in RUNS {
-        run_ring_client(config, mode == MODE_IPC, is_write, batch);
+        if op_selected(is_write) {
+            run_ring_client(config, mode == MODE_IPC, is_write, batch);
+        }
     }
 
     STOP.store(true, Ordering::SeqCst);

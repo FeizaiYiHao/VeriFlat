@@ -290,7 +290,11 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 "BAR0 of {:02x}:{:02x}.{} is not page aligned", bus, dev, fun
             );
             let size = bar.size.max(PAGE_SIZE as u64);
-            if bar.base == 0 || bar.base + size > FOUR_GIB {
+            // A 64-bit BAR0 the firmware placed above 4 GiB behind a bridge stays where it is and is recorded as a high
+            // BAR: the kernel's page array covers only [0, 4 GiB), so the kernel never takes its pages; the loader
+            // maps it into dom0 itself, uncached, at the same `PCI_BAR_WINDOW_BASE + base` (main.rs, `high_bar_slot`).
+            let high = bus != 0 && bar.is_64 && bar.base >= FOUR_GIB && crate::high_bar_slot(bar.base, size).is_some();
+            if !high && (bar.base == 0 || bar.base + size > FOUR_GIB) {
                 if bus != 0 {
                     log::warn!(
                         "PCI {:02x}:{:02x}.{} not recorded: its BAR0 at {:#x} must be assigned below 4 GiB (turn above-4G decoding off)",
@@ -315,7 +319,9 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 busy.push((base, size)).expect("too many PCI memory ranges");
             }
             let pages = size / PAGE_SIZE as u64;
-            check_uncacheable((bus, dev, fun), bar.base, pages);
+            if !high {
+                check_uncacheable((bus, dev, fun), bar.base, pages);
+            }
             unsafe { enable(bus, dev, fun) };
             // Every bridge that forwards this bus lies above the function; a function on a root bus has none.
             for &((b, d, f), secondary, subordinate) in bridges.iter() {
@@ -324,7 +330,11 @@ pub fn probe_devices(e820: &[(u64, u64)], mmconfig: &[(u64, u64)]) -> ArrayVec<P
                 }
             }
             let bdf = ((bus as u16) << 8) | ((dev as u16) << 3) | fun as u16;
-            log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", bus, dev, fun, bar.base, pages);
+            if high {
+                log::info!("PCI {:02x}:{:02x}.{} recorded: high BAR0 {:#x}, {} pages, mapped uncached by the loader only", bus, dev, fun, bar.base, pages);
+            } else {
+                log::info!("PCI {:02x}:{:02x}.{} recorded: BAR0 {:#x}, {} pages, MTRR type UC", bus, dev, fun, bar.base, pages);
+            }
             devices.push(PciDevice { bdf, vendor, device, class, subclass, bar0_base: bar.base, bar0_pages: pages }).unwrap();
         }
     }

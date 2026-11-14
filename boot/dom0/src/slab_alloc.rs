@@ -7,7 +7,7 @@
 //! contiguous in VA and IOVA.
 //!
 //! The allocator state lives in a private page at `HEAP_STATE_VA` of each process, not in dom0's image,
-//! because the NVMe driver process shares that image: each process calls `init` once before allocating.
+//! because the NVMe driver process shares that image: each process calls `init` before allocating (again is harmless).
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
@@ -61,9 +61,14 @@ fn funded(per_page: usize, count: usize, map: impl Fn() -> isize) -> bool {
     map() >= 0
 }
 
-/// Maps the state page of the calling process. Call once per process before the first allocation.
+/// Before the first allocation of a process: maps and clears the calling process's state page; does nothing when the process already has one, so every user of
+/// the heap can call it.
 pub fn init() {
-    if !fund(4) || unsafe { sys_mmap_4k(HEAP_STATE_VA, 1) } < 0 {
+    let mapped = if fund(4) { unsafe { sys_mmap_4k(HEAP_STATE_VA, 1) } } else { -1 };
+    if mapped < 0 && error_name(mapped) == "ErrorVaInUse" {
+        return;
+    }
+    if mapped < 0 {
         log::error!("heap: cannot map the state page");
         unsafe { sys_debug_exit(1) };
     }

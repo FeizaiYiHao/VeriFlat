@@ -60,7 +60,7 @@ pub fn tsc_hz() -> (u64, &'static str) {
 #[inline(always)]
 pub fn check_reset_deadline() {
     let deadline = unsafe { RESET_DEADLINE };
-    if deadline != 0 && unsafe { core::arch::x86_64::_rdtsc() } > deadline {
+    if deadline != 0 && unsafe { core::arch::x86_64::_rdtsc() } >= deadline {
         log::error!("reset_after: time is up, resetting the machine");
         unsafe { crate::power::log_frequency() };
         ns16550a::ramlog::finish(ns16550a::ramlog::REASON_TIMEOUT, 0);

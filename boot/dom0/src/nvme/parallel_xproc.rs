@@ -35,7 +35,7 @@
 use super::cmd as nvme_cmd;
 use super::device::{blocks_per_4k, lba_shift, num_lbas, NvmeDevice};
 use super::dma::{allocate_dma, Dma, NvmeCommand, NvmeCompletion};
-use super::parallel::{time_run, Measured, MAX_BATCH, MAX_QUEUES, RUNS, WINDOW_MS};
+use super::parallel::{time_run, time_sweep, Measured, MAX_BATCH, MAX_QUEUES, MAX_SWEEP, RUNS, SWEEP, WINDOW_MS};
 use super::pci::{choose_nvme, selected_nvme, NvmeFunction};
 use super::queue::QUEUE_DEPTH;
 use super::time::{rdtsc, tsc_hz, tsc_rate};
@@ -45,8 +45,15 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering}
 use vsys::*;
 
 /// The phases worker k >= 1 is released into after its setup: run c alone is `PHASE_NVME_XPROC_FIRST + 2 * c`, all
-/// at once the next.
-pub const PHASES: usize = 2 * RUNS.len();
+/// at once the next; with `VERIFLAT_NVME_WORKERS` (as `parallel_nvme`) sweep point i of run c is
+/// `PHASE_NVME_XPROC_FIRST + 2 * RUNS.len() + c * MAX_SWEEP + i` instead.
+pub const PHASES: usize = 2 * RUNS.len() + RUNS.len() * MAX_SWEEP;
+
+/// The run (index into `RUNS`) of a phase of this benchmark.
+fn run_of(phase: usize) -> usize {
+    let off = phase - PHASE_NVME_XPROC_FIRST;
+    if off < 2 * RUNS.len() { off / 2 } else { (off - 2 * RUNS.len()) / MAX_SWEEP }
+}
 /// dom0's descriptor (of its first thread and of each pair client) of the endpoint the driver process's threads hold
 /// in descriptor 0.
 pub const HANDOFF_ENDPOINT: usize = 2;
@@ -226,7 +233,21 @@ pub fn run(n: usize) {
     );
 
     for (c, &(is_write, batch)) in RUNS.iter().enumerate() {
-        time_run("parallel_nvme_xproc", PHASE_NVME_XPROC_FIRST, &MEASURED, |phase| worker(0, phase), workers, c, is_write, batch);
+        if !super::pci::op_selected(is_write) {
+            continue;
+        }
+        if SWEEP.1 == 0 {
+            time_run("parallel_nvme_xproc", PHASE_NVME_XPROC_FIRST, &MEASURED, |phase| worker(0, phase), workers, c, is_write, batch);
+            continue;
+        }
+        for (i, &m) in SWEEP.0[..SWEEP.1].iter().enumerate() {
+            if m > workers {
+                log::info!("parallel_nvme_xproc sweep op={} batch={} n={} skipped: only {} workers", if is_write { "write" } else { "read" }, batch, m, workers);
+                continue;
+            }
+            let phase = PHASE_NVME_XPROC_FIRST + 2 * RUNS.len() + c * MAX_SWEEP + i;
+            time_sweep("parallel_nvme_xproc", phase, m, is_write, batch, &MEASURED, &|phase| worker(0, phase));
+        }
     }
 
     // The driver disables the controller, which deletes every queue, so no DMA reaches the regions after it; killing
@@ -259,7 +280,7 @@ pub fn worker_setup(k: usize) {
 /// done.
 pub fn worker(k: usize, phase: usize) {
     let pair = &PAIRS[k];
-    let (is_write, batch) = RUNS[(phase - PHASE_NVME_XPROC_FIRST) / 2];
+    let (is_write, batch) = RUNS[run_of(phase)];
     let deadline = pair.deadline.load(Ordering::SeqCst);
     if current_cpu() != k {
         fail(format_args!("worker {} runs on CPU {}", k, current_cpu()));

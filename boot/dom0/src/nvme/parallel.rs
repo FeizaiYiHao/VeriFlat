@@ -9,8 +9,14 @@
 //! admin queue belongs to dom0's first thread alone, which issues every admin command (`NvmeDevice::admin`) before
 //! it releases a worker and after the last worker is done. Polling only: the completion queues have interrupts off.
 //!
-//! Worker count = min(CPUs, i.e. parallel call pairs, at most `MAX_PAIRS` = 24 because pair k uses dom0 endpoint
-//! descriptor 8 + k; the I/O queue pairs the controller allocates; `MAX_QUEUES`). Worker k reads and writes 4 KiB
+//! Worker count = min(CPUs, i.e. parallel call pairs, at most `MAX_PAIRS` = 40 in a build whose only parallel timing
+//! is `nvme`, else 24 because pair k uses dom0 endpoint descriptor 8 + k; the I/O queue pairs the controller
+//! allocates; `MAX_QUEUES`).
+//!
+//! `VERIFLAT_NVME_WORKERS=1,2,4,8,16,28` of the dom0 build replaces the alone-then-all phases by a sweep over worker
+//! counts: per (op, batch), for each listed count m (at most `MAX_SWEEP` counts; counts above the worker count are
+//! skipped with a line), workers 0..m run at once for `WINDOW_MS` and one `parallel_nvme sweep` line gives their
+//! total IOPS, so one boot measures every count. Worker k reads and writes 4 KiB
 //! requests sequentially within its own 1/n of namespace 1's LBAs. Batch b means at most b requests in flight on
 //! the worker's queue: each round reaps every posted completion, refills up to b, and writes each doorbell at
 //! most once. Per (op, batch), each worker runs alone for `WINDOW_MS` while the others spin, then all at once
@@ -34,8 +40,42 @@ pub(super) const MAX_QUEUES: usize = MAX_PAIRS;
 pub(super) const MAX_BATCH: usize = 32;
 /// The runs: (write, batch).
 pub(super) const RUNS: [(bool, usize); 4] = [(false, 1), (false, 32), (true, 1), (true, 32)];
-/// The phases worker k >= 1 is released into: run c alone is `PHASE_NVME_FIRST + 2 * c`, all at once the next.
-pub const PHASES: usize = 2 * RUNS.len();
+/// The most worker counts of a sweep (`VERIFLAT_NVME_WORKERS`).
+pub(super) const MAX_SWEEP: usize = 8;
+/// The phases worker k >= 1 is released into: run c alone is `PHASE_NVME_FIRST + 2 * c`, all at once the next; sweep
+/// point i of run c is `PHASE_NVME_FIRST + 2 * RUNS.len() + c * MAX_SWEEP + i`, so consecutive points differ.
+pub const PHASES: usize = 2 * RUNS.len() + RUNS.len() * MAX_SWEEP;
+/// The worker counts of the sweep from `VERIFLAT_NVME_WORKERS` (comma-separated decimals), and how many there are;
+/// none without it.
+pub(super) const SWEEP: ([usize; MAX_SWEEP], usize) = match option_env!("VERIFLAT_NVME_WORKERS") {
+    Some(s) => parse_list(s),
+    None => ([0; MAX_SWEEP], 0),
+};
+
+const fn parse_list(s: &str) -> ([usize; MAX_SWEEP], usize) {
+    let b = s.as_bytes();
+    let (mut out, mut len, mut i, mut v, mut digits) = ([0; MAX_SWEEP], 0, 0, 0, 0);
+    while i <= b.len() {
+        if i == b.len() || b[i] == b',' {
+            assert!(digits > 0 && v > 0 && len < MAX_SWEEP, "VERIFLAT_NVME_WORKERS must be at most 8 positive decimals separated by commas");
+            out[len] = v;
+            len += 1;
+            (v, digits) = (0, 0);
+        } else {
+            assert!(b[i].is_ascii_digit(), "VERIFLAT_NVME_WORKERS must be at most 8 positive decimals separated by commas");
+            v = v * 10 + (b[i] - b'0') as usize;
+            digits += 1;
+        }
+        i += 1;
+    }
+    (out, len)
+}
+
+/// The run (index into `RUNS`) of a phase of this benchmark.
+fn run_of(phase: usize) -> usize {
+    let off = phase - PHASE_NVME_FIRST;
+    if off < 2 * RUNS.len() { off / 2 } else { (off - 2 * RUNS.len()) / MAX_SWEEP }
+}
 /// The timed window of each phase in ms, from `VERIFLAT_NVME_PARALLEL_MS` of the dom0 build (default 1000).
 pub(super) const WINDOW_MS: u64 = match option_env!("VERIFLAT_NVME_PARALLEL_MS") {
     Some(s) => parse_decimal(s),
@@ -165,7 +205,20 @@ pub fn run(n: usize) {
     );
 
     for (c, &(is_write, batch)) in RUNS.iter().enumerate() {
-        time_run("parallel_nvme", PHASE_NVME_FIRST, &MEASURED, |phase| worker(0, phase), workers, c, is_write, batch);
+        if !super::pci::op_selected(is_write) {
+            continue;
+        }
+        if SWEEP.1 == 0 {
+            time_run("parallel_nvme", PHASE_NVME_FIRST, &MEASURED, |phase| worker(0, phase), workers, c, is_write, batch);
+            continue;
+        }
+        for (i, &m) in SWEEP.0[..SWEEP.1].iter().enumerate() {
+            if m > workers {
+                log::info!("parallel_nvme sweep op={} batch={} n={} skipped: only {} workers", if is_write { "write" } else { "read" }, batch, m, workers);
+                continue;
+            }
+            time_sweep_point(PHASE_NVME_FIRST + 2 * RUNS.len() + c * MAX_SWEEP + i, m, is_write, batch);
+        }
     }
 
     // Disabling the controller deletes every queue, so no DMA reaches the buffers freed after it.
@@ -262,6 +315,45 @@ pub(super) fn time_run(
     }
 }
 
+/// Runs workers 0..m at once in `phase` until one shared deadline `WINDOW_MS` away and logs their total IOPS over the
+/// span from the first begin to the last end, the slowest and fastest worker's IOPS and the share of the span in
+/// which all of them ran.
+fn time_sweep_point(phase: usize, m: usize, is_write: bool, batch: usize) {
+    time_sweep("parallel_nvme", phase, m, is_write, batch, &MEASURED, &|phase| worker(0, phase));
+}
+
+/// One sweep point of a benchmark with prefix `prefix`: workers 0..m run `phase` at once until one deadline (worker
+/// 0 here with `run0`), then one line gives the total IOPS over the span from the first begin to the last end, the
+/// slowest and fastest worker's own IOPS, the IPC round trips (`calls`, 0 without IPC), and `cycles_per_req`, the
+/// worker CPU time per completed request (span x m / completions), from what the workers recorded in `measured`.
+pub(super) fn time_sweep(prefix: &str, phase: usize, m: usize, is_write: bool, batch: usize, measured: &[Measured], run0: &dyn Fn(usize)) {
+    let deadline = rdtsc() + WINDOW_MS * tsc_hz() / 1000;
+    for k in (0..m).rev() {
+        run_worker(k, phase, deadline, run0);
+    }
+    for k in 0..m {
+        wait_done(prefix, k, phase);
+    }
+    let (mut min_begin, mut max_begin, mut min_end, mut max_end, mut total, mut calls) = (u64::MAX, 0, u64::MAX, 0, 0, 0);
+    let (mut slowest, mut fastest) = (u64::MAX, 0);
+    for k in 0..m {
+        let r = &measured[k];
+        let (completed, begin, end) = (r.completed.load(Ordering::SeqCst), r.begin.load(Ordering::SeqCst), r.end.load(Ordering::SeqCst));
+        (min_begin, max_begin, min_end, max_end) = (min_begin.min(begin), max_begin.max(begin), min_end.min(end), max_end.max(end));
+        total += completed;
+        calls += r.calls.load(Ordering::SeqCst);
+        let own = iops(completed, end - begin);
+        (slowest, fastest) = (slowest.min(own), fastest.max(own));
+    }
+    let overlap = if max_begin < min_end { hundredths(min_end - max_begin, max_end - min_begin) } else { 0 };
+    let span = max_end - min_begin;
+    log::info!(
+        "{} sweep op={} batch={} n={} total_iops={} per_worker_min={} per_worker_max={} completed={} calls={} cycles_per_req={} overlap={}",
+        prefix, if is_write { "write" } else { "read" }, batch, m, iops(total, span), slowest, fastest, total, calls,
+        span as u128 * m as u128 / total.max(1) as u128, Hundredths(overlap)
+    );
+}
+
 /// Takes every posted completion of worker `k`'s queue pair `q`, returns its command ID (= data buffer) to
 /// `free`, writes the completion head doorbell once if it took any, and returns how many it took.
 #[inline(always)]
@@ -296,7 +388,7 @@ fn reap(k: usize, q: &mut QueuePair, free: &mut [u16; MAX_BATCH], nfree: &mut us
 /// next phase starts with an empty queue, records the result, and marks the phase done.
 pub fn worker(k: usize, phase: usize) {
     let pair = &PAIRS[k];
-    let (is_write, batch) = RUNS[(phase - PHASE_NVME_FIRST) / 2];
+    let (is_write, batch) = RUNS[run_of(phase)];
     let deadline = pair.deadline.load(Ordering::SeqCst);
     let Some(q) = (unsafe { (*(&raw mut QUEUES))[k].as_mut() }) else {
         fail(format_args!("worker {} has no queue pair", k));

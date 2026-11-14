@@ -80,18 +80,25 @@ impl AddressSpace {
         huge: bool,
         cache_disable: bool,
     ) {
-        self.map_entry(allocator, vaddr, paddr, user, huge, cache_disable, false, false);
+        self.map_entry(allocator, vaddr, paddr, user, if huge { 1 } else { 3 }, cache_disable, false, false);
     }
 
     /// Maps a 4K page identity, kernel-only, writable, write-through and execute-disabled, for the RAM log buffer.
     pub unsafe fn map_ramlog(&mut self, allocator: &mut impl PhysicalAllocator, paddr: u64) {
-        self.map_entry(allocator, paddr, paddr, false, false, false, true, true);
+        self.map_entry(allocator, paddr, paddr, false, 3, false, true, true);
     }
 
     /// Maps a 4K user page, writable and execute-disabled, for device registers. No PCD: the
     /// caller checks that the MTRRs make the page uncacheable.
     pub unsafe fn map_user_mmio(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64) {
-        self.map_entry(allocator, vaddr, paddr, true, false, false, true, false);
+        self.map_entry(allocator, vaddr, paddr, true, 3, false, true, false);
+    }
+
+    /// Maps device registers for the user, writable, execute-disabled and uncached by the page attributes
+    /// (PCD and PWT), whatever the MTRRs say: a 2 MiB page when `huge`, else a 4K page. For a BAR0 above the
+    /// kernel's page array (see `pci.rs`), which the kernel never learns of.
+    pub unsafe fn map_user_mmio_uc(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64, huge: bool) {
+        self.map_entry(allocator, vaddr, paddr, true, if huge { 2 } else { 3 }, true, true, true);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -101,7 +108,7 @@ impl AddressSpace {
         vaddr: u64,
         paddr: u64,
         user: bool,
-        huge: bool,
+        leaf_level: usize,
         cache_disable: bool,
         execute_disable: bool,
         write_through: bool,
@@ -117,8 +124,8 @@ impl AddressSpace {
             panic!("paddr is unaligned");
         }
 
-        // FIXME
-        let leaf_level = if huge { 1 } else { 3 };
+        // Leaf at level 3 (4K), 2 (2M) or 1 (1G).
+        let huge = leaf_level < 3;
 
         for level in 0..leaf_level {
             let index = Self::index(vaddr, level);

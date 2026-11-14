@@ -324,6 +324,14 @@ impl XAPIC {
     pub fn tsc_set_oneshot(&mut self, value: u32) {
         self.write(ApicRegister::XAPIC_TIMER_INIT_COUNT, value);
     }
+
+    /// Switches the timer LVT to TSC-deadline mode (bits 18:17 = 10b), keeping its vector and mask.
+    ///
+    /// LOCAL MOD
+    pub fn tsc_deadline_mode(&mut self) {
+        let lvt = self.read(ApicRegister::XAPIC_LVT_TIMER) & !(0b11 << 17);
+        self.write(ApicRegister::XAPIC_LVT_TIMER, lvt | (0b10 << 17));
+    }
 }
 
 impl ApicControl for XAPIC {

@@ -132,6 +132,26 @@ pub fn set_timer(cycles: Cycles) {
     }
 }
 
+/// Arms one timer interrupt at TSC value `deadline` by switching this CPU's timer LVT to TSC-deadline mode, for
+/// feature `no-timer` builds booted with `reset_after=`: nothing else arms the timer there, so without it a hung run
+/// would never reset itself. Returns false when CPUID.01H:ECX[24] reports no TSC-deadline mode.
+pub fn arm_tsc_deadline(deadline: u64) -> bool {
+    if unsafe { core::arch::x86_64::__cpuid(1) }.ecx & (1 << 24) == 0 {
+        return false;
+    }
+    if x2apic_mode() {
+        unsafe { wrmsr(X2APIC_LVT_TIMER, rdmsr(X2APIC_LVT_TIMER) & !(0b11 << 17) | (0b10 << 17)) };
+    } else {
+        xapic().tsc_deadline_mode();
+    }
+    // SDM 11.5.4.1: a fence orders the LVT write before the IA32_TSC_DEADLINE write.
+    unsafe {
+        core::arch::x86_64::_mm_mfence();
+        wrmsr(msr::IA32_TSC_DEADLINE, deadline);
+    }
+    true
+}
+
 /// Cancels a pending one-shot timer.
 pub fn disarm_timer() {
     if x2apic_mode() {

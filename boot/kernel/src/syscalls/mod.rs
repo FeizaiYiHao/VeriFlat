@@ -450,9 +450,14 @@ pub unsafe fn enter_off_cpu() -> ! {
 
 /// Arms the scheduling tick and keeps it re-armed. With feature `no-timer` it arms nothing and leaves
 /// `timer_on` false, for timing runs: no tick then preempts a thread, ends an idle CPU's `hlt`, or
-/// makes a CPU notice an offline request.
+/// makes a CPU notice an offline request. With `reset_after=` it still arms one TSC-deadline interrupt on CPU 0 at
+/// the reset deadline, so a run that hangs resets itself and keeps its RAM log.
 fn start_timer() {
     if cfg!(feature = "no-timer") {
+        let deadline = unsafe { crate::boot::RESET_DEADLINE };
+        if deadline != 0 && cpu::get_cpu_id() == 0 && !interrupt::arm_tsc_deadline(deadline) {
+            log::warn!("reset_after: no TSC-deadline timer, so a hung no-timer run does not reset itself");
+        }
         return;
     }
     cpu::get_current().timer_on = true;
