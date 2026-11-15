@@ -532,10 +532,10 @@ fn time_mmap_only() {
 /// Client/server pairs of the parallel call timing: at most one per CPU, and at most `MAX_ENDPOINT_PAIRS` = 24,
 /// since pair k uses descriptor `PAIR_ENDPOINT + k`, which must stay below `MAX_NUM_ENDPOINT_DESCRIPTORS` (32).
 /// A build whose only parallel timings are `nvme` and `nvme_xproc` uses the clients only as workers on their CPUs and
-/// makes no call over the pair endpoints: it places up to `MAX_PAIRS` (one per CPU of `NUM_CPUS` = 40), creates no
+/// makes no call over the pair endpoints: it places up to `MAX_PAIRS` (one per CPU of `NUM_CPUS` = 28), creates no
 /// pair server at all, and client k >= 24 shares the endpoint of pair k - 24, over which it only receives the
 /// `nvme_xproc` handoff endpoint (`nvme_workers_only`).
-const MAX_PAIRS: usize = 40;
+const MAX_PAIRS: usize = 28;
 const MAX_ENDPOINT_PAIRS: usize = 24;
 
 /// Whether this build's only parallel timings are `nvme` and `nvme_xproc`, whose workers need no pair server.

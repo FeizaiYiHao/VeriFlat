@@ -9,7 +9,7 @@
 //! admin queue belongs to dom0's first thread alone, which issues every admin command (`NvmeDevice::admin`) before
 //! it releases a worker and after the last worker is done. Polling only: the completion queues have interrupts off.
 //!
-//! Worker count = min(CPUs, i.e. parallel call pairs, at most `MAX_PAIRS` = 40 in a build whose only parallel timing
+//! Worker count = min(CPUs, i.e. parallel call pairs, at most `MAX_PAIRS` = 28 in a build whose only parallel timing
 //! is `nvme`, else 24 because pair k uses dom0 endpoint descriptor 8 + k; the I/O queue pairs the controller
 //! allocates; `MAX_QUEUES`).
 //!

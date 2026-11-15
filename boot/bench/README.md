@@ -157,6 +157,29 @@ The timer build also runs a functional test of `mmap_1g`, `unmap_1g`, and the 1G
 mmap_2m test (`mmap_1g self-test passed`), or logs `mmap_1g self-test skipped` while the kernel answers
 syscall 49 with InvalidSyscall or when the root container has no 1G quota.
 
+## unmap_4k against the cpu set size
+
+Built with `PARALLEL=unmapcpus` (alone, not in a list: dom0 runs only this timing, first, and exits; see
+`boot/dom0/src/unmap_cpus.rs`). It times `mmap_4k` and `unmap_4k` of one page, each call on its own (min,
+median, and mean over 20,000 rounds after 2,000 warm-up rounds), page table window present, thread quota 16
+so every unmap refunds to the thread, against the size of the caller container's cpu set, which `unmap_4k`'s
+TLB flush walks. dom0's root thread times the root container's set of all 28 CPU ids (`NUM_CPUS`), then a helper thread
+gives the ids away from 27 down, each as the transfer CPU of a new child container that never runs, and the
+root thread times each smaller set down to {0}; ids at or above the kernel's `N CPUs present` have no
+processor, the others are parked Off. Then CPU 1's child container is brought online and times the same
+loop in its own process, cpu set {1}. Each container takes two 2M quota, so the kernel needs
+`VERIFLAT_BOOT_2M_BLOCKS` >= 54 (`build-parallel-call-image.sh` sets 128; with `boot/run.sh` pass
+`NO_TIMER=1 VERIFLAT_PARALLEL=unmapcpus VERIFLAT_BOOT_2M_BLOCKS=128`).
+Run: `PARALLEL=unmapcpus boot/bench/build-parallel-call-image.sh boot/bench/out/image-unmapcpus`, then
+`IMAGE=boot/bench/out/image-unmapcpus OUT=boot/bench/out/results-unmapcpus boot/bench/run-parallel-call.sh 2 4`.
+
+| line | what it gives |
+| --- | --- |
+| `unmapcpus calibration: empty rdtsc pair min A median B TSC cycles; compare_exchange + store C TSC cycles per iteration ...` | an empty rdtsc pair over 20,000 samples, and an uncontended `compare_exchange` plus a store on a cache-hot word, best of 5 × 1e6 |
+| `unmapcpus root set=n ids=0..n-1 cpu=0: mmap_4k min .. median .. mean .., unmap_4k min .. median .. mean .. TSC cycles over 20000 rounds` | dom0's root thread with a root cpu set of n ids, n = 28 down to 1 |
+| `unmapcpus child set=1 ids=1 cpu=1: ...` | the same loop in the child container on CPU 1 |
+| `unmapcpus passed` | the end |
+
 ## Interleaved A/B protocol
 
 1. Build both images: `WORKTREE=<baseline checkout> boot/bench/build-parallel-call-image.sh boot/bench/out/image-a`
@@ -553,7 +576,7 @@ Kernel and loader gaps (nothing changed for them):
   BARs above 4 GiB (a kernel and model change). The loader also panics unless the MTRRs make BAR0 uncacheable.
 - No MSI-X or interrupts are needed (polling); BAR3 (MSI-X table) stays unmapped. No new syscall is needed.
 - At most 16 recorded functions (`MAX_PCI_DEVICES`); a c6620 has 2 + 2 E810 ports plus NVMe and other NICs.
-- 40 CPUs at most; boot with `maxcpus=` on a machine with more logical processors.
+- 28 CPUs at most (`NUM_CPUS`): the loader takes the first 28 processors of the ACPI MADT list; boot with `maxcpus=` on a machine with more logical processors.
 
 On the real machine, Linux front end first:
 

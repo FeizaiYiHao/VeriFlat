@@ -27,8 +27,8 @@ const ROUNDS: usize = 20_000;
 const WARMUP: usize = 2_000;
 /// The timing thread's 4K quota: four at hand for the map, one for the page and the page tables of the first map.
 const FUNDING: usize = 16;
-/// The CPU ids of the kernel (`NUM_CPUS`), all in the root container's cpu set at boot.
-const NUM_CPU_IDS: usize = 40;
+/// The CPU ids of the kernel (must equal `NUM_CPUS`), all in the root container's cpu set at boot.
+const NUM_CPU_IDS: usize = 28;
 /// The CPU of the child container that runs the loop.
 const CHILD_CPU: usize = 1;
 /// Funding and process quota of the containers that never run, and of the one that does: its thread moves
@@ -120,7 +120,7 @@ extern "C" fn helper() -> ! {
             };
             let create = || unsafe { sys_new_container(image, pages, funding, process_quota, id, ip, sp).rax };
             // Each new container takes two 2M quota (its container structures), so the kernel build needs
-            // VERIFLAT_BOOT_2M_BLOCKS >= 2 * 39 = 78 (build-parallel-call-image.sh sets 128).
+            // VERIFLAT_BOOT_2M_BLOCKS >= 2 * (NUM_CPU_IDS - 1) = 54 (build-parallel-call-image.sh sets 128).
             quiet("unmapcpus helper alloc_quota_2m", unsafe { sys_alloc_quota_2m(2) });
             quiet("unmapcpus helper alloc_thread_quota_2m", unsafe { sys_alloc_thread_quota_2m(2) });
             let mut ret = create();
@@ -169,9 +169,10 @@ pub fn run() {
     fund("unmapcpus helper thread funding", 1);
     quiet("unmapcpus new_thread (helper)", unsafe { sys_new_thread(entry(helper), stack_top(&raw const HELPER_STACK)) });
     fund("unmapcpus funding", FUNDING);
-    time_point("root set=40 ids=0..39");
-    for id in (1..NUM_CPU_IDS).rev() {
-        give_away(id);
+    for id in (1..=NUM_CPU_IDS).rev() {
+        if id < NUM_CPU_IDS {
+            give_away(id);
+        }
         let mut who = Label { bytes: [0; 48], len: 0 };
         let _ = write!(who, "root set={} ids=0..{}", id, id - 1);
         time_point(who.as_str());

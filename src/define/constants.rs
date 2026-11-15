@@ -35,7 +35,7 @@ pub const MEM_4K_MASK: u64 = 0x0000_ffff_ffff_f000;
 pub const MEM_2M_MASK: u64 = 0x0000_ffff_ffe0_0000;
 pub const MEM_1G_MASK: u64 = 0x0000_ffff_c000_0000;
 pub const PCID_ENABLE_MASK: usize = 0x8000_0000_0000_0000u64 as usize;
-pub const NUM_CPUS: usize = 40;
+pub const NUM_CPUS: usize = 28;
 
 pub open spec fn edp_idx_valid(edp_idx: EndpointIdx) -> bool { 0 <= edp_idx < MAX_NUM_ENDPOINT_DESCRIPTORS }
 
