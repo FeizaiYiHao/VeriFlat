@@ -144,6 +144,11 @@ impl<'p, P: Platform> TxQueue<'p, P> {
         self.clean()
     }
 
+    /// Frames `send_frames` could queue now.
+    pub fn room(&self) -> usize {
+        self.ring.free(self.next_to_use, self.next_to_clean)
+    }
+
     /// Descriptors queued and not reclaimed yet.
     pub fn in_flight(&self) -> usize {
         self.ring.distance(self.next_to_clean, self.next_to_use)

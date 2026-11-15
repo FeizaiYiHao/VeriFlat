@@ -56,7 +56,7 @@ use ice::xfer::{AppQueue, BadFrame, DriverQueue, Mailbox, MAX_BATCH, SLOT_BYTES}
 use ice::{Config, Device, DmaRegion, Mac, Platform, RxSteering};
 use vsys::*;
 
-#[cfg(feature = "ice-mock")]
+#[cfg(feature = "mock-device")]
 type Model = ice::mock::Mock;
 
 /// Batch sizes, in the order they run.
@@ -99,18 +99,18 @@ fn shared_slots(k: usize) -> DmaRegion {
 pub struct XPlatform {
     bar: usize,
     tsc_hz: u64,
-    #[cfg(feature = "ice-mock")]
+    #[cfg(feature = "mock-device")]
     model: &'static Model,
     packets_next: AtomicUsize,
     packets_end: AtomicUsize,
 }
 
 impl XPlatform {
-    fn new(bar: usize, tsc_hz: u64) -> &'static XPlatform {
+    pub(crate) fn new(bar: usize, tsc_hz: u64) -> &'static XPlatform {
         Box::leak(Box::new(XPlatform {
             bar,
             tsc_hz,
-            #[cfg(feature = "ice-mock")]
+            #[cfg(feature = "mock-device")]
             model: Box::leak(Box::new(Model::new_unchecked(true))),
             packets_next: AtomicUsize::new(0),
             packets_end: AtomicUsize::new(0),
@@ -118,36 +118,36 @@ impl XPlatform {
     }
 
     /// Takes the packet buffers from `[va, va + len)`, already mapped at IOVA = VA.
-    fn packets_in(&self, va: usize, len: usize) {
+    pub(crate) fn packets_in(&self, va: usize, len: usize) {
         self.packets_next.store(va, Ordering::SeqCst);
         self.packets_end.store(va + len, Ordering::SeqCst);
     }
 
     fn noted(&self, region: DmaRegion) -> DmaRegion {
-        #[cfg(feature = "ice-mock")]
+        #[cfg(feature = "mock-device")]
         self.model.note_dma(&region);
         region
     }
 }
 
 impl Platform for XPlatform {
-    #[cfg(feature = "ice-mock")]
+    #[cfg(feature = "mock-device")]
     fn read32(&self, offset: usize) -> u32 {
         let _ = self.bar;
         self.model.read32(offset)
     }
 
-    #[cfg(feature = "ice-mock")]
+    #[cfg(feature = "mock-device")]
     fn write32(&self, offset: usize, value: u32) {
         self.model.write32(offset, value)
     }
 
-    #[cfg(not(feature = "ice-mock"))]
+    #[cfg(not(feature = "mock-device"))]
     fn read32(&self, offset: usize) -> u32 {
         unsafe { core::ptr::read_volatile((self.bar + offset) as *const u32) }
     }
 
-    #[cfg(not(feature = "ice-mock"))]
+    #[cfg(not(feature = "mock-device"))]
     fn write32(&self, offset: usize, value: u32) {
         unsafe { core::ptr::write_volatile((self.bar + offset) as *mut u32, value) }
     }
@@ -174,7 +174,7 @@ impl Platform for XPlatform {
     }
 
     fn delay_us(&self, us: u64) {
-        if cfg!(feature = "ice-mock") {
+        if cfg!(feature = "mock-device") {
             return;
         }
         let end = rdtsc() + us * self.tsc_hz / 1_000_000;
@@ -206,7 +206,7 @@ impl Settings {
     /// The frame application thread `q` sends from a device whose MAC is `mac`: with the model to its own queue's
     /// steering MAC (a loopback to the same queue); otherwise as the line-rate benchmark.
     fn frame(&self, q: usize, mac: [u8; 6]) -> UdpFrame {
-        let dst = match (cfg!(feature = "ice-mock"), self.dst, self.peer) {
+        let dst = match (cfg!(feature = "mock-device"), self.dst, self.peer) {
             (true, _, _) => steering_mac(mac, q),
             (false, Some(d), _) => d,
             (false, None, Some(peer)) => steering_mac(peer, q % self.peer_queues.max(1)),
@@ -215,7 +215,7 @@ impl Settings {
         UdpFrame {
             dst_mac: dst,
             // On the NIC queue q sends from its own steering MAC, so a reflector that swaps the MACs returns it to q.
-            src_mac: if !cfg!(feature = "ice-mock") && self.steering == RxSteering::PerQueueMac { steering_mac(mac, q) } else { mac },
+            src_mac: if !cfg!(feature = "mock-device") && self.steering == RxSteering::PerQueueMac { steering_mac(mac, q) } else { mac },
             src_ip: [10, 10, 0, 1 + q as u8],
             dst_ip: [10, 10, 1, 1 + q as u8],
             src_port: 1024 + q as u16,
@@ -514,7 +514,7 @@ fn settings(n: usize, hz: u64) -> Settings {
 pub fn run() {
     // find_e810 allocates once an E810 is recorded: the heap comes first (init is idempotent).
     crate::slab_alloc::init();
-    let f = if cfg!(feature = "ice-mock") {
+    let f = if cfg!(feature = "mock-device") {
         None
     } else {
         let Some(f) = pick(&find_e810()) else {
@@ -640,7 +640,7 @@ fn run_linked(f: Option<IceFunction>, s: &Settings, n: usize, counts: &[usize], 
     for (k, (tx, rx)) in dev.take_queues().into_iter().enumerate() {
         let slots = p.dma_alloc(TX_SLOTS * SLOT_BYTES, 4096).unwrap_or_else(|| fail("Tx slots", ice::Error::NoDmaMemory));
         let mb = Box::into_raw(Box::new(empty_mailbox()));
-        let app = AppQueue::new(mb, slots, TX_SLOTS, &s.frame(k, mac), cfg!(feature = "ice-mock"));
+        let app = AppQueue::new(mb, slots, TX_SLOTS, &s.frame(k, mac), cfg!(feature = "mock-device"));
         let drv = DriverQueue::new(tx, rx, slots.iova, TX_SLOTS, TX_RING);
         LINKED[k].store(Box::into_raw(Box::new(Linked { mb, app, drv })) as usize, Ordering::SeqCst);
     }
@@ -689,7 +689,7 @@ fn run_xproc(f: Option<IceFunction>, s: &Settings, m: usize, counts: &[usize], o
     let mac = [mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]];
     log::info!("ice_xproc: driver process up with {} queue pairs, MAC {}, {} shared pages", m, Mac(mac), pages);
     for k in 0..m {
-        let app = AppQueue::new(mailbox(k), shared_slots(k), TX_SLOTS, &s.frame(k, mac), cfg!(feature = "ice-mock"));
+        let app = AppQueue::new(mailbox(k), shared_slots(k), TX_SLOTS, &s.frame(k, mac), cfg!(feature = "mock-device"));
         XAPP[k].store(Box::into_raw(Box::new(app)) as usize, Ordering::SeqCst);
     }
     for (b, measured) in out.iter_mut().enumerate() {
@@ -717,7 +717,7 @@ extern "C" fn driver_main() -> ! {
     let bar = PCI_BAR_WINDOW_BASE + DRV_BAR_PHYS.load(Ordering::SeqCst);
     let bdf = DRV_BDF.load(Ordering::SeqCst);
     let (bus, dev, fun) = (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7);
-    let hw = !cfg!(feature = "ice-mock");
+    let hw = !cfg!(feature = "mock-device");
     // A receiver holds 3 4K quota per page for the worst case of page tables (as do mmap and IOMMU maps).
     fund("ice driver receive funding", 3 * (if hw { bar_pages } else { 0 } + pages));
     if hw {

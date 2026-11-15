@@ -23,7 +23,14 @@ ice-bench = []
 # The E810 benchmark with the driver linked in and in a process of its own, IPC per batch (see src/ice_xproc.rs).
 ice-xproc = []
 # `ice-xproc` on the software device model of `ice::mock` instead of an E810 (measures the IPC, not a NIC).
-ice-mock = ["ice-xproc", "ice/mock"]
+ice-mock = ["ice-xproc", "mock-device"]
+# The two-process E810 shapes over `ice::chan`, application and driver in two processes: two cores and a shared ring,
+# or an IPC round trip per batch, in modes tx, rx and fwd (see src/ice_chan.rs).
+ice-chan = []
+# `ice-chan` on the software device model.
+ice-chan-mock = ["ice-chan", "mock-device"]
+# The E810 front ends drive `ice::mock` instead of an E810.
+mock-device = ["ice/mock"]
 
 [dependencies]
 vsys = { path = "../vsys" }

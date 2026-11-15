@@ -467,6 +467,21 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   (`ice::mock`, each queue's frames looped back to itself and checked by sequence number): numbers of the IPC and the
   model, not a NIC. The E810 benchmarks run on a kernel without the timer (`run.sh` builds it so), since a tick on
   CPU 0 could let a CPU coming online pull dom0's first thread instead of thread k.
+- `boot/dom0/src/ice_chan.rs` with `boot/ice/src/chan.rs`: the shapes of the Atmosphere paper's NIC figure over one
+  application/driver exchange (`ice::chan`: per pair two single-producer single-consumer rings of frame entries and a
+  few counters in memory both processes map, zero copy both ways), which the Atmosphere port runs unchanged, feature
+  `ice-chan` (`ice-chan-mock` on the device model; kernel without the timer). `VERIFLAT_ICE_SHAPE` picks
+  `linked` (driver process thread k on CPU k + 1 runs both sides of pair k, no IPC), `ipc` (application thread k in
+  dom0 on CPU k, one `call` per batch to driver thread k on the same CPU) or `ring` (application thread k on CPU k,
+  driver thread k polling on CPU P + k, P = half the CPUs, no IPC). Modes (`VERIFLAT_ICE_MODE`, default
+  `tx,rx,fwd,maglev`): `tx` (frames with sequence numbers from Tx slots), `rx` (received frames read in place and
+  released), `fwd` (each received frame's MACs rewritten and sent back out from its Rx buffer, the work of
+  Atmosphere's `run_fwd_udptest`) and `maglev` (`ice::maglev` per frame, then the rewrite). `VERIFLAT_ICE_BATCH`
+  (`1,32`), `VERIFLAT_ICE_QUEUES` (pair counts), `VERIFLAT_ICE_WINDOW_MS` (1000), `VERIFLAT_ICE_FWD_DST` (needed for
+  fwd and maglev). The device has one queue pair per CPU; pair k of c polls Rx queues k, k + c, ... Line per phase:
+  `ice_linked|ice_ring|ice_ipc mode=m batch=b n=c total=<pps> min= max= overlap= pairs=<pps>,..` (frames the
+  application side moved: pushed for transmission, received, forwarded). Bare-metal runs:
+  `VeriFlat-artifact/baremetal/nic-chan.sh`.
 
 Each queue sends one fixed UDP frame from its steering MAC (so that a reflector which swaps the MACs returns it to
 the same queue), one descriptor per frame cycling over the frame's 64 copies (`VERIFLAT_ICE_POOL`, `--pool`; one

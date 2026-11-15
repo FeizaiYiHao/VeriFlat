@@ -21,6 +21,7 @@ extern crate alloc;
 
 pub mod aq;
 pub mod bench;
+pub mod chan;
 pub mod ctx;
 pub mod desc;
 mod device;

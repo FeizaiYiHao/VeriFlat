@@ -6,6 +6,7 @@
 extern crate alloc;
 
 mod ice_bench;
+mod ice_chan;
 mod ice_xproc;
 mod nvme;
 mod slab_alloc;
@@ -2577,6 +2578,11 @@ pub extern "C" fn _start() -> ! {
     if cfg!(feature = "ice-bench") {
         // First, while every other CPU is Off, so that worker k comes up on CPU k.
         ice_bench::run();
+        unsafe { sys_debug_exit(0) };
+    }
+    if cfg!(feature = "ice-chan") {
+        // The two-process shapes, two cores and a shared ring or IPC per batch (see src/ice_chan.rs).
+        ice_chan::run();
         unsafe { sys_debug_exit(0) };
     }
     if cfg!(feature = "ice-xproc") {
