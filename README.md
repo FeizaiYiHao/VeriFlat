@@ -20,6 +20,18 @@ and primitives belong to kernel core; allocation, mapping, and syscall crates
 follow the dependency boundaries in the
 [build skill](.codex/skills/veriflat-build/SKILL.md).
 
+## Branches
+
+- `main`: the kernel (`src/`, `crates/`), what it needs to boot under QEMU or
+  on hardware (`boot/` loader, kernel glue, serial driver, `vsys`), and the
+  small `boot/dom0`, which says hello and runs one short self-test per syscall
+  (`boot/run.sh`).
+- `proofs`: `main` plus the theorem crates `noninterference/`, `liveness/`,
+  and `deadlockfree/`.
+- `bench`: `main` plus the benchmark dom0 (`boot/dom0-bench`), the device
+  drivers (`boot/ice`, `boot/ice-linux`), and the benchmark scripts
+  (`boot/bench/`).
+
 ## Verification
 
 The `verus` submodule tracks the `veriflat-verus-perf-series` branch of

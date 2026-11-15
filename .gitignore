@@ -24,3 +24,9 @@ tmp.rs
 
 # Bare-metal boot workspace build output.
 /boot/target/
+
+# Build output of noninterference/, liveness/, deadlockfree/ (branch proofs) and boot/bench/ (branch bench).
+/noninterference/target/
+/liveness/target/
+/deadlockfree/target/
+/boot/bench/out/
