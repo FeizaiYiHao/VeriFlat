@@ -6,6 +6,7 @@ step specs (`*_step_pre`, `*_step`, `*_syscall_trace`) in the syscall
 `*_spec.rs` files. The live code is authoritative for everything else. Each
 section ends with the known differences between this target and the current
 specs; remove a section's differences list once that syscall conforms.
+The `noninterference/` paths cited below live on branch `proofs`.
 
 ## 1. Model
 

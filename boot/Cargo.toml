@@ -5,7 +5,6 @@ members = [
   "aloader",
   "astd",
   "dom0",
-  "ice",
   "kernel",
   "kernel-logger",
   "ns16550a",
