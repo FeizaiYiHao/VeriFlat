@@ -1,0 +1,38 @@
+[package]
+name = "dom0-bench"
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+publish = false
+
+[features]
+# For a kernel built with `no-timer`: runs only the timings, which need no tick, and skips every phase
+# that needs preemption, an idle CPU's tick, or an offline request noticed at a tick.
+no-timer = []
+# Focused syscall 54 integration test; exits before the general benchmark suite.
+split-test = []
+# Focused permission-backed mmap zeroing regression.
+zero-test = []
+# Focused EDU device-to-RAM DMA revocation regression.
+dma-write-test = []
+# Reads a few registers of every recorded Intel Ethernet function through its BAR0 window, low or high (above 4 GiB,
+# mapped by the loader alone), and logs them (`bar_probe` in src/main.rs).
+bar-probe = []
+# The E810 (ice) packet benchmark, run first and alone; skipped without an E810 function (see src/ice_bench.rs).
+ice-bench = []
+# The E810 benchmark with the driver linked in and in a process of its own, IPC per batch (see src/ice_xproc.rs).
+ice-xproc = []
+# `ice-xproc` on the software device model of `ice::mock` instead of an E810 (measures the IPC, not a NIC).
+ice-mock = ["ice-xproc", "mock-device"]
+# The two-process E810 shapes over `ice::chan`, application and driver in two processes: two cores and a shared ring,
+# or an IPC round trip per batch, in modes tx, rx and fwd (see src/ice_chan.rs).
+ice-chan = []
+# `ice-chan` on the software device model.
+ice-chan-mock = ["ice-chan", "mock-device"]
+# The E810 front ends drive `ice::mock` instead of an E810.
+mock-device = ["ice/mock"]
+
+[dependencies]
+vsys = { path = "../vsys" }
+ice = { path = "../ice" }
+log = "0.4.19"

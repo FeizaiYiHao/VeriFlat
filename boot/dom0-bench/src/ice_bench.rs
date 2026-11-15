@@ -4,7 +4,7 @@
 //! `VERIFLAT_ICE_SECS` seconds; dom0 then reports per-queue and total packets per second from the TSC and the port
 //! counters.
 //!
-//! The benchmark runs only in a dom0 built with feature `ice-bench` (`ICE_BENCH=1 boot/run.sh`), on a kernel without
+//! The benchmark runs only in a dom0 built with feature `ice-bench` (`ICE_BENCH=1 boot/bench/run.sh`), on a kernel without
 //! the timer (feature `no-timer`, so that no tick on CPU 0 lets CPU k pull dom0's thread instead of worker k), first
 //! thing after boot while every other CPU is still Off, and exits afterwards; the default dom0 test only reports whether the
 //! loader recorded an E810 function. Build-time settings (environment of the dom0 build):

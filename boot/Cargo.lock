@@ -149,6 +149,14 @@ dependencies = [
 name = "dom0"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "vsys",
+]
+
+[[package]]
+name = "dom0-bench"
+version = "0.1.0"
+dependencies = [
  "ice",
  "log",
  "vsys",

@@ -2,7 +2,7 @@
 # Exports a commit of this checkout (default HEAD) into SNAP_DIR without git metadata, with `verus`
 # linked to this checkout's Verus tree, so a boot image can be built from a fixed kernel while src/ is
 # being edited: `WORKTREE=<snap_dir> build-parallel-call-image.sh`. OVERLAY lists working-copy files
-# (paths relative to the checkout, such as boot/dom0/src/main.rs) copied over the export. SNAP_DIR/
+# (paths relative to the checkout, such as boot/dom0-bench/src/main.rs) copied over the export. SNAP_DIR/
 # SNAPSHOT_OF records the commit and the overlaid files with their hashes; build-parallel-call-image.sh
 # copies it into built-from.txt. SNAP_DIR must not exist yet.
 # Usage: [OVERLAY="<path>..."] export-snapshot.sh <snap_dir> [commit]

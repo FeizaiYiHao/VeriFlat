@@ -1,4 +1,4 @@
-//! The E810 (ice) benchmark with the driver in a process of its own (feature `ice-xproc`, `ICE_XPROC=1 boot/run.sh`,
+//! The E810 (ice) benchmark with the driver in a process of its own (feature `ice-xproc`, `ICE_XPROC=1 boot/bench/run.sh`,
 //! on a kernel without the timer for the reason the line-rate benchmark gives):
 //! `ice_linked` with the driver linked into the application, then `ice_xproc` with the driver in a child process, both
 //! moving the same batches of frames through the same zero-copy exchange (`ice::xfer`), so that their ratio is the

@@ -1,13 +1,14 @@
 # dom0 timing benchmarks
 
-Drivers for the TSC timings dom0 prints under KVM. Results and images go to `boot/bench/out/`
+Drivers for the TSC timings the benchmark dom0 (`boot/dom0-bench`, branch `bench`) prints under KVM; `boot/run.sh`
+boots main's small self-test dom0 instead. Results and images go to `boot/bench/out/`
 (gitignored). All numbers are TSC cycles.
 
 ## Build modes
 
-- `boot/run.sh`: the full dom0 test with the LAPIC timer. It prints the null syscall, mmap, IPC,
+- `boot/bench/run.sh`: the full dom0 test with the LAPIC timer. It prints the null syscall, mmap, IPC,
   intra-process call, and new_thread timers on the way.
-- `NO_TIMER=1 SMP=n boot/run.sh`: kernel and dom0 with feature `no-timer`. dom0 runs only the timers
+- `NO_TIMER=1 SMP=n boot/bench/run.sh`: kernel and dom0 with feature `no-timer`. dom0 runs only the timers
   (adding the parallel call and cross-process call timers) and exits. Use this mode for measurements.
   `VERIFLAT_PARALLEL` of the dom0 build picks the parallel timings, a comma-separated list of `call`
   (default), `mmap` (the parallel mmap timing), `mmap2m` (the parallel mmap_2m timing), and `unmapn`
@@ -17,15 +18,15 @@ Drivers for the TSC timings dom0 prints under KVM. Results and images go to `boo
   min and max of the sum; skipped when the boot found no free 1G block).
 - `VERIFLAT_BOOT_2M_BLOCKS=n` of the kernel build (decimal, default 4) sets the free 2M blocks the kernel
   hands to the 2M allocator at boot, which are the root container's 2M quota. `build-parallel-call-image.sh`
-  sets it to 128 (256 MiB of the managed GiB) unless `BOOT_2M_BLOCKS` says otherwise; `boot/run.sh` passes
+  sets it to 128 (256 MiB of the managed GiB) unless `BOOT_2M_BLOCKS` says otherwise; `boot/bench/run.sh` passes
   it through from the environment.
 
 QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
 
 ## Scripts
 
-- `build-parallel-call-image.sh [out_dir]`: builds the no-timer image as `NO_TIMER=1 boot/run.sh`
-  does and stores `aloader`, `jumbo` (kernel ELF then dom0 ELF), and `built-from.txt` (commit, dirty
+- `build-parallel-call-image.sh [out_dir]`: builds the no-timer image as `NO_TIMER=1 boot/bench/run.sh`
+  does and stores `aloader`, `jumbo` (kernel ELF then dom0-bench ELF), and `built-from.txt` (commit, dirty
   `src/` and `boot/` files, parallel timings, hashes) in `out_dir`, default `out/image`.
   `WORKTREE=<checkout>` builds another checkout, such as a `git worktree add` of a baseline commit or
   an `export-snapshot.sh` export. `PARALLEL` sets `VERIFLAT_PARALLEL` (default `call`), `BOOT_2M_BLOCKS`
@@ -33,7 +34,7 @@ QEMU exits with status 1 when dom0 passed (isa-debug-exit maps code 0 to 1).
 - `export-snapshot.sh <snap_dir> [commit]`: exports a commit (default `HEAD`) without git metadata,
   with `verus` linked to this checkout's, so an image can be built from a fixed kernel while `src/` is
   being edited. `OVERLAY="<path>..."` copies working-copy files over it (such as an uncommitted
-  `boot/dom0/src/main.rs`); `SNAPSHOT_OF` records both and lands in `built-from.txt`.
+  `boot/dom0-bench/src/main.rs`); `SNAPSHOT_OF` records both and lands in `built-from.txt`.
 - `run-parallel-call.sh <runs> <smp>...`: boots the stored image `runs` times at each SMP count with
   `taskset -c 0-31`, KVM, `-cpu host`, `q35,kernel_irqchip=split`, `-m 6144 -mem-prealloc` (`MEM=<MiB>` overrides 6144), and
   isa-debug-exit, each under a 300 s `timeout`. Per run it appends the status to `status.txt` and the
@@ -160,7 +161,7 @@ syscall 49 with InvalidSyscall or when the root container has no 1G quota.
 ## unmap_4k against the cpu set size
 
 Built with `PARALLEL=unmapcpus` (alone, not in a list: dom0 runs only this timing, first, and exits; see
-`boot/dom0/src/unmap_cpus.rs`). It times `mmap_4k` and `unmap_4k` of one page, each call on its own (min,
+`boot/dom0-bench/src/unmap_cpus.rs`). It times `mmap_4k` and `unmap_4k` of one page, each call on its own (min,
 median, and mean over 20,000 rounds after 2,000 warm-up rounds), page table window present, thread quota 16
 so every unmap refunds to the thread, against the size of the caller container's cpu set, which `unmap_4k`'s
 TLB flush walks. dom0's root thread times the root container's set of all 28 CPU ids (`NUM_CPUS`), then a helper thread
@@ -168,7 +169,7 @@ gives the ids away from 27 down, each as the transfer CPU of a new child contain
 root thread times each smaller set down to {0}; ids at or above the kernel's `N CPUs present` have no
 processor, the others are parked Off. Then CPU 1's child container is brought online and times the same
 loop in its own process, cpu set {1}. Each container takes two 2M quota, so the kernel needs
-`VERIFLAT_BOOT_2M_BLOCKS` >= 54 (`build-parallel-call-image.sh` sets 128; with `boot/run.sh` pass
+`VERIFLAT_BOOT_2M_BLOCKS` >= 54 (`build-parallel-call-image.sh` sets 128; with `boot/bench/run.sh` pass
 `NO_TIMER=1 VERIFLAT_PARALLEL=unmapcpus VERIFLAT_BOOT_2M_BLOCKS=128`).
 Run: `PARALLEL=unmapcpus boot/bench/build-parallel-call-image.sh boot/bench/out/image-unmapcpus`, then
 `IMAGE=boot/bench/out/image-unmapcpus OUT=boot/bench/out/results-unmapcpus boot/bench/run-parallel-call.sh 2 4`.
@@ -193,22 +194,22 @@ Run: `PARALLEL=unmapcpus boot/bench/build-parallel-call-image.sh boot/bench/out/
 ## NVMe driver benchmark (port of Atmosphere's)
 
 The timer build of dom0 runs a port of Atmosphere's user-level NVMe driver and benchmark
-(`boot/dom0/src/nvme/`, `boot/dom0/src/slab_alloc.rs`) after the kill tests, against the emulated
-`-device nvme` that `boot/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
+(`boot/dom0-bench/src/nvme/`, `boot/dom0-bench/src/slab_alloc.rs`) after the kill tests, against the emulated
+`-device nvme` that `boot/bench/run.sh` attaches behind a PCIe root port (64 MiB raw image). It finds the controller
 with `pci_info` (class 01, subclass 08, on any bus: the loader scans all 256 buses, so that the root buses of a server's further host bridges and the buses behind PCI-to-PCI bridges are covered), drives it by polling through BAR0 at `0xd0_0000_0000 + base`, and
 maps every DMA buffer at IOVA = VA (`mmap_4k` + `iommu_map_4k` in the heap's pager). Without an NVMe
 function it logs `nvme bench skipped`. Each run is sequential 4 KiB I/O for 2 s, 4 KiB of namespace 1's LBAs per
 request (8 at 512-byte LBAs, 1 at 4 KiB LBAs; `nvme: LBA size ..` logs it after the linked configuration's Identify
 Namespace, where Atmosphere always sends 8); an LBA size above 4 KiB logs `nvme bench skipped: namespace 1's LBA
 size .. does not divide the 4 KiB request` and leaves the controller disabled, as does `parallel_nvme`.
-`NVME_BLOCK_SIZE=4096 boot/run.sh` formats the emulated namespace with 4 KiB LBAs (default 512);
-`VERIFLAT_NVME_SECS=30 boot/run.sh` builds dom0 with 30 s runs, the thesis's length.
+`NVME_BLOCK_SIZE=4096 boot/bench/run.sh` formats the emulated namespace with 4 KiB LBAs (default 512);
+`VERIFLAT_NVME_SECS=30 boot/bench/run.sh` builds dom0 with 30 s runs, the thesis's length.
 
 Which drive: every NVMe test and benchmark of dom0 (this one, `parallel_nvme`, `parallel_nvme_xproc`) drives the one
-function that `boot/dom0/src/nvme/pci.rs` `selected_nvme` picks, and all of them write to it from LBA 0 on, destroying
+function that `boot/dom0-bench/src/nvme/pci.rs` `selected_nvme` picks, and all of them write to it from LBA 0 on, destroying
 its contents. `VERIFLAT_NVME_BDF=<bus>:<dev>.<fn>` of the dom0 build (hexadecimal, as `lspci` prints it, e.g.
 `VERIFLAT_NVME_BDF=3c:00.0`) names it; without it, under a hypervisor (CPUID.01H:ECX bit 31) the recorded NVMe function
-number `VERIFLAT_NVME_INDEX` in B/D/F order is used (default 0, the lowest B/D/F: `boot/run.sh` behaves as before),
+number `VERIFLAT_NVME_INDEX` in B/D/F order is used (default 0, the lowest B/D/F: `boot/bench/run.sh` behaves as before),
 and on bare metal none is: before touching any controller each of them logs one line such as `nvme bench skipped: bare
 metal and no NVMe function named; build dom0 with VERIFLAT_NVME_BDF=<bus:dev.fn> to pick one; recorded NVMe
 functions: 3b:00.0 8086:0b60 3c:00.0 8086:0b60` (bus:dev.fn vendor:device; model and serial are not shown because
@@ -235,8 +236,8 @@ new batch whenever no request waits, and the ring clients push whenever a ring b
 per call. The child is killed after each ring configuration, which returns the function to dom0.
 
 Measured 2026-11-11, QEMU-emulated NVMe (not a real device: every doorbell is a VM exit into QEMU, which
-caps the rate near 75K IOPS), KVM on the i9-13900HX, TSC 2419 MHz from the hypervisor leaf, 2 s runs, `boot/run.sh`
-(SMP 4) / `SMP=16 boot/run.sh`:
+caps the rate near 75K IOPS), KVM on the i9-13900HX, TSC 2419 MHz from the hypervisor leaf, 2 s runs, `boot/bench/run.sh`
+(SMP 4) / `SMP=16 boot/bench/run.sh`:
 
 | configuration | read b=1 | read b=32 | write b=1 | write b=32 |
 | --- | --- | --- | --- | --- |
@@ -253,8 +254,8 @@ sequential writes at batch 32).
 
 ### Parallel NVMe benchmark (one queue pair per CPU)
 
-`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme boot/run.sh` (`nvme` may join other parallel timings in the list) runs
-`parallel_nvme` (`boot/dom0/src/nvme/parallel.rs`) on the parallel call timing's workers: worker 0 is dom0 on CPU 0,
+`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme boot/bench/run.sh` (`nvme` may join other parallel timings in the list) runs
+`parallel_nvme` (`boot/dom0-bench/src/nvme/parallel.rs`) on the parallel call timing's workers: worker 0 is dom0 on CPU 0,
 worker k the client of pair k on CPU k. dom0 resets the controller, sends Set Features Number of Queues, and creates
 I/O queue pair k + 1 for worker k with its own rings (min(1024, CAP.MQES + 1) entries), 32 data buffers and doorbells,
 polled; only dom0's first thread uses the admin queue, before any worker runs and after all are done, so neither
@@ -275,13 +276,13 @@ Under QEMU every doorbell is a VM exit into QEMU's one NVMe device thread, so th
 single-queue rate whatever the CPU count (2026-11-12, KVM, SMP 1/2/4/8: total_conc at read batch 32 74K / 58K /
 74K / 58K IOPS, each worker's ratio about 1/n); these runs show only that the queues work. Like the other NVMe
 benchmark, it overwrites the SSD. For a real machine build the no-timer image, `cd boot && VERIFLAT_PARALLEL=nvme
-cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/no-timer`, and
+cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0-bench --features kernel/no-timer,dom0-bench/no-timer`, and
 boot it as below; `maxcpus=<n>` on the `multiboot2` line gives the IOPS at n cores, one boot per count.
 
 ### Cross-process parallel NVMe benchmark (driver and application in two processes)
 
-`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme,nvme_xproc boot/run.sh` runs `parallel_nvme` and then `parallel_nvme_xproc`
-(`boot/dom0/src/nvme/parallel_xproc.rs`), the same workload with the driver and the application in two processes
+`NO_TIMER=1 SMP=n VERIFLAT_PARALLEL=nvme,nvme_xproc boot/bench/run.sh` runs `parallel_nvme` and then `parallel_nvme_xproc`
+(`boot/dom0-bench/src/nvme/parallel_xproc.rs`), the same workload with the driver and the application in two processes
 that pass work by IPC, one pair per CPU; one boot gives per core count the linked-in multi-queue IOPS and the
 cross-process IOPS, and their ratio is the cost of the IPC. `nvme_xproc` alone runs only the second.
 
@@ -331,7 +332,7 @@ answered 15 to 26 completions. The SMP 4 run also ran `call` before them (the cl
 while the call timing runs), and its call timings passed unchanged.
 
 For the real machine build the no-timer image with both, `cd boot && VERIFLAT_PARALLEL=nvme,nvme_xproc cargo +1.99.1
-build --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/no-timer`, and boot it with
+build --profile release -p aloader -p kernel -p dom0-bench --features kernel/no-timer,dom0-bench/no-timer`, and boot it with
 `maxcpus=<n>` as for `parallel_nvme`.
 
 ### Real hardware
@@ -342,7 +343,7 @@ the SSD's BAR0 below 4 GiB (turn above-4G decoding off): the loader moves a 64-b
 other bus it skips an NVMe, Ethernet or `edu` function whose BAR0 is unassigned or not below 4 GiB with a warning
 that names the function, so that such a device stays out of dom0 but does not stop the boot.
 
-The GRUB `multiboot2` path below has been booted under QEMU (KVM, q35, the devices of `boot/run.sh`) and passes
+The GRUB `multiboot2` path below has been booted under QEMU (KVM, q35, the devices of `boot/bench/run.sh`) and passes
 the NVMe benchmark and the dom0 tests: from a `grub-mkrescue` ISO with GRUB 2.12 on SeaBIOS, with `serial=com2`
 too (the loader's and the kernel's output then arrive on the second serial port; only the loader's first lines
 and one kernel line printed before the kernel reads its command line stay on COM1), and from a standalone GRUB 2.14
@@ -350,10 +351,10 @@ x86_64-efi image on OVMF, where the loader takes the RSDP from GRUB's ACPI tags 
 area. Untried on hardware: the server's firmware memory map, ACPI tables, VT-d units and serial ports, GRUB as
 installed on the server's disk, and the real SSD.
 
-1. Build with 30 s runs: `cd boot && VERIFLAT_NVME_SECS=30 cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0`.
+1. Build with 30 s runs: `cd boot && VERIFLAT_NVME_SECS=30 cargo +1.99.1 build --profile release -p aloader -p kernel -p dom0-bench`.
    The E5-2630 v3 has no leaf 16H, so outside a hypervisor dom0 takes the TSC rate from the brand string's
    "@ 2.40GHz"; `VERIFLAT_TSC_MHZ=<MHz>` in the same build overrides it. Concatenate the kernel and dom0 as
-   `boot/run.sh` does, `cat kernel dom0 > veriflat-jumbo` in `boot/target/x86_64-unknown-none/release/`, and copy
+   `boot/bench/run.sh` does, `cat kernel dom0-bench > veriflat-jumbo` in `boot/target/x86_64-unknown-none/release/`, and copy
    `aloader` and `veriflat-jumbo` to `/boot`.
 2. Add a GRUB entry, with `serial=com2` on the `multiboot2` line if the console is COM2. This is the entry that
    booted under QEMU (there the module file was named `/boot/jumbo`), with GRUB itself on the serial console
@@ -389,7 +390,7 @@ waits 25% longer). Without `ramlog=` every end behaves as before.
 The boot option `maxcpus=<n>` makes the loader hand only the first n processors of the ACPI MADT list to the kernel,
 so that the kernel and dom0 see n CPUs; the loader logs "maxcpus=n: using n of m processors" and ignores n = 0 and
 an n above the count. The loader also reads the boot command line from the PVH start info, so under QEMU it comes
-from `-append`, e.g. `NO_TIMER=1 SMP=8 boot/run.sh -append maxcpus=2`.
+from `-append`, e.g. `NO_TIMER=1 SMP=8 boot/bench/run.sh -append maxcpus=2`.
 
 The boot option `turbo=off` makes every CPU that comes up set IA32_MISC_ENABLE bit 38 (Turbo Mode Disable) when
 CPUID.06H:EAX bit 1 reports turbo, and read it back; on an Intel CPU outside a hypervisor without that CPUID bit it
@@ -403,7 +404,7 @@ the CPUID bit, as under KVM, it logs once that the frequency is not measured.
 
 The local APIC runs in the mode the firmware hands over: xAPIC as before, or x2APIC, which the kernel then keeps on
 every CPU (`boot/kernel/src/interrupt/lapic.rs`); the boot option `x2apic=on` switches it from xAPIC to x2APIC when
-CPUID.01H:ECX bit 21 reports x2APIC (`x2apic=off`, the default, keeps the firmware's mode), e.g. `boot/run.sh -append
+CPUID.01H:ECX bit 21 reports x2APIC (`x2apic=off`, the default, keeps the firmware's mode), e.g. `boot/bench/run.sh -append
 x2apic=on` under KVM, whose `-cpu host` reports it. The kernel logs "x2apic=on: switched the local APIC from xAPIC to
 x2APIC mode" when it switches and always "local APIC mode: <xAPIC|x2APIC>, boot CPU APIC ID <id>". The loader takes
 processors from MADT local APIC (type 0) and local x2APIC (type 9) entries and logs "MADT: <a> local APIC and <b>
@@ -453,7 +454,7 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   core from Linux user space, ixy-style: BAR0 through sysfs `resource0`, DMA memory from 2 MiB hugepages with physical
   addresses from `/proc/self/pagemap`, one pinned thread per queue pair. `ice-linux` without arguments prints its
   options.
-- `boot/dom0/src/ice_bench.rs`: the dom0 front end, built with feature `ice-bench` (`ICE_BENCH=1 boot/run.sh`). It runs
+- `boot/dom0-bench/src/ice_bench.rs`: the dom0 front end, built with feature `ice-bench` (`ICE_BENCH=1 boot/bench/run.sh`). It runs
   first and alone, finds the E810 with `sys_pci_info` (`VERIFLAT_ICE_BDF=bb:dd.f`, else the first E810-C, else the
   first E810), attaches it with `pci_attach_dma`, drives BAR0 at `0xd0_0000_0000 + base` and takes DMA memory from
   the heap (IOVA = VA). Worker k runs on CPU k (placed as the parallel call timing places its clients) and owns
@@ -472,7 +473,7 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   `ice-linux --mode tx --gen-peer MAC --pool 1024` is the generator (a flow per frame copy, spread over the peer's
   28 steering MACs). Without an E810 it logs `ice bench skipped: no E810 function recorded`; the default dom0 test logs the same, or
   the E810 functions the loader recorded.
-- `boot/dom0/src/ice_xproc.rs`: the IPC variant, feature `ice-xproc` (`ICE_XPROC=1 boot/run.sh`, skipped likewise
+- `boot/dom0-bench/src/ice_xproc.rs`: the IPC variant, feature `ice-xproc` (`ICE_XPROC=1 boot/bench/run.sh`, skipped likewise
   without an E810). Application thread k (dom0, CPU k) hands up to 1 or 32 frames per batch to the driver's queue pair
   k and reads back what that queue received, through `ice::xfer` (a mailbox page and Tx slots per pair, Rx buffers
   handed out in place and re-armed at the next request, zero copy both ways; a Tx write-back once per 32 descriptors
@@ -490,7 +491,7 @@ Linux user space and from dom0 (bare-metal scripts and results: the artifact rep
   (`ice::mock`, each queue's frames looped back to itself and checked by sequence number): numbers of the IPC and the
   model, not a NIC. The E810 benchmarks run on a kernel without the timer (`run.sh` builds it so), since a tick on
   CPU 0 could let a CPU coming online pull dom0's first thread instead of thread k.
-- `boot/dom0/src/ice_chan.rs` with `boot/ice/src/chan.rs`: the shapes of the Atmosphere paper's NIC figure over one
+- `boot/dom0-bench/src/ice_chan.rs` with `boot/ice/src/chan.rs`: the shapes of the Atmosphere paper's NIC figure over one
   application/driver exchange (`ice::chan`: per pair two single-producer single-consumer rings of frame entries and a
   few counters in memory both processes map, zero copy both ways), which the Atmosphere port runs unchanged, feature
   `ice-chan` (`ice-chan-mock` on the device model; kernel without the timer). `VERIFLAT_ICE_SHAPE` picks
@@ -531,12 +532,12 @@ without a hash). If the firmware refuses the Rx MAC rules the driver falls back 
 Checked here: `cd boot && cargo +1.99.1 test -p ice --target x86_64-unknown-linux-gnu` (descriptor, context, admin
 command, VSI, switch rule and scheduler layouts; ring arithmetic; the UDP frame and IPv4 checksum; and a software model
 of the PF that runs the whole bring-up, checks every DMA address against the driver's allocations, and loops frames
-through the Tx queues, the steering rules and the Rx queues); the bare-metal build of `ice` and `dom0` with and without
-`ice-bench`; the Linux program's build and argument handling; `boot/run.sh` and `ICE_BENCH=1 boot/run.sh` under KVM
+through the Tx queues, the steering rules and the Rx queues); the bare-metal build of `ice` and `dom0-bench` with and without
+`ice-bench`; the Linux program's build and argument handling; `boot/bench/run.sh` and `ICE_BENCH=1 boot/bench/run.sh` under KVM
 with SMP 4, both passing with the skip line. The device model encodes the same reading of the specification as the
 driver, so it finds plumbing errors, not misreadings.
 
-`ICE_MOCK=1 boot/run.sh` under KVM (2026-11-12, i9-13900HX under WSL2, 100 ms windows, 64-byte frames), total pps of
+`ICE_MOCK=1 boot/bench/run.sh` under KVM (2026-11-12, i9-13900HX under WSL2, 100 ms windows, 64-byte frames), total pps of
 all pairs at once and the median extra TSC cycles per batch of `ice_xproc` over `ice_linked` alone; the IPC and the
 device model, not a NIC:
 
@@ -597,8 +598,8 @@ Then dom0, once the Linux program works:
 1. In the firmware setup: VT-d on, above-4G decoding off; check in Linux that `lspci -vv -s <bdf>` shows Region 0
    below 4 GiB.
 2. Build: `cd boot && VERIFLAT_ICE_SECS=10 VERIFLAT_ICE_PEER=<peer MAC> VERIFLAT_ICE_MODE=both cargo +1.99.1 build
-   --profile release -p aloader -p kernel -p dom0 --features kernel/no-timer,dom0/ice-bench` (for the IPC variant
-   `--features kernel/no-timer,dom0/ice-xproc`, with `VERIFLAT_ICE_WINDOW_MS=1000`), then concatenate kernel and dom0 into
+   --profile release -p aloader -p kernel -p dom0-bench --features kernel/no-timer,dom0-bench/ice-bench` (for the IPC variant
+   `--features kernel/no-timer,dom0-bench/ice-xproc`, with `VERIFLAT_ICE_WINDOW_MS=1000`), then concatenate kernel and dom0-bench into
    the jumbo image and boot it from GRUB as in the NVMe section above (`maxcpus=<n>` for n queue pairs, and the RAM
    log for unattended runs). The peer runs the Linux program (`--mode rx --peer <this port's MAC>` or `--mode both`).
 3. Read the `ice queue`, `ice total` and `ice port` lines; `ice bench passed` ends the run (`ice xproc bench passed`

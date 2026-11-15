@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KVM runs of the no-timer dom0 timings on stored boot images. The QEMU line is boot/run.sh's KVM line,
+# KVM runs of the no-timer dom0 timings on stored boot images. The QEMU line is boot/bench/run.sh's KVM line,
 # then `-m $MEM -mem-prealloc` (MEM in MiB, default 6144; after run.sh's `-m 1024` and `-no-reboot`), pinned to
 # host CPUs 0-31; mmap1g needs MEM=2304, since above about 2.75 GiB q35 ends low memory below 2 GiB with ACPI there;
 # each run has a 300 s timeout. A run passes with QEMU exit status 1. For every run the timing lines go

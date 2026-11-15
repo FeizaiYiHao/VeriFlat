@@ -5,6 +5,7 @@ members = [
   "aloader",
   "astd",
   "dom0",
+  "dom0-bench",
   "ice",
   "kernel",
   "kernel-logger",

@@ -81,10 +81,19 @@ they must point to these canonical sources instead of redefining their rules.
   Heavy runs count toward the machine-wide limit of two heavy verification jobs
   at a time. The main agent assigns them to one integration subagent, which
   runs them once per integration or handoff after every focused run is green.
-- Git. Work on `main`; do not open long-lived side branches. After an
-  integration or handoff, commit locally and report; the user decides when
-  to push. Commit messages carry no AI attribution lines (no
-  `Co-Authored-By` or `Generated with` trailers).
+- Git. The repository has three long-lived branches. `main` holds the kernel
+  (`src/`, `crates/`), what it needs to boot (`boot/` loader, kernel glue,
+  serial driver, `vsys`), and the small `boot/dom0` (hello world plus one short
+  self-test per syscall). `proofs` is `main` plus `noninterference/`,
+  `liveness/`, and `deadlockfree/`. `bench` is `main` plus the benchmark dom0
+  (`boot/dom0-bench`), the device drivers (`boot/ice`, `boot/ice-linux`), and
+  `boot/bench/`. Kernel work happens on `main`. After an integration or handoff
+  on `main`, merge `main` into `proofs` and `bench`, never the reverse, and run
+  each branch's own checks there. Work that touches only a branch's own
+  directories is committed on that branch. Do not open other long-lived
+  branches. Commit locally and report; the user decides when to push. Commit
+  messages carry no AI attribution lines (no `Co-Authored-By` or
+  `Generated with` trailers).
 - Do not reset, overwrite, restage, or clean unrelated changes. Before launching
   subagents in parallel, freeze the signatures and contracts of every item they
   share; a subagent does not change an item that another running subagent
