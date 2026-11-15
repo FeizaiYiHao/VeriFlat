@@ -10,6 +10,7 @@ mod ice_chan;
 mod ice_xproc;
 mod nvme;
 mod slab_alloc;
+mod unmap_cpus;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
@@ -613,6 +614,7 @@ const MMAP_XPROC_ENDPOINT: usize = 5;
 const MAP2M_XPROC_ENDPOINT: usize = 6;
 /// The parallel timings this build runs, from the build environment: a comma-separated list of `call`,
 /// `mmap`, `mmap2m`, `unmapn`, `mmap1g`, `nvme`, and `nvme_xproc` (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+/// `unmapcpus` instead runs only the timing of src/unmap_cpus.rs, first, and exits.
 const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
     Some(modes) => modes,
     None => "call",
@@ -2584,6 +2586,12 @@ pub extern "C" fn _start() -> ! {
     if cfg!(feature = "ice-xproc") {
         // The same, with the driver linked in and then in a process of its own (see src/ice_xproc.rs).
         ice_xproc::run();
+        unsafe { sys_debug_exit(0) };
+    }
+    if runs_parallel("unmapcpus") {
+        // mmap_4k/unmap_4k against the size of the caller container's cpu set (see src/unmap_cpus.rs): first, while
+        // dom0's thread holds no quota and the root container still owns every CPU id; it gives them away.
+        unmap_cpus::run();
         unsafe { sys_debug_exit(0) };
     }
 
