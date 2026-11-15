@@ -9,8 +9,8 @@ use super::l2_entry_lock_t::l2_entry_store_release;
 /// locked word decodes to the same entry.
 pub const L2_ENTRY_LOCK_MASK: usize = 0x200;
 
-/// Two L2 words that the kernel cannot tell apart: they decode to the same entry. Hardware may set the A/D bits of
-/// a published word and the lock bit belongs to the entry's locking thread; decoding ignores all three.
+/// Two L2 words that the kernel cannot tell apart: they decode to the same entry. Every present L2 word has A and D
+/// preset, so hardware never writes it, and the lock bit belongs to the entry's locking thread; decoding ignores all three.
 pub open spec fn l2_word_hw_equiv(a: usize, b: usize) -> bool { usize2page_entry(a) == usize2page_entry(b) }
 
 /// One entry of an L2 page-table page; its word doubles as the spin lock of the entry's 2M window.

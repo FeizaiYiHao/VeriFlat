@@ -36,7 +36,8 @@ pub fn l2_entry_lock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsT
     Tracked::assume_new()
 }
 
-/// TCB: release the lock bit of entry `i` of the L2 page at `pptr`; the entry otherwise stays as published.
+/// TCB: release the lock bit of entry `i` of the L2 page at `pptr`; the entry otherwise stays as published. While the lock
+/// bit is held, nothing but the holder writes this L2 entry, hardware included (every present L2 word has A and D preset).
 #[verifier::external_body]
 pub fn l2_entry_unlock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsTo<L2PageMap>>, i: L2Index, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(lp): Tracked<LockPerm>, Ghost(lock_id): Ghost<LockId>, Ghost(obj_id): Ghost<KernelObjId>)
@@ -57,7 +58,8 @@ pub fn l2_entry_unlock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut Point
         unlock_ensures(old(lctx), final(lctx), obj_id, lock_id),
 {
     let p = pptr.addr() as *mut L2PageMap;
-    unsafe { (*p).ar[i].word.fetch_and(!L2_ENTRY_LOCK_MASK, Ordering::Release); }
+    let w = unsafe { (*p).ar[i].word.load(Ordering::Relaxed) };
+    unsafe { (*p).ar[i].word.store(w & !L2_ENTRY_LOCK_MASK, Ordering::Release); }
 }
 
 /// TCB: release-store `w` into the word of entry `i` of the L2 page at `pptr`. The stored lock bit must match the

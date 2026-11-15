@@ -94,7 +94,7 @@
 //!     **Open**: that each such locker's held table is the one holding its page's entry is read from requires names,
 //!     not checked caller by caller.
 //! - (b) Every blocking primitive requires `lock_id_acyclic` of the id it spins on, so every call site proves it
-//!   (Verified); `l2_entry_lock` (`src/locks/l2_entry_lock_t.rs:14`) does not, and its caller
+//!   (Verified); `l2_entry_lock` (`src/pagetable_concurrent/l2_entry_lock_t.rs:14`) does not, and its caller
 //!   `pagetable_concurrent_lock.rs:21` does; `wlock_kill_victim_thread` proves it in its own body.
 //! - (c) A marked (killed) object has id (High, High, `KILLED_LOCK_MAJOR`, minor) and killable waiters return as soon as
 //!   they see `WORD_KILLED` or `SLOT_KILLED`, so they add no wait edge; `unkill` requires the Release phase and the
