@@ -53,6 +53,23 @@ pub(super) proof fn thread_map_clear_free_quota_pending_4k_eof_thread_perms_wf(p
     reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
 }
 
+pub(super) proof fn thread_map_refund_direct_free_quota_pending_4k_eof_thread_perms_wf(pre: ThreadLockedMap, post: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
+    requires
+        thread_perms_wf(pre),
+        post.perms_wf(),
+        post.unchanged_except(&pre, thrd_ptr),
+        post.spec_index(thrd_ptr).inv(),
+        post.spec_index(thrd_ptr).locking_thread() is Write,
+        post.spec_index(thrd_ptr).being_killed() == pre.spec_index(thrd_ptr).being_killed(),
+        post.spec_index(thrd_ptr).view_ghost() == pre.spec_index(thrd_ptr).view_ghost(),
+        post.spec_index(thrd_ptr).view() == (Thread { quota_4k: post.spec_index(thrd_ptr).view().quota_4k,
+            direct_free_quota_pending_4k: post.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, ..pre.spec_index(thrd_ptr).view() }),
+    ensures thread_perms_wf(post),
+{
+    reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+    reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+}
+
 pub(super) proof fn thread_map_add_free_quota_pending_2m_eof_thread_perms_wf(pre: ThreadLockedMap, post: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
     requires
         thread_perms_wf(pre),
@@ -87,6 +104,23 @@ pub(super) proof fn thread_map_clear_free_quota_pending_2m_eof_thread_perms_wf(p
     reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
 }
 
+pub(super) proof fn thread_map_refund_direct_free_quota_pending_2m_eof_thread_perms_wf(pre: ThreadLockedMap, post: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
+    requires
+        thread_perms_wf(pre),
+        post.perms_wf(),
+        post.unchanged_except(&pre, thrd_ptr),
+        post.spec_index(thrd_ptr).inv(),
+        post.spec_index(thrd_ptr).locking_thread() is Write,
+        post.spec_index(thrd_ptr).being_killed() == pre.spec_index(thrd_ptr).being_killed(),
+        post.spec_index(thrd_ptr).view_ghost() == pre.spec_index(thrd_ptr).view_ghost(),
+        post.spec_index(thrd_ptr).view() == (Thread { quota_2m: post.spec_index(thrd_ptr).view().quota_2m,
+            direct_free_quota_pending_2m: post.spec_index(thrd_ptr).view().direct_free_quota_pending_2m, ..pre.spec_index(thrd_ptr).view() }),
+    ensures thread_perms_wf(post),
+{
+    reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+    reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+}
+
 pub(super) proof fn thread_map_add_free_quota_pending_1g_eof_thread_perms_wf(pre: ThreadLockedMap, post: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
     requires
         thread_perms_wf(pre),
@@ -115,6 +149,23 @@ pub(super) proof fn thread_map_clear_free_quota_pending_1g_eof_thread_perms_wf(p
         post.spec_index(thrd_ptr).view_ghost() == pre.spec_index(thrd_ptr).view_ghost(),
         post.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_1g: post.spec_index(thrd_ptr).view().direct_free_quota_pending_1g,
             indirect_free_quota_pending_1g: post.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g, ..pre.spec_index(thrd_ptr).view() }),
+    ensures thread_perms_wf(post),
+{
+    reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+    reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+}
+
+pub(super) proof fn thread_map_refund_direct_free_quota_pending_1g_eof_thread_perms_wf(pre: ThreadLockedMap, post: ThreadLockedMap, thrd_ptr: RwLockThreadPtr)
+    requires
+        thread_perms_wf(pre),
+        post.perms_wf(),
+        post.unchanged_except(&pre, thrd_ptr),
+        post.spec_index(thrd_ptr).inv(),
+        post.spec_index(thrd_ptr).locking_thread() is Write,
+        post.spec_index(thrd_ptr).being_killed() == pre.spec_index(thrd_ptr).being_killed(),
+        post.spec_index(thrd_ptr).view_ghost() == pre.spec_index(thrd_ptr).view_ghost(),
+        post.spec_index(thrd_ptr).view() == (Thread { quota_1g: post.spec_index(thrd_ptr).view().quota_1g,
+            direct_free_quota_pending_1g: post.spec_index(thrd_ptr).view().direct_free_quota_pending_1g, ..pre.spec_index(thrd_ptr).view() }),
     ensures thread_perms_wf(post),
 {
     reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);

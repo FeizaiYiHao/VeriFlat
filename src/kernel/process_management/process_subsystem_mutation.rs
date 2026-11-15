@@ -140,6 +140,49 @@ pub fn thread_map_clear_free_quota_pending_4k(thrd_mp: &mut ThreadLockedMap, thr
     }
 }
 
+/// Moves `thrd_ptr`'s direct pending 4K quota `counter` into the thread's 4K quota.
+pub fn thread_map_refund_direct_free_quota_pending_4k(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thrd_mp)),
+        old(thrd_mp).dom().contains(thrd_ptr),
+        old(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thrd_mp).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+        !(old(thrd_mp).spec_index(thrd_ptr).view().state is DANGLING),
+        *old(counter) == old(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
+        old(thrd_mp).spec_index(thrd_ptr).view().quota_4k + *old(counter) <= usize::MAX,
+    ensures
+        thread_perms_wf(*final(thrd_mp)),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() == old(thrd_mp).dom(),
+        final(thrd_mp).unchanged_except(old(thrd_mp), thrd_ptr),
+        final(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thrd_mp).lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr),
+        final(thrd_mp).spec_index(thrd_ptr).is_init(),
+        final(thrd_mp).spec_index(thrd_ptr).inv(),
+        final(thrd_mp).spec_index(thrd_ptr).wlocked_by(lctx),
+        final(thrd_mp).spec_index(thrd_ptr).locking_thread() == old(thrd_mp).spec_index(thrd_ptr).locking_thread(),
+        final(thrd_mp).spec_index(thrd_ptr).being_killed() == old(thrd_mp).spec_index(thrd_ptr).being_killed(),
+        final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
+        final(thrd_mp).spec_index(thrd_ptr).view_rodata() == old(thrd_mp).spec_index(thrd_ptr).view_rodata(),
+        final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
+        final(thrd_mp).spec_index(thrd_ptr).view() == (Thread { quota_4k: final(thrd_mp).spec_index(thrd_ptr).view().quota_4k,
+            direct_free_quota_pending_4k: final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_4k, ..old(thrd_mp).spec_index(thrd_ptr).view() }),
+        final(thrd_mp).spec_index(thrd_ptr).view().quota_4k == old(thrd_mp).spec_index(thrd_ptr).view().quota_4k + *old(counter),
+        final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view() == 0,
+        *final(counter) == 0,
+{
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.refund_direct_free_quota_pending_4k(counter);
+    proof {
+        thread_map_refund_direct_free_quota_pending_4k_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
+        assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
 pub fn thread_map_add_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
     requires
         thread_perms_wf(*old(thrd_mp)),
@@ -229,6 +272,49 @@ pub fn thread_map_clear_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thr
     }
 }
 
+/// Moves `thrd_ptr`'s direct pending 2M quota `counter` into the thread's 2M quota.
+pub fn thread_map_refund_direct_free_quota_pending_2m(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thrd_mp)),
+        old(thrd_mp).dom().contains(thrd_ptr),
+        old(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thrd_mp).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+        !(old(thrd_mp).spec_index(thrd_ptr).view().state is DANGLING),
+        *old(counter) == old(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view(),
+        old(thrd_mp).spec_index(thrd_ptr).view().quota_2m + *old(counter) <= usize::MAX,
+    ensures
+        thread_perms_wf(*final(thrd_mp)),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() == old(thrd_mp).dom(),
+        final(thrd_mp).unchanged_except(old(thrd_mp), thrd_ptr),
+        final(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thrd_mp).lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr),
+        final(thrd_mp).spec_index(thrd_ptr).is_init(),
+        final(thrd_mp).spec_index(thrd_ptr).inv(),
+        final(thrd_mp).spec_index(thrd_ptr).wlocked_by(lctx),
+        final(thrd_mp).spec_index(thrd_ptr).locking_thread() == old(thrd_mp).spec_index(thrd_ptr).locking_thread(),
+        final(thrd_mp).spec_index(thrd_ptr).being_killed() == old(thrd_mp).spec_index(thrd_ptr).being_killed(),
+        final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
+        final(thrd_mp).spec_index(thrd_ptr).view_rodata() == old(thrd_mp).spec_index(thrd_ptr).view_rodata(),
+        final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
+        final(thrd_mp).spec_index(thrd_ptr).view() == (Thread { quota_2m: final(thrd_mp).spec_index(thrd_ptr).view().quota_2m,
+            direct_free_quota_pending_2m: final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_2m, ..old(thrd_mp).spec_index(thrd_ptr).view() }),
+        final(thrd_mp).spec_index(thrd_ptr).view().quota_2m == old(thrd_mp).spec_index(thrd_ptr).view().quota_2m + *old(counter),
+        final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_2m.view() == 0,
+        *final(counter) == 0,
+{
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.refund_direct_free_quota_pending_2m(counter);
+    proof {
+        thread_map_refund_direct_free_quota_pending_2m_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
+        assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
 pub fn thread_map_add_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, depth: usize, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
     requires
         thread_perms_wf(*old(thrd_mp)),
@@ -314,6 +400,49 @@ pub fn thread_map_clear_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thr
     thread.clear_free_quota_pending_1g(depth, counter);
     proof {
         thread_map_clear_free_quota_pending_1g_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
+        assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
+}
+
+/// Moves `thrd_ptr`'s direct pending 1G quota `counter` into the thread's 1G quota.
+pub fn thread_map_refund_direct_free_quota_pending_1g(thrd_mp: &mut ThreadLockedMap, thrd_ptr: RwLockThreadPtr, counter: &mut usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>)
+    requires
+        thread_perms_wf(*old(thrd_mp)),
+        old(thrd_mp).dom().contains(thrd_ptr),
+        old(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == lctx.thread_id(),
+        thread_lock_perm.lock_id() == old(thrd_mp).spec_index(thrd_ptr).locking_thread()->Write_lock_id,
+        !(old(thrd_mp).spec_index(thrd_ptr).view().state is DANGLING),
+        *old(counter) == old(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view(),
+        old(thrd_mp).spec_index(thrd_ptr).view().quota_1g + *old(counter) <= usize::MAX,
+    ensures
+        thread_perms_wf(*final(thrd_mp)),
+        final(thrd_mp).perms_wf(),
+        final(thrd_mp).dom() == old(thrd_mp).dom(),
+        final(thrd_mp).unchanged_except(old(thrd_mp), thrd_ptr),
+        final(thrd_mp).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+        final(thrd_mp).lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr),
+        final(thrd_mp).spec_index(thrd_ptr).is_init(),
+        final(thrd_mp).spec_index(thrd_ptr).inv(),
+        final(thrd_mp).spec_index(thrd_ptr).wlocked_by(lctx),
+        final(thrd_mp).spec_index(thrd_ptr).locking_thread() == old(thrd_mp).spec_index(thrd_ptr).locking_thread(),
+        final(thrd_mp).spec_index(thrd_ptr).being_killed() == old(thrd_mp).spec_index(thrd_ptr).being_killed(),
+        final(thrd_mp).spec_index(thrd_ptr).killer_info() == old(thrd_mp).spec_index(thrd_ptr).killer_info(),
+        final(thrd_mp).spec_index(thrd_ptr).view_rodata() == old(thrd_mp).spec_index(thrd_ptr).view_rodata(),
+        final(thrd_mp).spec_index(thrd_ptr).view_ghost() == old(thrd_mp).spec_index(thrd_ptr).view_ghost(),
+        final(thrd_mp).spec_index(thrd_ptr).view() == (Thread { quota_1g: final(thrd_mp).spec_index(thrd_ptr).view().quota_1g,
+            direct_free_quota_pending_1g: final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g, ..old(thrd_mp).spec_index(thrd_ptr).view() }),
+        final(thrd_mp).spec_index(thrd_ptr).view().quota_1g == old(thrd_mp).spec_index(thrd_ptr).view().quota_1g + *old(counter),
+        final(thrd_mp).spec_index(thrd_ptr).view().direct_free_quota_pending_1g.view() == 0,
+        *final(counter) == 0,
+{
+    assert(thrd_mp.perms_wf() && thrd_mp.spec_index(thrd_ptr).is_init() && thrd_mp.spec_index(thrd_ptr).inv()) by { thread_perms_wf_map(*thrd_mp); thread_perms_wf_at(*thrd_mp, thrd_ptr); };
+    let thread = thrd_mp.borrow_mut_typed(thrd_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
+    thread.refund_direct_free_quota_pending_1g(counter);
+    proof {
+        thread_map_refund_direct_free_quota_pending_1g_eof_thread_perms_wf(*old(thrd_mp), *thrd_mp, thrd_ptr);
         assert(thrd_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thrd_mp.lock_id_by_key(thrd_ptr) == old(thrd_mp).lock_id_by_key(thrd_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }

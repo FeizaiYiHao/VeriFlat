@@ -629,9 +629,18 @@ Status: conforms, including R9 (Batch 2 validation, §2).
 **Refund**
 
 - Pre: `unmap_4k_locked`, `prog is Unmap4k`, `unmapped == R.len`, `flushed`.
-- Effect: one container in `C` or `C.uppertree_seq` gains 4K quota
-  (`kernel_u_container_quota_4k_increased`). The ancestors are not locked in
-  U; their quota is guarded by allocator quota locks inside the step (R5).
+- Effect (`unmap_4k_refund_step`): one container in `C` or `C.uppertree_seq`
+  gains 4K quota (`kernel_u_container_quota_4k_increased`), or the thread `T`
+  alone gains 4K quota and ends with at most `THREAD_QUOTA_4K_REFUND_CAP`
+  (4096). The ancestors are not locked in U; their quota is guarded by
+  allocator quota locks inside the step (R5).
+- The pages freed from `C` itself (the direct depth) refund in one step: when
+  their count `d` is non-zero and `T.quota_4k + d <= THREAD_QUOTA_4K_REFUND_CAP`,
+  all `d` go to `T.quota_4k` under the cpu and thread locks already held,
+  taking no allocator quota lock; otherwise all `d` go to `C` as before. One
+  call never splits `d`. Pages freed from ancestors always refund to their
+  container. `THREAD_QUOTA_2M_REFUND_CAP` (8) and `THREAD_QUOTA_1G_REFUND_CAP`
+  (1) are defined for the 2M and 1G unmaps (map_4k `unmap_4k_spec.rs`).
 
 **Exit**
 
@@ -669,7 +678,16 @@ User-visible contract (syscalls 49 and 50, `sys_mmap_1g(va, range)` and
   mmap_1g; then Success when every VA of `R` is a 1G leaf of `PT(P)` in user
   range, else Error (no partial unmap). On success the leaves are removed, the
   whole PCID is flushed from every cpu that may cache it, and each page's 1G
-  quota is refunded to the container.
+  quota is refunded. Refund steps (`unmap_1g_exit_step_pre`,
+  `unmap_1g_refund_step`): one container in `C` or `C.uppertree_seq` gains 1G
+  quota (`kernel_u_container_quota_1g_increased`), or the thread `T` alone
+  gains 1G quota and ends with at most `THREAD_QUOTA_1G_REFUND_CAP` (1). The
+  direct depth refunds as in §7: when its count `d` is non-zero and
+  `T.quota_1g + d <= THREAD_QUOTA_1G_REFUND_CAP`, all `d` go to `T.quota_1g` in
+  one step before the container refund steps, taking no allocator quota lock;
+  otherwise all `d` go to `C`. Ancestors always refund to their container. The
+  trace bound is unchanged. thread_exit and kill_process keep the container
+  refund.
 
 ## 7a. iommu_map_4k — enter, directory/leaf steps, exit
 
@@ -797,8 +815,9 @@ migration (§15) changed the flush step (Batch 3, workspace run #34166, noninter
 
 - Pre: `iommu_unmap_4k_locked`, `prog is IommuUnmap4k`, `unmapped == IR.len`,
   `flushed`.
-- Effect: one container in `C` or `C.uppertree_seq` gains 4K quota
-  (`kernel_u_container_quota_4k_increased`), as in §7.
+- Effect (`iommu_unmap_4k_refund_step`): one container in `C` or
+  `C.uppertree_seq` gains 4K quota (`kernel_u_container_quota_4k_increased`),
+  or the direct-depth refund goes to `T.quota_4k` under the same rule as §7.
 
 **Exit** (`iommu_unmap_4k_exit_step_pre`, `iommu_unmap_4k_exit_step`)
 
@@ -813,6 +832,20 @@ Stutters (in this order, `iommu_unmap_4k_syscall_result`): argument errors
 (Error), CpuIdle (cpu not Running or killed), ContainerKilled,
 ContainerLockOrderConflict (R9), ContainerZombie, ProcessKilled, ThreadKilled,
 PciNoIommuTable, and a kernel-range or unmapped IOVA (IommuIovaNotMapped).
+
+## 7d. unmap_2m — refund
+
+The unmap_2m steps (`syscall_unmap_2m_spec.rs`) mirror §7 with 2M leaves and
+2M quota. Refund steps (`unmap_2m_exit_step_pre`, `unmap_2m_refund_step`): one
+container in `C` or `C.uppertree_seq` gains 2M quota
+(`kernel_u_container_quota_2m_increased`), or the thread `T` alone gains 2M
+quota and ends with at most `THREAD_QUOTA_2M_REFUND_CAP` (8). The direct depth
+refunds as in §7: when its count `d` is non-zero and
+`T.quota_2m + d <= THREAD_QUOTA_2M_REFUND_CAP`, all `d` go to `T.quota_2m` in
+one step before the container refund steps, taking no allocator quota lock;
+otherwise all `d` go to `C`. Ancestors always refund to their container. The
+trace bound `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH +
+4` is unchanged. thread_exit and kill_process keep the container refund.
 
 ## 8. share_4k — directory and leaf sub-steps
 

@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_map_4k::map_4k::unmap_4k_spec::unmap_4k_tlb_flush_step;
+use veriflat_map_4k::map_4k::unmap_4k_spec::{unmap_4k_tlb_flush_step, THREAD_QUOTA_1G_REFUND_CAP};
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::map_4k::unmap_4k_spec::unmap_4k_tlb_flush_step;
+use crate::kernel::implementation::map_4k::unmap_4k_spec::{unmap_4k_tlb_flush_step, THREAD_QUOTA_1G_REFUND_CAP};
 
 verus! {
 /// The result of `syscall_unmap_1g` from the state at entry, in the implementation's check order: malformed arguments, a killed caller, and then a range below the first user L4 index or with a page that has no present 1G leaf. A cpu no longer Running or marked by a killer returns CpuIdle
@@ -109,14 +109,24 @@ pub open spec fn unmap_1g_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     })
 }
 
-/// A step inside the unmap range clears one 1G leaf, flushes the process's PCID on one cpu, records the flush, or refunds 1G quota to the thread's container chain.
+/// A refund step returns 1G quota to the thread's container chain or, raising it to at most `THREAD_QUOTA_1G_REFUND_CAP`, to
+/// the running thread's own 1G quota.
+#[verifier::opaque]
+pub open spec fn unmap_1g_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let quota = new_u.thread_map.spec_index(thrd_ptr).quota_1g;
+    ||| kernel_u_container_quota_1g_increased(old_u, new_u, thread.owning_container)
+    ||| new_u == (KernelU { thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_1g: quota, ..thread }), ..old_u }) && thread.quota_1g < quota <= THREAD_QUOTA_1G_REFUND_CAP
+}
+
+/// A step inside the unmap range clears one 1G leaf, flushes the process's PCID on one cpu, records the flush, or refunds 1G quota to the thread's container chain or the thread.
 #[verifier::opaque]
 pub open spec fn unmap_1g_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
-    let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     ||| unmap_1g_leaf_step_pre(step.old_u, cpu_id) && unmap_1g_leaf_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_1g_flush_step_pre(step.old_u, cpu_id) && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_1g_flush_step_pre(step.old_u, cpu_id) && unmap_1g_flushed_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_1g_exit_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_1g_increased(step.old_u, step.new_u, thread.owning_container)
+    ||| unmap_1g_exit_step_pre(step.old_u, cpu_id) && unmap_1g_refund_step(step.old_u, step.new_u, cpu_id)
 }
 
 /// Refund steps and the exit step run after every page of the recorded range has been cleared and the flush has been recorded.

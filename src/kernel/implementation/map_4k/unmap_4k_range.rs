@@ -7,6 +7,7 @@ use super::unmap_4k_flush_all::flush_pagetable_tlbs;
 use super::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 use super::unmap_4k_reclaim_one::reclaim_unmapped_4k_page_in_window;
 use super::unmap_4k_range_eol::*;
+use super::refund_unmap_4k_quota_to_thread::refund_unmap_4k_quota_to_thread;
 
 verus! {
 /// First phase of `unmap_4k_range`: clear the present bit of each page of `range` in order, recording one step per page,
@@ -531,7 +532,8 @@ pub fn unmap_4k_range(
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).thrd_mp.dom().contains(thrd_ptr),
-        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
+        final(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { syscall_progress: final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress, quota_4k: final(krnl).thrd_mp.spec_index(thrd_ptr).view().quota_4k,
+            ..old(krnl).thrd_mp.spec_index(thrd_ptr).view() }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *range, unmapped: range.len, flushed: true }),
         final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread(),
         final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(thrd_ptr).being_killed(),
@@ -660,9 +662,20 @@ pub fn unmap_4k_range(
         i = i + 1;
     }
     proof { unmap_4k_range_eol_exit(*old(krnl), *krnl, old(lctx), pagetable, thrd_ptr, cpu_id, *range, indirect, direct, pagetable_perm.view().lock_id()); }
-    let ghost refund_before = steps.view();
     let ghost refund_progress = krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view();
-    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); }
+    let ghost (credit_pre, credit_lctx, credit_before, amount) = (*krnl, *lctx, steps.view(), direct);
+    proof { process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); }
+    let credited = refund_unmap_4k_quota_to_thread(krnl, thrd_ptr, &mut direct, Tracked(&*lctx), thread_perm);
+    proof {
+        if credited {
+            let credit_post = *krnl;
+            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+            krnl.kernel_step_boundary_thread_quota_4k_changed(&mut *lctx, &mut *steps, thrd_ptr, amount as int);
+            unmap_4k_thread_refund_range_steps_from_k(&*steps, credit_before, old(steps).view().len() as int, &credit_pre, &credit_post, &credit_lctx, cpu_id, prc_ptr, thrd_ptr, pagetable, *range);
+            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+        }
+    }
+    let ghost refund_before = steps.view();
     refund_unmap_4k_quota(krnl, thrd_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
         assert(krnl.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thrd_mp, thrd_ptr); };

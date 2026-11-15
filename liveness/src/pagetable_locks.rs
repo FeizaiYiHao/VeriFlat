@@ -588,7 +588,7 @@ pub proof fn traced_step_implies_pagetable_locks_consistent_kept(u: KernelU, u2:
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); table_views_same_implies_locks_consistent_kept(u, u2, d); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_flushed_step); table_views_same_implies_locks_consistent_kept(u, u2, d); },
         StepLabel::Unmap4kRefund => {
-            reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased);
+            reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased);
             table_views_same_implies_locks_consistent_kept(u, u2, d);
         },
         StepLabel::Mmap4kEnter { range, phase } => {
@@ -780,7 +780,7 @@ pub proof fn traced_step_implies_table_ops_vas_kept(u: KernelU, u2: KernelU, l: 
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); table_mappings_same_implies_vas_kept(u, u2, d); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_flushed_step); table_mappings_same_implies_vas_kept(u, u2, d); },
         StepLabel::Unmap4kRefund => {
-            reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased);
+            reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased);
             table_mappings_same_implies_vas_kept(u, u2, d);
         },
         StepLabel::Unmap4kExit => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_exit_step); table_mappings_same_implies_vas_kept(u, u2, d); },

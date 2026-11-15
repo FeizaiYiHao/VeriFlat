@@ -172,14 +172,24 @@ pub open spec fn iommu_unmap_4k_refund_step_pre(old_u: KernelU, cpu_id: CpuId) -
     &&& progress->IommuUnmap4k_flushed
 }
 
+/// A refund step returns 4K quota to the thread's container chain or, raising it to at most `THREAD_QUOTA_4K_REFUND_CAP`, to
+/// the running thread's own 4K quota.
+#[verifier::opaque]
+pub open spec fn iommu_unmap_4k_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let quota = new_u.thread_map.spec_index(thrd_ptr).quota_4k;
+    ||| kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container)
+    ||| new_u == (KernelU { thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: quota, ..thread }), ..old_u }) && thread.quota_4k < quota <= THREAD_QUOTA_4K_REFUND_CAP
+}
+
 /// A step between entering and exiting hides one leaf, flushes the IOTLB, or refunds 4K quota to the thread's
-/// container chain.
+/// container chain or the thread.
 #[verifier::opaque]
 pub open spec fn iommu_unmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
-    let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     ||| iommu_unmap_4k_leaf_step_pre(step.old_u, cpu_id) && iommu_unmap_4k_leaf_step(step.old_u, step.new_u, cpu_id)
     ||| iommu_unmap_4k_flush_step_pre(step.old_u, cpu_id) && iommu_unmap_4k_flush_step(step.old_u, step.new_u, cpu_id)
-    ||| iommu_unmap_4k_refund_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
+    ||| iommu_unmap_4k_refund_step_pre(step.old_u, cpu_id) && iommu_unmap_4k_refund_step(step.old_u, step.new_u, cpu_id)
 }
 
 /// Exiting happens under the IOMMU-unmap locks after every iova has been hidden and the flush has been recorded.

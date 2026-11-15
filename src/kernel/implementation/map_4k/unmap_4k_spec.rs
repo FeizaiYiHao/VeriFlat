@@ -6,6 +6,15 @@ verus! {
 pub const TLB_FLUSH_VA_RANGE_MAX_PAGES_4K: usize = 8;
 /// Longest unmap_2m range flushed per address, a longer one flushes the whole PCID: one INVPCID costs about 142 cycles, a CR3 reload about 380, with no refill gain measured for 2M pages (KVM, 2026-11-05).
 pub const TLB_FLUSH_VA_RANGE_MAX_PAGES_2M: usize = 2;
+/// Largest 4K quota an unmap may leave in the calling thread when it returns the quota of pages freed from the thread's own
+/// container to the thread instead of the container, which takes no allocator quota lock.
+pub const THREAD_QUOTA_4K_REFUND_CAP: usize = 4096;
+/// Largest 2M quota an unmap may leave in the calling thread when it returns the quota of pages freed from the thread's own
+/// container to the thread instead of the container.
+pub const THREAD_QUOTA_2M_REFUND_CAP: usize = 8;
+/// Largest 1G quota an unmap may leave in the calling thread when it returns the quota of pages freed from the thread's own
+/// container to the thread instead of the container.
+pub const THREAD_QUOTA_1G_REFUND_CAP: usize = 1;
 
 /// Every leaf of `table` the user cannot see in a window of `pagetable` that `window_lock_map` holds lies in a per-address
 /// flush of `count` pages from `va`, 4K or 2M apart by `stride_2m`, and no such window's L2 entry hides its L1 page.
@@ -122,9 +131,20 @@ pub open spec fn unmap_4k_refund_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool
     &&& progress->Unmap4k_flushed
 }
 
+/// A refund step returns 4K quota to the thread's container chain or, raising it to at most `THREAD_QUOTA_4K_REFUND_CAP`, to
+/// the running thread's own 4K quota.
+#[verifier::opaque]
+pub open spec fn unmap_4k_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let quota = new_u.thread_map.spec_index(thrd_ptr).quota_4k;
+    ||| kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container)
+    ||| new_u == (KernelU { thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: quota, ..thread }), ..old_u }) && thread.quota_4k < quota <= THREAD_QUOTA_4K_REFUND_CAP
+}
+
 /// A step inside the unmap range clears one leaf, flushes on one cpu the process's PCID or, for a range of at most
 /// `TLB_FLUSH_VA_RANGE_MAX_PAGES_4K` pages, the range's addresses, records the flush, or refunds 4K quota to the thread's
-/// container chain.
+/// container chain or the thread.
 #[verifier::opaque]
 pub open spec fn unmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -133,6 +153,6 @@ pub open spec fn unmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_4K < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_4K && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, false)
     ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && unmap_4k_flushed_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_4k_refund_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
+    ||| unmap_4k_refund_step_pre(step.old_u, cpu_id) && unmap_4k_refund_step(step.old_u, step.new_u, cpu_id)
 }
 } // verus!

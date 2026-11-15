@@ -1,10 +1,11 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_unmap_1g_spec::*;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_map_4k::map_4k::unmap_4k_spec::unmap_4k_tlb_flush_step;
+use veriflat_map_4k::map_4k::unmap_4k_spec::{unmap_4k_tlb_flush_step, THREAD_QUOTA_1G_REFUND_CAP};
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::map_4k::unmap_4k_spec::unmap_4k_tlb_flush_step;
+use crate::kernel::implementation::map_4k::unmap_4k_spec::{unmap_4k_tlb_flush_step, THREAD_QUOTA_1G_REFUND_CAP};
 
 verus! {
 /// The entry state's K facts on the running thread's cpu, process, and pagetable decide the unmap result `ret`.
@@ -448,5 +449,59 @@ pub(super) proof fn unmap_1g_range_steps_from_refund(
             &&& !(old_u.process_map[prc_ptr].pagetable->Some_0.lock_state is Unlocked)
         },
     ensures forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_1g_range_step(steps.view()[j], cpu_id),
-{ reveal(unmap_1g_range_step); reveal(unmap_1g_exit_step_pre); }
+{ reveal(unmap_1g_range_step); reveal(unmap_1g_exit_step_pre); reveal(unmap_1g_refund_step); }
+
+/// Raising the 1G quota of thread `thrd_ptr` from `pre` to `post` changes the user view.
+pub(super) proof fn unmap_1g_thread_refund_step_pre_from_k(pre: &KernelK, post: &KernelK, thrd_ptr: RwLockThreadPtr)
+    requires
+        pre.thrd_mp.dom().contains(thrd_ptr),
+        post.thrd_mp.dom().contains(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_1g < post.thrd_mp.spec_index(thrd_ptr).view().quota_1g,
+    ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+{ kernel_thread_projection_at(pre, thrd_ptr); kernel_thread_projection_at(post, thrd_ptr); }
+
+/// Moving the direct pending 1G quota of the running thread `thrd_ptr` into its 1G quota, which stays at most
+/// `THREAD_QUOTA_1G_REFUND_CAP`, from `pre` to `post` after the flush is recorded and under the unmap locks, and recording it after
+/// range steps that start at `start` leaves only range steps.
+pub(super) proof fn unmap_1g_thread_refund_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
+    thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange1G,
+)
+    requires
+        0 <= start <= before.len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_1g_range_step(before[j], cpu_id),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        typed_lock_maps_aligned(pre, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        pre.pt_mp.dom().contains(pagetable),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap1g { range, unmapped: range.len, flushed: true }),
+        *post == (KernelK { thrd_mp: post.thrd_mp, ..*pre }),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { quota_1g: post.thrd_mp.spec_index(thrd_ptr).view().quota_1g,
+            direct_free_quota_pending_1g: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_1g, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_1g < post.thrd_mp.spec_index(thrd_ptr).view().quota_1g <= THREAD_QUOTA_1G_REFUND_CAP,
+    ensures forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_1g_range_step(steps.view()[j], cpu_id),
+{
+    reveal(unmap_1g_range_step); reveal(unmap_1g_exit_step_pre); reveal(unmap_1g_refund_step);
+    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+    kernel_pagetable_mappings_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, prc_ptr); kernel_thread_projection_at(pre, thrd_ptr);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU { quota_1g: post.thrd_mp.spec_index(thrd_ptr).view().quota_1g, ..pre_u.thread_map[thrd_ptr] }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+}
 } // verus!

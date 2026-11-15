@@ -143,6 +143,7 @@ fn refund_unmap_1g_quota_at_depth(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr,
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
         final(steps).view().len() == old(steps).view().len() ==> final(steps).view() == old(steps).view(),
+        depth == thread_depth && *old(direct) == 0 ==> final(steps).view().len() == old(steps).view().len(),
         final(steps).view().len() == old(steps).view().len() + 1 ==> {
             &&& final(steps).view() == old(steps).view().push(final(steps).view().last())
             &&& final(steps).view().last().old_u == kernel_k_to_kernel_u(*old(krnl))
@@ -229,6 +230,7 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
     ensures
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH + 1,
+        *old(direct) == 0 ==> final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
@@ -309,6 +311,8 @@ pub fn refund_unmap_1g_quota(krnl: &mut KernelK, thrd_ptr: RwLockThreadPtr, indi
         invariant
             steps.snapshot_k() == *krnl,
             old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + thread_depth + 1 - remaining,
+            remaining == thread_depth + 1 ==> *direct == *old(direct),
+            *old(direct) == 0 && remaining <= thread_depth ==> steps.view().len() + remaining <= old(steps).view().len() + thread_depth,
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> {

@@ -39,7 +39,7 @@ pub proof fn traced_step_implies_others_kept(u: KernelU, u2: KernelU, l: StepLab
         StepLabel::Unmap4kTlbFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); },
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_flushed_step); },
-        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); },
+        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased); },
         StepLabel::Unmap4kExit => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_exit_step); },
         _ => {},
     }
@@ -65,7 +65,7 @@ pub proof fn traced_step_implies_object_locks_same(u: KernelU, u2: KernelU, l: S
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_tlb_va_flush_step); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flushed_step); },
         StepLabel::Unmap4kRefund => {
-            reveal(kernel_u_container_quota_4k_increased);
+            reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased);
             let ctn = u.thread_map[u.cpu_array[d as int].current_thread->Some_0].owning_container;
             let changed = u.container_map.dom().filter(|c: RwLockContainerPtr| u.container_map[c] != u2.container_map[c]);
             assert forall|c: RwLockContainerPtr| #![trigger u2.container_map[c]] u.container_map.dom().contains(c) implies u2.container_map[c].lock_state == u.container_map[c].lock_state

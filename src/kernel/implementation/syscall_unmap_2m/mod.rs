@@ -4,6 +4,8 @@ mod syscall_unmap_2m_trace;
 mod syscall_unmap_2m_pagetable;
 mod syscall_unmap_2m_helpers;
 mod syscall_unmap_2m_range;
+mod syscall_unmap_2m_refund_to_thread;
+mod syscall_unmap_2m_refund_to_thread_eof;
 mod syscall_unmap_2m_exit;
 
 pub use syscall_unmap_2m::syscall_unmap_2m;

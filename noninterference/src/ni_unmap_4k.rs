@@ -135,17 +135,17 @@ pub proof fn unmap_4k_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
-/// An unmap quota refund on a cpu of `a` raises the quota of a container of `a` or of an ancestor of
-/// `a`, neither of which lies in `b`.
+/// An unmap quota refund on a cpu of `a` raises the quota of a container of `a`, of an ancestor of `a`, or of the running
+/// thread of `a`, none of which lies in `b`.
 pub proof fn unmap_4k_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         unmap_4k_refund_step_pre(old_u, cpu_id),
-        kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        unmap_4k_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
+{ reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
 
 /// The step of `unmap_4k_refund_step_lr` preserves isolation.
 pub proof fn unmap_4k_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -154,10 +154,10 @@ pub proof fn unmap_4k_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         unmap_4k_refund_step_pre(old_u, cpu_id),
-        kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        unmap_4k_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
+    reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_cpu_ownership_wf);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

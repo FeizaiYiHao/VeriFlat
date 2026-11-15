@@ -126,7 +126,7 @@ pub proof fn unmap_4k_other_step_implies_cpu_slice_unchanged(u: KernelU, u2: Ker
         StepLabel::Unmap4kTlbFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); },
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_flushed_step); },
-        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); },
+        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased); },
         StepLabel::Unmap4kExit => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_exit_step); },
         _ => {},
     }
@@ -172,7 +172,7 @@ pub proof fn unmap_4k_own_step_implies_stays_or_exits(u: KernelU, u2: KernelU, l
         StepLabel::Unmap4kTlbFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); },
         StepLabel::Unmap4kTlbVaFlush => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_va_flush_step); },
         StepLabel::Unmap4kFlushed => { reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_flushed_step); },
-        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(kernel_u_container_quota_4k_increased); },
+        StepLabel::Unmap4kRefund => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_refund_step); reveal(kernel_u_container_quota_4k_increased); },
         StepLabel::Unmap4kExit => { reveal(unmap_4k_refund_step_pre); reveal(unmap_4k_exit_step); },
         _ => {},
     }

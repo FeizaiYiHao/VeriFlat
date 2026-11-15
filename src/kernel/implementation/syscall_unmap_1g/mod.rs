@@ -8,5 +8,7 @@ mod syscall_unmap_1g_leaf_eof;
 mod syscall_unmap_1g_range;
 mod syscall_unmap_1g_reclaim;
 mod syscall_unmap_1g_exit;
+mod refund_unmap_1g_quota_to_thread;
+mod refund_unmap_1g_quota_to_thread_eof;
 
 pub use syscall_unmap_1g::syscall_unmap_1g;

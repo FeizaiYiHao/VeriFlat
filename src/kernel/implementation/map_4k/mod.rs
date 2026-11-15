@@ -35,6 +35,8 @@ mod unmap_4k_reclaim_last_cache;
 mod unmap_4k_mapped_page_ptr;
 pub mod unmap_4k_range;
 mod unmap_4k_range_eol;
+pub mod refund_unmap_4k_quota_to_thread;
+mod refund_unmap_4k_quota_to_thread_eof;
 pub mod unmap_4k_lock_running_thread;
 pub mod mmap_4k_lock_current_thread;
 pub mod hide_empty_l1_in_window;

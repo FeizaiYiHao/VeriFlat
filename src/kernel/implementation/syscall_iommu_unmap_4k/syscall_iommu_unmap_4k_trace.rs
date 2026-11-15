@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_iommu_unmap_4k_spec::*;
 
@@ -429,6 +430,47 @@ pub(super) proof fn iommu_unmap_4k_trace_refund_steps(
     ensures
         iommu_unmap_4k_partial_trace(after, cpu_id, iova_range),
 {
-    reveal(iommu_unmap_4k_partial_trace); reveal(iommu_unmap_4k_refund_step_pre); reveal(iommu_unmap_4k_range_step);
+    reveal(iommu_unmap_4k_partial_trace); reveal(iommu_unmap_4k_refund_step_pre); reveal(iommu_unmap_4k_range_step); reveal(iommu_unmap_4k_refund_step);
+}
+
+/// Moving the direct pending 4K quota of the running thread `thrd_ptr` into its 4K quota, which stays at most
+/// `THREAD_QUOTA_4K_REFUND_CAP`, from `pre` to `post` under the IOMMU-unmap context locks after the recorded flush extends the
+/// partial trace `before` by one refund step.
+pub(super) proof fn iommu_unmap_4k_thread_refund_step_from_k(
+    before: Seq<KernelStep>, after: Seq<KernelStep>, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr,
+    thrd_ptr: RwLockThreadPtr, iova_range: VaRange4K,
+)
+    requires
+        iommu_unmap_4k_partial_trace(before, cpu_id, iova_range),
+        after == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        typed_lock_maps_aligned(pre, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), ctn_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thrd_ptr, TypedLockMode::Write),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thrd_ptr),
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
+        pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true }),
+        *post == (KernelK { thrd_mp: post.thrd_mp, ..*pre }),
+        post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
+        post.thrd_mp.spec_index(thrd_ptr).view() == (Thread { quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k,
+            direct_free_quota_pending_4k: post.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, ..pre.thrd_mp.spec_index(thrd_ptr).view() }),
+        post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
+        post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
+        pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k < post.thrd_mp.spec_index(thrd_ptr).view().quota_4k <= THREAD_QUOTA_4K_REFUND_CAP,
+    ensures
+        iommu_unmap_4k_partial_trace(after, cpu_id, iova_range),
+{
+    reveal(iommu_unmap_4k_partial_trace); reveal(iommu_unmap_4k_refund_step_pre); reveal(iommu_unmap_4k_range_step); reveal(iommu_unmap_4k_refund_step);
+    kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_thread_projection_at(pre, thrd_ptr);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    assert_maps_equal!(kernel_k_to_kernel_u(*post).thread_map, pre_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: post.thrd_mp.spec_index(thrd_ptr).view().quota_4k, ..pre_u.thread_map[thrd_ptr] }), t => {
+        if pre.thrd_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thrd_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 } // verus!

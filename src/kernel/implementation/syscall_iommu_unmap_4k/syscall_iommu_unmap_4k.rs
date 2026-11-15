@@ -9,8 +9,8 @@ use super::syscall_iommu_unmap_4k_trace::*;
 verus! {
 /// Unmap the 4K pages `iova..iova + range * 4K` from the running process's IOMMU table. Success records an entering step that
 /// write-locks the cpu, container, process, thread, and IOMMU table; one step per hidden leaf; one IOTLB flush step; one step
-/// per quota refund; and an exiting step that releases all five. Failure records no step. The result is
-/// `iommu_unmap_4k_syscall_result` of the state at entry.
+/// per quota refund to the thread or its container chain; and an exiting step that releases all five. Failure records no step.
+/// The result is `iommu_unmap_4k_syscall_result` of the state at entry.
 pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, iova: VAddr, range: usize) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -71,6 +71,16 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let mut direct = 0usize;
     iommu_unmap_4k_reclaim_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, ctn_ptr, prc_ptr, thrd_ptr, iommu_table, &iova_range, &mut indirect, &mut direct,
         Tracked(&iommu_table_perm), Tracked(&thread_perm));
+    let ghost (credit_pre, credit_lctx, credit_before, amount) = (*krnl, *lctx, steps.view(), direct);
+    let credited = refund_unmap_4k_quota_to_thread(krnl, thrd_ptr, &mut direct, Tracked(&*lctx), Tracked(&thread_perm));
+    proof {
+        if credited {
+            let credit_post = *krnl;
+            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+            krnl.kernel_step_boundary_thread_quota_4k_changed(&mut *lctx, &mut *steps, thrd_ptr, amount as int);
+            iommu_unmap_4k_thread_refund_step_from_k(credit_before, steps.view(), &credit_pre, &credit_post, &credit_lctx, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, r);
+        }
+    }
     let ghost refund_before = steps.view();
     let ghost refund_k = *krnl;
     let ghost refund_lctx = *lctx;

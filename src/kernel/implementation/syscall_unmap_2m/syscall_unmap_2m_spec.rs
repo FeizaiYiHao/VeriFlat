@@ -116,9 +116,20 @@ pub open spec fn unmap_2m_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     })
 }
 
+/// A refund step returns 2M quota to the thread's container chain or, raising it to at most `THREAD_QUOTA_2M_REFUND_CAP`, to
+/// the running thread's own 2M quota.
+#[verifier::opaque]
+pub open spec fn unmap_2m_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let quota = new_u.thread_map.spec_index(thrd_ptr).quota_2m;
+    ||| kernel_u_container_quota_2m_increased(old_u, new_u, thread.owning_container)
+    ||| new_u == (KernelU { thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_2m: quota, ..thread }), ..old_u }) && thread.quota_2m < quota <= THREAD_QUOTA_2M_REFUND_CAP
+}
+
 /// A step inside the unmap range clears one 2M leaf, flushes on one cpu the process's PCID or, for a range of at most
 /// `TLB_FLUSH_VA_RANGE_MAX_PAGES_2M` 2M pages, the range's 2M addresses, records the flush, or refunds 2M quota to the thread's
-/// container chain.
+/// container chain or the thread.
 #[verifier::opaque]
 pub open spec fn unmap_2m_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -127,7 +138,7 @@ pub open spec fn unmap_2m_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && TLB_FLUSH_VA_RANGE_MAX_PAGES_2M < range.len && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && range.len <= TLB_FLUSH_VA_RANGE_MAX_PAGES_2M && unmap_4k_tlb_va_flush_step(step.old_u, step.new_u, cpu_id, range.start, range.len, true)
     ||| unmap_2m_flush_step_pre(step.old_u, cpu_id) && unmap_2m_flushed_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_2m_exit_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_2m_increased(step.old_u, step.new_u, thread.owning_container)
+    ||| unmap_2m_exit_step_pre(step.old_u, cpu_id) && unmap_2m_refund_step(step.old_u, step.new_u, cpu_id)
 }
 
 /// Refund steps and the exit step run after every page of the recorded range has been cleared and the flush has been

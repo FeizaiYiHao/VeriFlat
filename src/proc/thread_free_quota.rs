@@ -55,6 +55,25 @@ impl Thread {
         }
     }
 
+    /// Moves the direct pending 4K quota `counter` into this thread's 4K quota.
+    pub fn refund_direct_free_quota_pending_4k(&mut self, counter: &mut usize)
+        requires
+            old(self).inv(),
+            !(old(self).state is DANGLING),
+            *old(counter) == old(self).direct_free_quota_pending_4k.view(),
+            old(self).quota_4k + *old(counter) <= usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(counter) == 0,
+            final(self).quota_4k == old(self).quota_4k + *old(counter),
+            final(self).direct_free_quota_pending_4k.view() == 0,
+            *final(self) == (Thread { quota_4k: final(self).quota_4k, direct_free_quota_pending_4k: final(self).direct_free_quota_pending_4k, ..*old(self) }),
+    {
+        self.quota_4k = self.quota_4k + *counter;
+        self.direct_free_quota_pending_4k = Ghost(0usize);
+        *counter = 0;
+    }
+
     pub open spec fn free_quota_pending_2m_at_depth(&self, depth: usize) -> usize
         recommends
             self.inv(),
@@ -107,6 +126,25 @@ impl Thread {
         }
     }
 
+    /// Moves the direct pending 2M quota `counter` into this thread's 2M quota.
+    pub fn refund_direct_free_quota_pending_2m(&mut self, counter: &mut usize)
+        requires
+            old(self).inv(),
+            !(old(self).state is DANGLING),
+            *old(counter) == old(self).direct_free_quota_pending_2m.view(),
+            old(self).quota_2m + *old(counter) <= usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(counter) == 0,
+            final(self).quota_2m == old(self).quota_2m + *old(counter),
+            final(self).direct_free_quota_pending_2m.view() == 0,
+            *final(self) == (Thread { quota_2m: final(self).quota_2m, direct_free_quota_pending_2m: final(self).direct_free_quota_pending_2m, ..*old(self) }),
+    {
+        self.quota_2m = self.quota_2m + *counter;
+        self.direct_free_quota_pending_2m = Ghost(0usize);
+        *counter = 0;
+    }
+
     pub open spec fn free_quota_pending_1g_at_depth(&self, depth: usize) -> usize
         recommends
             self.inv(),
@@ -157,6 +195,25 @@ impl Thread {
         } else {
             self.indirect_free_quota_pending_1g = Ghost(self.indirect_free_quota_pending_1g.view().update(depth as int, 0usize));
         }
+    }
+
+    /// Moves the direct pending 1G quota `counter` into this thread's 1G quota.
+    pub fn refund_direct_free_quota_pending_1g(&mut self, counter: &mut usize)
+        requires
+            old(self).inv(),
+            !(old(self).state is DANGLING),
+            *old(counter) == old(self).direct_free_quota_pending_1g.view(),
+            old(self).quota_1g + *old(counter) <= usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(counter) == 0,
+            final(self).quota_1g == old(self).quota_1g + *old(counter),
+            final(self).direct_free_quota_pending_1g.view() == 0,
+            *final(self) == (Thread { quota_1g: final(self).quota_1g, direct_free_quota_pending_1g: final(self).direct_free_quota_pending_1g, ..*old(self) }),
+    {
+        self.quota_1g = self.quota_1g + *counter;
+        self.direct_free_quota_pending_1g = Ghost(0usize);
+        *counter = 0;
     }
 }
 }

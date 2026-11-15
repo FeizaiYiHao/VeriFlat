@@ -484,12 +484,11 @@ fn time_syscall_returns() {
 /// them, after one untimed round that builds the page tables, and logs the mean TSC cycles per page.
 fn time_mmap_unmap() {
     // mmap_4k needs four 4K quota per page at hand and takes one per page, plus the page tables of
-    // the first round, from the thread; unmap_4k refunds the pages to the container, so every round
-    // first moves one quota per page back to the thread, untimed.
-    fund("mmap timer funding", 3 * MMAP_PAGES + 3);
+    // the first round, from the thread; unmap_4k refunds the pages to the thread, which stays below
+    // THREAD_QUOTA_4K_REFUND_CAP (4096), so the quota funded once lasts every round.
+    fund("mmap timer funding", 4 * MMAP_PAGES + 3);
     let mut total = 0;
     for round in 0..=MMAP_ROUNDS {
-        fund("mmap timer funding", MMAP_PAGES);
         let start = unsafe { core::arch::x86_64::_rdtsc() };
         map_and_touch("mmap_4k (timed)", MMAP_PAGES);
         quiet("unmap_4k (timed)", unsafe { sys_unmap_4k(KILL_VA, MMAP_PAGES) });
@@ -1886,7 +1885,8 @@ fn expect_1g_words(what: &str, magic: u64) {
 /// unaligned va it fails; over a live 4K page or a live 2M page in the slot it fails with ErrorVaInUse, and
 /// unmap_1g of those fails; once they are unmapped, mmap_1g replaces the slot's emptied tables with a 1G leaf
 /// that reads as zeros, holds what is written, refuses a 4K page inside it, and unmaps; mapped again it
-/// reads as zeros again. The quotas go back to the container.
+/// reads as zeros again without new funding, since unmap_1g refunds the 1G quota to the thread. The 2M and
+/// 1G quota stay with the thread.
 fn test_mmap_1g() {
     let ret = unsafe { sys_mmap_1g(TEST_1G_VA, 1) };
     if error_name(ret) == "InvalidSyscall" {
@@ -1929,10 +1929,6 @@ fn test_mmap_1g() {
     expect_error("mmap_4k inside a live 1G page", unsafe { sys_mmap_4k(small, 1) }, "ErrorVaInUse");
     check("unmap_1g", unsafe { sys_unmap_1g(TEST_1G_VA, 1) });
     expect_error("unmap_1g of an unmapped slot", unsafe { sys_unmap_1g(TEST_1G_VA, 1) }, "Error");
-    if !try_fund_1g("alloc_quota_1g (self-test remap)") {
-        log::error!("mmap_1g: unmap_1g did not refund the 1G quota to the container");
-        unsafe { sys_debug_exit(1) };
-    }
     check("mmap_1g again", unsafe { sys_mmap_1g(TEST_1G_VA, 1) });
     expect_1g_words("the 1G page mapped again", 0);
     check("unmap_1g again", unsafe { sys_unmap_1g(TEST_1G_VA, 1) });
@@ -1945,16 +1941,16 @@ const MMAP1G_WARMUP: usize = 1;
 
 /// Times, on the calling thread, `mmap_1g` of one page alone and `mmap_1g` followed by `unmap_1g`, which
 /// both include the zeroing of the 1 GiB page inside the leaf step; logs the median TSC cycles of the map,
-/// the unmap, and their sum over `MMAP1G_ROUNDS` rounds. Each round funds the 1G quota the previous unmap
-/// refunded, untimed.
+/// the unmap, and their sum over `MMAP1G_ROUNDS` rounds. The 1G quota is funded once: each unmap refunds it
+/// to the thread.
 fn time_mmap_1g() {
     fund("mmap1g funding", 16);
+    if !try_fund_1g("mmap1g alloc_quota_1g") {
+        log::info!("mmap1g timing skipped: the boot found no free 1G block");
+        return;
+    }
     let (mut map, mut unmap, mut both) = ([0u64; MMAP1G_ROUNDS], [0u64; MMAP1G_ROUNDS], [0u64; MMAP1G_ROUNDS]);
     for round in 0..MMAP1G_WARMUP + MMAP1G_ROUNDS {
-        if !try_fund_1g("mmap1g alloc_quota_1g") {
-            log::info!("mmap1g timing skipped: the boot found no free 1G block");
-            return;
-        }
         let start = unsafe { core::arch::x86_64::_rdtsc() };
         let ret = unsafe { sys_mmap_1g(TIME_1G_VA, 1) };
         let mapped = unsafe { core::arch::x86_64::_rdtsc() };
@@ -2752,8 +2748,9 @@ pub extern "C" fn _start() -> ! {
 
     // 5. The remaining payloads inside dom0's container: a plain child process, then a child
     // sharing the root endpoint that receives it again, sends a page of the image back, and
-    // takes part in a CPU transfer that fails because both sides are in one container. Without
-    // 2M quota a new container is refused.
+    // takes part in a CPU transfer that fails because both sides are in one container. A new
+    // container whose funding exceeds the thread's 4K quota is refused; the thread already holds the
+    // 2M quota the self-tests' unmaps refunded to it.
     let cost = 4 + 3 * pages;
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(2 * cost + 3) });
     check("alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(2 * cost + 3) });
@@ -2774,7 +2771,7 @@ pub extern "C" fn _start() -> ! {
     log::info!("received page aliases the sent page");
     expect_error("send_cpu", unsafe { sys_send_cpu(ENDPOINT, 2) }, "ErrorIpcSameContainer");
     wait_for("the peer child", || PEER_DONE.load(Ordering::SeqCst));
-    expect_error("new_container", unsafe { sys_new_container(image, pages, 0, 0, 2, plain_child as *const () as usize, sp).rax }, "ErrorNoQuota");
+    expect_error("new_container", unsafe { sys_new_container(image, pages, usize::MAX / 2, 0, 2, plain_child as *const () as usize, sp).rax }, "ErrorNoQuota");
 
     // 6. A child container. 2M quota flows from dom0's container to its thread; the child gets
     // Off CPU 2 and the root endpoint; dom0 brings CPU 2 online for it, sends it CPU 3 over the
