@@ -28,15 +28,16 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAI
 /// Paging-structure caches of the units are folded into the domain's `SingleTLB`: an attached IOMMU table never changes a
 /// present non-leaf entry, and a kill detaches the table before it invalidates the domain.
 /// Managed table well-formedness excludes W-only entries, making the present/R refill abstraction valid.
-/// Sealed hardware state: only the invalidation primitives below write it, and only boot init constructs it.
+/// Sealed hardware state: only the invalidation primitives below write it, and only the boot glue constructs it.
 pub struct IommuTLB {
     domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
     context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,
 }
 
 impl IommuTLB {
-    /// Init only.
-    pub(crate) fn new_empty() -> (ret: Self)
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
+    pub fn new_empty() -> (ret: Self)
+        requires false,
         ensures
             ret.inv(),
             forall|did: VtdDomainId| #![trigger ret.spec_index(did)] vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),

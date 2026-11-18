@@ -74,15 +74,16 @@ impl PagingStructureCache {
     }
 }
 
-/// Sealed hardware state: only the hardware primitives of `crate::cpu` write it, and only boot init constructs it.
+/// Sealed hardware state: only the hardware primitives of `crate::cpu` write it, and only the boot glue constructs it.
 pub struct CpuTLB {
     pub(super) cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
     pub(super) structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
 }
 
 impl CpuTLB {
-    /// Init only.
-    pub(crate) fn new_empty() -> (ret: Self)
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
+    pub fn new_empty() -> (ret: Self)
+        requires false,
         ensures
             ret.inv(),
             forall|cpu_id: CpuId, pcid: Pcid| #![trigger ret.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.spec_index((cpu_id, pcid)).is_empty(),

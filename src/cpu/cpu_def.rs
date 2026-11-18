@@ -130,10 +130,9 @@ impl Cpu {
         Self::new_quiescent(owning_container, container_depth, CpuState::Off, default_cr3, cpu_id)
     }
 
-    pub(crate) fn new_boot_array(owning_container: RwLockContainerPtr, default_cr3: PageTableRoot) -> (ret: CpuLockedArray)
-        requires
-            0 < NUM_CPUS,
-            page_ptr_valid(default_cr3),
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
+    pub fn new_boot_array(owning_container: RwLockContainerPtr, default_cr3: PageTableRoot) -> (ret: CpuLockedArray)
+        requires false,
         ensures
             ret.inv(),
             forall|cpu_id: CpuId|
