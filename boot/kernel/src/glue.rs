@@ -463,8 +463,13 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         initial_regs.rsi = payload.size as u64;
     }
 
+    // 7. The cpu objects and the empty CPU TLB and IOTLB models.
+    let cpu_array = Cpu::new_boot_array(layout.root_container, default_pagetable.borrow().cr3);
+    let cpu_tlb = CpuTLB::new_empty();
+    let iommu_tlb = IommuTLB::new_empty();
+
     let _ = finish_init_from_boot(
-        layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_array, cpu_tlb, iommu_tlb,
         free_4k_pool, free_2m_pool, free_1g_pool,
         Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

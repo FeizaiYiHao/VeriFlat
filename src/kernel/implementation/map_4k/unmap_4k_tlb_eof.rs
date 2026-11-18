@@ -10,7 +10,7 @@ pub(super) open spec fn flush_remote_pcid_and_clear_eof_transition_framing(pre: 
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
@@ -79,7 +79,7 @@ pub(super) open spec fn flush_local_pcid_and_clear_eof_transition_framing(pre: K
     &&& new_cpu.view_rodata() == old_cpu.view_rodata()
     &&& new_cpu.view_ghost() == old_cpu.view_ghost()
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
@@ -203,7 +203,7 @@ pub(super) open spec fn flush_local_va_range_and_clear_eof_transition_framing(pr
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
     &&& pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_va_range_flushed(pre, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
@@ -249,7 +249,7 @@ pub(super) open spec fn flush_remote_va_range_and_restore_needflush_eof_transiti
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& cpu_tlb_va_range_flushed(pre, cpu_id, pcid, va, count, stride_2m, pre.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))

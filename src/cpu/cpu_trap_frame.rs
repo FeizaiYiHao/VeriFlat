@@ -12,7 +12,7 @@ impl CpuTrapFrameTable {
     pub closed spec fn view(&self) -> Map<CpuId, TrapFramePerm> { self.frames }
 
     /// Init only.
-    pub proof fn new(tracked frames: Map<CpuId, TrapFramePerm>) -> (tracked ret: Self)
+    pub(crate) proof fn new(tracked frames: Map<CpuId, TrapFramePerm>) -> (tracked ret: Self)
         ensures
             ret.view() == frames,
     {

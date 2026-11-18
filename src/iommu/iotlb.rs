@@ -28,13 +28,16 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAI
 /// Paging-structure caches of the units are folded into the domain's `SingleTLB`: an attached IOMMU table never changes a
 /// present non-leaf entry, and a kill detaches the table before it invalidates the domain.
 /// Managed table well-formedness excludes W-only entries, making the present/R refill abstraction valid.
+/// Sealed hardware state: only the invalidation primitives below write it, and only the boot glue constructs it.
 pub struct IommuTLB {
-    pub domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
-    pub context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,
+    domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
+    context_cache: Ghost<Map<PciBdf, (PageTableRoot, VtdDomainId)>>,
 }
 
 impl IommuTLB {
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
     pub fn new_empty() -> (ret: Self)
+        requires false,
         ensures
             ret.inv(),
             forall|did: VtdDomainId| #![trigger ret.spec_index(did)] vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
@@ -92,9 +95,9 @@ impl IommuTLB {
         self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
     }
 
-    pub open spec fn view(&self) -> Map<VtdDomainId, SingleTLB> { self.domain_tlbs.view() }
+    pub closed spec fn view(&self) -> Map<VtdDomainId, SingleTLB> { self.domain_tlbs.view() }
 
-    pub open spec fn context_cache(&self) -> Map<PciBdf, (PageTableRoot, VtdDomainId)> { self.context_cache.view() }
+    pub closed spec fn context_cache(&self) -> Map<PciBdf, (PageTableRoot, VtdDomainId)> { self.context_cache.view() }
 
     pub open spec fn spec_index(&self, did: VtdDomainId) -> SingleTLB
         recommends

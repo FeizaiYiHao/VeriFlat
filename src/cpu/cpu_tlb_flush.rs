@@ -29,7 +29,7 @@ impl CpuTLB {
         ensures
             final(self).inv(),
             final(self).view() == old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))),
-            final(self).structure_caches.view() == old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
+            final(self).structure_caches() == old(self).structure_caches().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
             cpu_tlb_within_may_cache(k, cpu_id, pcid, final(self).spec_index((cpu_id, pcid)), final(self).structure_cache((cpu_id, pcid))),
             forall|c: CpuId, p: Pcid|
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
@@ -60,7 +60,7 @@ impl CpuTLB {
         ensures
             final(self).inv(),
             final(self).view() == old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))),
-            final(self).structure_caches.view() == old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
+            final(self).structure_caches() == old(self).structure_caches().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
             cpu_tlb_va_range_flushed(k, cpu_id, pcid, va, count, stride_2m, old(self).spec_index((cpu_id, pcid)), final(self).spec_index((cpu_id, pcid)), final(self).structure_cache((cpu_id, pcid))),
             forall|c: CpuId, p: Pcid|
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
@@ -94,7 +94,7 @@ impl CpuTLB {
         ensures
             final(self).inv(),
             final(self).view() == old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))),
-            final(self).structure_caches.view() == old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
+            final(self).structure_caches() == old(self).structure_caches().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid))),
             cpu_tlb_va_range_flushed(k, cpu_id, pcid, va, count, stride_2m, old(self).spec_index((cpu_id, pcid)), final(self).spec_index((cpu_id, pcid)), final(self).structure_cache((cpu_id, pcid))),
             forall|c: CpuId, p: Pcid|
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
@@ -126,8 +126,8 @@ impl CpuTLB {
             final(self).view().dom() == old(self).view().dom(),
             forall|p: Pcid| #![trigger final(self).spec_index((cpu_id, p))] #![trigger final(self).structure_cache((cpu_id, p))] pcid_valid(p) && p != KERNEL_DEFAULT_PCID
                 ==> cpu_tlb_within_may_cache(k, cpu_id, p, final(self).spec_index((cpu_id, p)), final(self).structure_cache((cpu_id, p))),
-            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] #![trigger final(self).structure_caches.view()[key]] old(self).view().dom().contains(key) && (key.0 != cpu_id || key.1 == KERNEL_DEFAULT_PCID)
-                ==> final(self).view()[key] == old(self).view()[key] && final(self).structure_caches.view()[key] == old(self).structure_caches.view()[key],
+            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] #![trigger final(self).structure_caches()[key]] old(self).view().dom().contains(key) && (key.0 != cpu_id || key.1 == KERNEL_DEFAULT_PCID)
+                ==> final(self).view()[key] == old(self).view()[key] && final(self).structure_caches()[key] == old(self).structure_caches()[key],
             forall|c: CpuId, p: Pcid|
                 #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))] #![trigger final(self).structure_cache((c, p))] #![trigger old(self).structure_cache((c, p))]
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p == KERNEL_DEFAULT_PCID)

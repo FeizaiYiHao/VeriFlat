@@ -63,9 +63,9 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
-    &&& post.cpu_tlb.structure_caches.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
-        None => pre.cpu_tlb.structure_caches.view(),
+    &&& post.cpu_tlb.structure_caches() == match flushed_pcid {
+        Some(pcid) => pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
+        None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
@@ -265,9 +265,9 @@ pub open spec fn kernel_ipc_block_fields(
     &&& post.cpu_tlb.view() == if flushed_default_pcid {
         pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
     } else { pre.cpu_tlb.view() }
-    &&& post.cpu_tlb.structure_caches.view() == if flushed_default_pcid {
-        pre.cpu_tlb.structure_caches.view().insert((cpu_id, KERNEL_DEFAULT_PCID), post.cpu_tlb.structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
-    } else { pre.cpu_tlb.structure_caches.view() }
+    &&& post.cpu_tlb.structure_caches() == if flushed_default_pcid {
+        pre.cpu_tlb.structure_caches().insert((cpu_id, KERNEL_DEFAULT_PCID), post.cpu_tlb.structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
+    } else { pre.cpu_tlb.structure_caches() }
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(thrd_ptr)
@@ -383,9 +383,9 @@ pub open spec fn kernel_ipc_call_handoff_fields(
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
-    &&& post.cpu_tlb.structure_caches.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
-        None => pre.cpu_tlb.structure_caches.view(),
+    &&& post.cpu_tlb.structure_caches() == match flushed_pcid {
+        Some(pcid) => pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
+        None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
@@ -609,9 +609,9 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
-    &&& post.cpu_tlb.structure_caches.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
-        None => pre.cpu_tlb.structure_caches.view(),
+    &&& post.cpu_tlb.structure_caches() == match flushed_pcid {
+        Some(pcid) => pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), post.cpu_tlb.structure_cache((cpu_id, pcid))),
+        None => pre.cpu_tlb.structure_caches(),
     }
     &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)), post.cpu_tlb.structure_cache((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
@@ -800,7 +800,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             }
     }
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view()
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches()
     &&& post.dflt_pt == pre.dflt_pt
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
         pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))

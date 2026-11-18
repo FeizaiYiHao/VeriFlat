@@ -175,7 +175,7 @@ pub open spec fn kernel_k_cpu_tlb_filled(pre: KernelK, post: KernelK, cpu_id: Cp
     &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, added, added_cache)
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), single_tlb_union(pre.cpu_tlb.spec_index((cpu_id, pcid)), added))
-    &&& post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view().insert((cpu_id, pcid), PagingStructureCache {
+    &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches().insert((cpu_id, pcid), PagingStructureCache {
         pml4e: cache.pml4e.union_prefer_right(added_cache.pml4e), pdpte: cache.pdpte.union_prefer_right(added_cache.pdpte), pde: cache.pde.union_prefer_right(added_cache.pde) })
     &&& forall|c: CpuId, p: Pcid|
         #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.structure_cache((c, p))] #![trigger pre.cpu_tlb.structure_cache((c, p))]

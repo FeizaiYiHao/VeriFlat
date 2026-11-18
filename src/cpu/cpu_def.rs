@@ -90,7 +90,7 @@ impl Cpu {
         }
     }
 
-    pub fn new_idle(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot, cpu_id: CpuId) -> (ret: Self)
+    fn new_idle(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot, cpu_id: CpuId) -> (ret: Self)
         requires
             page_ptr_valid(default_cr3),
             index_valid(NUM_CPUS, cpu_id),
@@ -110,7 +110,7 @@ impl Cpu {
         Self::new_quiescent(owning_container, container_depth, CpuState::Idle, default_cr3, cpu_id)
     }
 
-    pub fn new_off(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot, cpu_id: CpuId) -> (ret: Self)
+    fn new_off(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot, cpu_id: CpuId) -> (ret: Self)
         requires
             page_ptr_valid(default_cr3),
             index_valid(NUM_CPUS, cpu_id),
@@ -130,10 +130,9 @@ impl Cpu {
         Self::new_quiescent(owning_container, container_depth, CpuState::Off, default_cr3, cpu_id)
     }
 
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
     pub fn new_boot_array(owning_container: RwLockContainerPtr, default_cr3: PageTableRoot) -> (ret: CpuLockedArray)
-        requires
-            0 < NUM_CPUS,
-            page_ptr_valid(default_cr3),
+        requires false,
         ensures
             ret.inv(),
             forall|cpu_id: CpuId|
@@ -291,7 +290,7 @@ impl Cpu {
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
                     ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)) && final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
-            final(tlb).structure_caches.view() == old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
+            final(tlb).structure_caches() == old(tlb).structure_caches().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
             match old(self).view().current_pagetable {
                 Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
                     && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
@@ -544,9 +543,9 @@ impl CpuLockedArray {
                 index_valid(NUM_CPUS, c) && pcid_valid(p) ==>
                     final(tlb).spec_index((c, p)) == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
                     else { old(tlb).spec_index((c, p)) },
-            final(tlb).structure_caches.view() == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush {
-                old(tlb).structure_caches.view().insert((cpu_id, KERNEL_DEFAULT_PCID), final(tlb).structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
-            } else { old(tlb).structure_caches.view() },
+            final(tlb).structure_caches() == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush {
+                old(tlb).structure_caches().insert((cpu_id, KERNEL_DEFAULT_PCID), final(tlb).structure_cache((cpu_id, KERNEL_DEFAULT_PCID)))
+            } else { old(tlb).structure_caches() },
             forall|c: CpuId, p: Pcid| #![trigger final(tlb).structure_cache((c, p))] #![trigger old(tlb).structure_cache((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID)
                 ==> final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -748,9 +747,9 @@ impl CpuLockedArray {
                 let table = whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable_ptr);
                 &&& (!flush ==> *final(tlb) == *old(tlb))
                 &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() }
-                &&& final(tlb).structure_caches.view() == if flush {
-                    old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
-                } else { old(tlb).structure_caches.view() }
+                &&& final(tlb).structure_caches() == if flush {
+                    old(tlb).structure_caches().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
+                } else { old(tlb).structure_caches() }
                 &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), table)
                     && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), table)
             },

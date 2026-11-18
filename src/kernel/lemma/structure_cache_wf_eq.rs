@@ -8,7 +8,7 @@ verus! {
 pub proof fn structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre: KernelK, post: KernelK)
     requires
         structure_cache_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
-        post.cpu_tlb.structure_caches.view() == pre.cpu_tlb.structure_caches.view(),
+        post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches(),
         forall|c: CpuId| #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c)
             ==> post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap()
             && post.cpu_arr.spec_index(c).view().view().view().current_pcid == pre.cpu_arr.spec_index(c).view().view().view().current_pcid,
