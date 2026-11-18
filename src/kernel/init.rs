@@ -973,7 +973,8 @@ pub open spec fn boot_kernel_state(
 
 pub fn finish_init_from_boot(
     layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: &Registers, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray,
-    cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, free_4k_pool: LinkedList<PagePtr, 233>,
+    cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
+    free_4k_pool: LinkedList<PagePtr, 233>,
     free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, owned_pages: Ghost<Set<PagePtr>>,
     owned_pci_functions: Ghost<Set<PciBdf>>, cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
@@ -1015,6 +1016,27 @@ pub fn finish_init_from_boot(
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
+        cpu_array.inv(),
+        forall|cpu_id: CpuId|
+            #![trigger cpu_array.spec_index(cpu_id)]
+            index_valid(NUM_CPUS, cpu_id) ==> {
+                &&& cpu_array.spec_index(cpu_id).view().inv()
+                &&& !cpu_array.spec_index(cpu_id).view().locked()
+                &&& !cpu_array.spec_index(cpu_id).view().being_killed()
+                &&& cpu_array.spec_index(cpu_id).view().view_ghost() is None
+                &&& cpu_array.spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id)
+                &&& cpu_array.spec_index(cpu_id).view().view().view().owning_container == layout.root_container
+                &&& cpu_array.spec_index(cpu_id).view().view().view().container_depth == 0
+                &&& cpu_array.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
+                &&& cpu_array.spec_index(cpu_id).view().view().view().current_cr3 == default_pagetable.view().cr3
+                &&& cpu_array.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
+            },
+        cpu_tlb.inv(),
+        forall|cpu_id: CpuId, pcid: Pcid| #![trigger cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> cpu_tlb.spec_index((cpu_id, pcid)).is_empty(),
+        forall|cpu_id: CpuId, pcid: Pcid| #![trigger cpu_tlb.structure_cache((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> cpu_tlb.structure_cache((cpu_id, pcid)).is_empty(),
+        iommu_tlb.inv(),
+        forall|did: VtdDomainId| #![trigger iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> iommu_tlb.spec_index(did).is_empty(),
+        iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
         owned_pci_functions.view().len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.view().contains(pg_ptr)] owned_pages.view().contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.view().contains(bdf)] owned_pci_functions.view().contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
@@ -1057,7 +1079,6 @@ pub fn finish_init_from_boot(
         ret.view().value().it_mp.dom() =~= set![layout.iommu_table],
 {
     let tracked mut kernel_perm = kernel_perm;
-    let default_cr3 = default_pagetable.borrow().cr3;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
     let (cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
         layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
@@ -1097,13 +1118,9 @@ pub fn finish_init_from_boot(
     let allocator_4k = PageAllocator::<ALLOCATOR_SIZE_4K>::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
     let allocator_2m = PageAllocator::<ALLOCATOR_SIZE_2M>::new_with_global_pool(layout.root_container, 0, free_2m_pool, quota_2m);
     let allocator_1g = PageAllocator::<ALLOCATOR_SIZE_1G>::new_with_global_pool(layout.root_container, 0, free_1g_pool, quota_1g);
-    proof { default_pagetable.view().table_pages_wf_cr3_at(); }
-    let cpu_array = Cpu::new_boot_array(layout.root_container, default_cr3);
     let tracked cpu_op = CpuOpArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off }));
     let tracked cpu_regs = CpuRegsArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| *initial_regs));
     let tracked cpu_trap_frame = CpuTrapFrameTable::new(Map::tracked_empty());
-    let cpu_tlb = CpuTLB::new_empty();
-    let iommu_tlb = IommuTLB::new_empty();
     let irt_addr = irt_cell_base();
     let irt_base = irt_addr + VTD_TABLE_SIZE;
     assert(VTD_TABLE_SIZE == 4096) by (compute);

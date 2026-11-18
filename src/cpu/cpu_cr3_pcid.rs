@@ -45,7 +45,7 @@ impl CpuCr3Pcid {
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
                     ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)) && final(tlb).structure_cache((c, p)) == old(tlb).structure_cache((c, p)),
             final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
-            final(tlb).structure_caches.view() == old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
+            final(tlb).structure_caches() == old(tlb).structure_caches().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid))),
             match next_table {
                 Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
                     && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
@@ -85,9 +85,9 @@ impl CpuCr3Pcid {
                     ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid))
                     && final(tlb).structure_cache((other_cpu, other_pcid)) == old(tlb).structure_cache((other_cpu, other_pcid)),
             final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() },
-            final(tlb).structure_caches.view() == if flush {
-                old(tlb).structure_caches.view().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
-            } else { old(tlb).structure_caches.view() },
+            final(tlb).structure_caches() == if flush {
+                old(tlb).structure_caches().insert((cpu_id, pcid), final(tlb).structure_cache((cpu_id, pcid)))
+            } else { old(tlb).structure_caches() },
             flush ==> match next_table {
                 Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
                     && single_structure_cache_subset_of_present_pagetable(final(tlb).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
