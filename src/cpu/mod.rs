@@ -28,5 +28,3 @@ pub use cpu_ipi::*;
 pub use cpu_op::*;
 pub use cpu_regs::*;
 pub use cpu_trap_frame::*;
-
-pub mod cpu_tlb_flush;

@@ -3,6 +3,8 @@ use vstd::prelude::*;
 use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 
+mod cpu_tlb_flush;
+
 verus! {
 /// Cached translations, shared by the CPU TLBs and the IOTLB. Only the IOTLB folds its paging-structure caches in; a CPU
 /// keeps them in `PagingStructureCache`. A 2M translation the hardware splits into 4K TLB entries is represented by its
@@ -74,10 +76,11 @@ impl PagingStructureCache {
     }
 }
 
-/// Sealed hardware state: only the hardware primitives of `crate::cpu` write it, and only the boot glue constructs it.
+/// Sealed hardware state: only the hardware primitives of this module and its child `cpu_tlb_flush` write it, and only the
+/// boot glue constructs it.
 pub struct CpuTLB {
-    pub(super) cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
-    pub(super) structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
+    cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
+    structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
 }
 
 impl CpuTLB {
