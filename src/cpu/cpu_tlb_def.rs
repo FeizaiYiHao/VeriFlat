@@ -74,13 +74,15 @@ impl PagingStructureCache {
     }
 }
 
+/// Sealed hardware state: only the hardware primitives of `crate::cpu` write it, and only boot init constructs it.
 pub struct CpuTLB {
-    pub cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
-    pub structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
+    pub(super) cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
+    pub(super) structure_caches: Ghost<Map<(CpuId, Pcid), PagingStructureCache>>,
 }
 
 impl CpuTLB {
-    pub fn new_empty() -> (ret: Self)
+    /// Init only.
+    pub(crate) fn new_empty() -> (ret: Self)
         ensures
             ret.inv(),
             forall|cpu_id: CpuId, pcid: Pcid| #![trigger ret.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.spec_index((cpu_id, pcid)).is_empty(),
@@ -130,9 +132,9 @@ impl CpuTLB {
                     ==> final(self).spec_index((other_cpu, other_pcid)) == old(self).spec_index((other_cpu, other_pcid))
                     && final(self).structure_cache((other_cpu, other_pcid)) == old(self).structure_cache((other_cpu, other_pcid)),
             final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))) } else { old(self).view() },
-            final(self).structure_caches.view() == if flush {
-                old(self).structure_caches.view().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid)))
-            } else { old(self).structure_caches.view() },
+            final(self).structure_caches() == if flush {
+                old(self).structure_caches().insert((cpu_id, pcid), final(self).structure_cache((cpu_id, pcid)))
+            } else { old(self).structure_caches() },
             flush ==> match next_table {
                 Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr))
                     && single_structure_cache_subset_of_present_pagetable(final(self).structure_cache((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
@@ -149,6 +151,8 @@ impl CpuTLB {
     }
 
     pub closed spec fn view(&self) -> Map<(CpuId, Pcid), SingleTLB> { self.cpu_tlbs.view() }
+    /// The paging-structure caches of every `(cpu, pcid)`; K only.
+    pub closed spec fn structure_caches(&self) -> Map<(CpuId, Pcid), PagingStructureCache> { self.structure_caches.view() }
     pub open spec fn spec_index(&self, index: (CpuId, Pcid)) -> SingleTLB
         recommends
             index_valid(NUM_CPUS, index.0),
@@ -159,7 +163,7 @@ impl CpuTLB {
 
     /// The paging-structure cache of `(cpu, pcid)`; K only.
     #[verifier::inline]
-    pub open spec fn structure_cache(&self, index: (CpuId, Pcid)) -> PagingStructureCache { self.structure_caches.view().spec_index(index) }
+    pub open spec fn structure_cache(&self, index: (CpuId, Pcid)) -> PagingStructureCache { self.structure_caches().spec_index(index) }
 
     /// One TLB and one structure cache per valid (cpu, pcid).
     #[verifier::opaque]
@@ -167,7 +171,7 @@ impl CpuTLB {
         &&& forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger self.view().dom().contains((cpu_id, pcid))]
             self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
-        &&& self.structure_caches.view().dom() == self.view().dom()
+        &&& self.structure_caches().dom() == self.view().dom()
     }
 }
 }

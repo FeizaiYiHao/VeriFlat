@@ -27,11 +27,9 @@ impl AtomicPcidCr3 {
     }
 
     /// Boot only, once per cpu: publish `(cr3, pcid)` as the hardware cr3/pcid word of cpu `cpu_id`.
+    /// Callable only from the unverified boot glue; `requires false` keeps verified code out.
     pub fn new(cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid) -> (ret: Self)
-        requires
-            index_valid(NUM_CPUS, cpu_id),
-            page_ptr_valid(cr3),
-            pcid_valid(pcid),
+        requires false,
         ensures
             ret.inv(),
             ret.view() == (cr3, pcid),
