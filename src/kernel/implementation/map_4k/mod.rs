@@ -43,6 +43,8 @@ pub mod hide_empty_l1_in_window;
 mod hide_empty_l1_in_window_eof;
 pub mod unmap_2m_present_in_window;
 mod unmap_2m_present_in_window_eof;
+pub mod unmap_2m_present;
+mod unmap_2m_present_eof;
 pub mod unmap_2m_reclaim_in_window;
 mod unmap_2m_reclaim_in_window_eof;
 pub mod reclaim_hidden_l1_page_in_window;
