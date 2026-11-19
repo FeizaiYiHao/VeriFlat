@@ -329,8 +329,8 @@ pub open spec fn kill_process_flushed_step(old_u: KernelU, new_u: KernelU, cpu_i
 }
 
 /// Once the flush is recorded and the page table holds no leaf, the target's page table drops every PCI function it holds,
-/// each of which becomes unowned and detached, and its IOMMU table, if any, is write-locked and drops its DID, whose IOTLB
-/// domain alone is emptied.
+/// each of which becomes unowned; its IOMMU table, if any, is write-locked, every function of the array is detached, and
+/// the table drops its DID, whose IOTLB domain alone is emptied.
 #[verifier::opaque]
 pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let prc_ptr = kill_target(old_u, cpu_id);
@@ -338,7 +338,6 @@ pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: Kernel
     let pagetable = target.pagetable->Some_0;
     let table = old_u.iommu_root_table;
     let functions = pagetable.pci_functions.dom();
-    let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true })
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is Unlocked
     &&& new_u == (KernelU {
@@ -347,14 +346,16 @@ pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: Kernel
             iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..t }), None => None },
             ..target
         }),
-        iommu_root_table: if functions == Set::<PciBdf>::empty() { table } else {
-            IommuRootTableU {
-                owners: pci_owners_released(table.owners, functions),
-                attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat, |function: int|
-                    table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize))))),
-            }
+        iommu_root_table: IommuRootTableU {
+            owners: if functions == Set::<PciBdf>::empty() { table.owners } else { pci_owners_released(table.owners, functions) },
+            attached: if target.iommu_table is Some {
+                Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
+                    |function: int| table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize)))))
+            } else { table.attached },
         },
-        iommu_tlb: match target.iommu_table { Some(t) => match t.did { Some(d) => old_u.iommu_tlb.insert(d, empty_tlb), None => old_u.iommu_tlb }, None => old_u.iommu_tlb },
+        iommu_tlb: if target.iommu_table is Some && target.iommu_table->Some_0.did is Some {
+            old_u.iommu_tlb.insert(target.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { old_u.iommu_tlb },
         ..old_u
     })
 }

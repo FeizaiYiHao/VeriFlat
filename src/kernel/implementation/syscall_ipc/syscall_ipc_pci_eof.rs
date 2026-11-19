@@ -163,7 +163,9 @@ proof fn ipc_pci_rendezvous_eof_endpoint_wf(
         &&& thread_caller_callee_wf(post.thrd_mp)
     }) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(mid.ctn_mp, post.ctn_mp, mid.ep_mp, post.ep_mp); thread_caller_callee_wf_preserved_for_call_link_eq(mid.thrd_mp, post.thrd_mp); };
     assert(thread_endpoint_queue_wf(post.thrd_mp, post.ep_mp)) by { seq_skip_one_implies_contains_and_index_shift::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(mid.ctn_mp, post.ctn_mp, mid.thrd_mp, post.thrd_mp, mid.ep_mp, post.ep_mp); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thrd_mp, post.ep_mp)) by {
+        reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(mid.ctn_mp, post.ctn_mp, mid.thrd_mp, post.thrd_mp, mid.ep_mp, post.ep_mp);
+    };
 }
 
 proof fn ipc_pci_rendezvous_eof_process_management_inv(
@@ -307,7 +309,8 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
 {
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     ipc_pci_rendezvous_eof_quota_wf(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
-    ipc_pci_rendezvous_eof_object_pages_wf(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_object_pages_wf(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf,
+        transferred, peer_result, thread_id, iommu_table, anchor);
     assert(post.memory_management_inv()) by {
         assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
@@ -375,8 +378,10 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         };
         reveal(KernelK::default_pagetable_wf);
     };
-    ipc_pci_rendezvous_eof_memory_management_inv(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
-    ipc_pci_rendezvous_eof_process_management_inv(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_memory_management_inv(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf,
+        transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_process_management_inv(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf,
+        transferred, peer_result, thread_id, iommu_table, anchor);
     assert(post.inv()) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
@@ -557,7 +562,8 @@ pub(super) proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         },
 {
     reveal(ipc_pci_rendezvous_eof_transition_framing); reveal(ipc_pci_rendezvous_eof_pci_handoff); reveal(ipc_pci_rendezvous_eof_pagetable_frame);
-    assert(scheduler_shards_of(scheduled.sched_mp.spec_index(peer_sched_ptr)) =~= scheduler_shards_of(pre.sched_mp.spec_index(peer_sched_ptr)).update(wake_cpu as int, scheduler_shards_of(pre.sched_mp.spec_index(peer_sched_ptr))[wake_cpu as int].push(peer_thrd_ptr))) by {
+    assert(scheduler_shards_of(scheduled.sched_mp.spec_index(peer_sched_ptr))
+        =~= scheduler_shards_of(pre.sched_mp.spec_index(peer_sched_ptr)).update(wake_cpu as int, scheduler_shards_of(pre.sched_mp.spec_index(peer_sched_ptr))[wake_cpu as int].push(peer_thrd_ptr))) by {
         reveal(scheduler_shards_of);
     };
     ipc_pci_rendezvous_eof_handoff(pre, mid, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, thread_id, iommu_table, anchor);

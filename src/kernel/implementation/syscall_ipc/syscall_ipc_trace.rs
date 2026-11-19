@@ -161,7 +161,7 @@ pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
 pub(super) proof fn ipc_rendezvous_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, ep_idx: EndpointIdx,
     waiting_state: ThreadState, peer_thrd_ptr: RwLockThreadPtr, peer_result: RetValueType, cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
-    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool, pre_k: KernelK,
+    pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, payload: IPCPayLoad, cpu_sets_locked: bool, pagetables_locked: bool, pre_k: KernelK,
 )
     requires
         pre == kernel_k_to_kernel_u(pre_k),
@@ -173,6 +173,7 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
             &&& cpu_transfer == ipc_cpu_transfer(pre, cpu_id, ep_idx, payload, result)
             &&& pci_transfer == ipc_pci_transfer(pre, cpu_id, ep_idx, waiting_state, payload, result)
             &&& (payload is Cpu || payload is ReceiveCpu) && !(result is ErrorIpcTypeMismatch) && !(result is ErrorIpcSameContainer) ==> cpu_sets_locked
+            &&& payload is Pci && (result is Success || result is ErrorIpcPciOwnerMismatch || result is ErrorIpcPciBarMapped || result is ErrorIpcPciReceiverFull) ==> pagetables_locked
         },
         {
             let cpu = pre.cpu_array[cpu_id as int];
@@ -211,6 +212,7 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
             &&& cpu_transfer matches Some((transfer, _)) ==> pre.cpu_array[transfer as int].lock_state is Unlocked
             &&& pci_transfer matches Some((bdf, sender, _)) ==> pre.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre.process_map[sender].iommu_table is Some
                 ==> pre.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+            &&& pagetables_locked ==> pre.process_map[caller.owning_proc].pagetable->Some_0.lock_state is Unlocked && pre.process_map[peer.owning_proc].pagetable->Some_0.lock_state is Unlocked
         },
     ensures
         ipc_rendezvous_step_pre(pre, cpu_id, ep_idx, waiting_state, payload),

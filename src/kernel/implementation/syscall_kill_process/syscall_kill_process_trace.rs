@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_seqs_equal_internal, assert_sets_equal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 use crate::*;
 use super::syscall_kill_process_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -702,7 +702,6 @@ pub(crate) proof fn kill_lock_table_step_from_k(
 )
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
-        process_iommu_table_wf(post.prc_mp, post.it_mp),
         typed_lock_maps_aligned(post, lctx),
         lctx.cpu_id() == cpu_id,
         kill_process_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
@@ -735,24 +734,7 @@ pub(crate) proof fn kill_lock_table_step_from_k(
         post.thrd_mp.spec_index(thrd_ptr).locking_thread() == pre.thrd_mp.spec_index(thrd_ptr).locking_thread(),
         post.thrd_mp.spec_index(thrd_ptr).being_killed() == pre.thrd_mp.spec_index(thrd_ptr).being_killed(),
     ensures kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
-{
-    hide(Map::filter_keys);
-    post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_thread_progress_changed_implies_u_thread_map(pre, post, thrd_ptr);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    let process_u = a.process_map[target];
-    kernel_process_projection_at(pre, target);
-    assert_maps_equal!(b.process_map, a.process_map.insert(target, ProcessU {
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process_u.pagetable->Some_0 }), ..process_u
-    }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, target);
-    });
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-    reveal(kill_process_lock_table_step);
-}
+{ kernel_pagetable_write_locked_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, thrd_ptr); reveal(kill_process_lock_table_step); }
 
 /// Dropping every 4K, 2M and 1G mapping and every window lock under the root entry `l4i` from the target's write-locked page
 /// table before the flush, and nothing else, is a middle step.
@@ -852,58 +834,7 @@ pub(crate) proof fn kill_unown_step_from_k(
     ensures
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
         kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
-{
-    hide(Map::filter_keys);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_iommu_root_table_projection(pre); kernel_iommu_root_table_projection(post);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    let process_u = a.process_map[target];
-    let table_u = process_u.pagetable->Some_0;
-    let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
-    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, target); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, target);
-    kernel_process_projection_at(pre, target); kernel_process_projection_at(post, target);
-    if let Some(t) = iommu_table { post.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
-    assert(post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() =~= Map::<PciBdf, nat>::empty());
-    let expected = a.process_map.insert(target, ProcessU {
-        pagetable: Some(PageTableU { pci_functions: Map::empty(), ..table_u }),
-        iommu_table: match process_u.iommu_table { Some(x) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..x }), None => None },
-        ..process_u
-    });
-    assert_maps_equal!(b.process_map, expected, p => {
-        if pre.prc_mp.dom().contains(p) {
-            kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p);
-            process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, p); process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, p);
-        }
-    });
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-    let functions = pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom();
-    assert(table_u.pci_functions.dom() =~= functions);
-    if functions != Set::<PciBdf>::empty() {
-        pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
-        let attached = b.iommu_root_table.attached;
-        let expected = Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat, |function: int|
-            a.iommu_root_table.attached[bus][device][function] && !functions.contains((bus as usize, device as usize, function as usize)))));
-        assert_seqs_equal!(attached, expected, bus => {
-            assert_seqs_equal!(attached[bus], expected[bus], device => {
-                assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {
-                    let bdf = (bus as usize, device as usize, function as usize);
-                    assert({
-                        &&& mid.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == mid.irt.view().iommu_roots()[bus][device][function]
-                        &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == pre.irt.view().iommu_roots()[bus][device][function]
-                        &&& attached[bus][device][function] == expected[bus][device][function]
-                    }) by { reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); };
-                });
-            });
-        });
-    }
-    assert(kill_process_unown_functions_step(a, b, cpu_id)) by { reveal(kill_process_unown_functions_step); };
-    assert(a != b) by {
-        if iommu_table is Some { assert(a.process_map[target].iommu_table != b.process_map[target].iommu_table); }
-        else { assert(a.process_map[target].pagetable->Some_0.pci_functions.dom() != b.process_map[target].pagetable->Some_0.pci_functions.dom()); }
-    };
-}
+{ kernel_pci_functions_released_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, iommu_table, mid.irt.view()); reveal(kill_process_unown_functions_step); }
 
 /// Removing or hiding the 4K leaf `iova` of the target's write-locked IOMMU table after the flush is a middle step; the
 /// kill's step precondition, read on `post`, ignores that leaf.

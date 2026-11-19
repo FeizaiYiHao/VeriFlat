@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_thread_exit_spec::*;
@@ -502,47 +501,9 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         thread_exit_unown_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
         iommu_table is Some || pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
     kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    kernel_process_projection_at(pre, prc_ptr); kernel_process_projection_at(post, prc_ptr);
-    process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr);
-    if let Some(it) = iommu_table {
-        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, prc_ptr);
-        post.it_mp.typed_lock_map_aligned_write_at(post_lctx.iommu_table_lock_map(), post_lctx.thread_id(), it);
-    }
-    let p = a.process_map[prc_ptr];
-    let t = p.pagetable->Some_0;
-    let functions = t.pci_functions.dom();
-    assert(post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() =~= Map::<PciBdf, nat>::empty());
+    kernel_pci_functions_released_implies_u_step(pre, post, post_lctx, cpu_id, prc_ptr, pagetable, iommu_table, detached);
     reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step);
-    let new_p = ProcessU {
-        pagetable: Some(PageTableU { pci_functions: Map::empty(), ..t }),
-        iommu_table: match p.iommu_table { Some(i) => Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, ..i }), None => None },
-        ..p
-    };
-    assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, new_p), q => {
-        if pre.prc_mp.dom().contains(q) {
-            kernel_process_projection_at(pre, q); kernel_process_projection_at(post, q); process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, q);
-            process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, q);
-        }
-    });
-    pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
-    if iommu_table is Some {
-        let attached = thread_exit_detached_attached(a.iommu_root_table, functions);
-        assert_seqs_equal!(b.iommu_root_table.attached, attached, bus => {
-            assert_seqs_equal!(b.iommu_root_table.attached[bus], attached[bus], device => {
-                assert_seqs_equal!(b.iommu_root_table.attached[bus][device], attached[bus][device], function => {
-                    kernel_iommu_root_table_projection_at(pre, bus as usize, device as usize, function as usize);
-                    kernel_iommu_root_table_projection_at(post, bus as usize, device as usize, function as usize);
-                    assert(post.irt.view().spec_index_iommu_root(bus as usize, device as usize, function as usize) == detached.spec_index_iommu_root(bus as usize, device as usize, function as usize));
-                });
-            });
-        });
-    }
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// A state holding the cpu, `ctn_ptr`, `prc_ptr` with its page table `pagetable`, and the running `thrd_ptr` that

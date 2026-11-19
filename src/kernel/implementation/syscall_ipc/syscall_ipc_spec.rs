@@ -118,7 +118,8 @@ pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 
 /// The unlocked endpoint queue head waits in the opposite direction, so the caller rendezvous with it; a CPU
 /// rendezvous between different containers also needs both containers' cpu sets unlocked, a handover
-/// needs the handed-over CPU unlocked, and a PCI handover of an attached function needs the sender's IOMMU table unlocked.
+/// needs the handed-over CPU unlocked, a PCI handover between different processes needs both processes' page tables unlocked,
+/// and a PCI handover of an attached function needs the sender's IOMMU table unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -145,6 +146,11 @@ pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, ep_idx: 
     &&& ipc_cpu_transfer(old_u, cpu_id, ep_idx, payload, result) matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
     &&& ipc_pci_transfer(old_u, cpu_id, ep_idx, waiting_state, payload, result) matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int]
         && old_u.process_map[sender].iommu_table is Some ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+    // A PCI handover that passes the type and same-process checks reads both processes' page tables.
+    &&& payload is Pci && (result is Success || result is ErrorIpcPciOwnerMismatch || result is ErrorIpcPciBarMapped || result is ErrorIpcPciReceiverFull) ==> {
+        &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is Unlocked
+        &&& old_u.process_map[peer.owning_proc].pagetable->Some_0.lock_state is Unlocked
+    }
 }
 
 /// User-visible rendezvous step: the queue head is scheduled with the peer's side of the rendezvous result,

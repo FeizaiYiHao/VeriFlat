@@ -57,7 +57,8 @@ pub(crate) fn kill_reclaim_target(
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).view().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view().uppertree_seq
-            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write) ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), c, TypedLockMode::Write)
+                ==> final(krnl).ctn_mp.spec_index(c).view().root_process_removed.view() == old(krnl).ctn_mp.spec_index(c).view().root_process_removed.view()
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),

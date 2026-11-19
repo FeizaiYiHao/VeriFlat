@@ -150,7 +150,6 @@ pub(super) fn thread_exit_reclaim_unown(
         let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
         let perm = match iommu_table {
             Some(it) => {
-                broadcast use PciFunctionArray::wf_function_at;
                 let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
                 let ghost locked_k = *krnl;
                 iommu_root_table_detach_array(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it,
@@ -214,7 +213,6 @@ pub(super) fn thread_exit_reclaim_unown(
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             thread_exit_trace_push(&*steps, unown_before, start, pre, kernel_k_to_kernel_u(unown_k), kernel_k_to_kernel_u(unowned_k), cpu_id);
         }
-        reveal(kernel_steps_prefix_unchanged);
     }
     (iommu_table_lock_perm, Ghost(it_entry))
 }

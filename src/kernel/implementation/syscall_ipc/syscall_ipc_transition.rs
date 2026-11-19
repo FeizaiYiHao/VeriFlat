@@ -203,6 +203,7 @@ verus! {
             result == ipc_rendezvous_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload),
             !(result is SuccessUsize) && (result is Success ==> payload is Empty),
             (payload is Cpu || payload is ReceiveCpu) ==> result is ErrorIpcTypeMismatch || result is ErrorIpcSameContainer,
+            !(result is ErrorIpcPciOwnerMismatch) && !(result is ErrorIpcPciBarMapped) && !(result is ErrorIpcPciReceiverFull),
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             index_valid(NUM_CPUS, cpu_id),
@@ -301,11 +302,12 @@ verus! {
                 && krnl.cpu_regs.view().view() == steps.snapshot_k().cpu_regs.view().view() && krnl.cpu_trap_frame.view().view() == steps.snapshot_k().cpu_trap_frame.view().view()) by {
                 broadcast use kernel_process_nonlock_fields_unchanged_transitive; reveal(kernel_ipc_rendezvous_fields);
             };
-            steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false);
+            steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false, false);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)
             }) by {
-                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr, result, None, None, payload, false, old(steps).snapshot_k());
+                ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state,
+                    peer_thrd_ptr, result, None, None, payload, false, false, old(steps).snapshot_k());
             };
         }
     }
@@ -406,6 +408,7 @@ verus! {
             result == ipc_rendezvous_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload),
             !(result is SuccessUsize) && (result is Success ==> payload is Empty),
             (payload is Cpu || payload is ReceiveCpu) ==> result is ErrorIpcTypeMismatch || result is ErrorIpcSameContainer,
+            !(result is ErrorIpcPciOwnerMismatch) && !(result is ErrorIpcPciBarMapped) && !(result is ErrorIpcPciReceiverFull),
             edp_idx_valid(ep_idx),
             old(krnl).thrd_mp.spec_index(current_thrd_ptr).view().endpoint_descriptors.view()[ep_idx as int] == Some(ep_ptr),
             waiting_state.is_endpoint_waiting(),

@@ -89,7 +89,7 @@ pub fn syscall_pci_attach_dma(
         assert(old(krnl).pt_mp.dom().contains(pagetable_ptr) && krnl.pt_mp.dom().contains(pagetable_ptr)) by {
             process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, prc_ptr);
         };
-        assert(!old(krnl).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by { reveal(KernelK::all_objects_unlocked); };
+        old(krnl).pt_mp.typed_lock_map_aligned_locked_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
     }
     let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }

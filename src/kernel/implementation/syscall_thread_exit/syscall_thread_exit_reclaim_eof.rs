@@ -56,7 +56,9 @@ proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, prc_ptr: RwLoc
     assert(mid.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, mid); };
 }
 
-/// Marking the write-held exiting thread `thrd_ptr` as exited and its write-held process `prc_ptr`, whose tables map nothing, whose page table holds no PCI function, and whose only thread is `thrd_ptr`, as having emptied its tables keeps the kernel invariant.
+/// Marking the write-held exiting thread `thrd_ptr` as exited and its write-held process `prc_ptr`, whose tables map nothing,
+/// whose page table holds no PCI function, and whose only thread is `thrd_ptr`, as having emptied its tables keeps the kernel
+/// invariant.
 pub(super) proof fn thread_exit_tables_emptied_eof(
     pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
 )

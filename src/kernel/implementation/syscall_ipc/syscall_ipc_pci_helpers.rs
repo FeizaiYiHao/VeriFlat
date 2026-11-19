@@ -309,6 +309,18 @@ verus! {
                 peer_result, None, pci_transfer),
             payload is Pci,
             ({
+                let snap = old(steps).snapshot_k();
+                let caller_proc = snap.thrd_mp.spec_index(current_thrd_ptr).view().owning_proc;
+                let peer_proc = snap.thrd_mp.spec_index(peer_thrd_ptr).view().owning_proc;
+                &&& snap.thrd_mp.dom().contains(current_thrd_ptr) && snap.thrd_mp.dom().contains(peer_thrd_ptr)
+                &&& snap.prc_mp.dom().contains(caller_proc) && !snap.prc_mp.spec_index(caller_proc).view().zombie
+                &&& snap.pt_mp.dom().contains(snap.prc_mp.spec_index(caller_proc).view().pagetable)
+                &&& snap.pt_mp.spec_index(snap.prc_mp.spec_index(caller_proc).view().pagetable).locking_thread() is None
+                &&& snap.prc_mp.dom().contains(peer_proc) && !snap.prc_mp.spec_index(peer_proc).view().zombie
+                &&& snap.pt_mp.dom().contains(snap.prc_mp.spec_index(peer_proc).view().pagetable)
+                &&& snap.pt_mp.spec_index(snap.prc_mp.spec_index(peer_proc).view().pagetable).locking_thread() is None
+            }),
+            ({
                 let result = ipc_rendezvous_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload);
                 &&& peer_result == result
                 &&& peer_result == ipc_peer_result(payload, result)
@@ -338,12 +350,12 @@ verus! {
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr,
                 peer_result, None, pci_transfer) && krnl.cpu_regs.view().view() == steps.snapshot_k().cpu_regs.view().view() && krnl.cpu_trap_frame.view().view() == steps.snapshot_k().cpu_trap_frame.view().view()) by { reveal(kernel_ipc_rendezvous_fields); };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thrd_ptr, ep_ptr, ep_idx, waiting_state, peer_thrd_ptr,
-                peer_result, None, pci_transfer, payload, false);
+                peer_result, None, pci_transfer, payload, false, true);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, ep_idx, waiting_state, payload)
             }) by {
                 ipc_rendezvous_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thrd_ptr, ep_ptr, ep_idx,
-                    waiting_state, peer_thrd_ptr, peer_result, None, pci_transfer, payload, false, old(steps).snapshot_k());
+                    waiting_state, peer_thrd_ptr, peer_result, None, pci_transfer, payload, false, true, old(steps).snapshot_k());
             };
         }
     }
@@ -434,7 +446,8 @@ verus! {
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)]
+                old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
                 ==> !(old(krnl).thrd_mp.spec_index(held_thread).view().state is SCHEDULED),
         ensures
@@ -749,7 +762,6 @@ verus! {
         let ghost bdf: PciBdf = (bus as usize, dev as usize, fun as usize);
         let (Tracked(sender_pt_perm), Tracked(receiver_pt_perm)) = krnl.wlock_pagetable_pair(sender_pt, receiver_pt, Tracked(&mut *lctx));
         proof {
-            assert(krnl.pt_mp.dom() == old(krnl).pt_mp.dom()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); };
             process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, sender_proc); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, receiver_proc);
             pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); pagetable_perms_wf_at(krnl.pt_mp, receiver_pt);
         }
