@@ -409,6 +409,7 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
         post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty(),
         post.pt_mp.spec_index(pagetable_page).view().higher.proc_ptr == process_page,
+        post.pt_mp.spec_index(pagetable_page).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         post.prc_mp.spec_index(process_page).view().iommu_table is None,
         post.ctn_mp.spec_index(container_page).view().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq.view().push(parent_ctn_ptr),
         post.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq == pre.ctn_mp.spec_index(parent_ctn_ptr).view().uppertree_seq,
