@@ -17,7 +17,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = spec_va_range_4k(va, range);
             let mapped = spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
-                ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
+                ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present && !table.mapping_4k()[va_range.view()[j]].is_io;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
             &&& !(ret is CpuIdle) ==> krnl.thrd_mp.dom().contains(thrd_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc)

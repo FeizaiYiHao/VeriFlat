@@ -21,7 +21,7 @@ use crate::kernel::implementation::free_2m_page::refund_unmap_2m_quota;
 use crate::kernel::implementation::map_4k::unmap_4k_flush_va::flush_pagetable_tlbs_va_range;
 
 verus! {
-/// Unmap every page of `range`, each a present 2M leaf of the read-held page table `pagetable` whose window this thread holds
+/// Unmap every page of `range`, each a present 2M RAM leaf of the read-held page table `pagetable` whose window this thread holds
 /// among the 2M windows of `cover`, the 4K range covering `range`: clear each leaf, flush the TLBs, then reclaim each page and
 /// refund its quota. Inside the held windows only the range's leaves change.
 pub(super) fn unmap_2m_range(
@@ -73,6 +73,7 @@ pub(super) fn unmap_2m_range(
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).is_io
             &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
             &&& window_of(range.view()[j]).va == range.view()[j]
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
@@ -180,6 +181,7 @@ pub(super) fn unmap_2m_range(
             forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).is_io
                 &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
@@ -228,7 +230,9 @@ pub(super) fn unmap_2m_range(
                 },
             forall|j: int| #![trigger range.view()[j]] i <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
                 && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]),
-            forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j]) && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present,
+            forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).is_io,
         decreases range.len - i,
     {
         let va = range.index(i);
@@ -324,6 +328,7 @@ pub(super) fn unmap_2m_range(
             forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).is_io
                 &&& old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(range.view()[j])), TypedLockMode::Write)
@@ -377,7 +382,8 @@ pub(super) fn unmap_2m_range(
                         ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(v)
                 },
             forall|j: int| #![trigger range.view()[j]] i <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j])
-                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present,
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).present
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().spec_index(range.view()[j]).is_io,
             forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom().contains(range.view()[j]),
         decreases range.len - i,
     {

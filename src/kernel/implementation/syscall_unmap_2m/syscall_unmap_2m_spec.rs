@@ -3,7 +3,8 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_unmap_2m` from the state at entry, in the implementation's check order: malformed arguments, a
-/// killed caller, and then a range below the first user L4 index or with a page that has no present 2M leaf.
+/// killed caller, and then a range below the first user L4 index or with a page that has no present 2M leaf or maps device memory,
+/// which is refused as a whole.
 /// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
@@ -12,7 +13,7 @@ pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
     if range == 0 || range > usize::MAX / 0x200000 || !spec_va_2m_valid(va) || va >= usize::MAX - range * 0x200000 || !spec_va_2m_range_valid(va, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
-    else if user_va_range(pre, va_range.covering_4k_range()) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) {
+    else if user_va_range(pre, va_range.covering_4k_range()) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && !mapping[va_range.view()[j]].is_io {
         RetValueType::Success
     } else { RetValueType::Error }
 }

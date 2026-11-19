@@ -7,8 +7,8 @@ use super::syscall_unmap_2m_helpers::unmap_2m_unmap_and_finish;
 verus! {
 /// With cpu `cpu_id` and its running thread write-held since the entry snapshot `entry_lctx` was aligned with: read-locks
 /// the pagetable of the thread's process, locks the 2M windows of the range whose L3 entry links an L2 page, and
-/// unmaps the range when every page of it is a present user 2M leaf; otherwise releases every lock with no step and returns
-/// Error.
+/// unmaps the range when every page of it is a present user 2M RAM leaf; otherwise, also when a page holds an IO leaf, releases
+/// every lock with no step and returns Error.
 pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, len: usize,
     prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, Ghost(entry_lctx): Ghost<LocalContext>, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(thread_perm): Tracked<LockPerm>,
@@ -137,7 +137,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
     let l4_ok = pt.higher.kernel_l4_end <= indices.0;
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &cover, Tracked(&pagetable_perm), Tracked(&mut *lctx));
-        if unmap_2m_range_mapped_present(krnl, &va_range, &cover, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+        if unmap_2m_range_mapped_ram(krnl, &va_range, &cover, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
             unmap_2m_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, len, &va_range, &cover, prc_ptr, thrd_ptr, pagetable, cr3, pcid, Ghost(entry_lctx),
                 Tracked(cpu_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));
             return RetValueType::Success;
@@ -151,7 +151,7 @@ pub(super) fn unmap_2m_lock_pagetable_and_unmap(
         let table = whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable);
         assert(va_range == spec_va_range_2m(va, len));
         assert(!(spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < len
-            ==> table.mapping_2m().dom().contains(va_range.view()[j]) && table.mapping_2m()[va_range.view()[j]].present));
+            ==> table.mapping_2m().dom().contains(va_range.view()[j]) && table.mapping_2m()[va_range.view()[j]].present && !table.mapping_2m()[va_range.view()[j]].is_io));
     }
     unmap_2m_unlock_all_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thrd_ptr, pagetable, Ghost(entry_lctx), Tracked(cpu_perm), Tracked(thread_perm),
         Tracked(pagetable_perm));
@@ -267,10 +267,10 @@ fn unmap_2m_unlock_all_rejected(
         steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable), None);
     }
 }
-/// Whether every page of `range` is a present 2M leaf of the pagetable `pagetable_ptr`, read under this thread's read lock on
+/// Whether every page of `range` is a present 2M RAM leaf of the pagetable `pagetable_ptr`, read under this thread's read lock on
 /// it. On success each page also lies in a 2M window of the covering 4K range under a linked L3 entry, and is the base of
 /// its own window. No krnl or LocalContext state changes.
-fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRange4K, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>)
+fn unmap_2m_range_mapped_ram(krnl: &KernelK, range: &VaRange2M, cover: &VaRange4K, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>)
     -> (ret: bool)
     requires
         krnl.inv(),
@@ -289,6 +289,7 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
         ret == forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(range.view()[j])
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(range.view()[j]).present
+            &&& !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(range.view()[j]).is_io
         },
         ret ==> forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
             &&& krnl.pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
@@ -327,6 +328,7 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
             forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> {
                 &&& table.mapping_2m().dom().contains(range.view()[j])
                 &&& table.mapping_2m().spec_index(range.view()[j]).present
+                &&& !table.mapping_2m().spec_index(range.view()[j]).is_io
                 &&& pagetable.higher.kernel_l4_end <= spec_v2l4index(range.view()[j])
                 &&& window_of(range.view()[j]).va == range.view()[j]
                 &&& va_range_2m_windows(*cover).contains(window_of(range.view()[j]))
@@ -350,7 +352,7 @@ fn unmap_2m_range_mapped_present(krnl: &KernelK, range: &VaRange2M, cover: &VaRa
             Some(l3_entry) => {
                 match pagetable.higher.get_entry_2m_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3_entry) {
                     None => { return false; },
-                    Some(l2_entry) => { if !l2_entry.perm.present { return false; } },
+                    Some(l2_entry) => { if !l2_entry.perm.present || l2_entry.perm.is_io { return false; } },
                 }
             },
         }

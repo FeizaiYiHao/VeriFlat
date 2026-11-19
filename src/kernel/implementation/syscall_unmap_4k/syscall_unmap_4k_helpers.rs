@@ -7,7 +7,7 @@ use super::syscall_unmap_4k_exit::unmap_4k_release_and_exit;
 verus! {
 /// With cpu `cpu_id` and its running thread write-held and the pagetable `pagetable` of the thread's process read-held since
 /// the entry snapshot `entry_lctx` was aligned with, the 2M windows of `va_range` whose L3 entry links an L2 page held
-/// through `window_perms`, and every page of `va_range` mapped: records the progress, enters the kernel step, unmaps the range,
+/// through `window_perms`, and every page of `va_range` mapped to RAM: records the progress, enters the kernel step, unmaps the range,
 /// clears the progress, releases every lock, and records the exiting step. Inside the windows of the range only its pages change.
 pub(super) fn unmap_4k_unmap_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange4K,
@@ -118,7 +118,9 @@ pub(super) fn unmap_4k_unmap_and_finish(
         forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < va_range.len ==> {
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va_range.view().spec_index(j))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va_range.view().spec_index(j)).present
+            &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va_range.view().spec_index(j)).is_io
         },
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_mapping_4k_va_range_ram(va_range),
         page_ptr_valid(cr3),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
@@ -187,6 +189,9 @@ pub(super) fn unmap_4k_unmap_and_finish(
         };
     }
     let ghost entered = steps.view();
+    proof {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_mapping_4k_va_range_ram(va_range)) by { broadcast use spec_va_4k_valid_index_roundtrip, spec_index2va_2m_valid; };
+    }
     unmap_4k_range(krnl, va_range, pagetable, thrd_ptr, cpu_id, cr3, pcid, Ghost(checked_table), Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm), Tracked(&window_perms));
     proof { assert(unmap_4k_trace_after_range(steps.view(), cpu_id, *va_range)) by { unmap_4k_trace_range_steps(&*steps, entered, cpu_id, *va_range); }; }
