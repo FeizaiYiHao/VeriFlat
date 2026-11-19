@@ -279,4 +279,15 @@ pub(super) proof fn flush_pagetable_tlbs_eof_held_entries(pre: PageTableHigher<P
         forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
             post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i) && post.spec_resolve_mapping_l3(l4i, l3i) == pre.spec_resolve_mapping_l3(l4i, l3i),
 {}
+
+/// EOF closure of `flush_pagetable_tlbs` under a table write hold: only the table and window stale-CPU sets changed, so every
+/// held 4K and 2M leaf is as before.
+pub(super) proof fn flush_pagetable_tlbs_eof_held_leaves(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == (PageTableLower { window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower }),
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)] post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)] post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+{}
 }
