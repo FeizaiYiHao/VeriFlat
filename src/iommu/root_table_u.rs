@@ -35,6 +35,12 @@ pub open spec fn pci_handoff_table_did(
     } else { new_did == old_did }
 }
 
+/// The owners after every function in `functions` becomes unowned.
+pub open spec fn pci_owners_released(owners: Seq3<Option<RwLockProcessPtr>>, functions: Set<PciBdf>) -> Seq3<Option<RwLockProcessPtr>> {
+    Seq::new(PCI_BUS_COUNT as nat, |b: int| Seq::new(PCI_DEVICE_COUNT as nat, |d: int| Seq::new(PCI_FUNCTION_COUNT as nat,
+        |f: int| if functions.contains((b as usize, d as usize, f as usize)) { None } else { owners[b][d][f] })))
+}
+
 impl IommuRootTable {
     #[verifier::opaque]
     pub open spec fn user_view(&self) -> IommuRootTableU { IommuRootTableU { owners: self.owners(), attached: iommu_roots_attached(self.iommu_roots()) } }

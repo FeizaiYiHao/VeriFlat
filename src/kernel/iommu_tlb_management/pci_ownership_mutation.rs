@@ -205,14 +205,22 @@ impl KernelK {
                 && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i)
                     == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i),
             final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
+            old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom() != Set::<PciBdf>::empty()
+                ==> final(self).irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom()),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
         proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
+        let ghost pci = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci;
+        let ghost mut released = false;
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
                 self.inv(),
                 old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.wf(),
+                pci == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci,
+                released ==> self.irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i)),
+                !released ==> self.irt.view().owners() == old(self).irt.view().owners(),
+                !released ==> forall|j: int| #![trigger pci.spec_entry(j)] 0 <= j < i ==> !pci.spec_entry(j).used,
                 typed_lock_maps_aligned(self, lctx),
                 old(self).inv(),
                 old(self).pt_mp.dom().contains(pagetable_ptr),
@@ -254,15 +262,30 @@ impl KernelK {
             let used = self.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm)).higher.pci.entry(i).used;
             if used {
                 proof { old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.wf_entry_at(i as int); }
+                let ghost cur = self.irt.view().owners();
                 self.update_pci_entry(pagetable_ptr, i, PciEntryUpdate::Release, Tracked(lctx), Tracked(pagetable_perm), Tracked(irt_perm));
+                proof {
+                    let done = pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i);
+                    if !released { assert(done =~= Set::<PciBdf>::empty()); }
+                    release_pci_functions_eol_owners(old(self).irt.view().owners(), cur, self.irt.view().owners(), done, pci.spec_entry(i as int).bdf, released);
+                    released = true;
+                }
             }
+            let ghost done = pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i);
+            let ghost g = pci.spec_entry(i as int).bdf;
             i = i + 1;
+            proof {
+                if used { assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done.insert(g)); }
+                else { assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i) =~= done); }
+            }
         }
         proof {
             pagetable_perms_wf_map(self.pt_mp);
             pagetable_perms_wf_at(self.pt_mp, pagetable_ptr);
             assert(self.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty());
             assert(self.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view() =~= Map::<PciBdf, Set<PciBarMapping>>::empty());
+            if !released { assert(pci.view().dom() =~= Set::<PciBdf>::empty()); }
+            assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < PCI_FUNCTIONS_PER_PROCESS) =~= pci.view().dom());
         }
     }
 }

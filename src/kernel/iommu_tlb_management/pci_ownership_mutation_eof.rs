@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 verus! {
 use crate::*;
+use vstd::{assert_seqs_equal, assert_seqs_equal_internal};
 
 /// S of `KernelK::update_pci_entry`: only the PCI function array of page table `root` and the root table moved; the table's lock
 /// state, ghost slot, the rest of its big-lock payload, and so its mappings, held leaves, root resolution, pages, and window
@@ -278,5 +279,27 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
     reveal(update_pci_entry_eof_transition_framing);
     reveal(update_pci_entry_eof_owner_update);
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
+}
+
+/// EOL closure of the `KernelK::release_pci_functions` loop for the root-table owners: releasing `g` after the functions
+/// `done` leaves the owners with `done` and `g` released.
+pub(super) proof fn release_pci_functions_eol_owners(
+    old_owners: Seq3<Option<RwLockProcessPtr>>, cur: Seq3<Option<RwLockProcessPtr>>, new: Seq3<Option<RwLockProcessPtr>>, done: Set<PciBdf>, g: PciBdf,
+    released: bool,
+)
+    requires
+        pci_bdf_valid(g.0, g.1, g.2),
+        released ==> cur == pci_owners_released(old_owners, done),
+        !released ==> cur == old_owners && done == Set::<PciBdf>::empty(),
+        new == seq3_update(cur, g.0 as int, g.1 as int, g.2 as int, None),
+    ensures
+        new == pci_owners_released(old_owners, done.insert(g)),
+{
+    let target = pci_owners_released(old_owners, done.insert(g));
+    assert_seqs_equal!(new == target, b => {
+        assert_seqs_equal!(new[b] == target[b], d => {
+            assert_seqs_equal!(new[b][d] == target[b][d], f => {});
+        });
+    });
 }
 } // verus!
