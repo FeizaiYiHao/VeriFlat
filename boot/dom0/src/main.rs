@@ -3,8 +3,8 @@
 //! `sys_debug_exit(0)` once every syscall passed and with a nonzero code at the first failure.
 //!
 //! Device memory: dom0's boot page table maps every BAR page at `PCI_BAR_WINDOW_BASE + p` as a 4K IO leaf; the IO
-//! checks (`io_*`, `iommu_io`) read a device register through it, IOMMU-map an IO page, unmap one for good, and send
-//! one to a child process, which reads the register through its own mapping and keeps it until it is killed.
+//! checks (`io_*`, `iommu_io`) read a device register through it, unmap an IO page for good, and check that an IO page
+//! can be neither IOMMU-mapped nor sent to a child process.
 //!
 //! Nothing here waits for a timer tick, so the same binary passes on a `no-timer` kernel: threads
 //! that share a CPU take turns at blocking IPC and `sys_schedule`, and every CPU that has to run a
@@ -264,11 +264,10 @@ extern "C" fn peer_child() -> ! {
     ok(NR_RECEIVE_ENDPOINT, unsafe { sys_receive_endpoint(ROOT_ENDPOINT, 1) });
     ok(NR_SEND_EMPTY, unsafe { sys_send_empty(1) });
     ok(NR_SEND_PAGES, unsafe { sys_send_pages(ROOT_ENDPOINT, (&raw const SHARED_PAGE) as usize, 1) });
-    // The IO page dom0 sends: neither process owns the edu function now. The mapping stays for kill_process to clear.
+    // The IO page dom0 sends: device memory is never shared, so the rendezvous fails its owner check on both sides.
     fund(4);
-    ok(NR_RECEIVE_PAGES, unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_IO, 1) });
-    expect_io_id("the IO page received by the peer child", VA_IO);
-    log::info!("self-test: io_send ok");
+    expect_error("receive_pages of an IO page", unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_IO, 1) }, "ErrorIpcPageOwnerMismatch");
+    log::info!("self-test: io_send ok (refused)");
     PEER_DONE.store(true, Ordering::SeqCst);
     yield_forever()
 }
@@ -369,7 +368,8 @@ fn test_iommu() {
 }
 
 /// Device memory through the boot IO leaves of edu's BAR0, which dom0's IOMMU table has attached: reads the
-/// identification register, IOMMU-maps and unmaps an IO page, and unmaps another IO page, which nothing maps back.
+/// identification register, checks that an IO page cannot be IOMMU-mapped, and unmaps another IO page, which nothing
+/// maps back.
 fn test_io() {
     let (bus, dev, fun) = dma_bdf();
     let (_, bar0, bar_pages) = unsafe { sys_pci_info(bus, dev, fun) };
@@ -385,9 +385,8 @@ fn test_io() {
     log::info!("self-test: io_read ok");
 
     fund(4);
-    ok(NR_IOMMU_MAP_4K, unsafe { sys_iommu_map_4k(page + 4096, PROBE_IOVA, 1) });
-    ok(NR_IOMMU_UNMAP_4K, unsafe { sys_iommu_unmap_4k(PROBE_IOVA, 1) });
-    log::info!("self-test: iommu_io ok");
+    expect_error("iommu_map_4k of an IO page", unsafe { sys_iommu_map_4k(page + 4096, PROBE_IOVA, 1) }, "ErrorIommuVaNotMapped");
+    log::info!("self-test: iommu_io ok (refused)");
 
     let last = page + (bar_pages - 1) * 4096;
     ok(NR_UNMAP_4K, unsafe { sys_unmap_4k(last, 1) });
@@ -463,7 +462,7 @@ fn test_processes() {
     ok(NR_RECEIVE_PAGES, unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_PAGES, 1) });
     unsafe { (VA_PAGES as *mut u64).write_volatile(MAGIC) };
     expect_word("the page sent by the peer child, through its own mapping", (&raw const SHARED_PAGE) as usize, MAGIC);
-    ok(NR_SEND_PAGES, unsafe { sys_send_pages(ROOT_ENDPOINT, IO_PAGE.load(Ordering::SeqCst), 1) });
+    expect_error("send_pages of an IO page", unsafe { sys_send_pages(ROOT_ENDPOINT, IO_PAGE.load(Ordering::SeqCst), 1) }, "ErrorIpcPageOwnerMismatch");
     wait_yield("the peer child", || PEER_DONE.load(Ordering::SeqCst));
 
     ok(NR_NEW_PROCESS, unsafe { sys_new_process(image, pages, entry(yield_forever), stack_top(&raw const PLAIN_STACK)) });

@@ -150,7 +150,7 @@ fn envelope(slot: &BarSlot) -> (u64, u64) {
 /// `pci_bar_pages_unavailable_wf`) and what the platform needs of them; panics with the slot otherwise:
 /// - each slot's key is unique and its BAR index below 6 (the B/D/F is valid by its 16-bit encoding);
 /// - each range is nonempty, a naturally aligned power of two, and ends at or below 2^48 (`BarRegion::wf`), below the
-///   processor's physical address width, and below the DMAR host address width (IO pages can be IOMMU-mapped);
+///   processor's physical address width, and below the DMAR host address width;
 /// - no page envelope overlaps firmware RAM at any address, nor the MMIO the kernel drives: IOAPIC, local APIC,
 ///   VT-d register pages, ECAM windows;
 /// - every page-array page in an envelope has the loader type Reserved: not the kernel image, a boot page table,
@@ -226,8 +226,8 @@ fn bar_page(boot_info: &BootInfo, page: u64) -> bool {
 }
 
 /// Marks the dom0 page-table closure and its user leaves; returns the numbers of table pages, RAM leaves and IO leaves.
-/// dom0's boot page table holds 4K leaves only (the 2M and 1G manifests are empty) and no IO bit above a leaf. An IO
-/// leaf (bit 53) must carry exactly `IO_LEAF_FLAGS` and map a BAR page (`boot_dom0_io_manifests_wf`); a RAM leaf must
+/// dom0's boot page table holds 4K leaves only and no IO bit above a leaf. An IO
+/// leaf (bit 53) must carry exactly `IO_LEAF_FLAGS` and map a BAR page (`boot_dom0_io_manifest_wf`); a RAM leaf must
 /// carry neither the IO bit nor PWT/PCD and map a page of dom0's reservation.
 unsafe fn walk_dom0(boot_info: &BootInfo) -> (usize, usize, usize) {
     let dom0_pml4 = boot_info.dom0_pml4 as usize;
@@ -571,12 +571,12 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let bar_slots = PciBarSlots::new(Ghost::assume_new());
 
     // Ghost arguments, in order: the kernel's L4 entries, dom0's 4K manifest (every present user leaf `walk_dom0`
-    // checked, RAM and IO, at its VA, owned by the root container), the 2M and 1G manifests (empty: boot maps 4K
-    // leaves only), the BAR slots, every page pointer, every PCI function, and the boot table reverse maps.
+    // checked, RAM and IO, at its VA, owned by the root container), the BAR slots, every page pointer, every PCI
+    // function, and the boot table reverse maps.
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_array, cpu_tlb, iommu_tlb,
         free_4k_pool, free_2m_pool, free_1g_pool,
-        Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), bar_slots, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
+        Ghost::assume_new(), Ghost::assume_new(), bar_slots, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

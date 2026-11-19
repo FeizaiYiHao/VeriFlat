@@ -725,8 +725,8 @@ as share_4k (§8) maps a page a second time.
 - Pre: `Caller`, `prog is None`, `!thr.killed`, `!P.killed`, `C` present;
   `Unlocked` for `cpu`, `T`, `P`, and `IT(P)`; `PT(P)` not write-locked;
   `VR.wf()`, `IR.wf()`, `VR.len > 0`, `IR.len == VR.len`, `UserVa(u, VR)`;
-  every VA of `VR` is in `PT(P).mapping_4k`, and no IOVA of `IR` is in
-  `IT(P).mapping_4k`.
+  every VA of `VR` is a RAM leaf (`!is_io`) of `PT(P).mapping_4k`, and no IOVA
+  of `IR` is in `IT(P).mapping_4k`.
 - Effect: write-locks `cpu`, `T`, `P`, and `IT(P)`, read-locks `PT(P)`;
   `prog = IommuMap4k { VR, IR, 0, None }`.
 
@@ -740,7 +740,7 @@ as share_4k (§8) maps a page a second time.
 **Leaf** (`iommu_map_4k_leaf_step_pre`, `iommu_map_4k_leaf_step`)
 
 - Pre: `iommu_map_4k_locked`, `prog is IommuMap4k`, `mapped < IR.len`,
-  `VR[mapped]` mapped in `PT(P)`, `IR[mapped]` unmapped in `IT(P)`.
+  `VR[mapped]` mapped in `PT(P)` by a RAM leaf, `IR[mapped]` unmapped in `IT(P)`.
 - Effect: `IT(P).mapping_4k[IR[mapped]] = PT(P).mapping_4k[VR[mapped]]`;
   `mapped + 1`, `directory = None`; no quota is consumed. In K the page
   gains `(IT(P), IR[mapped])` in `iommu_mappings` and `ref_count + 1`. The
@@ -916,7 +916,8 @@ finish.
   `cpu`, `P`, `PT(P)`, `T`, `PA(C)`, and the endpoint; `R.wf()`, `R.len > 0`,
   `R.len <= (usize::MAX - base) / 3`, `UserVa(u, R)`; `C.free_pcids` is
   nonempty; the endpoint descriptor is present when requested;
-  `thr.quota_4k >= base + 3 * R.len`; every VA of `R` is mapped in `PT(P)`.
+  `thr.quota_4k >= base + 3 * R.len`; every VA of `R` is mapped in `PT(P)` by a
+  RAM leaf.
 - Effect: write-locks those objects; records `NewProcess`.
 
 **Publish**
@@ -970,7 +971,7 @@ Status: conforms, including R9 (Batch 2 validation, §2).
   `process_quota <= funding <= usize::MAX - 9 - 3 * R.len`;
   `C.depth < MAX_CONTAINER_TREE_DEPTH`;
   `thr.quota_4k >= 9 + funding + 3 * R.len` and `thr.quota_2m >= 2`; every VA
-  of `R` is mapped in `PT(P)`; `cpu_array[transfer_cpu]` is Off and owned by `C`.
+  of `R` is mapped in `PT(P)` by a RAM leaf; `cpu_array[transfer_cpu]` is Off and owned by `C`.
   For the endpoint variant, `edp_idx_valid(endpoint_index)`, the descriptor
   is present, and `Unlocked(E(endpoint_index))`.
 - Effect: write-locks those objects; records `NewContainer`.
@@ -1293,8 +1294,8 @@ Status: conforms (workspace run #27816).
   receiver's `quota_4k < 3 * len`; Error unless `UserVa` for the target range;
   VaInUse unless the target is free (`ipc_pages_target_free`: no 4K leaf from
   its first to its last page and no 1G, 2M, or 4K leaf covering one of its
-  pages); PageOwnerMismatch unless the owner of every source page is the
-  receiver's container or in its `uppertree_seq`; otherwise Success.
+  pages); PageOwnerMismatch unless every source page is a RAM leaf whose owner
+  is the receiver's container or in its `uppertree_seq`; otherwise Success.
 - Effect: on Success, `prog = Share4k { source_range, target_range, 0,
   IpcPages { peer } }` and nothing else changes. Otherwise both tables become
   Unlocked and `prog = IpcPages { .., locked: false, released: Some(result) }`. The
@@ -1361,39 +1362,35 @@ Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.r
 - BAR pages have no page-array bookkeeping: a page-array page in an envelope is
   `Unavailable` for good (`pci_bar_pages_unavailable_wf`), and an IO mapping has
   no owner, reference count, reverse map, or quota.
-- An IO leaf is a page-table or IOMMU leaf with the IO bit (bit 53,
-  `PAGE_ENTRY_IO_MASK`); it always carries PCD and PWT (uncached). Every IO
-  leaf, present or held, maps BAR pages over its whole span
-  (`io_mappings_wf`).
+- An IO leaf is a page-table leaf with the IO bit (bit 53,
+  `PAGE_ENTRY_IO_MASK`); it always carries PCD and PWT (uncached). Only 4K and
+  2M CPU leaves can be IO leaves: IOMMU tables map RAM pages only (an IOMMU
+  entry has no IO bit), and every 1G leaf is a RAM leaf. Every IO leaf, present
+  or held, maps BAR pages over its whole span (`io_mappings_wf`).
 - IO leaves come from boot only: dom0's boot page table maps every page `p` of
   every slot envelope at `PCI_BAR_WINDOW_BASE + p` (`0xd0_0000_0000 + p`) as a
-  writable, execute-disabled 4K IO leaf. Afterwards an IO leaf is only copied
-  from a present 4K IO leaf or removed. No syscall maps a physical address.
+  writable, execute-disabled 4K IO leaf (`boot_dom0_io_manifest_wf`). No
+  syscall creates, copies, or shares an IO leaf; it can only be removed. No
+  syscall maps a physical address.
 
 Per syscall, as implemented on this branch (the U step specs are those of the
-sections named; an IO leaf is one more entry of `mapping_4k`, `mapping_2m`,
-`mapping_1g`, or the IOMMU `mapping_4k`):
+sections named; an IO leaf is one more entry of `mapping_4k` or `mapping_2m`):
 
 - `mmap_4k`, `mmap_2m`, `mmap_1g` (§6, §7c): every new leaf is a RAM leaf.
 - `unmap_4k` (§7): an IO leaf of the range is removed under the same window
   lock and TLB flush as a RAM leaf; no page changes state and the refund step
-  refunds nothing for it. `unmap_2m` (§7d) and `unmap_1g` (§7c) remove a 2M
-  or 1G IO leaf the same way; none exists yet, since boot builds 4K IO leaves
-  only and no syscall builds a huge one.
+  refunds nothing for it. `unmap_2m` (§7d) removes a 2M IO leaf the same way;
+  none exists yet, since boot builds 4K IO leaves only.
 - `share_4k` (§8), used by `send_pages`/`receive_pages` (§13), `new_process*`
-  (§9), and `new_container*` (§10): a present 4K IO source leaf is copied
-  unchanged (address, IO bit, write, execute-disable) to the target without
-  locking a page or checking the owner, so any holder can pass it to any
-  process in any container. The target's directory pages cost quota as for RAM.
-  A source VA under a 2M or 1G IO leaf is not in `mapping_4k` and fails the
-  source check: huge IO leaves cannot be shared yet.
-- `iommu_map_4k` (§7a): a present 4K IO source leaf is copied into the IOMMU
-  table as an IO leaf, without page lock or owner check. `iommu_unmap_4k`
-  (§7b) removes an IOMMU IO leaf with the same IOTLB flush; no page or quota
-  changes for it.
+  (§9), and `new_container*` (§10), copies RAM leaves only. `new_process*` and
+  `new_container*` fail their source check (Error) when a source page is an IO
+  leaf; a pages rendezvous fails its owner check (PageOwnerMismatch) when a
+  source page is an IO leaf.
+- `iommu_map_4k` (§7a): a source page that is an IO leaf fails the source
+  check (IommuVaNotMapped).
 - `thread_exit` of a process's last thread (§17), `kill_process` (§18), and
-  `kill_container` (§19): every IO leaf of the reclaimed page tables (4K, 2M,
-  1G) and IOMMU tables is cleared with no page-array bookkeeping and no refund.
+  `kill_container` (§19): every 4K and 2M IO leaf of the reclaimed page tables
+  is cleared with no page-array bookkeeping and no refund.
 - `send_pci`, `receive_pci` (§11), `pci_attach_dma` (§4d), and the PCI
   reassignment of the kills leave the BAR slots and every IO mapping as they
   are.
@@ -1401,11 +1398,10 @@ sections named; an IO leaf is one more entry of `mapping_4k`, `mapping_2m`,
 Threat model. Holding a mapping of a device's registers is control of that
 device. IO mappings are not tied to PCI ownership: owning a function (and its
 DMA attachment) and mapping its BARs are separate, and moving ownership with
-`send_pci` does not revoke anyone's IO mappings. IO pages may be passed to any
-process of any container. Small BARs of different devices that share a 4K
-page are mapped together, so holding that page controls every one of them.
-An IO page that every holder has unmapped is gone: nothing can map it again.
-2M and 1G IO leaves cannot be shared yet.
+`send_pci` does not revoke dom0's boot IO mappings. Small BARs of different
+devices that share a 4K page are mapped together, so holding that page
+controls every one of them. An IO page that dom0 has unmapped is gone: nothing
+can map it again.
 
 ## 14. Syscall entry list
 
