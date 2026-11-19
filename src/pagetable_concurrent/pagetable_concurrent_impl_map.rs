@@ -130,6 +130,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).pagetable_window_locks == old(lower).pagetable_window_locks,
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
             old(lower).hidden_l1_tables_in_locked_windows() ==> final(lower).hidden_l1_tables_in_locked_windows(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_page(p).entry_lock(i).l1()] pei_valid(i) && !old(lower).l2_entry_hides_l1(p, i) ==> !final(lower).l2_entry_hides_l1(p, i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i)]
                 self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_l2(l4i, l3i, l2i) == (WholePageTable { higher: *self, lower: *old(lower) }).spec_held_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_held_4k_l1(l4i, l3i, l2i, l1i)]

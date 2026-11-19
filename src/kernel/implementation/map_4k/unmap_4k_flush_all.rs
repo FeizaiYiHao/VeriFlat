@@ -60,6 +60,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
         // Since the last recorded step, only page-table ghost state and this thread's released read hold on the cpu set of
         // its container changed.
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, cpu_set_mp: final(krnl).cpu_set_mp, ..final(steps).snapshot_k() }),
+        final(krnl).pci_bars == old(krnl).pci_bars,
         final(krnl).pt_mp.dom() == final(steps).snapshot_k().pt_mp.dom(),
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)] final(steps).snapshot_k().pt_mp.dom().contains(pt) ==> {
             &&& final(krnl).pt_mp.spec_index(pt).locking_thread() == final(steps).snapshot_k().pt_mp.spec_index(pt).locking_thread()
@@ -191,6 +192,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
     while cpu_id < NUM_CPUS
         invariant
             *krnl == (KernelK { pt_mp: krnl.pt_mp, pt_lower: krnl.pt_lower, cpu_set_mp: krnl.cpu_set_mp, ..steps.snapshot_k() }),
+            krnl.pci_bars == old(krnl).pci_bars,
             krnl.pt_mp.dom() == steps.snapshot_k().pt_mp.dom(),
             forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)] steps.snapshot_k().pt_mp.dom().contains(pt) ==> {
                 &&& krnl.pt_mp.spec_index(pt).locking_thread() == steps.snapshot_k().pt_mp.spec_index(pt).locking_thread()

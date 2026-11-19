@@ -97,6 +97,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu<const WRITE: bool>(krnl: &mut KernelK, 
                 || whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(cpu_id, NUM_CPUS)),
     ensures
         final(steps).snapshot_k() == *final(krnl),
+        final(krnl).pci_bars == old(krnl).pci_bars,
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
