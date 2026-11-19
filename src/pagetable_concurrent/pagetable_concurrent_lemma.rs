@@ -69,6 +69,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).is_io == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.is_io
                 && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present,
     { reveal(PageTableHigher::wf_mapping_1g); }
 
@@ -260,6 +261,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 ==> self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present,
     { reveal(WholePageTable::wf_mapping_4k); }
 
@@ -275,6 +277,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 ==> self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).is_io == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.is_io
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
     { reveal(WholePageTable::wf_mapping_2m); }
 

@@ -18,7 +18,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)]
             pei_valid(i) && i != target_l4i ==> post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i) =~= pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)
         &&& post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i) =~= (PageEntry {
-            addr: pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i).addr, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            addr: pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i).addr, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
         &&& post.higher.mapping_1g.view() == pre.higher.mapping_1g.view().remove_keys(pre.higher.mapping_1g.view().dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
         &&& post.lower.mapping_4k == pre.lower.mapping_4k.remove_keys(pre.lower.mapping_4k.dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
         &&& post.lower.mapping_2m == pre.lower.mapping_2m.remove_keys(pre.lower.mapping_2m.dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i))
@@ -203,7 +203,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
             post.spec_held_l4(target_l4i) == Some(PageEntry { addr: pre.spec_held_l4(target_l4i)->0.addr,
-                perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
+                perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]

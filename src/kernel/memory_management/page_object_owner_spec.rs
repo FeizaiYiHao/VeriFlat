@@ -24,7 +24,7 @@ pub open spec fn page_object_owner_wf(ctn_mp: ContainerLockedMap, thrd_mp: Threa
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) ==> container.view_rodata().view().allocator_ptr_1g == pg_ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) ==> page.owning_container == pg_ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) ==> container.view_rodata().view().pcid_allocator == pg_ptr
-            &&& page.state is Unavailable || page.is_io_page ==> container.view_rodata().view().parent is None
+            &&& page.state is Unavailable ==> container.view_rodata().view().parent is None
             &&& page.state is Owned4k || page.state is Owned2m || page.state is Owned1g ==> {
                 let thrd_ptr = if page.state is Owned4k { page.state->Owned4k_thread_ptr }
                     else if page.state is Owned2m { page.state->Owned2m_thread_ptr }
@@ -62,7 +62,7 @@ pub proof fn page_object_owner_wf_at(ctn_mp: ContainerLockedMap, thrd_mp: Thread
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) ==> container.view_rodata().view().allocator_ptr_1g == pg_ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) ==> page.owning_container == pg_ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) ==> container.view_rodata().view().pcid_allocator == pg_ptr
-            &&& page.state is Unavailable || page.is_io_page ==> container.view_rodata().view().parent is None
+            &&& page.state is Unavailable ==> container.view_rodata().view().parent is None
             &&& page.state is Owned4k || page.state is Owned2m || page.state is Owned1g ==> {
                 let thrd_ptr = if page.state is Owned4k { page.state->Owned4k_thread_ptr }
                     else if page.state is Owned2m { page.state->Owned2m_thread_ptr }

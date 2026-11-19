@@ -520,17 +520,17 @@ impl PageTable<PT_TYPE> {
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             #![trigger self.mapping_4k.view().dom().contains(va)]
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
-            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid::<PT_TYPE>(va) && page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
+            self.mapping_4k.view().dom().contains(va) ==> page_table_key_4k_valid::<PT_TYPE>(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m.view().dom().contains(va)]
             #![trigger self.mapping_2m.view().dom().contains(va), page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)]
             #![trigger self.mapping_2m.view().dom().contains(va)]
-            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid::<PT_TYPE>(va) && page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)
+            self.mapping_2m.view().dom().contains(va) ==> page_table_key_2m_valid::<PT_TYPE>(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
+            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && mapping_1g_target_valid(self.mapping_1g.view().spec_index(va).addr, self.mapping_1g.view().spec_index(va).is_io)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.
@@ -545,6 +545,7 @@ impl PageTable<PT_TYPE> {
                     ==> self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
                     && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
                     && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                    && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                     && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
             }
     }
@@ -561,6 +562,7 @@ impl PageTable<PT_TYPE> {
                     ==> self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
                     && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                     && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                    && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).is_io == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.is_io
                     && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present
             }
     }
@@ -577,6 +579,7 @@ impl PageTable<PT_TYPE> {
                     ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                    && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).is_io == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.is_io
                     && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present
             }
     }

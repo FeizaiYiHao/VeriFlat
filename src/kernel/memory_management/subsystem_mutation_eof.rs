@@ -2016,7 +2016,11 @@ proof fn iommu_table_map_set_did_eof_table_mappings(pre_table: IommuTable, post_
         post_table.wf_mapping_4k(),
         post_table.wf_mapping_2m(),
         post_table.wf_mapping_1g(),
-{ reveal(IommuTable::wf_mapping_4k); reveal(IommuTable::wf_mapping_2m); reveal(IommuTable::wf_mapping_1g); }
+{
+    assert(post_table.wf_mapping_4k()) by { reveal(IommuTable::wf_mapping_4k); };
+    assert(post_table.wf_mapping_2m()) by { reveal(IommuTable::wf_mapping_2m); };
+    assert(post_table.wf_mapping_1g()) by { reveal(IommuTable::wf_mapping_1g); };
+}
 
 /// EOF closure of `iommu_table_map_set_did` for the changed table's entry permissions, which do not read the DID.
 proof fn iommu_table_map_set_did_eof_table_permissions(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)

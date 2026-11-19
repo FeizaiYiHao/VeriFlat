@@ -34,6 +34,7 @@ pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(p
         forall|t: RwLockThreadPtr| #![trigger post.thrd_mp.spec_index(t)]
             pre.thrd_mp.dom().contains(t) && pre.thrd_mp.spec_index(t).locking_thread() is Write && !pre.thrd_mp.spec_index(t).view().temp_alloc_clean()
                 ==> post.thrd_mp.spec_index(t).locking_thread() is Write && post.thrd_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thrd_mp.spec_index(t).locking_thread()->Write_thread_id,
+        post.irt.view().bars() == pre.irt.view().bars(),
     ensures
         post.memory_management_inv(),
 {

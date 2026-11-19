@@ -18,7 +18,7 @@ impl IommuTable {
         &&& post.l4_table.view().spec_index(pre.cr3).value().iommu_wf()
         &&& forall|i: usize| #![trigger pre.l4_table.view().spec_index(pre.cr3).value().spec_index(i)] #![trigger post.l4_table.view().spec_index(pre.cr3).value().spec_index(i)]
             pei_valid(i) && i != target_l4i ==> post.l4_table.view().spec_index(pre.cr3).value().spec_index(i) =~= pre.l4_table.view().spec_index(pre.cr3).value().spec_index(i)
-        &&& post.l4_table.view().spec_index(pre.cr3).value().spec_index(target_l4i) =~= (PageEntry { addr: 0, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } })
+        &&& post.l4_table.view().spec_index(pre.cr3).value().spec_index(target_l4i) =~= (PageEntry { addr: 0, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } })
     }
 
     /// EOF closure of `remove_l4_entry`: every page-table invariant leaf.

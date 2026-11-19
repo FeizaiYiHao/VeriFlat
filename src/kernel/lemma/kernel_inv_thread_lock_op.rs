@@ -81,6 +81,7 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
         post.allc_4k_mp == pre.allc_4k_mp,
         post.allc_2m_mp == pre.allc_2m_mp,
         post.allc_1g_mp == pre.allc_1g_mp,
+        post.irt.view().bars() == pre.irt.view().bars(),
     ensures
         post.memory_management_inv(),
 {

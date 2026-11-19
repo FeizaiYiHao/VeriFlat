@@ -17,7 +17,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& post.lower.l2_page(target_l2_p).wf()
         &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
             p == target_l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
-        &&& post.lower.l2_entry(target_l2_p, target_l2i) == (PageEntry { addr: target_l1_p, perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+        &&& post.lower.l2_entry(target_l2_p, target_l2i) == (PageEntry { addr: target_l1_p, perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() == pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1()
     }

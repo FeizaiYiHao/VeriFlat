@@ -144,6 +144,7 @@ pub fn l2_entry_set_published_locked(pptr: &PPtr<L2PageMap>, Tracked(perm): Trac
         &&& (w & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == (u & PAGE_ENTRY_EXECUTE_MASK as usize != 0)
         &&& (w & PAGE_ENTRY_USER_MASK as usize != 0) == (u & PAGE_ENTRY_USER_MASK as usize != 0)
         &&& (w & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_IO_MASK as usize != 0) == (u & PAGE_ENTRY_IO_MASK as usize != 0)
         &&& w & L2_ENTRY_LOCK_MASK != 0
     }) by (bit_vector)
         requires
@@ -186,6 +187,7 @@ pub fn l2_entry_set_published_unlocked(pptr: &PPtr<L2PageMap>, Tracked(perm): Tr
         &&& (w & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == (u & PAGE_ENTRY_EXECUTE_MASK as usize != 0)
         &&& (w & PAGE_ENTRY_USER_MASK as usize != 0) == (u & PAGE_ENTRY_USER_MASK as usize != 0)
         &&& (w & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_IO_MASK as usize != 0) == (u & PAGE_ENTRY_IO_MASK as usize != 0)
         &&& w & L2_ENTRY_LOCK_MASK == 0
     }) by (bit_vector)
         requires

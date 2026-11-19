@@ -49,7 +49,6 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_mov
         post.pg_arr.spec_index(pg_idx).view().view().state == pre.pg_arr.spec_index(pg_idx).view().view().state,
         post.pg_arr.spec_index(pg_idx).view().view().owning_container == pre.pg_arr.spec_index(pg_idx).view().view().owning_container,
         post.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage == pre.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage,
-        post.pg_arr.spec_index(pg_idx).view().view().is_io_page == pre.pg_arr.spec_index(pg_idx).view().view().is_io_page,
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
     let container_head = page_ptr2page_index(container_page);
@@ -122,7 +121,6 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_in_moved_2m
         post.pg_arr.spec_index(pg_idx).view().view().state == pre.pg_arr.spec_index(pg_idx).view().view().state,
         post.pg_arr.spec_index(pg_idx).view().view().owning_container == pre.pg_arr.spec_index(pg_idx).view().view().owning_container,
         post.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage == pre.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage,
-        post.pg_arr.spec_index(pg_idx).view().view().is_io_page == pre.pg_arr.spec_index(pg_idx).view().view().is_io_page,
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     let pg_ptr = page_index2page_ptr(pg_idx);
@@ -253,7 +251,6 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_unmodified_objec
             &&& post.pg_arr.spec_index(pg_idx).view().view().state == pre.pg_arr.spec_index(pg_idx).view().view().state
             &&& post.pg_arr.spec_index(pg_idx).view().view().owning_container == pre.pg_arr.spec_index(pg_idx).view().view().owning_container
             &&& post.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage == pre.pg_arr.spec_index(pg_idx).view().view().free_list_node_storage
-            &&& post.pg_arr.spec_index(pg_idx).view().view().is_io_page == pre.pg_arr.spec_index(pg_idx).view().view().is_io_page
         },
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);

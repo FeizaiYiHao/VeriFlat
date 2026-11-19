@@ -68,3 +68,5 @@ pub mod subsystem_mutation_eof;
 pub use subsystem_mutation_eof::*;
 pub mod subsystem_mutation_eof_l3;
 pub use subsystem_mutation_eof_l3::*;
+pub mod io_mappings_spec;
+pub use io_mappings_spec::*;

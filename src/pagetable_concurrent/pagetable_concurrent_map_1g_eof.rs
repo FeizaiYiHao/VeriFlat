@@ -18,7 +18,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)]
             pei_valid(i) && i != target_l3i ==> post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i) =~= pre.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)
         &&& post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i)
-            =~= (PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
+            =~= (PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
         &&& post.higher.mapping_1g.view() == pre.higher.mapping_1g.view().insert(spec_index2va((target_l4i, target_l3i, 0, 0)), target_entry)
     }
 
@@ -32,7 +32,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            page_ptr_1g_valid(target_entry.addr),
+            mapping_1g_target_valid(target_entry.addr, target_entry.is_io),
             page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
@@ -55,7 +55,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            page_ptr_1g_valid(target_entry.addr),
+            mapping_1g_target_valid(target_entry.addr, target_entry.is_io),
             page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
@@ -87,7 +87,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_held_l3(target_l4i, target_l3i) is None,
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            page_ptr_1g_valid(target_entry.addr),
+            mapping_1g_target_valid(target_entry.addr, target_entry.is_io),
             page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
@@ -178,7 +178,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_resolve_mapping_l3(l4i, l3i) == pre.spec_resolve_mapping_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_resolve_mapping_1g_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_resolve_mapping_1g_l3(l4i, l3i) == pre.spec_resolve_mapping_1g_l3(l4i, l3i),
-            post.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) == Some(PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
+            post.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) == Some(PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
@@ -208,7 +208,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
-            post.spec_held_1g_l3(target_l4i, target_l3i) == Some(PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
+            post.spec_held_1g_l3(target_l4i, target_l3i) == Some(PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]

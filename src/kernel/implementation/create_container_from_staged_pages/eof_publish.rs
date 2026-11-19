@@ -104,11 +104,6 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
         index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().owning_container == pre.pg_arr.spec_index(index).view().view().owning_container
     &&& forall|index: PageIndex|
-        #![trigger post.pg_arr.spec_index(index).view().view().is_io_page]
-        #![trigger pre.pg_arr.spec_index(index).view().view().is_io_page]
-        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)
-            ==> post.pg_arr.spec_index(index).view().view().is_io_page == pre.pg_arr.spec_index(index).view().view().is_io_page
-    &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().free_list_node_storage]
         #![trigger pre.pg_arr.spec_index(index).view().view().free_list_node_storage]
         index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && unpublished(index)

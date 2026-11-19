@@ -882,6 +882,8 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         reveal(publish_staged_container_root_eof_preconditions); reveal(container_kill_retire_wf); reveal(container_uppertree_seq_wf);
         broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
     };
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
 }
 
 /// The root process's object page, page-table root page, and L4 page belong to the new container; every other process
@@ -1013,7 +1015,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_page_object_owne
             &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) ==> container.view_rodata().view().allocator_ptr_1g == ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) ==> page.owning_container == ptr
             &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) ==> container.view_rodata().view().pcid_allocator == ptr
-            &&& page.state is Unavailable || page.is_io_page ==> container.view_rodata().view().parent is None
+            &&& page.state is Unavailable ==> container.view_rodata().view().parent is None
             &&& page.state is Owned4k || page.state is Owned2m || page.state is Owned1g ==> {
                 let thrd_ptr = if page.state is Owned4k { page.state->Owned4k_thread_ptr } else if page.state is Owned2m { page.state->Owned2m_thread_ptr } else { page.state->Owned1g_thread_ptr };
                 let thread = post.thrd_mp.spec_index(thrd_ptr);

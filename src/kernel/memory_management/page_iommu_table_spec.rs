@@ -21,9 +21,10 @@ pub open spec fn page_iommu_table_wf(ctn_mp: ContainerLockedMap, prc_mp: Process
                     };
                     &&& it_mp.dom().contains(it)
                     &&& mapping.contains_key(iova)
+                    &&& !mapping.spec_index(iova).is_io
                     &&& mapping.spec_index(iova).addr == page_index2page_ptr(p_i)
                 }
-    // Every 4K leaf of an IOMMU table points at a Mapped4k page that lists it in its IOMMU mappings and shares the leaf's
+    // Every RAM 4K leaf of an IOMMU table points at a Mapped4k page that lists it in its IOMMU mappings and shares the leaf's
     // container.
     &&& forall|it: RwLockPageTableRoot|
         #![trigger it_mp.dom().contains(it)]
@@ -32,7 +33,7 @@ pub open spec fn page_iommu_table_wf(ctn_mp: ContainerLockedMap, prc_mp: Process
             forall|iova: VAddr|
                 #![trigger it_mp.spec_index(it).view().mapping_4k().contains_key(iova)]
                 #![trigger it_mp.spec_index(it).view().mapping_4k().spec_index(iova)]
-                it_mp.spec_index(it).view().mapping_4k().contains_key(iova) ==> {
+                it_mp.spec_index(it).view().mapping_4k().contains_key(iova) && !it_mp.spec_index(it).view().mapping_4k().spec_index(iova).is_io ==> {
                     let leaf = it_mp.spec_index(it).view().mapping_4k().spec_index(iova);
                     let page = pg_arr.spec_index(page_ptr2page_index(leaf.addr)).view().view();
                     &&& page.state == PageState::Mapped4k
@@ -67,7 +68,7 @@ pub proof fn page_iommu_table_wf_table_at(
         it_mp.dom().contains(it_ptr),
         it_mp.spec_index(it_ptr).view().mapping_4k().contains_key(iova),
     ensures
-        ({
+        !it_mp.spec_index(it_ptr).view().mapping_4k().spec_index(iova).is_io ==> ({
             let pg_idx = page_ptr2page_index(it_mp.spec_index(it_ptr).view().mapping_4k().spec_index(iova).addr);
             &&& pg_arr.spec_index(pg_idx).view().view().state == PageState::Mapped4k
             &&& pg_arr.spec_index(pg_idx).view().view().iommu_mappings().contains((it_ptr, iova))

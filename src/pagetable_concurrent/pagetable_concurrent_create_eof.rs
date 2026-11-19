@@ -18,7 +18,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)]
             pei_valid(i) && i != target_l4i ==> post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i) =~= pre.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(i)
         &&& post.higher.l4_table.view().spec_index(pre.higher.cr3).value().spec_index(target_l4i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } })
         &&& post.higher.l3_tables.view() == pre.higher.l3_tables.view().insert(page_map_ptr, post.higher.l3_tables.view().spec_index(page_map_ptr))
         &&& post.higher.l3_tables.view().spec_index(page_map_ptr).addr() == page_map_ptr
         &&& post.higher.l3_tables.view().spec_index(page_map_ptr).is_init()
@@ -332,7 +332,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|i: usize| #![trigger post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)]
             pei_valid(i) && i != target_l3i ==> post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i) =~= pre.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)
         &&& post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } })
         &&& post.higher.l2_rev_map.view() == pre.higher.l2_rev_map.view().insert(page_map_ptr, (target_l4i, target_l3i))
         &&& post.lower.l2_perms == pre.lower.l2_perms.insert(page_map_ptr, post.lower.l2_perms.spec_index(page_map_ptr))
         &&& post.lower.l2_perms.spec_index(page_map_ptr).addr() == page_map_ptr
@@ -745,7 +745,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
             p == target_l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
         &&& post.lower.l2_entry(target_l2_p, target_l2i) =~= (PageEntry {
-            addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } })
+            addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } })
         &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
         &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is Some
         &&& post.lower.l1_perm(target_l2_p, target_l2i).addr() == page_map_ptr
@@ -942,7 +942,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
+            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
@@ -967,7 +967,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
         ensures
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) && l4i != target_l4i ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
-            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
+            post.spec_held_l4(target_l4i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } }),
     { reveal(WholePageTable::create_entry_l4_eof_transition_framing); }
 
     /// EOF closure of `create_entry_l4`: every held L3 entry is unchanged; the new L3 page holds none.
@@ -1018,7 +1018,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
@@ -1041,7 +1041,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] pre.kernel_l4_end() <= l4i && pei_valid(l4i) ==> post.spec_held_l4(l4i) == pre.spec_held_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && (l4i, l3i) != (target_l4i, target_l3i) ==> post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i),
-            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            post.spec_held_l3(target_l4i, target_l3i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
@@ -1095,7 +1095,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            post.spec_held_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            post.spec_held_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]

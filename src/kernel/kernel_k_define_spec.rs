@@ -22,7 +22,7 @@ pub type CpuSetRwLock = LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuR
 pub type PcidAllocatorRwLock = LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
 pub type EndpointRwLock = LockCell<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
 /// The kernel state: the lock maps and lock arrays of every kernel object, the root container, the default page table,
-/// and four ghost parts.
+/// and the ghost parts below.
 /// `pt_lower` is the part of each page table of `pt_mp` under small (window) locks: its L2 pages, whose entries are the
 /// 2M-window locks that each own the L1 page they link, the L1 pages, and the 4K and 2M leaves; `pt_mp` holds the L4
 /// and L3 levels and the 1G leaves under the big lock.
@@ -110,6 +110,10 @@ impl KernelK{
 
     /// Pages, allocators, page tables, and IOMMU tables agree on each page's owner, state, and mappings.
     pub open spec fn memory_management_inv(&self) -> bool {
+        // device BAR pages: the BAR slots are well formed, their pages are never kernel-managed, and every IO leaf maps them
+        &&& pci_bar_slots_wf(self.irt.view().bars())
+        &&& pci_bar_pages_unavailable_wf(self.irt.view().bars(), self.pg_arr)
+        &&& io_mappings_wf(self.irt.view().bars(), self.pt_mp, self.pt_lower.view(), self.it_mp)
         // allocator pages, page owners, and huge pages
         &&& allocator_pages_wf(self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp, self.pg_arr)
         &&& container_owned_pages_wf(self.ctn_mp, self.pg_arr)

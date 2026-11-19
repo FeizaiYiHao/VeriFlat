@@ -217,6 +217,7 @@ proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, ro
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
     ensures
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
 {
@@ -224,6 +225,7 @@ proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, ro
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
