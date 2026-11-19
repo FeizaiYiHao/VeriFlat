@@ -24,6 +24,7 @@ pub(super) fn flush_pagetable_tlb_va_range_on_cpu(krnl: &mut KernelK, pagetable:
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_2m() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+            &&& old(krnl).pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).lower.pagetable_window_locks
                 == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
         },

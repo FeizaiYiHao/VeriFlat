@@ -274,6 +274,17 @@ pub enum RetValueType {
     ErrorContainerLockOrderConflict,
     /// A pages rendezvous range starts below the user-VA bound of its page table.
     ErrorIpcRangeNotUser,
+    // ---- PCI ownership failure modes ----
+    /// The sender's process maps a BAR page of the PCI function named by both sides.
+    ErrorIpcPciBarMapped,
+    /// The receiver's process already owns `PCI_FUNCTIONS_PER_PROCESS` PCI functions.
+    ErrorIpcPciReceiverFull,
+    /// The caller's process is not the root process of the root container.
+    ErrorPciNotRootProcess,
+    /// The PCI function to claim is already owned.
+    ErrorPciAlreadyOwned,
+    /// The caller's process already owns `PCI_FUNCTIONS_PER_PROCESS` PCI functions.
+    ErrorPciFunctionArrayFull,
 }
 pub type PTType = bool;
 

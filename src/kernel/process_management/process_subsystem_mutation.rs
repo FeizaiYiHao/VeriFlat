@@ -451,7 +451,6 @@ pub fn process_map_add_owned_thread(prc_mp: &mut ProcessLockedMap, prc_ptr: RwLo
     requires
         process_perms_wf(*old(prc_mp)),
         old(prc_mp).dom().contains(prc_ptr),
-        !old(prc_mp).spec_index(prc_ptr).view().pci_cleared.view(),
         old(prc_mp).typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.process_lock_map(), prc_ptr, TypedLockMode::Write),
         process_lock_perm.state() is WriteLock,
@@ -473,7 +472,6 @@ pub fn process_map_add_owned_thread(prc_mp: &mut ProcessLockedMap, prc_ptr: RwLo
                 &&& final(prc_mp).spec_index(ptr).view().children == old(prc_mp).spec_index(ptr).view().children
                 &&& final(prc_mp).spec_index(ptr).view().uppertree_seq == old(prc_mp).spec_index(ptr).view().uppertree_seq
                 &&& final(prc_mp).spec_index(ptr).view_ghost().subtree_set == old(prc_mp).spec_index(ptr).view_ghost().subtree_set
-                &&& final(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions == old(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions
                 &&& final(prc_mp).spec_index(ptr).view_rodata() == old(prc_mp).spec_index(ptr).view_rodata()
             },
         final(prc_mp).typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
@@ -654,46 +652,6 @@ pub fn scheduler_map_move_shard_head(sched_mp: &mut SchedulerUnLockedMap, sched_
     node_addr
 }
 
-/// Moves `bdf` from `sender`'s to `receiver`'s ghost PCI set; the held root-table lock serializes both sets.
-pub proof fn process_map_move_pci_function(
-    tracked prc_mp: &mut ProcessLockedMap, sender: RwLockProcessPtr, receiver: RwLockProcessPtr, bdf: PciBdf,
-    held_locks: Map<RwLockProcessPtr, TypedHeldLock>, thread_id: LockThreadId,
-)
-    requires
-        process_perms_wf(*old(prc_mp)),
-        old(prc_mp).dom().contains(sender),
-        old(prc_mp).dom().contains(receiver),
-        sender != receiver,
-        !old(prc_mp).spec_index(receiver).view().pci_cleared.view(),
-    ensures
-        process_perms_wf(*final(prc_mp)),
-        final(prc_mp).perms_wf(),
-        final(prc_mp).dom() == old(prc_mp).dom(),
-        old(prc_mp).typed_lock_map_aligned(held_locks, thread_id) ==> final(prc_mp).typed_lock_map_aligned(held_locks, thread_id),
-        forall|key: RwLockProcessPtr| #![trigger old(prc_mp).spec_index(key)] #![trigger final(prc_mp).spec_index(key)] old(prc_mp).dom().contains(key) ==> {
-            let before = old(prc_mp).spec_index(key);
-            let after = final(prc_mp).spec_index(key);
-            let pci = before.view_ghost().owned_pci_functions.view();
-            &&& after.is_init() == before.is_init()
-            &&& after.view() == before.view()
-            &&& after.view_rodata() == before.view_rodata()
-            &&& after.locking_thread() == before.locking_thread()
-            &&& after.being_killed() == before.being_killed()
-            &&& after.killer_info() == before.killer_info()
-            &&& after.view().uppertree_seq == before.view().uppertree_seq
-            &&& after.view_ghost().subtree_set == before.view_ghost().subtree_set
-            &&& after.view_ghost().owned_pci_functions.view() == if key == sender { pci.remove(bdf) } else if key == receiver { pci.insert(bdf) } else { pci }
-        },
-{
-    process_perms_wf_map(*prc_mp);
-    let ghost sender_ghost = prc_mp.spec_index(sender).view_ghost();
-    prc_mp.update_ghost(sender, ProcessGhost { owned_pci_functions: Ghost(sender_ghost.owned_pci_functions.view().remove(bdf)), ..sender_ghost });
-    let ghost receiver_ghost = prc_mp.spec_index(receiver).view_ghost();
-    prc_mp.update_ghost(receiver, ProcessGhost { owned_pci_functions: Ghost(receiver_ghost.owned_pci_functions.view().insert(bdf)), ..receiver_ghost });
-    assert(process_perms_wf(*prc_mp)) by { reveal(process_perms_wf); };
-    assert(old(prc_mp).typed_lock_map_aligned(held_locks, thread_id) ==> prc_mp.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
-}
-
 pub fn pcid_allocator_map_alloc(pcid_allc_mp: &mut PcidAllocatorLockedMap, allc_ptr: RwLockPcidAllocatorPtr, prc_ptr: RwLockProcessPtr, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, Tracked(allocator_lock_perm): Tracked<&LockPerm>)
     requires
         pcid_allocator_perms_wf(*old(pcid_allc_mp)),
@@ -818,7 +776,6 @@ pub fn process_map_link_new_child(
                 &&& final(prc_mp).spec_index(ptr).is_init() == old(prc_mp).spec_index(ptr).is_init()
                 &&& final(prc_mp).spec_index(ptr).view_rodata() == old(prc_mp).spec_index(ptr).view_rodata()
                 &&& final(prc_mp).spec_index(ptr).view().uppertree_seq == old(prc_mp).spec_index(ptr).view().uppertree_seq
-                &&& final(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions == old(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions
                 &&& final(prc_mp).spec_index(ptr).locking_thread() == old(prc_mp).spec_index(ptr).locking_thread()
                 &&& final(prc_mp).spec_index(ptr).being_killed() == old(prc_mp).spec_index(ptr).being_killed()
                 &&& ptr != parent_ptr && ptr != child_ptr ==> final(prc_mp).spec_index(ptr).view() == old(prc_mp).spec_index(ptr).view()
@@ -892,7 +849,6 @@ pub fn process_map_unlink_child(
                 &&& final(prc_mp).spec_index(ptr).is_init() == old(prc_mp).spec_index(ptr).is_init()
                 &&& final(prc_mp).spec_index(ptr).view_rodata() == old(prc_mp).spec_index(ptr).view_rodata()
                 &&& final(prc_mp).spec_index(ptr).view().uppertree_seq == old(prc_mp).spec_index(ptr).view().uppertree_seq
-                &&& final(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions == old(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions
                 &&& final(prc_mp).spec_index(ptr).locking_thread() == old(prc_mp).spec_index(ptr).locking_thread()
                 &&& final(prc_mp).spec_index(ptr).being_killed() == old(prc_mp).spec_index(ptr).being_killed()
                 &&& final(prc_mp).spec_index(ptr).killer_info() == old(prc_mp).spec_index(ptr).killer_info()
@@ -947,7 +903,6 @@ pub fn process_subsystem_create_scheduled_thread(
         process_thread_wf(*old(prc_mp), *old(thrd_mp)),
         container_thread_scheduler_wf(*ctn_mp, *old(thrd_mp), *old(sched_mp)),
         old(prc_mp).dom().contains(prc_ptr),
-        !old(prc_mp).spec_index(prc_ptr).view().pci_cleared.view(),
         old(thrd_mp).dom().contains(staging_thrd_ptr),
         !old(thrd_mp).dom().contains(pg_ptr),
         pg_ptr != staging_thrd_ptr,
@@ -1065,7 +1020,6 @@ pub fn process_subsystem_create_scheduled_thread(
                 &&& final(prc_mp).spec_index(ptr).view().children == old(prc_mp).spec_index(ptr).view().children
                 &&& final(prc_mp).spec_index(ptr).view().uppertree_seq == old(prc_mp).spec_index(ptr).view().uppertree_seq
                 &&& final(prc_mp).spec_index(ptr).view_ghost().subtree_set == old(prc_mp).spec_index(ptr).view_ghost().subtree_set
-                &&& final(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions == old(prc_mp).spec_index(ptr).view_ghost().owned_pci_functions
                 &&& final(prc_mp).spec_index(ptr).view_rodata() == old(prc_mp).spec_index(ptr).view_rodata()
             },
         forall|ptr: RwLockProcessPtr| #![trigger final(prc_mp).spec_index(ptr)] old(prc_mp).dom().contains(ptr) && ptr != prc_ptr ==> final(prc_mp).spec_index(ptr) == old(prc_mp).spec_index(ptr),

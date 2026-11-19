@@ -798,6 +798,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             final(lower).pagetable_window_locks
                 == old(lower).pagetable_window_locks.remove_keys(old(lower).pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == target_l4i && spec_v2l3index(w.va) == target_l3i)),
             final(lower).window_stale_cpus == old(lower).window_stale_cpus.filter_keys(|k: (PageMapPtr, L2Index)| k.0 != target_l2_p),
@@ -886,6 +887,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             forall|l4i: L4Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l4(l4i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && l4i != target_l4i ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l4(l4i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_held_l4(l4i),
             (WholePageTable { higher: *final(self), lower: *lower }).spec_held_l4(target_l4i) is None,
@@ -960,6 +962,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             final(self).mapping_1g.view() == old(self).mapping_1g.view().remove_keys(old(self).mapping_1g.view().dom().filter(|va: VAddr| spec_v2l4index(va) == target_l4i)),
             final(lower).l2_perms == old(lower).l2_perms,
             final(lower).l1_rev_map == old(lower).l1_rev_map,
@@ -1056,6 +1059,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             forall|l4i: L4Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l4(l4i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l4(l4i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_resolve_mapping_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l3(l4i, l3i)]
@@ -1149,6 +1153,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             forall|l4i: L4Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l4(l4i)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) ==> (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l4(l4i) == (WholePageTable { higher: *old(self), lower: *lower }).spec_resolve_mapping_l4(l4i),
             forall|l4i: L4Index, l3i: L3Index| #![trigger (WholePageTable { higher: *final(self), lower: *lower }).spec_resolve_mapping_l3(l4i, l3i)]
@@ -1237,6 +1242,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).table_stale_cpus == old(self).table_stale_cpus,
+            final(self).pci == old(self).pci,
             final(lower).l2_perms == old(lower).l2_perms,
             final(lower).l1_rev_map == old(lower).l1_rev_map,
             final(lower).mapping_4k == old(lower).mapping_4k,

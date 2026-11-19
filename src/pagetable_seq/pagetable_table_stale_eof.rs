@@ -129,6 +129,7 @@ pub(super) proof fn table_stale_cpus_update_eof(pre: KernelK, post: KernelK, roo
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the big-lock payload: no payload invariant reads the table record.
@@ -139,7 +140,7 @@ proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, p
     ensures
         post.inv(),
 {
-    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); assert(post.l4_table == pre.l4_table && post.l3_tables == pre.l3_tables); };
     assert(post.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
     assert(post.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
     assert(post.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
@@ -160,8 +161,20 @@ proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>,
     ensures post.wf_mapping_4k(),
 {
     table_stale_cpus_update_eof_higher_inv(pre.higher, post.higher);
+    table_stale_cpus_update_eof_resolve_4k(pre, post);
     reveal(WholePageTable::wf_mapping_4k);
 }
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for the 4K walks, which do not read the table record: each resolves as
+/// before.
+proof fn table_stale_cpus_update_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+            post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+{}
 
 /// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_2m`: the leaves and mappings are unchanged.
 proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)

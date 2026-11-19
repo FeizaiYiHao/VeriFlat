@@ -622,6 +622,7 @@ pub fn pagetable_map_create_entry_l4(
             old(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 ==> whole_pagetable(*final(pagetable_map), *pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         forall|l4i: L4Index| #![trigger whole_pagetable(*final(pagetable_map), *pt_lower, pagetable_ptr).spec_held_l4(l4i)]
             whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).spec_held_l4(l4i) is Some
                 ==> whole_pagetable(*final(pagetable_map), *pt_lower, pagetable_ptr).spec_held_l4(l4i) == whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).spec_held_l4(l4i),
@@ -778,6 +779,7 @@ pub fn pagetable_map_create_entry_l3(
                 ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
                     == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_page(p).entry_lock(i).l1()]
             pei_valid(i) && !whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_entry_hides_l1(p, i) ==> !whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_entry_hides_l1(p, i),
         forall|i: L2Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_page(page_map_ptr).entry_lock(i).l1()]
@@ -1851,6 +1853,7 @@ pub fn pagetable_map_remove_table_page(
         pagetable_table_stale_cpus_only_when_write_locked(*final(pagetable_map)),
         page_mappings_pagetable_wf(*final(pagetable_map), *final(pt_lower), *page_array),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure().remove(scan.spec_table_page()->Some_0),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
             whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
@@ -1967,6 +1970,7 @@ pub fn pagetable_map_hide_l4_entry(
         pagetable_lower_backup_wf(*final(pagetable_map), *final(pt_lower)),
         pagetable_table_stale_cpus_only_when_write_locked(*final(pagetable_map)),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_l4_end == old(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_l4_end,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().higher.kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().higher.cr3,
@@ -2391,6 +2395,7 @@ pub fn pagetable_map_unlink_unresolvable_l1_page(
         pagetable_lower_backup_wf(*final(pagetable_map), *final(pt_lower)),
         pagetable_table_stale_cpus_only_when_write_locked(*final(pagetable_map)),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         page_mappings_pagetable_wf(*final(pagetable_map), *final(pt_lower), *page_array),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher == old(pagetable_map).spec_index(pagetable_ptr).view().higher,
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure().remove(l1_p),
@@ -2505,6 +2510,7 @@ pub fn pagetable_map_insert_1g(
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.did == old(pagetable_map).spec_index(pagetable_ptr).view().higher.did,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table,
@@ -2627,6 +2633,7 @@ pub fn pagetable_map_hide_1g_leaf(
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.did == old(pagetable_map).spec_index(pagetable_ptr).view().higher.did,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table,
@@ -2749,6 +2756,7 @@ pub fn pagetable_map_clear_held_1g_leaf(
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.did == old(pagetable_map).spec_index(pagetable_ptr).view().higher.did,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l4_table,
@@ -2875,6 +2883,7 @@ pub fn pagetable_map_hide_l3_entry(
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.did == old(pagetable_map).spec_index(pagetable_ptr).view().higher.did,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().higher.proc_ptr,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
+        final(pagetable_map).spec_index(pagetable_ptr).view().higher.pci == old(pagetable_map).spec_index(pagetable_ptr).view().higher.pci,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l3_rev_map,
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map == old(pagetable_map).spec_index(pagetable_ptr).view().higher.l2_rev_map,
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_perms == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_perms,

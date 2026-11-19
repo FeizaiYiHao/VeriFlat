@@ -131,6 +131,7 @@ pub(super) proof fn remove_io_4k_mapping_eof(pre: KernelK, post: KernelK, pageta
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Clears the held, unresolvable IO 4K leaf `va` of `pagetable`; every other held entry of the table and every other kernel field,
@@ -256,6 +257,7 @@ pub(super) proof fn remove_held_io_4k_mapping_eof(pre: KernelK, post: KernelK, p
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
     };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Clears the held, unresolvable IO 2M leaf `va` of `pagetable`; every other held entry of the table and every other kernel field,
@@ -379,6 +381,7 @@ pub(super) proof fn remove_held_io_2m_mapping_eof(pre: KernelK, post: KernelK, p
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
     };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Removes the non-present IO 2M leaf `va` of `pagetable`, held under its window through the read-held table; only the leaf's L2

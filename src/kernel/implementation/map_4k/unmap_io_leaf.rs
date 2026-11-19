@@ -44,6 +44,7 @@ pub fn remove_io_4k_mapping_in_window(krnl: &mut KernelK, pagetable: RwLockPageT
         },
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).page_closure() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]

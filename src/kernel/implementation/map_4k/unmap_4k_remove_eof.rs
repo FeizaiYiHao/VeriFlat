@@ -202,5 +202,6 @@ pub(super) proof fn remove_4k_mapping_without_free_eof(pre: KernelK, post: Kerne
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 }

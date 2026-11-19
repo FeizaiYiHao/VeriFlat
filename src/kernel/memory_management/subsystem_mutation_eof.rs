@@ -840,6 +840,7 @@ pub(super) open spec fn pagetable_map_remove_table_page_eof_transition_framing(
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_remove_table_page`: the big-lock and window-half invariants after one table page is unlinked; no page
@@ -1343,6 +1344,7 @@ pub(super) open spec fn pagetable_map_hide_l4_entry_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_l4_entry`: the big-lock and window-half invariants after one user root entry is hidden; the
@@ -1438,6 +1440,7 @@ pub(super) open spec fn pagetable_map_unlink_unresolvable_l1_page_eof_transition
         whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) is Some
             ==> whole_pagetable(post_pt, post_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).spec_held_1g_l3(l4i, l3i)
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_unlink_unresolvable_l1_page`: the big-lock and window-half invariants after one L1 page leaves an
@@ -1530,6 +1533,7 @@ pub(super) open spec fn pagetable_map_clear_held_4k_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_4k_leaf`: the big-lock and window-half invariants after one held 4K leaf under an
@@ -1616,6 +1620,7 @@ pub(super) open spec fn pagetable_map_clear_held_2m_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_2m_leaf`: the big-lock and window-half invariants after one held 2M leaf under an
@@ -1692,6 +1697,7 @@ pub(super) open spec fn pagetable_map_insert_1g_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_insert_1g`: the big-lock and window-half invariants after installing one present 1G leaf.
@@ -1767,6 +1773,7 @@ pub(super) open spec fn pagetable_map_hide_1g_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_1g_leaf`: the big-lock and window-half invariants after hiding one 1G leaf.
@@ -1842,6 +1849,7 @@ pub(super) open spec fn pagetable_map_clear_held_1g_leaf_eof_transition_framing(
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, pt_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_clear_held_1g_leaf`: the big-lock and window-half invariants after clearing one held 1G leaf.
@@ -1919,6 +1927,7 @@ pub(super) open spec fn pagetable_map_hide_l3_entry_eof_transition_framing(
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& post_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus == pre_pt.spec_index(pagetable_ptr).view().higher.table_stale_cpus
+    &&& post_pt.spec_index(pagetable_ptr).view().higher.pci == pre_pt.spec_index(pagetable_ptr).view().higher.pci
 }
 
 /// EOF closure of `pagetable_map_hide_l3_entry`: the big-lock and window-half invariants after one non-huge L3 entry is hidden; no window under the entry was locked, so every window lock stays.

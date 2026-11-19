@@ -708,7 +708,6 @@ pub proof fn kernel_container_root_published_implies_u_step(
         !after.prc_mp.spec_index(process).being_killed(),
         !after.prc_mp.spec_index(process).view().zombie,
         after.prc_mp.spec_index(process).view().iommu_table is None,
-        after.prc_mp.spec_index(process).view_ghost().owned_pci_functions.view().is_empty(),
         after.prc_mp.spec_index(process).view().quota_4k == process_quota,
         after.prc_mp.spec_index(process).view().quota_2m == 0,
         after.prc_mp.spec_index(process).view().quota_1g == 0,
@@ -725,6 +724,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
         after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
+        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
     ensures
         kernel_k_to_kernel_u(*before).thread_map.dom().contains(thread),
         kernel_k_to_kernel_u(*before).thread_map[thread].syscall_progress == before.thrd_mp.spec_index(thread).view().syscall_progress.view(),
@@ -817,7 +817,6 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         !after.prc_mp.spec_index(process).being_killed(),
         !after.prc_mp.spec_index(process).view().zombie,
         after.prc_mp.spec_index(process).view().iommu_table is None,
-        after.prc_mp.spec_index(process).view_ghost().owned_pci_functions.view().is_empty(),
         after.prc_mp.spec_index(process).view().quota_4k == process_quota,
         after.prc_mp.spec_index(process).view().quota_2m == 0,
         after.prc_mp.spec_index(process).view().quota_1g == 0,
@@ -833,14 +832,16 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
         after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
         after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).wlocked_by_thread(cpu_id),
         whole_pagetable(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
+        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
     ensures
         ({
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             post.process_map == pre.process_map.insert(process, ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-                iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+                    mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() }),
+                iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
                 parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
             })
         }),
@@ -849,13 +850,15 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.process_map[process].pagetable->Some_0.mapping_1g, Map::empty());
+    assert_maps_equal!(post.process_map[process].pagetable->Some_0.pci_functions, Map::empty());
     assert_seqs_equal!(post.process_map[process].children == Seq::empty());
     assert_seqs_equal!(post.process_map[process].uppertree_seq == Seq::empty());
     assert_seqs_equal!(post.process_map[process].owned_threads == Seq::empty());
     assert_maps_equal!(post.process_map, pre.process_map.insert(process, ProcessU {
         lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-        iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+            mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() }),
+        iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     }), p => {
         if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); process_pagetable_wf_process_at(before.prc_mp, before.pt_mp, p); }

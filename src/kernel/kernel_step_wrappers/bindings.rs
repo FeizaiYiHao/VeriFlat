@@ -80,7 +80,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
         *post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..*pre }),
         post.irt.view().owners() == pre.irt.view().owners(),
         forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f) ==> post.irt.view().spec_index_iommu_root(b, d, f)
-            == if pre.irt.view().spec_index_owner(b, d, f) == pre.it_mp.spec_index(iommu_table).view().proc_ptr { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) },
+            == if pre.irt.view().spec_index_owner(b, d, f) == Some(pre.it_mp.spec_index(iommu_table).view().proc_ptr) { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) },
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
         post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
         post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() }),
@@ -96,7 +96,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
                 process_map: a.process_map.insert(process, ProcessU { iommu_table: match p.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..p }),
                 iommu_root_table: IommuRootTableU {
                     attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-                        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != process))),
+                        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != Some(process)))),
                     ..a.iommu_root_table
                 },
                 iommu_tlb: match did { Some(d) => a.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => a.iommu_tlb },
@@ -117,7 +117,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
     });
     let attached = b.iommu_root_table.attached;
     let expected = Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != process)));
+        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != Some(process))));
     assert_seqs_equal!(attached, expected, bus => {
         assert_seqs_equal!(attached[bus], expected[bus], device => {
             assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {});

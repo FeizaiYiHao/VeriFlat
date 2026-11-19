@@ -38,6 +38,7 @@ pub open spec fn kernel_pagetable_nonlock_fields_unchanged(pre_pt: PageTableLock
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.higher.pci.mapping_counts() == before.higher.pci.mapping_counts()
         }
 }
 
@@ -75,7 +76,6 @@ pub open spec fn kernel_process_nonlock_fields_unchanged(pre: ProcessLockedMap, 
             &&& post.spec_index(p).view().zombie == pre.spec_index(p).view().zombie
             &&& post.spec_index(p).view().pagetable == pre.spec_index(p).view().pagetable
             &&& post.spec_index(p).view().iommu_table == pre.spec_index(p).view().iommu_table
-            &&& post.spec_index(p).view_ghost().owned_pci_functions.view() == pre.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.spec_index(p).view().quota_4k == pre.spec_index(p).view().quota_4k
             &&& post.spec_index(p).view().quota_2m == pre.spec_index(p).view().quota_2m
             &&& post.spec_index(p).view().quota_1g == pre.spec_index(p).view().quota_1g
@@ -309,7 +309,6 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
             &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
             &&& post.prc_mp.spec_index(p).view().quota_1g == pre.prc_mp.spec_index(p).view().quota_1g
@@ -474,6 +473,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.higher.pci.mapping_counts() == before.higher.pci.mapping_counts()
         }
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
@@ -502,7 +502,6 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k as int == pre.prc_mp.spec_index(p).view().quota_4k as int + if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
             &&& post.prc_mp.spec_index(p).view().quota_1g == pre.prc_mp.spec_index(p).view().quota_1g
@@ -626,6 +625,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.higher.pci.mapping_counts() == before.higher.pci.mapping_counts()
         }
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
@@ -654,7 +654,6 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
             &&& post.prc_mp.spec_index(p).view().quota_2m as int == pre.prc_mp.spec_index(p).view().quota_2m as int + if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_1g == pre.prc_mp.spec_index(p).view().quota_1g
@@ -776,6 +775,7 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
             &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            &&& after.higher.pci.mapping_counts() == before.higher.pci.mapping_counts()
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
         }
     &&& post.it_mp.dom() == pre.it_mp.dom()
@@ -805,7 +805,6 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
             &&& post.prc_mp.spec_index(p).view().quota_1g as int == pre.prc_mp.spec_index(p).view().quota_1g as int + if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
@@ -881,7 +880,6 @@ pub open spec fn kernel_process2thread_quota_4k_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k as int == pre.prc_mp.spec_index(p).view().quota_4k as int - if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m
             &&& post.prc_mp.spec_index(p).view().quota_1g == pre.prc_mp.spec_index(p).view().quota_1g
@@ -957,7 +955,6 @@ pub open spec fn kernel_process2thread_quota_2m_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
             &&& post.prc_mp.spec_index(p).view().quota_2m as int == pre.prc_mp.spec_index(p).view().quota_2m as int - if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_1g == pre.prc_mp.spec_index(p).view().quota_1g
@@ -1032,7 +1029,6 @@ pub open spec fn kernel_process2thread_quota_1g_changed(pre: &KernelK, post: &Ke
             &&& post.prc_mp.spec_index(p).view().zombie == pre.prc_mp.spec_index(p).view().zombie
             &&& post.prc_mp.spec_index(p).view().pagetable == pre.prc_mp.spec_index(p).view().pagetable
             &&& post.prc_mp.spec_index(p).view().iommu_table == pre.prc_mp.spec_index(p).view().iommu_table
-            &&& post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view()
             &&& post.prc_mp.spec_index(p).view().quota_4k == pre.prc_mp.spec_index(p).view().quota_4k
             &&& post.prc_mp.spec_index(p).view().quota_1g as int == pre.prc_mp.spec_index(p).view().quota_1g as int - if p == prc_ptr { delta } else { 0 }
             &&& post.prc_mp.spec_index(p).view().quota_2m == pre.prc_mp.spec_index(p).view().quota_2m

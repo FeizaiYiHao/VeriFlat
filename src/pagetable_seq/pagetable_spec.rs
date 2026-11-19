@@ -66,6 +66,8 @@ pub ghost struct PageTableU {
     pub mapping_2m: Map<VAddr, MapEntry>,
     pub mapping_1g: Map<VAddr, MapEntry>,
     pub pagetable_window_locks: Map<WindowVa, LockStateU>,
+    /// Each PCI function the process owns, with its number of BAR mappings; empty for an IOMMU table.
+    pub pci_functions: Map<PciBdf, nat>,
 }
 
 /// `m` with every window of `range` that it holds write-locked.

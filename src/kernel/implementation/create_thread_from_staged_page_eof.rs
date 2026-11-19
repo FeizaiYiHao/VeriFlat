@@ -47,8 +47,6 @@ pub(super) open spec fn create_thread_from_staged_page_eof_transition_framing(
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, prc_ptr)
-    &&& forall|p: RwLockProcessPtr, f: PciBdf| #![trigger post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f)]
-        pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f) == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f)
     &&& post_process.view() == (Process { owned_threads: post_process.view().owned_threads, state: Ghost(ProcessState::Running), ..pre_process.view() })
     &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().push(pg_ptr)
     &&& post_process.view().owned_threads.dom() == pre_process.view().owned_threads.dom().insert(process_node_addr)
@@ -653,7 +651,7 @@ pub(super) proof fn create_thread_from_staged_page_eof_inv(
     reveal(create_thread_from_staged_page_eof_transition_framing);
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(cpu_dirty_map_proc_pcid_match); reveal(container_cpu_wf);

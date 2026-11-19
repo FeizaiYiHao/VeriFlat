@@ -91,6 +91,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.cr3 == l4_pg_ptr
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_pg_ptr, post.pt_lower.view().spec_index(pagetable_pg_ptr))
     &&& post.pt_mp.spec_index(pagetable_pg_ptr).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_pg_ptr)
     &&& forall|pt_ptr: RwLockPageTableRoot|
@@ -111,7 +112,6 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
             &&& post.prc_mp.spec_index(p_ptr).killer_info() == pre.prc_mp.spec_index(p_ptr).killer_info()
             &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
             &&& post.prc_mp.spec_index(p_ptr).view().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view().uppertree_seq
-            &&& post.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions
             &&& post.prc_mp.spec_index(p_ptr).view() == if p_ptr == parent_ptr {
                 Process { children: post.prc_mp.spec_index(p_ptr).view().children, ..pre.prc_mp.spec_index(p_ptr).view() }
             } else {
@@ -143,10 +143,8 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_pg_ptr).wlocked()
     &&& !post.prc_mp.spec_index(process_pg_ptr).view().zombie
     &&& post.prc_mp.spec_index(process_pg_ptr).view().state.view() is Creating
-    &&& post.prc_mp.spec_index(process_pg_ptr).view().pci_cleared.view() == false
     &&& post.prc_mp.spec_index(process_pg_ptr).view().pcid == pcid
     &&& post.prc_mp.spec_index(process_pg_ptr).view().pagetable == pagetable_pg_ptr
-    &&& post.prc_mp.spec_index(process_pg_ptr).view_ghost().owned_pci_functions.view().is_empty()
     &&& post.prc_mp.spec_index(process_pg_ptr).view().quota_4k == 0
     &&& post.prc_mp.spec_index(process_pg_ptr).view().quota_2m == 0
     &&& post.prc_mp.spec_index(process_pg_ptr).view().quota_1g == 0
@@ -1012,7 +1010,7 @@ pub(super) proof fn create_process_from_staged_pages_eof_inv(
     create_process_from_staged_pages_eof_memory_management_inv(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_from_staged_pages_eof_process_management_inv(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, false, 0, 0, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_process_in_cpu_container); reveal(container_cpu_wf); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_pagetable_pcid_match);

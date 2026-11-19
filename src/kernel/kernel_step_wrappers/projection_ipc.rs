@@ -1048,20 +1048,34 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
     }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } reveal(container_cpu_set_wf); });
 }
 
-/// The rendezvous fields project to the process map with only a handed-over PCI function moved from the sender to the
-/// receiver process.
+/// The rendezvous fields project to the process map with only a handed-over PCI function moved from the sender's to the
+/// receiver's page-table PCI function array.
 proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
     pre: &KernelK, post: &KernelK, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, )
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
+        pci_transfer is None ==> kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
         pci_transfer is None ==> kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
         pci_transfer is None ==> kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
         pci_transfer matches Some((bdf, sender, receiver)) ==> {
             &&& pre.prc_mp.dom().contains(sender)
             &&& pre.prc_mp.dom().contains(receiver)
             &&& sender != receiver
+            &&& !pre.prc_mp.spec_index(sender).view().zombie
+            &&& !pre.prc_mp.spec_index(receiver).view().zombie
+            &&& post.pt_mp.dom() == pre.pt_mp.dom()
+            &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
+                pre.pt_mp.dom().contains(p) ==> {
+                    let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+                    let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
+                    let counts = before.higher.pci.mapping_counts();
+                    &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                    &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                    &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+                    &&& after.higher.pci.mapping_counts() == if p == pre.prc_mp.spec_index(sender).view().pagetable { counts.remove(bdf) }
+                        else if p == pre.prc_mp.spec_index(receiver).view().pagetable { counts.insert(bdf, 0) } else { counts }
+                }
             &&& post.it_mp.dom() == pre.it_mp.dom()
             &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
                 pre.it_mp.dom().contains(p) ==> {
@@ -1077,11 +1091,9 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
                 pre.prc_mp.dom().contains(p) ==> {
                     let a = pre.prc_mp.spec_index(p);
                     let b = post.prc_mp.spec_index(p);
-                    let pci = a.view_ghost().owned_pci_functions.view();
                     &&& b.view().zombie == a.view().zombie
                     &&& b.view().pagetable == a.view().pagetable
                     &&& b.view().iommu_table == a.view().iommu_table
-                    &&& b.view_ghost().owned_pci_functions.view() == if p == sender { pci.remove(bdf) } else if p == receiver { pci.insert(bdf) } else { pci }
                     &&& b.view().quota_4k == a.view().quota_4k
                     &&& b.view().quota_2m == a.view().quota_2m
                     &&& b.view().quota_1g == a.view().quota_1g
@@ -1111,9 +1123,11 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
                 Some((bdf, sender, receiver)) => {
                     let s = pre_u.process_map.spec_index(sender);
                     let r = pre_u.process_map.spec_index(receiver);
+                    let s_pt = s.pagetable->Some_0;
+                    let r_pt = r.pagetable->Some_0;
                     let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
-                    pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
-                        .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+                    pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, pagetable: Some(PageTableU { pci_functions: s_pt.pci_functions.remove(bdf), ..s_pt }), ..s })
+                        .insert(receiver, ProcessU { pagetable: Some(PageTableU { pci_functions: r_pt.pci_functions.insert(bdf, 0), ..r_pt }), ..r })
                 },
                 None => pre_u.process_map,
             }
@@ -1125,13 +1139,30 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
     }
 }
 
-/// Process fields equal except the PCI function `bdf` moved from `sender` to `receiver` project to that process-map update.
+/// Process fields equal except the PCI function `bdf` moved from `sender`'s to `receiver`'s page-table PCI function array
+/// project to that process-map update.
 proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     pre: &KernelK, post: &KernelK, bdf: PciBdf, sender: RwLockProcessPtr, receiver: RwLockProcessPtr, )
     requires
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         process_iommu_table_wf(post.prc_mp, post.it_mp),
-        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
+        pre.prc_mp.dom().contains(sender),
+        pre.prc_mp.dom().contains(receiver),
+        sender != receiver,
+        !pre.prc_mp.spec_index(sender).view().zombie,
+        !pre.prc_mp.spec_index(receiver).view().zombie,
+        post.pt_mp.dom() == pre.pt_mp.dom(),
+        forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
+            pre.pt_mp.dom().contains(p) ==> {
+                let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+                let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
+                let counts = before.higher.pci.mapping_counts();
+                &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+                &&& after.higher.pci.mapping_counts() == if p == pre.prc_mp.spec_index(sender).view().pagetable { counts.remove(bdf) }
+                    else if p == pre.prc_mp.spec_index(receiver).view().pagetable { counts.insert(bdf, 0) } else { counts }
+            },
         post.it_mp.dom() == pre.it_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) ==> {
@@ -1142,19 +1173,14 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
                 &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
                 &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
             },
-        pre.prc_mp.dom().contains(sender),
-        pre.prc_mp.dom().contains(receiver),
-        sender != receiver,
         post.prc_mp.dom() == pre.prc_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> {
                 let a = pre.prc_mp.spec_index(p);
                 let b = post.prc_mp.spec_index(p);
-                let pci = a.view_ghost().owned_pci_functions.view();
                 &&& b.view().zombie == a.view().zombie
                 &&& b.view().pagetable == a.view().pagetable
                 &&& b.view().iommu_table == a.view().iommu_table
-                &&& b.view_ghost().owned_pci_functions.view() == if p == sender { pci.remove(bdf) } else if p == receiver { pci.insert(bdf) } else { pci }
                 &&& b.view().quota_4k == a.view().quota_4k
                 &&& b.view().quota_2m == a.view().quota_2m
                 &&& b.view().quota_1g == a.view().quota_1g
@@ -1181,9 +1207,11 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
             let post_u = kernel_k_user_projection(*post);
             let s = pre_u.process_map.spec_index(sender);
             let r = pre_u.process_map.spec_index(receiver);
+            let s_pt = s.pagetable->Some_0;
+            let r_pt = r.pagetable->Some_0;
             let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
-            &&& post_u.process_map == pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
-                .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+            &&& post_u.process_map == pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, pagetable: Some(PageTableU { pci_functions: s_pt.pci_functions.remove(bdf), ..s_pt }), ..s })
+                .insert(receiver, ProcessU { pagetable: Some(PageTableU { pci_functions: r_pt.pci_functions.insert(bdf, 0), ..r_pt }), ..r })
         }),
 {
     hide(kernel_k_user_projection);
@@ -1192,12 +1220,14 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     let post_u = kernel_k_user_projection(*post);
     let s = pre_u.process_map.spec_index(sender);
     let r = pre_u.process_map.spec_index(receiver);
+    let s_pt = s.pagetable->Some_0;
+    let r_pt = r.pagetable->Some_0;
     let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
-    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
-        .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r }), p => {
+    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, pagetable: Some(PageTableU { pci_functions: s_pt.pci_functions.remove(bdf), ..s_pt }), ..s })
+        .insert(receiver, ProcessU { pagetable: Some(PageTableU { pci_functions: r_pt.pci_functions.insert(bdf, 0), ..r_pt }), ..r }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
         process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, sender);
-        reveal(kernel_pagetable_nonlock_fields_unchanged);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, sender); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, receiver);
     });
 }
 
@@ -1214,7 +1244,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_iommu_root_table(
             let post_u = kernel_k_user_projection(*post);
             post_u.iommu_root_table == match pci_transfer {
                 Some((bdf, _, receiver)) => IommuRootTableU {
-                    owners: seq3_update(pre_u.iommu_root_table.owners, bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver),
+                    owners: seq3_update(pre_u.iommu_root_table.owners, bdf.0 as int, bdf.1 as int, bdf.2 as int, Some(receiver)),
                     attached: seq3_update(pre_u.iommu_root_table.attached, bdf.0 as int, bdf.1 as int, bdf.2 as int, false),
                 },
                 None => pre_u.iommu_root_table,

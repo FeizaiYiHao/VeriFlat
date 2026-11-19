@@ -213,11 +213,9 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.prc_mp.spec_index(process_page).being_killed()
     &&& !post.prc_mp.spec_index(process_page).view().zombie
     &&& post.prc_mp.spec_index(process_page).view().state.view() is Creating
-    &&& post.prc_mp.spec_index(process_page).view().pci_cleared.view() == false
     &&& post.prc_mp.spec_index(process_page).view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view().pagetable == pagetable_page
     &&& post.prc_mp.spec_index(process_page).view().iommu_table is None
-    &&& post.prc_mp.spec_index(process_page).view_ghost().owned_pci_functions.view().is_empty()
     &&& post.prc_mp.spec_index(process_page).view().quota_4k == process_quota_4k
     &&& post.prc_mp.spec_index(process_page).view().quota_2m == 0
     &&& post.prc_mp.spec_index(process_page).view().quota_1g == 0
@@ -245,6 +243,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.cr3 == l4_page
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable_page).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
+    &&& post.pt_mp.spec_index(pagetable_page).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty()
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
     &&& post.pt_mp.spec_index(pagetable_page).view().lower_backup.view() == post.pt_lower.view().spec_index(pagetable_page)
     &&& forall|pt_ptr: RwLockPageTableRoot|

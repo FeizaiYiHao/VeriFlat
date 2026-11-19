@@ -250,7 +250,8 @@ impl KernelSteps {
             !old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().zombie,
             old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().iommu_table is Some,
             old(self).snapshot_k().it_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).locking_thread() is None,
-            old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function)),
+            old(self).snapshot_k().pt_mp.dom().contains(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().pagetable),
+            old(self).snapshot_k().pt_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(prc_ptr).view().pagetable).view().higher.pci.view().dom().contains((bus, device, function)),
             pci_bdf_valid(bus, device, function),
             old(self).snapshot_k().irt.view().spec_index_iommu_root(bus, device, function) is None,
             kernel_pagetable_nonlock_fields_unchanged(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view()),
@@ -335,7 +336,8 @@ impl KernelSteps {
             &&& pre_u.process_map.dom().contains(prc_ptr)
             &&& pre_u.process_map[prc_ptr].lock_state is Unlocked
             &&& !pre_u.process_map[prc_ptr].killed
-            &&& pre_u.process_map[prc_ptr].owned_pci_functions.contains((bus, device, function))
+            &&& pre_u.process_map[prc_ptr].pagetable is Some
+            &&& pre_u.process_map[prc_ptr].pagetable->Some_0.pci_functions.dom().contains((bus, device, function))
             &&& pre_u.process_map[prc_ptr].iommu_table is Some
             &&& pre_u.process_map[prc_ptr].iommu_table->Some_0.lock_state is Unlocked
             &&& !pre_u.iommu_root_table.attached[bus as int][device as int][function as int]

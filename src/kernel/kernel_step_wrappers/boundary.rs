@@ -353,6 +353,7 @@ pub proof fn kernel_cpu_tlb_updated_implies_u_step(pre: &KernelK, post: &KernelK
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_4k()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g()
+            &&& post.pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks
         },
     ensures
@@ -418,6 +419,7 @@ pub proof fn kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()[va] }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
+        post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks,
         pre.thrd_mp.dom().contains(thrd_ptr),
         post.thrd_mp.unchanged_except(&pre.thrd_mp, thrd_ptr),
@@ -570,6 +572,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre: &Ke
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);

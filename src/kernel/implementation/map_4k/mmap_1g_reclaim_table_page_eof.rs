@@ -34,6 +34,7 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
     &&& new_table.view().higher.pcid == old_table.view().higher.pcid
     &&& new_table.view().higher.did == old_table.view().higher.did
     &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
+    &&& new_table.view().higher.pci == old_table.view().higher.pci
     &&& new_table.view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& new_c.page_closure() == old_c.page_closure().remove(pg_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
@@ -462,5 +463,6 @@ pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
         kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 }

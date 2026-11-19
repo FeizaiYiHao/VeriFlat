@@ -1,5 +1,6 @@
 pub mod l2_page_map;
 pub mod l2_entry_lock_t;
+pub mod pci_function_array;
 pub mod pagetable_concurrent_spec;
 pub mod pagetable_concurrent_lemma;
 pub mod pagetable_concurrent_util;
@@ -8,6 +9,7 @@ pub mod pagetable_concurrent_util_t;
 
 pub use l2_page_map::*;
 pub use l2_entry_lock_t::*;
+pub use pci_function_array::*;
 pub use pagetable_concurrent_spec::*;
 pub use pagetable_concurrent_lemma::*;
 pub use pagetable_concurrent_util::*;

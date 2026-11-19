@@ -76,6 +76,7 @@ pub fn remove_last_4k_mapping_to_allocator(
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().remove(va),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).page_closure() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_entries == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_entries,
         final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,

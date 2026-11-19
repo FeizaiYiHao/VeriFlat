@@ -82,6 +82,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// No window of a page table that no thread locks has a holder: a window holder would hold the table too.
@@ -191,6 +192,7 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Closes `inv()` after `wunlock_pagetable`: the writer holds no window of the released table, so no thread does, the
@@ -243,6 +245,7 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// `downgrade_pagetable` moved only the lock of table `pagetable_ptr`: `thread_id`'s write lock became its sole read
@@ -307,5 +310,6 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 } // verus!

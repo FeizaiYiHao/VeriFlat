@@ -209,7 +209,6 @@ pub(super) proof fn thread_map_set_endpoint_descriptor_eof_thread_perms_wf(pre: 
 pub(super) proof fn process_map_add_owned_thread_eof_process_perms_wf(pre: ProcessLockedMap, post: ProcessLockedMap, prc_ptr: RwLockProcessPtr)
     requires
         process_perms_wf(pre),
-        !pre.spec_index(prc_ptr).view().pci_cleared.view(),
         post.perms_wf(),
         post.unchanged_except(&pre, prc_ptr),
         post.spec_index(prc_ptr).inv(),

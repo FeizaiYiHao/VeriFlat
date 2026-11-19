@@ -678,7 +678,6 @@ impl KernelK {
             page_perm.is_init(),
             page_perm.addr() == pg_ptr,
             process_value.inv(),
-            !process_value.pci_cleared.view(),
             process_value.parent_linkedlist_node.addr() == process_parent_node_addr(pg_ptr),
             process_value.children.view().no_duplicates(),
             !process_value.children.view().contains(pg_ptr),

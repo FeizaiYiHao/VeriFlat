@@ -419,8 +419,9 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
 
 /// The live endpoint head waiting opposite to the live caller running on `cpu_id` is dequeued and scheduled
 /// with `peer_result` on shard `cpu_id` of a same-container peer, else on the peer's `last_cpu` shard; an Off
-/// CPU may move to the receiver's container, and a detached PCI function may move to the receiver process. Detaching an
-/// attached function empties the sender table's old DID domain, and the sender table's DID follows `pci_handoff_table_did`.
+/// CPU may move to the receiver's container, and a PCI function without BAR mappings may move, detached, from the sender
+/// process's page table to the receiver process's page table. Detaching an attached function empties the sender table's
+/// old DID domain, and the sender table's DID follows `pci_handoff_table_did`.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_rendezvous_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr,
@@ -461,6 +462,8 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
         &&& old_u.process_map.dom().contains(sender)
         &&& old_u.process_map.dom().contains(receiver)
         &&& sender != receiver
+        &&& old_u.process_map.spec_index(sender).pagetable is Some
+        &&& old_u.process_map.spec_index(receiver).pagetable is Some
         &&& old_u.process_map.spec_index(sender).iommu_table matches Some(t) ==> pci_handoff_table_did(old_u.iommu_root_table.owners, old_u.iommu_root_table.attached, sender, bdf,
             t.did, new_u.process_map.spec_index(sender).iommu_table->Some_0.did)
     }
@@ -482,15 +485,17 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
             Some((bdf, sender, receiver)) => {
                 let s = old_u.process_map.spec_index(sender);
                 let r = old_u.process_map.spec_index(receiver);
+                let s_pt = s.pagetable->Some_0;
+                let r_pt = r.pagetable->Some_0;
                 let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: new_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
-                old_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
-                    .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+                old_u.process_map.insert(sender, ProcessU { iommu_table: s_table, pagetable: Some(PageTableU { pci_functions: s_pt.pci_functions.remove(bdf), ..s_pt }), ..s })
+                    .insert(receiver, ProcessU { pagetable: Some(PageTableU { pci_functions: r_pt.pci_functions.insert(bdf, 0), ..r_pt }), ..r })
             },
             None => old_u.process_map,
         },
         iommu_root_table: match pci_transfer {
             Some((bdf, _, receiver)) => IommuRootTableU {
-                owners: seq3_update(old_u.iommu_root_table.owners, bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver),
+                owners: seq3_update(old_u.iommu_root_table.owners, bdf.0 as int, bdf.1 as int, bdf.2 as int, Some(receiver)),
                 attached: seq3_update(old_u.iommu_root_table.attached, bdf.0 as int, bdf.1 as int, bdf.2 as int, false),
             },
             None => old_u.iommu_root_table,
@@ -517,8 +522,9 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
 /// payloads as the implementation does. Empty payloads in opposite directions succeed. A CPU handover needs
 /// different containers and an Off CPU of the sender's container; an endpoint transfer needs the sender's
 /// source descriptor and a free receiver target descriptor; a pages transfer needs equal lengths and different
-/// processes; a PCI handover needs the same function named on both sides, different processes, and a sender
-/// process that owns the function. Any other pairing is a type mismatch. Success on Endpoint and Pages
+/// processes; a PCI handover needs the same function named on both sides, different processes, a sender process
+/// whose page table holds the function with no BAR mapping, and a receiver process whose page table holds fewer than
+/// `PCI_FUNCTIONS_PER_PROCESS` functions. Any other pairing is a type mismatch. Success on Endpoint and Pages
 /// payloads starts their multi-step transfer. A calling or receive-call caller only reaches this error step:
 /// CallAcrossContainers when the head waits in the matching call state, else a type mismatch.
 pub open spec fn ipc_rendezvous_result(old_u: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> RetValueType {
@@ -554,8 +560,14 @@ pub open spec fn ipc_rendezvous_result(old_u: KernelU, cpu_id: CpuId, ep_idx: En
             (IPCPayLoad::Pci { bus: sent_bus, dev: sent_dev, fun: sent_fun }, IPCPayLoad::Pci { bus: received_bus, dev: received_dev, fun: received_fun }) => {
                 if sent_bus != received_bus || sent_dev != received_dev || sent_fun != received_fun { RetValueType::ErrorIpcTypeMismatch }
                 else if sender.owning_proc == receiver.owning_proc { RetValueType::ErrorIpcSameProcess }
-                else if !old_u.process_map[sender.owning_proc].owned_pci_functions.contains((sent_bus as usize, sent_dev as usize, sent_fun as usize)) { RetValueType::ErrorIpcPciOwnerMismatch }
-                else { RetValueType::Success }
+                else {
+                    let bdf = (sent_bus as usize, sent_dev as usize, sent_fun as usize);
+                    let sender_functions = old_u.process_map[sender.owning_proc].pagetable->Some_0.pci_functions;
+                    if !sender_functions.dom().contains(bdf) { RetValueType::ErrorIpcPciOwnerMismatch }
+                    else if sender_functions[bdf] != 0 { RetValueType::ErrorIpcPciBarMapped }
+                    else if old_u.process_map[receiver.owning_proc].pagetable->Some_0.pci_functions.dom().len() >= PCI_FUNCTIONS_PER_PROCESS { RetValueType::ErrorIpcPciReceiverFull }
+                    else { RetValueType::Success }
+                }
             },
             _ => RetValueType::ErrorIpcTypeMismatch,
         }
@@ -676,8 +688,9 @@ pub open spec fn kernel_u_container_root_published(
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-            iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+                mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() }),
+            iommu_table: None, pcid: 1usize, owning_container: child, quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {
@@ -740,8 +753,9 @@ pub open spec fn kernel_u_container_root_created(
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
-            iommu_table: None, pcid: 1usize, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(),
+                mapping_1g: Map::empty(), pagetable_window_locks: Map::empty(), pci_functions: Map::empty() }),
+            iommu_table: None, pcid: 1usize, owning_container: child, quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {
@@ -849,8 +863,8 @@ pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, ..target_cpu }), ..old_u })
 }
 
-/// The running process, a live owner of `(bus, device, function)` with an IOMMU table, attaches DMA translation
-/// to that function. The table keeps its DID, or adopts the function's candidate DID when it has none; nothing
+/// The running process, alive, with `(bus, device, function)` in its page table's PCI function array and an IOMMU table,
+/// attaches DMA translation to that function. The table keeps its DID, or adopts the function's candidate DID when it has none; nothing
 /// else changes.
 #[verifier::opaque]
 pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> bool {
@@ -865,12 +879,41 @@ pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
     &&& !process.killed
     &&& pci_bdf_valid(bus, device, function)
-    &&& process.owned_pci_functions.contains((bus, device, function))
+    &&& process.pagetable is Some
+    &&& process.pagetable->Some_0.pci_functions.dom().contains((bus, device, function))
     &&& process.iommu_table is Some
     &&& !attached[bus as int][device as int][function as int]
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(cpu.current_process.unwrap(), ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }),
         iommu_root_table: IommuRootTableU { attached: seq3_update(attached, bus as int, device as int, function as int, true), ..old_u.iommu_root_table },
+        ..old_u
+    })
+}
+
+/// The running process, alive and the root process of the root container (it has no parent and its container has none),
+/// claims the unowned function `(bus, device, function)` into its page table's PCI function array, which has a free entry:
+/// the function becomes owned by the process with no BAR mapping; nothing else changes.
+#[verifier::opaque]
+pub open spec fn kernel_u_pci_claim_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let prc_ptr = cpu.current_process.unwrap();
+    let process = old_u.process_map[prc_ptr];
+    let table = process.pagetable->Some_0;
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.state is Running
+    &&& cpu.current_process is Some
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& !process.killed
+    &&& process.parent is None
+    &&& old_u.container_map.dom().contains(process.owning_container)
+    &&& old_u.container_map[process.owning_container].parent is None
+    &&& pci_bdf_valid(bus, device, function)
+    &&& old_u.iommu_root_table.owners[bus as int][device as int][function as int] is None
+    &&& process.pagetable is Some
+    &&& table.pci_functions.dom().len() < PCI_FUNCTIONS_PER_PROCESS
+    &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { pci_functions: table.pci_functions.insert((bus, device, function), 0), ..table }), ..process }),
+        iommu_root_table: IommuRootTableU { owners: seq3_update(old_u.iommu_root_table.owners, bus as int, device as int, function as int, Some(prc_ptr)), ..old_u.iommu_root_table },
         ..old_u
     })
 }

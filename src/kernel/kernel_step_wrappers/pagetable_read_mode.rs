@@ -61,6 +61,7 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
@@ -154,6 +155,7 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
@@ -242,6 +244,7 @@ pub proof fn kernel_pagetable_downgraded_and_progress_changed_implies_u_step(pre
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
@@ -324,6 +327,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);
@@ -434,6 +438,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rloc
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).present,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        post.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         page_ptr_valid(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).addr),
         pre.pg_arr.spec_index(page_ptr2page_index(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(va).addr)).view().view().state is Owned4k,

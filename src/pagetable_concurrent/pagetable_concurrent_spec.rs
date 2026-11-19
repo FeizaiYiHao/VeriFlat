@@ -29,6 +29,8 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub kernel_entries: Ghost<Seq<PageEntry>>,
     pub proc_ptr: RwLockProcessPtr,
     pub table_stale_cpus: Ghost<Set<CpuId>>,
+    /// The PCI functions the process owns; serialized by this big lock.
+    pub pci: PciFunctionArray,
 }
 
 /// The part of a page table the big lock protects: its upper half and the window-half snapshot.
@@ -369,6 +371,7 @@ impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
         &&& self.did_wf()
+        &&& self.pci.wf()
     }
 }
 
@@ -444,6 +447,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
             pagetable_window_locks: self.lower.pagetable_window_locks,
+            pci_functions: self.higher.pci.mapping_counts(),
         }
     }
 

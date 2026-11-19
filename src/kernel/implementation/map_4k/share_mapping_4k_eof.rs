@@ -169,6 +169,7 @@ pub(super) proof fn share_one_mapping_4k_eof(
         tlb_wf_spec_preserved_for_4k_mapping_insert(post.cpu_tlb, post.cpu_arr, pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), target_pagetable, target_va, post.pcid_needflush);
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 /// Loop state of `share_mapping_4k_build_and_share` after its first `i` leaves: the trace grew by `i` share range steps, the last one
@@ -401,6 +402,7 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
                 == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_4k().insert(target_va, whole_pagetable(mid.pt_mp, mid.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va))
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_2m() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_2m()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_1g()
+            &&& post.pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts() == mid.pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts()
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.pagetable_window_locks == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.pagetable_window_locks
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.window_stale_cpus == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.window_stale_cpus
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.l2_page(p).entry_lock(i).l1()]

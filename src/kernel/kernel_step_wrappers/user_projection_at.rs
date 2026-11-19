@@ -84,7 +84,7 @@ pub proof fn kernel_process_user_projection_at(krnl: &KernelK, ptr: RwLockProces
                     },
                     _ => None,
                 },
-                pcid: p_ro.pcid, owning_container: p_ro.owning_container, owned_pci_functions: p_ghost.owned_pci_functions.view(), quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
+                pcid: p_ro.pcid, owning_container: p_ro.owning_container, quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
                 parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth, uppertree_seq: p.uppertree_seq.view(),
                 subtree_set: p_ghost.subtree_set.view(), owned_threads: p.owned_threads.view(), killed: krnl.prc_mp.spec_index(ptr).being_killed(),
             })

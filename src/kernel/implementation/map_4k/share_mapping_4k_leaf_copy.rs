@@ -76,6 +76,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
                 whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_2m(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_1g(),
+        final(krnl).pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(target_pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i),

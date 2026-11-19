@@ -375,6 +375,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().remove(va),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g(),
+        post.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure(),
         post.pt_mp.spec_index(pagetable).view().higher.kernel_entries == pre.pt_mp.spec_index(pagetable).view().higher.kernel_entries,
         post.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end == pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end,
@@ -431,5 +432,6 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 }

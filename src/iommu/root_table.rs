@@ -8,7 +8,7 @@ pub const PCI_BUS_COUNT: usize = 256;
 pub const PCI_DEVICE_COUNT: usize = 32;
 pub const PCI_FUNCTION_COUNT: usize = 8;
 pub const PCI_DEVFN_COUNT: usize = PCI_DEVICE_COUNT * PCI_FUNCTION_COUNT;
-/// One context entry and one owner slot for every B/D/F.
+/// One context entry and one owned flag for every B/D/F.
 pub const PCI_BDF_COUNT: usize = PCI_BUS_COUNT * PCI_DEVFN_COUNT;
 
 pub const VTD_ENTRY_SIZE: usize = 16;
@@ -22,13 +22,12 @@ pub const VTD_CONTEXT_AW_4_LEVEL: usize = 0x2;
 pub type Seq3<A> = Seq<Seq<Seq<A>>>;
 
 pub const IOMMU_ROOT_TABLE_HARDWARE_PAGES: usize = 1 + PCI_BUS_COUNT;
-/// A total `usize` process owner occupies one machine word, so 65,536 owner
-/// slots occupy exactly 128 pages on this 64-bit target.
-pub const IOMMU_ROOT_TABLE_METADATA_PAGES: usize = 128;
+/// One `bool` owned flag per B/D/F: 65,536 flags occupy exactly 16 pages.
+pub const IOMMU_ROOT_TABLE_METADATA_PAGES: usize = 16;
 /// Kept as a literal because Verus checks executable `usize` constant
 /// arithmetic for overflow; the compile-time layout assertions below tie it
 /// back to the actual structure.
-pub const IOMMU_ROOT_TABLE_STATIC_SIZE: usize = 1_576_960;
+pub const IOMMU_ROOT_TABLE_STATIC_SIZE: usize = 1_118_208;
 
 pub open spec fn pci_bdf_valid(bus: usize, device: usize, function: usize) -> bool {
     &&& bus < PCI_BUS_COUNT
@@ -37,7 +36,7 @@ pub open spec fn pci_bdf_valid(bus: usize, device: usize, function: usize) -> bo
 }
 
 /// Stable, globally unique 16-bit BDF encoding. It indexes the flat
-/// context-entry and owner-slot arrays below and is the function's candidate
+/// context-entry and owned-flag arrays below and is the function's candidate
 /// VT-d domain ID; a present context entry may carry any valid domain ID.
 pub open spec fn pci_bdf_did(bus: usize, device: usize, function: usize) -> usize
     recommends
@@ -50,9 +49,6 @@ pub open spec fn pci_bdf_did(bus: usize, device: usize, function: usize) -> usiz
 pub open spec fn pci_bdf_of_did(did: VtdDomainId) -> PciBdf {
     (did / PCI_DEVFN_COUNT, (did % PCI_DEVFN_COUNT) / PCI_FUNCTION_COUNT, did % PCI_FUNCTION_COUNT)
 }
-
-/// Lexicographic B/D/F order; on valid B/D/Fs it is the flat slot order of `pci_bdf_did`.
-pub open spec fn pci_bdf_lt(a: PciBdf, b: PciBdf) -> bool { a.0 < b.0 || (a.0 == b.0 && (a.1 < b.1 || (a.1 == b.1 && a.2 < b.2))) }
 
 /// `s` with the one B/D/F slot replaced by `v`.
 pub open spec fn seq3_update<A>(s: Seq3<A>, bus: int, device: int, function: int, v: A) -> Seq3<A> {
@@ -124,7 +120,8 @@ impl VtdLegacyEntry {
 ///   * first page: 256 root entries;
 ///   * next 256 pages: the 256 context tables, one page per bus, kept as one
 ///     flat per-function entry array indexed by `pci_bdf_did`;
-///   * final 128 pages: one owner slot for every B/D/F, indexed the same way.
+///   * final 16 pages: one owned flag for every B/D/F, indexed the same way; the
+///     owning process of an owned function is ghost.
 ///
 /// The flat arrays keep the pinned hardware layout byte-identical to nested
 /// per-bus tables while letting one slot be rewritten in place.  The value
@@ -134,12 +131,13 @@ impl VtdLegacyEntry {
 pub struct IommuRootTable {
     root_entries: Array<VtdLegacyEntry, PCI_BUS_COUNT>,
     context_entries: Array<VtdLegacyEntry, PCI_BDF_COUNT>,
-    owner_slots: Array<RwLockProcessPtr, PCI_BDF_COUNT>,
+    owned: Array<bool, PCI_BDF_COUNT>,
+    owner_procs: Ghost<Seq<Option<RwLockProcessPtr>>>,
     table_base: Ghost<PAddr>,
 }
 
 impl IommuRootTable {
-    pub fn new_disabled(table_base: PAddr, owner_process: RwLockProcessPtr) -> (ret: Self)
+    pub fn new_disabled(table_base: PAddr) -> (ret: Self)
         requires
             table_base % VTD_TABLE_SIZE == 0,
             table_base as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
@@ -149,7 +147,7 @@ impl IommuRootTable {
             ret.wf(),
             ret.table_base() == table_base,
             forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_iommu_root(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_iommu_root(bus, device, function) is None,
-            forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_owner(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_owner(bus, device, function) == owner_process,
+            forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_owner(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_owner(bus, device, function) is None,
     {
         let mut root_entries: Array<VtdLegacyEntry, PCI_BUS_COUNT> = Array::new_with_init_value(VtdLegacyEntry::disabled());
         let mut bus = 0;
@@ -186,8 +184,8 @@ impl IommuRootTable {
             bus = bus + 1;
         }
         let context_entries: Array<VtdLegacyEntry, PCI_BDF_COUNT> = Array::new_with_init_value(VtdLegacyEntry::disabled());
-        let owner_slots: Array<RwLockProcessPtr, PCI_BDF_COUNT> = Array::new_with_init_value(owner_process);
-        let ret = Self { root_entries, context_entries, owner_slots, table_base: Ghost(table_base) };
+        let owned: Array<bool, PCI_BDF_COUNT> = Array::new_with_init_value(false);
+        let ret = Self { root_entries, context_entries, owned, owner_procs: Ghost(Seq::new(PCI_BDF_COUNT as nat, |slot: int| None)), table_base: Ghost(table_base) };
         assert(ret.wf()) by { reveal(IommuRootTable::wf); }
         ret
     }
@@ -208,9 +206,9 @@ impl IommuRootTable {
         seq3_from_flat(self.context_entries.view().map_values(|context: VtdLegacyEntry| context.iommu_root()))
     }
 
-    /// Total logical ownership interface. Every BDF slot has a process owner,
-    /// independently of whether its context entry is currently present.
-    pub closed spec fn owners(&self) -> Seq3<RwLockProcessPtr> { seq3_from_flat(self.owner_slots.view()) }
+    /// Logical ownership interface: the owning process of each B/D/F, `None` for
+    /// an unowned function, independently of whether its context entry is present.
+    pub closed spec fn owners(&self) -> Seq3<Option<RwLockProcessPtr>> { seq3_from_flat(self.owner_procs.view()) }
 
     /// Logical domain-ID interface. `None` means the context entry is not
     /// present; `Some(did)` exposes the VT-d domain ID the entry carries.
@@ -238,8 +236,8 @@ impl IommuRootTable {
         self.iommu_dids().spec_index(bus as int).spec_index(device as int).spec_index(function as int)
     }
 
-    /// Indexes the total process owner of one PCI function.
-    pub open spec fn spec_index_owner(&self, bus: usize, device: usize, function: usize) -> RwLockProcessPtr
+    /// Indexes the owning process of one PCI function, `None` when it is unowned.
+    pub open spec fn spec_index_owner(&self, bus: usize, device: usize, function: usize) -> Option<RwLockProcessPtr>
         recommends
             self.wf(),
             pci_bdf_valid(bus, device, function),
@@ -253,7 +251,10 @@ impl IommuRootTable {
     pub closed spec fn wf(&self) -> bool {
         &&& self.root_entries.wf()
         &&& self.context_entries.wf()
-        &&& self.owner_slots.wf()
+        &&& self.owned.wf()
+        &&& self.owner_procs.view().len() == PCI_BDF_COUNT
+        // A function is owned exactly when it has a ghost owning process.
+        &&& forall|slot: usize| #![trigger self.owned.spec_index(slot)] slot < PCI_BDF_COUNT ==> self.owned.spec_index(slot) == (self.owner_procs.view()[slot as int] is Some)
         &&& self.table_base.view() % VTD_TABLE_SIZE == 0
         &&& self.table_base.view() <= usize::MAX - IOMMU_ROOT_TABLE_STATIC_SIZE
         // Root entry `bus` is present and points at that bus's context table.
@@ -318,7 +319,8 @@ impl IommuRootTable {
         ensures
             final(self).context_entries.view() == old(self).context_entries.view().update(slot as int, VtdLegacyEntry { lower, upper }),
             final(self).root_entries == old(self).root_entries,
-            final(self).owner_slots == old(self).owner_slots,
+            final(self).owned == old(self).owned,
+            final(self).owner_procs == old(self).owner_procs,
             final(self).table_base == old(self).table_base,
     {
         let entry = &mut self.context_entries.ar[slot];
@@ -338,7 +340,8 @@ impl IommuRootTable {
         ensures
             final(self).context_entries.view() == old(self).context_entries.view().update(slot as int, VtdLegacyEntry { lower: 0, upper: 0 }),
             final(self).root_entries == old(self).root_entries,
-            final(self).owner_slots == old(self).owner_slots,
+            final(self).owned == old(self).owned,
+            final(self).owner_procs == old(self).owner_procs,
             final(self).table_base == old(self).table_base,
     {
         let entry = &mut self.context_entries.ar[slot];
@@ -347,7 +350,7 @@ impl IommuRootTable {
         unsafe { veriflat_iommu_flush_to_memory(entry as *mut VtdLegacyEntry as usize, core::mem::size_of::<VtdLegacyEntry>()); }
     }
 
-    /// Flat slot of one B/D/F, shared by the context entries and the owner slots.
+    /// Flat slot of one B/D/F, shared by the context entries and the owned flags.
     pub fn pci_bdf_slot(bus: usize, device: usize, function: usize) -> (ret: usize)
         requires
             pci_bdf_valid(bus, device, function),
@@ -371,15 +374,16 @@ impl IommuRootTable {
         (did / PCI_DEVFN_COUNT, (did % PCI_DEVFN_COUNT) / PCI_FUNCTION_COUNT, did % PCI_FUNCTION_COUNT)
     }
 
-    pub fn owner(&self, bus: usize, device: usize, function: usize) -> (ret: RwLockProcessPtr)
+    /// Whether one B/D/F is owned by some process.
+    pub fn is_owned(&self, bus: usize, device: usize, function: usize) -> (ret: bool)
         requires
             self.wf(),
             pci_bdf_valid(bus, device, function),
         ensures
-            ret == self.spec_index_owner(bus, device, function),
+            ret == self.spec_index_owner(bus, device, function) is Some,
     {
         proof { reveal(IommuRootTable::wf); }
-        *self.owner_slots.get(Self::pci_bdf_slot(bus, device, function))
+        *self.owned.get(Self::pci_bdf_slot(bus, device, function))
     }
 
     /// Whether the context entry of one B/D/F is present, i.e. DMA translation is attached.
@@ -412,29 +416,32 @@ impl IommuRootTable {
         if context.lower & 1 == 1 { Some((context.upper >> 8) & VTD_CONTEXT_DID_MASK) } else { None }
     }
 
-    /// Hands the B/D/F slot to `owner`; the context entry is untouched.
-    pub fn set_owner(&mut self, bus: usize, device: usize, function: usize, owner: RwLockProcessPtr)
+    /// Sets the owner of one B/D/F to `owner`; the context entry is untouched.
+    fn set_owner(&mut self, bus: usize, device: usize, function: usize, owned: bool, owner: Ghost<Option<RwLockProcessPtr>>)
         requires
             old(self).wf(),
             pci_bdf_valid(bus, device, function),
+            owned == owner.view() is Some,
         ensures
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
             final(self).iommu_roots() == old(self).iommu_roots(),
             final(self).iommu_dids() == old(self).iommu_dids(),
-            final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, owner),
+            final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, owner.view()),
             forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
                 #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { owner } else { old(self).spec_index_owner(b, d, f) }
+                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { owner.view() } else { old(self).spec_index_owner(b, d, f) }
                 &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
                 &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
             },
     {
         proof { reveal(IommuRootTable::wf); }
-        self.owner_slots.set(Self::pci_bdf_slot(bus, device, function), owner);
+        let slot = Self::pci_bdf_slot(bus, device, function);
+        self.owned.set(slot, owned);
+        self.owner_procs = Ghost(self.owner_procs.view().update(slot as int, owner.view()));
         proof {
             let pre = old(self).owners();
-            let post = seq3_update(pre, bus as int, device as int, function as int, owner);
+            let post = seq3_update(pre, bus as int, device as int, function as int, owner.view());
             assert_seqs_equal!(self.owners() == post, b => {
                 assert_seqs_equal!(self.owners()[b] == post[b], d => {
                     assert_seqs_equal!(self.owners()[b][d] == post[b][d], f => {
@@ -444,6 +451,50 @@ impl IommuRootTable {
                 });
             });
         }
+    }
+
+    /// The unowned B/D/F becomes owned by `owner`; its context entry is untouched.
+    pub fn claim(&mut self, bus: usize, device: usize, function: usize, owner: Ghost<RwLockProcessPtr>)
+        requires
+            old(self).wf(),
+            pci_bdf_valid(bus, device, function),
+            old(self).spec_index_owner(bus, device, function) is None,
+        ensures
+            final(self).wf(),
+            final(self).table_base() == old(self).table_base(),
+            final(self).iommu_roots() == old(self).iommu_roots(),
+            final(self).iommu_dids() == old(self).iommu_dids(),
+            final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, Some(owner.view())),
+            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
+                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { Some(owner.view()) } else { old(self).spec_index_owner(b, d, f) }
+                &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
+                &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
+            },
+    {
+        self.set_owner(bus, device, function, true, Ghost(Some(owner.view())));
+    }
+
+    /// The detached B/D/F becomes unowned; its context entry stays not present.
+    pub fn release(&mut self, bus: usize, device: usize, function: usize)
+        requires
+            old(self).wf(),
+            pci_bdf_valid(bus, device, function),
+            old(self).spec_index_iommu_root(bus, device, function) is None,
+        ensures
+            final(self).wf(),
+            final(self).table_base() == old(self).table_base(),
+            final(self).iommu_roots() == old(self).iommu_roots(),
+            final(self).iommu_dids() == old(self).iommu_dids(),
+            final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, None),
+            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
+                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(self).spec_index_owner(b, d, f) }
+                &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
+                &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
+            },
+    {
+        self.set_owner(bus, device, function, false, Ghost(None));
     }
 
     /// Clears the context entry of one B/D/F so the device no longer translates.
@@ -512,6 +563,97 @@ impl IommuRootTable {
         proof {
             Self::attach_eof_iommu_roots(*old(self), *self, bus, device, function, root, did);
             Self::attach_eof_iommu_dids(*old(self), *self, bus, device, function, root, did);
+        }
+    }
+
+    /// The first used entry of `pci`, other than `removed`, whose function's present context entry carries `did`.
+    pub fn first_attached_in_did(&self, pci: &PciFunctionArray, did: VtdDomainId, removed: PciBdf) -> (ret: Option<PciBdf>)
+        requires
+            self.wf(),
+            pci.wf(),
+        ensures
+            ret matches Some(bdf) ==> {
+                &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
+                &&& bdf != removed
+                &&& pci.view().dom().contains(bdf)
+                &&& self.spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == Some(did)
+            },
+            ret is None ==> forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) ==> self.spec_index_iommu_did(b, d, f) != Some(did),
+            forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
+    {
+        broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_implies_context_entries_wf(); }; }
+        let mut i: usize = 0;
+        while i < PCI_FUNCTIONS_PER_PROCESS
+            invariant
+                self.wf(),
+                pci.wf(),
+                self.context_entries.view().len() == PCI_BDF_COUNT,
+                i <= PCI_FUNCTIONS_PER_PROCESS,
+                forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
+                    pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) && pci.index_of((b, d, f)) < i
+                        ==> self.spec_index_iommu_did(b, d, f) != Some(did),
+            decreases PCI_FUNCTIONS_PER_PROCESS - i,
+        {
+            broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+            let entry = pci.entry(i);
+            proof { if entry.used { pci.wf_entry_at(i as int); pci.wf_function_at(entry.bdf); } }
+            if entry.used && (entry.bdf.0 != removed.0 || entry.bdf.1 != removed.1 || entry.bdf.2 != removed.2) {
+                let current = self.iommu_did(entry.bdf.0, entry.bdf.1, entry.bdf.2);
+                if current.is_some() && current.unwrap() == did { return Some(entry.bdf); }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
+    /// Clears the context entry of every function of `pci`; owners and the other entries are untouched.
+    pub fn detach_array(&mut self, pci: &PciFunctionArray)
+        requires
+            old(self).wf(),
+            pci.wf(),
+        ensures
+            final(self).wf(),
+            final(self).table_base() == old(self).table_base(),
+            final(self).owners() == old(self).owners(),
+            forall|b: usize, d: usize, f: usize| #![trigger old(self).spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> (old(self).spec_index_iommu_did(b, d, f) is Some) == (old(self).spec_index_iommu_root(b, d, f) is Some),
+            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
+                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+                let owned = pci.view().dom().contains((b, d, f));
+                &&& final(self).spec_index_owner(b, d, f) == old(self).spec_index_owner(b, d, f)
+                &&& final(self).spec_index_iommu_root(b, d, f) == if owned { None } else { old(self).spec_index_iommu_root(b, d, f) }
+                &&& final(self).spec_index_iommu_did(b, d, f) == if owned { None } else { old(self).spec_index_iommu_did(b, d, f) }
+            },
+    {
+        broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_implies_context_entries_wf(); }; }
+        let mut i: usize = 0;
+        while i < PCI_FUNCTIONS_PER_PROCESS
+            invariant
+                self.wf(),
+                pci.wf(),
+                old(self).context_entries.view().len() == PCI_BDF_COUNT,
+                self.table_base() == old(self).table_base(),
+                self.owners() == old(self).owners(),
+                i <= PCI_FUNCTIONS_PER_PROCESS,
+                forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_root(b, d, f)] #![trigger self.spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+                    let done = pci.view().dom().contains((b, d, f)) && pci.index_of((b, d, f)) < i;
+                    &&& self.spec_index_iommu_root(b, d, f) == if done { None } else { old(self).spec_index_iommu_root(b, d, f) }
+                    &&& self.spec_index_iommu_did(b, d, f) == if done { None } else { old(self).spec_index_iommu_did(b, d, f) }
+                },
+            decreases PCI_FUNCTIONS_PER_PROCESS - i,
+        {
+            broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+            let entry = pci.entry(i);
+            if entry.used {
+                let (bus, device, function) = entry.bdf;
+                proof { pci.wf_entry_at(i as int); pci.wf_function_at(entry.bdf); self.wf_context_entry_at(bus, device, function); }
+                if self.is_attached(bus, device, function) { self.detach(bus, device, function); }
+            }
+            i = i + 1;
         }
     }
 
@@ -604,116 +746,6 @@ impl IommuRootTable {
             });
         });
     }
-
-    /// The lexicographically first B/D/F other than `removed` that `owner` owns and whose present context entry carries `did`.
-    pub fn first_attached_owned(&self, owner: RwLockProcessPtr, did: VtdDomainId, removed: Option<PciBdf>) -> (ret: Option<PciBdf>)
-        requires
-            self.wf(),
-        ensures
-            ret matches Some(bdf) ==> {
-                &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
-                &&& Some(bdf) != removed
-                &&& self.spec_index_owner(bdf.0, bdf.1, bdf.2) == owner
-                &&& self.spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == Some(did)
-            },
-            forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_owner(b, d, f)] #![trigger self.spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) && (ret is None || pci_bdf_lt((b, d, f), ret.unwrap())) && Some((b, d, f)) != removed && self.spec_index_owner(b, d, f) == owner
-                ==> self.spec_index_iommu_did(b, d, f) != Some(did),
-            forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
-    {
-        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_implies_context_entries_wf(); }; }
-        let mut bus: usize = 0;
-        let mut device: usize = 0;
-        let mut function: usize = 0;
-        while bus < PCI_BUS_COUNT
-            invariant
-                self.wf(),
-                self.context_entries.view().len() == PCI_BDF_COUNT,
-                bus <= PCI_BUS_COUNT,
-                device < PCI_DEVICE_COUNT,
-                function < PCI_FUNCTION_COUNT,
-                bus == PCI_BUS_COUNT ==> device == 0 && function == 0,
-                forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_owner(b, d, f)] #![trigger self.spec_index_iommu_did(b, d, f)]
-                    pci_bdf_valid(b, d, f) && pci_bdf_lt((b, d, f), (bus, device, function)) && Some((b, d, f)) != removed && self.spec_index_owner(b, d, f) == owner
-                    ==> self.spec_index_iommu_did(b, d, f) != Some(did),
-            decreases PCI_BUS_COUNT - bus, PCI_DEVICE_COUNT - device, PCI_FUNCTION_COUNT - function,
-        {
-            let is_removed = match removed { Some(r) => r.0 == bus && r.1 == device && r.2 == function, None => false };
-            if !is_removed && self.owner(bus, device, function) == owner {
-                let current = self.iommu_did(bus, device, function);
-                if current.is_some() && current.unwrap() == did { return Some((bus, device, function)); }
-            }
-            if function + 1 < PCI_FUNCTION_COUNT {
-                function = function + 1;
-            } else if device + 1 < PCI_DEVICE_COUNT {
-                function = 0;
-                device = device + 1;
-            } else {
-                function = 0;
-                device = 0;
-                bus = bus + 1;
-            }
-        }
-        None
-    }
-
-    /// Clears the context entry of every B/D/F that `owner` owns and hands its slot to `recipient`; other slots are untouched.
-    pub fn detach_owned_contexts(&mut self, owner: RwLockProcessPtr, recipient: RwLockProcessPtr)
-        requires
-            old(self).wf(),
-        ensures
-            final(self).wf(),
-            final(self).table_base() == old(self).table_base(),
-            owner == recipient ==> final(self).owners() == old(self).owners(),
-            forall|b: usize, d: usize, f: usize| #![trigger old(self).spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) ==> (old(self).spec_index_iommu_did(b, d, f) is Some) == (old(self).spec_index_iommu_root(b, d, f) is Some),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                let owned = old(self).spec_index_owner(b, d, f) == owner;
-                &&& final(self).spec_index_owner(b, d, f) == if owned { recipient } else { old(self).spec_index_owner(b, d, f) }
-                &&& final(self).spec_index_iommu_root(b, d, f) == if owned { None } else { old(self).spec_index_iommu_root(b, d, f) }
-                &&& final(self).spec_index_iommu_did(b, d, f) == if owned { None } else { old(self).spec_index_iommu_did(b, d, f) }
-            },
-    {
-        let mut bus: usize = 0;
-        let mut device: usize = 0;
-        let mut function: usize = 0;
-        while bus < PCI_BUS_COUNT
-            invariant
-                self.wf(),
-                self.table_base() == old(self).table_base(),
-                owner == recipient ==> self.owners() == old(self).owners(),
-                bus <= PCI_BUS_COUNT,
-                device < PCI_DEVICE_COUNT,
-                function < PCI_FUNCTION_COUNT,
-                bus == PCI_BUS_COUNT ==> device == 0 && function == 0,
-                forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_owner(b, d, f)] #![trigger self.spec_index_iommu_root(b, d, f)]
-                    #![trigger self.spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                    let owned = pci_bdf_lt((b, d, f), (bus, device, function)) && old(self).spec_index_owner(b, d, f) == owner;
-                    &&& self.spec_index_owner(b, d, f) == if owned { recipient } else { old(self).spec_index_owner(b, d, f) }
-                    &&& self.spec_index_iommu_root(b, d, f) == if owned { None } else { old(self).spec_index_iommu_root(b, d, f) }
-                    &&& self.spec_index_iommu_did(b, d, f) == if owned { None } else { old(self).spec_index_iommu_did(b, d, f) }
-                },
-            decreases PCI_BUS_COUNT - bus, PCI_DEVICE_COUNT - device, PCI_FUNCTION_COUNT - function,
-        {
-            if self.owner(bus, device, function) == owner {
-                self.detach(bus, device, function);
-                if recipient != owner { self.set_owner(bus, device, function, recipient); }
-            }
-            if function + 1 < PCI_FUNCTION_COUNT {
-                function = function + 1;
-            } else if device + 1 < PCI_DEVICE_COUNT {
-                function = 0;
-                device = device + 1;
-            } else {
-                function = 0;
-                device = 0;
-                bus = bus + 1;
-            }
-        }
-        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_implies_context_entries_wf(); }; }
-    }
 }
 
 /// The whole table is one lock in the root-table cell static; its payload is pinned one 4K page after the lock word,
@@ -775,6 +807,7 @@ const ASSERT_VTD_ENTRY_ALIGNMENT: [(); 8] = [(); core::mem::align_of::<VtdLegacy
 const ASSERT_VTD_ENTRY_UPPER_OFFSET: [(); 8] = [(); core::mem::offset_of!(VtdLegacyEntry, upper)];
 const ASSERT_IOMMU_CONTEXT_ENTRIES_SIZE: [(); PCI_BUS_COUNT * VTD_TABLE_SIZE] = [(); core::mem::size_of::<Array<VtdLegacyEntry, PCI_BDF_COUNT>>()];
 const ASSERT_IOMMU_CONTEXT_ENTRIES_OFFSET: [(); VTD_TABLE_SIZE] = [(); core::mem::offset_of!(IommuRootTable, context_entries)];
-const ASSERT_IOMMU_OWNER_SLOTS_OFFSET: [(); IOMMU_ROOT_TABLE_HARDWARE_PAGES * VTD_TABLE_SIZE] = [(); core::mem::offset_of!(IommuRootTable, owner_slots)];
+const ASSERT_IOMMU_OWNED_FLAGS_SIZE: [(); IOMMU_ROOT_TABLE_METADATA_PAGES * VTD_TABLE_SIZE] = [(); core::mem::size_of::<Array<bool, PCI_BDF_COUNT>>()];
+const ASSERT_IOMMU_OWNED_FLAGS_OFFSET: [(); IOMMU_ROOT_TABLE_HARDWARE_PAGES * VTD_TABLE_SIZE] = [(); core::mem::offset_of!(IommuRootTable, owned)];
 const ASSERT_IOMMU_ROOT_TABLE_SIZE: [(); IOMMU_ROOT_TABLE_STATIC_SIZE] = [(); core::mem::size_of::<IommuRootTable>()];
 const ASSERT_IOMMU_ROOT_TABLE_ALIGNMENT: [(); VTD_TABLE_SIZE] = [(); core::mem::align_of::<IommuRootTable>()];

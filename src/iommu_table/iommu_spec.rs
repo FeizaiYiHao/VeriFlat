@@ -35,6 +35,7 @@ impl IommuTable {
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
             pagetable_window_locks: Map::empty(),
+            pci_functions: Map::empty(),
         }
     }
 

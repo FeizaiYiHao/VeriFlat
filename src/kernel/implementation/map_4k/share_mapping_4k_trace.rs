@@ -158,6 +158,7 @@ pub proof fn share_4k_leaf_step_from_k(
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).lower.pagetable_window_locks,
+        post.pt_mp.spec_index(target_table).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(target_table).view().higher.pci.mapping_counts(),
     ensures
         share_4k_leaf_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
         share_4k_leaf_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
@@ -254,6 +255,7 @@ pub proof fn share_4k_directory_step_from_k(
             &&& pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr
             &&& mid.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
             &&& mid.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, mid.pt_lower.view().spec_index(pagetable_ptr))
+            &&& mid.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts()
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k()
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m()
             &&& whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g()
@@ -280,6 +282,7 @@ pub proof fn share_4k_directory_step_from_k(
             &&& mid.thrd_mp.unchanged_except(&pre.thrd_mp, quota_thrd_ptr)
             &&& mid.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
             &&& mid.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, mid.pt_lower.view().spec_index(pagetable_ptr))
+            &&& mid.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts() == pre.pt_mp.spec_index(pagetable_ptr).view().higher.pci.mapping_counts()
             &&& pre.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())
             &&& mid.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())
             &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)

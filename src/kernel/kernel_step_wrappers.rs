@@ -275,6 +275,7 @@ impl KernelSteps {
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& krnl.pt_mp.spec_index(p).view().higher.pci.mapping_counts() == old(self).snapshot_k().pt_mp.spec_index(p).view().higher.pci.mapping_counts()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {
@@ -390,6 +391,7 @@ impl KernelSteps {
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& krnl.pt_mp.spec_index(p).view().higher.pci.mapping_counts() == old(self).snapshot_k().pt_mp.spec_index(p).view().higher.pci.mapping_counts()
                     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {
