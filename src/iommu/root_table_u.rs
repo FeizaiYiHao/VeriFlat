@@ -30,7 +30,8 @@ pub open spec fn pci_handoff_table_did(
             &&& attached[anchor.0 as int][anchor.1 as int][anchor.2 as int]
         }
         &&& forall|b: usize, d: usize, f: usize| #![trigger owners[b as int][d as int][f as int]] #![trigger attached[b as int][d as int][f as int]]
-            pci_bdf_valid(b, d, f) && (b, d, f) != bdf && owners[b as int][d as int][f as int] == Some(owner) && attached[b as int][d as int][f as int] ==> new_did is Some
+            pci_bdf_valid(b, d, f) && (b, d, f) != bdf && owners[b as int][d as int][f as int] == Some(owner) && attached[b as int][d as int][f as int]
+                ==> new_did is Some && !pci_bdf_lt((b, d, f), pci_bdf_of_did(new_did->Some_0))
     } else { new_did == old_did }
 }
 

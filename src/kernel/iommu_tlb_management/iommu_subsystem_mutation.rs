@@ -54,6 +54,9 @@ pub fn iommu_root_table_detach_owned(
             &&& anchor != (bus, device, function)
             &&& pci.view().dom().contains(anchor)
             &&& old(irt).view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(pci_bdf_did(bus, device, function))
+            &&& forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) && (b, d, f) != (bus, device, function) && pci.view().dom().contains((b, d, f))
+                    && old(irt).view().spec_index_iommu_did(b, d, f) == Some(pci_bdf_did(bus, device, function)) ==> !pci_bdf_lt((b, d, f), anchor)
         },
         ret is None && old(irt).view().spec_index_iommu_did(bus, device, function) == Some(pci_bdf_did(bus, device, function)) ==> forall|b: usize, d: usize, f: usize|
             #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]

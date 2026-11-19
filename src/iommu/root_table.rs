@@ -50,6 +50,9 @@ pub open spec fn pci_bdf_of_did(did: VtdDomainId) -> PciBdf {
     (did / PCI_DEVFN_COUNT, (did % PCI_DEVFN_COUNT) / PCI_FUNCTION_COUNT, did % PCI_FUNCTION_COUNT)
 }
 
+/// Lexicographic B/D/F order; on valid B/D/Fs it is the flat slot order of `pci_bdf_did`.
+pub open spec fn pci_bdf_lt(a: PciBdf, b: PciBdf) -> bool { a.0 < b.0 || (a.0 == b.0 && (a.1 < b.1 || (a.1 == b.1 && a.2 < b.2))) }
+
 /// `s` with the one B/D/F slot replaced by `v`.
 pub open spec fn seq3_update<A>(s: Seq3<A>, bus: int, device: int, function: int, v: A) -> Seq3<A> {
     Seq::new(PCI_BUS_COUNT as nat, |b: int| Seq::new(PCI_DEVICE_COUNT as nat, |d: int|
@@ -565,8 +568,7 @@ impl IommuRootTable {
             Self::attach_eof_iommu_dids(*old(self), *self, bus, device, function, root, did);
         }
     }
-
-    /// The first used entry of `pci`, other than `removed`, whose function's present context entry carries `did`.
+    /// The lexicographically first B/D/F of `pci` other than `removed` whose present context entry carries `did`.
     pub fn first_attached_in_did(&self, pci: &PciFunctionArray, did: VtdDomainId, removed: PciBdf) -> (ret: Option<PciBdf>)
         requires
             self.wf(),
@@ -578,13 +580,15 @@ impl IommuRootTable {
                 &&& pci.view().dom().contains(bdf)
                 &&& self.spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == Some(did)
             },
-            ret is None ==> forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) ==> self.spec_index_iommu_did(b, d, f) != Some(did),
+            forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) && self.spec_index_iommu_did(b, d, f) == Some(did)
+                    ==> ret is Some && !pci_bdf_lt((b, d, f), ret.unwrap()),
             forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
         proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_implies_context_entries_wf(); }; }
+        let mut first: Option<PciBdf> = None;
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
@@ -592,9 +596,15 @@ impl IommuRootTable {
                 pci.wf(),
                 self.context_entries.view().len() == PCI_BDF_COUNT,
                 i <= PCI_FUNCTIONS_PER_PROCESS,
+                first matches Some(bdf) ==> {
+                    &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
+                    &&& bdf != removed
+                    &&& pci.view().dom().contains(bdf)
+                    &&& self.spec_index_iommu_did(bdf.0, bdf.1, bdf.2) == Some(did)
+                },
                 forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
                     pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) && pci.index_of((b, d, f)) < i
-                        ==> self.spec_index_iommu_did(b, d, f) != Some(did),
+                        && self.spec_index_iommu_did(b, d, f) == Some(did) ==> first is Some && !pci_bdf_lt((b, d, f), first.unwrap()),
             decreases PCI_FUNCTIONS_PER_PROCESS - i,
         {
             broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
@@ -602,11 +612,18 @@ impl IommuRootTable {
             proof { if entry.used { pci.wf_entry_at(i as int); pci.wf_function_at(entry.bdf); } }
             if entry.used && (entry.bdf.0 != removed.0 || entry.bdf.1 != removed.1 || entry.bdf.2 != removed.2) {
                 let current = self.iommu_did(entry.bdf.0, entry.bdf.1, entry.bdf.2);
-                if current.is_some() && current.unwrap() == did { return Some(entry.bdf); }
+                if current.is_some() && current.unwrap() == did {
+                    let c = entry.bdf;
+                    let earlier = match first {
+                        None => true,
+                        Some(m) => c.0 < m.0 || (c.0 == m.0 && (c.1 < m.1 || (c.1 == m.1 && c.2 < m.2))),
+                    };
+                    if earlier { first = Some(c); }
+                }
             }
             i = i + 1;
         }
-        None
+        first
     }
 
     /// Clears the context entry of every function of `pci`; owners and the other entries are untouched.

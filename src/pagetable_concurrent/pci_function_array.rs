@@ -191,7 +191,7 @@ impl PciFunctionArray {
             ret matches Some(i) ==> i < PCI_FUNCTIONS_PER_PROCESS && !self.spec_entry(i as int).used,
             (ret is None) == (self.view().dom().len() >= PCI_FUNCTIONS_PER_PROCESS),
     {
-        proof { reveal(PciFunctionArray::wf); assert(self.view().dom() == self.owned.view().dom()); }
+        proof { reveal(PciFunctionArray::wf); }
         if self.len >= PCI_FUNCTIONS_PER_PROCESS { return None; }
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS
@@ -237,7 +237,7 @@ impl PciFunctionArray {
             forall|j: int| #![trigger final(self).spec_entry(j)] j != i ==> final(self).spec_entry(j) == old(self).spec_entry(j),
             forall|f: PciBdf| #![trigger final(self).index_of(f)] old(self).view().dom().contains(f) ==> final(self).index_of(f) == old(self).index_of(f),
     {
-        proof { reveal(PciFunctionArray::wf); assert(old(self).view().dom() == old(self).owned.view().dom()); }
+        proof { reveal(PciFunctionArray::wf); }
         let f = (bus, device, function);
         self.entries.set(i, PciFunctionEntry { used: true, bdf: f, count: 0 });
         self.len = self.len + 1;
@@ -262,7 +262,7 @@ impl PciFunctionArray {
             forall|j: int| #![trigger final(self).spec_entry(j)] j != i ==> final(self).spec_entry(j) == old(self).spec_entry(j),
             forall|f: PciBdf| #![trigger final(self).index_of(f)] final(self).view().dom().contains(f) ==> final(self).index_of(f) == old(self).index_of(f),
     {
-        proof { reveal(PciFunctionArray::wf); assert(old(self).view().dom() == old(self).owned.view().dom()); }
+        proof { reveal(PciFunctionArray::wf); }
         let f = self.entry(i).bdf;
         self.entries.set(i, PciFunctionEntry { used: false, bdf: f, count: 0 });
         proof { broadcast use vstd::set::lemma_set_remove_len, vstd::set::lemma_set_contains_len; }

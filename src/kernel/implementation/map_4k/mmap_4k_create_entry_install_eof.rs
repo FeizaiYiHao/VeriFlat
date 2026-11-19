@@ -407,10 +407,12 @@ proof fn install_staged_4k_page_table_page_eof_structure_cache_present_roots_at(
     ensures
         forall|i: L4Index| #![trigger post.cpu_tlb.structure_cache((cpu_id, pcid)).pml4e.spec_index(i)]
             post.cpu_tlb.structure_cache((cpu_id, pcid)).pml4e.dom().contains(i) &&
-                whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(i) is None ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).higher.table_stale_cpus.view().contains(cpu_id),
+                whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(i) is None ==>
+                    whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).higher.table_stale_cpus.view().contains(cpu_id),
         forall|key: (L4Index, L3Index)| #![trigger post.cpu_tlb.structure_cache((cpu_id, pcid)).pdpte.spec_index(key)]
             post.cpu_tlb.structure_cache((cpu_id, pcid)).pdpte.dom().contains(key) &&
-                whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(key.0, key.1) is None ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).higher.table_stale_cpus.view().contains(cpu_id),
+                whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(key.0, key.1) is None ==>
+                    whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).higher.table_stale_cpus.view().contains(cpu_id),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
