@@ -395,6 +395,17 @@ verus! {
                     &&& mmap_4k_directory_step_pre(final(steps).view().last().old_u, cpu_id)
                     &&& mmap_4k_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id)
                 },
+            old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k
+                && mmap_4k_directory_rank(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level))
+                && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
+                && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr) && transfer_source is None && progress_thread == quota_thrd_ptr && write_held
+                && (level is L3 ==> indices.0 == spec_v2l4index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && indices.1 == spec_v2l3index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va)
+                    && lo == spec_v2l2index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && hi == lo) ==> {
+                    &&& final(steps).view() == old(steps).view().push(final(steps).view().last())
+                    &&& map_pci_bar_4k_directory_step_pre(final(steps).view().last().old_u, cpu_id)
+                    &&& map_pci_bar_4k_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id)
+                },
+            final(krnl).pci_bars == old(krnl).pci_bars,
     {
         let ghost share_guard = old(steps).snapshot_k() == *old(krnl) && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread)
             && typed_lock_map_contains_mode(old(lctx).thread_lock_map(), progress_thread, TypedLockMode::Write)
@@ -428,6 +439,12 @@ verus! {
             && (level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
                 w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi));
+        let ghost pci_guard = old(steps).snapshot_k() == *old(krnl) && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k
+            && mmap_4k_directory_rank(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level))
+            && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().owning_proc == prc_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr)
+            && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(quota_thrd_ptr) && transfer_source is None && progress_thread == quota_thrd_ptr && write_held
+            && (level is L3 ==> indices.0 == spec_v2l4index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && indices.1 == spec_v2l3index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va)
+                && lo == spec_v2l2index(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && hi == lo);
         let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
         let ghost entry_lctx = *lctx;
         let alloc_ctn_ptr = match transfer_source { Some(source) => source, None => ctn_ptr };
@@ -456,9 +473,9 @@ verus! {
             }
         }
         let windows = install_one_mmap_4k_directory_page_link_and_end_step(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), level, cpu_id, pg_ptr, quota_thrd_ptr, prc_ptr,
-            ctn_ptr, pagetable_ptr, indices, lo, hi, write_held, transfer_source, progress_thread, Ghost(entry_lctx), Ghost(mmap_guard), Ghost(share_guard), Tracked(page_lock_perm),
-            Tracked(quota_thread_lock_perm), Tracked(progress_thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
-            Tracked(window_perm));
+            ctn_ptr, pagetable_ptr, indices, lo, hi, write_held, transfer_source, progress_thread, Ghost(entry_lctx), Ghost(mmap_guard), Ghost(share_guard), Ghost(pci_guard),
+            Tracked(page_lock_perm), Tracked(quota_thread_lock_perm), Tracked(progress_thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm),
+            Tracked(transfer_target_lock_perm), Tracked(window_perm));
         proof {
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr); };
         }
@@ -503,9 +520,9 @@ verus! {
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
-            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some && old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m,
-            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_phase is Fill,
-            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_mapped < old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.len,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some && (old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m || old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar2m),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m ==> old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_phase is Fill,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m ==> old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_mapped < old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.len,
             old(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
             old(krnl).pt_mp.dom().contains(pagetable_ptr),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
@@ -513,11 +530,14 @@ verus! {
             pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
             pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             level is L4 || level is L3,
-            level is L4 ==> !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_directory is L4),
-            level is L4 ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m && level is L4 ==> !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_directory is L4),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m && level is L4 ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(WindowVa { va: spec_index2va((indices.0, indices.1, lo, 0usize)) }),
             KERNEL_MEM_END_L4INDEX <= indices.0,
             pei_valid(lo) && pei_valid(hi) && lo <= hi,
-            level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar2m ==> (level is L4 && old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is None) || (level is L3 && !(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is L3)),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar2m && level is L3 ==> indices.0 == spec_v2l4index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va)
+                && indices.1 == spec_v2l3index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && lo == spec_v2l2index(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && hi == lo,
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m && level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w)]
                 w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
                     ==> va_range_2m_windows(old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->Mmap2m_range.covering_4k_range()).contains(w) == (lo <= spec_v2l2index(w.va) <= hi),
             old(krnl).thrd_mp.spec_index(thrd_ptr).view().temp_alloc_cache_2m.view().len() == 0,
@@ -543,8 +563,11 @@ verus! {
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             final(steps).view() == old(steps).view().push(final(steps).view().last()),
-            mmap_2m_directory_step_pre(final(steps).view().last().old_u, cpu_id),
-            mmap_2m_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap2m ==> mmap_2m_directory_step_pre(final(steps).view().last().old_u, cpu_id)
+                && mmap_2m_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
+            old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar2m ==> map_pci_bar_2m_directory_step_pre(final(steps).view().last().old_u, cpu_id)
+                && map_pci_bar_2m_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
+            final(krnl).pci_bars == old(krnl).pci_bars,
             held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
             final(krnl).cpu_arr.spec_index(cpu_id).view().view_lock() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_lock(),
             final(krnl).cpu_arr.spec_index(cpu_id).view().is_init() == old(krnl).cpu_arr.spec_index(cpu_id).view().is_init(),

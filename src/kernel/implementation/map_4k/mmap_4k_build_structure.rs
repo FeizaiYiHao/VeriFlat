@@ -258,6 +258,7 @@ verus! {
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state,
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited,
             !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
+                || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k
                 || (progress_thread == quota_thrd_ptr && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Share4k)))
                 ==> final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(),
             old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some ==> {
@@ -636,6 +637,7 @@ verus! {
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state,
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited,
             !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
+                || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k
                 || (progress_thread == quota_thrd_ptr && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Share4k)))
                 ==> final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(),
             old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some ==> {
@@ -995,6 +997,7 @@ verus! {
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().state,
             final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().exited,
             !(old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some && (old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Mmap4k
+                || old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar4k
                 || (progress_thread == quota_thrd_ptr && old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view()->Some_0 is Share4k)))
                 ==> final(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() == old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view(),
             old(krnl).thrd_mp.spec_index(quota_thrd_ptr).view().syscall_progress.view() is Some ==> {

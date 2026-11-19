@@ -15,7 +15,7 @@ pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: Ker
         pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& post.pt_mp.spec_index(pagetable).view().higher == pre.pt_mp.spec_index(pagetable).view().higher
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).view().higher == pre.pt_mp.spec_index(p).view().higher
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup == if pre.pt_mp.spec_index(pagetable).wlocked() { Ghost(post.pt_lower.view().spec_index(pagetable)) } else { pre.pt_mp.spec_index(pagetable).view().lower_backup }
     &&& new_c.mapping_4k() == old_c.mapping_4k().insert(va, MapEntry { present: false, ..old_c.mapping_4k().spec_index(va) })
     &&& new_c.mapping_2m() == old_c.mapping_2m()
@@ -34,6 +34,38 @@ pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: Ker
         })
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_2m_l2(l4i, l3i, l2i)]
         old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.spec_held_2m_l2(l4i, l3i, l2i) == old_c.spec_held_2m_l2(l4i, l3i, l2i)
+}
+
+/// `pagetable_pci_mappings_wf`: the hidden leaf at `va` stays held with its target and IO bit, so its record still holds, and no
+/// longer being present it needs none; every other leaf and record is unchanged.
+proof fn clear_4k_mapping_present_eof_pagetable_pci_mappings_wf(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()),
+        clear_4k_mapping_present_eof_transition_framing(pre, post, pagetable, va),
+        pre.pt_mp.dom().contains(pagetable),
+        va_4k_valid(va),
+        pre.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= spec_va2index(va).0,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{
+    reveal(clear_4k_mapping_present_eof_transition_framing);
+    broadcast use spec_va_4k_valid_index_roundtrip;
+    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+    reveal(pagetable_pci_mappings_wf);
+}
+
+/// `pci_function_ownership_wf`: the root table, the processes and every PCI function array are unchanged.
+proof fn clear_4k_mapping_present_eof_pci_function_ownership_wf(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        clear_4k_mapping_present_eof_transition_framing(pre, post, pagetable, va),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{
+    reveal(clear_4k_mapping_present_eof_transition_framing);
+    reveal(pci_function_ownership_wf);
 }
 
 pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
@@ -57,13 +89,7 @@ pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pa
     ensures post.inv(),
 {
     reveal(clear_4k_mapping_present_eof_transition_framing);
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
-        broadcast use spec_va_4k_valid_index_roundtrip;
-        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-        reveal(pagetable_pci_mappings_wf);
-    };
+    clear_4k_mapping_present_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
@@ -90,6 +116,6 @@ pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pa
         reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    clear_4k_mapping_present_eof_pci_function_ownership_wf(pre, post, pagetable, va);
 }
 }

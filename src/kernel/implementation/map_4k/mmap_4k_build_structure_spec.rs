@@ -23,10 +23,11 @@ pub open spec fn mmap_4k_installed_directory(level: MissingPageTableLevel) -> Mm
     }
 }
 
-/// Installing a directory records its level in mmap progress and leaves other progress unchanged.
+/// Installing a directory records its level in mmap or BAR mapping progress and leaves other progress unchanged.
 pub open spec fn mmap_4k_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
     match progress {
         Some(SyscallProgress::Mmap4k { range, mapped, directory: _, phase }) => Some(SyscallProgress::Mmap4k { range, mapped, directory: mmap_4k_installed_directory(level), phase }),
+        Some(SyscallProgress::MapPciBar4k { va, directory: _ }) => Some(SyscallProgress::MapPciBar4k { va, directory: mmap_4k_installed_directory(level) }),
         _ => progress,
     }
 }
@@ -83,10 +84,12 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     })
 }
 
-/// Installing an L4 or L3 directory for a 2M page records that level in mmap progress and leaves other progress unchanged.
+/// Installing an L4 or L3 directory for a 2M page records that level in mmap or BAR mapping progress and leaves other progress
+/// unchanged.
 pub open spec fn mmap_2m_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
     match progress {
         Some(SyscallProgress::Mmap2m { range, mapped, directory: _, phase, flushed }) => Some(SyscallProgress::Mmap2m { range, mapped, directory: if level is L4 { Mmap2mDirectory::L4 } else { Mmap2mDirectory::L3 }, phase, flushed }),
+        Some(SyscallProgress::MapPciBar2m { va, directory: _, flushed }) => Some(SyscallProgress::MapPciBar2m { va, directory: if level is L4 { Mmap2mDirectory::L4 } else { Mmap2mDirectory::L3 }, flushed }),
         _ => progress,
     }
 }
@@ -122,6 +125,79 @@ pub open spec fn mmap_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& dir is L3 ==> !new_windows.dom().filter(|w: WindowVa| va_range_2m_windows(progress->Mmap2m_range.covering_4k_range()).contains(w)).subset_of(old_windows.dom())
     &&& dir is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
         ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap2m_range.covering_4k_range(), cpu_id)
+    &&& !(dir is L3) ==> new_windows == old_windows
+    &&& new_u == (KernelU {
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
+        ..old_u
+    })
+}
+
+/// `m` plus the 512 windows of a new L2 page under the L3 entry of `va`: the window of `va` starts write-locked by `cpu_id`, the
+/// others unlocked.
+pub open spec fn pagetable_window_locks_after_new_l2_page_of(m: Map<WindowVa, LockStateU>, va: VAddr, cpu_id: CpuId) -> Map<WindowVa, LockStateU> {
+    Map::new(m.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((spec_v2l4index(va), spec_v2l3index(va), i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+        |w: WindowVa| if m.dom().contains(w) { m[w] } else if spec_v2l2index(w.va) == spec_v2l2index(va) { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked })
+}
+
+/// A BAR mapping directory step starts under the cpu, its running thread and the table's lock with a 4K BAR mapping in progress
+/// and quota for the directory page.
+#[verifier::opaque]
+pub open spec fn map_pci_bar_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    &&& thread_pagetable_op_in_progress(old_u, cpu_id)
+    &&& thread.syscall_progress->Some_0 is MapPciBar4k
+    &&& thread.quota_4k >= 1
+}
+
+/// A BAR mapping directory page consumes one 4K quota and records a deeper level than the last recorded one. A new L2 page adds
+/// its windows to the table, the window of the mapped address held.
+#[verifier::opaque]
+pub open spec fn map_pci_bar_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let progress = thread.syscall_progress->Some_0;
+    let dir = new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0->MapPciBar4k_directory;
+    let new_progress = SyscallProgress::MapPciBar4k { va: progress->MapPciBar4k_va, directory: dir };
+    let process = old_u.process_map[thread.owning_proc];
+    let table = process.pagetable->Some_0;
+    let old_windows = table.pagetable_window_locks;
+    let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
+    &&& mmap_4k_directory_rank(progress->MapPciBar4k_directory) < mmap_4k_directory_rank(dir)
+    &&& dir is L3 ==> new_windows == pagetable_window_locks_after_new_l2_page_of(old_windows, progress->MapPciBar4k_va, cpu_id)
+    &&& !(dir is L3) ==> new_windows == old_windows
+    &&& new_u == (KernelU {
+        thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
+        ..old_u
+    })
+}
+
+/// A 2M BAR mapping directory step starts under the cpu, its running thread and the table's lock with a 2M BAR mapping in
+/// progress and quota for the directory page.
+#[verifier::opaque]
+pub open spec fn map_pci_bar_2m_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    &&& thread_pagetable_op_in_progress(old_u, cpu_id)
+    &&& thread.syscall_progress->Some_0 is MapPciBar2m
+    &&& thread.quota_4k >= 1
+}
+
+/// A 2M BAR mapping directory page consumes one 4K quota and records an L4 directory first or an L3 directory. A new L2 page adds
+/// its windows to the table, the window of the mapped address held.
+#[verifier::opaque]
+pub open spec fn map_pci_bar_2m_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thrd_ptr);
+    let progress = thread.syscall_progress->Some_0;
+    let dir = new_u.thread_map.spec_index(thrd_ptr).syscall_progress->Some_0->MapPciBar2m_directory;
+    let new_progress = SyscallProgress::MapPciBar2m { va: progress->MapPciBar2m_va, directory: dir, flushed: progress->MapPciBar2m_flushed };
+    let process = old_u.process_map[thread.owning_proc];
+    let table = process.pagetable->Some_0;
+    let old_windows = table.pagetable_window_locks;
+    let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
+    &&& (dir is L4 && progress->MapPciBar2m_directory is None) || (dir is L3 && !(progress->MapPciBar2m_directory is L3))
+    &&& dir is L3 ==> new_windows == pagetable_window_locks_after_new_l2_page_of(old_windows, progress->MapPciBar2m_va, cpu_id)
     &&& !(dir is L3) ==> new_windows == old_windows
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thrd_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
