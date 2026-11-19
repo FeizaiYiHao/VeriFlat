@@ -1852,6 +1852,15 @@ pub fn pagetable_map_remove_table_page(
         page_mappings_pagetable_wf(*final(pagetable_map), *final(pt_lower), *page_array),
         final(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(pagetable_map).spec_index(pagetable_ptr).view().higher.table_stale_cpus,
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure().remove(scan.spec_table_page()->Some_0),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some
+                ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_4k_l1(l4i, l3i, l2i, l1i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i)]
+            whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) is Some
+                ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_1g_l3(l4i, l3i)]
+            whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_1g_l3(l4i, l3i) is Some
+                ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_held_1g_l3(l4i, l3i) == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_held_1g_l3(l4i, l3i),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_4k() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k(),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_2m() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_2m(),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_1g() == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_1g(),
