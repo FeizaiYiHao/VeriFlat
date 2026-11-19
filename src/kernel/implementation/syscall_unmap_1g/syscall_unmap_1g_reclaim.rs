@@ -7,9 +7,13 @@ use super::refund_unmap_1g_quota_to_thread::refund_unmap_1g_quota_to_thread;
 #[cfg(feature = "split-crates")]
 use veriflat_map_4k::map_4k::reclaim_held_1g_page::reclaim_held_1g_page;
 #[cfg(feature = "split-crates")]
+use veriflat_map_4k::map_4k::unmap_io_leaf::remove_held_io_1g_mapping;
+#[cfg(feature = "split-crates")]
 use veriflat_alloc_page::free_1g_page::refund_unmap_1g_quota;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::reclaim_held_1g_page::reclaim_held_1g_page;
+#[cfg(not(feature = "split-crates"))]
+use crate::kernel::implementation::map_4k::unmap_io_leaf::remove_held_io_1g_mapping;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::free_1g_page::refund_unmap_1g_quota;
 
@@ -241,7 +245,7 @@ pub(super) fn unmap_1g_reclaim_range(
     proof { broadcast use PageTableHigher::spec_resolve_mapping_l4_some_implies_spec_held_l4_eq, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; }
 }
 
-/// Reclaim the hidden, flushed 1G leaf `va` of the write-held page table `pagetable`: read the page it names, reclaim it, and close the unrecorded section, which leaves the user view unchanged.
+/// Reclaim the hidden, flushed 1G leaf `va` of the write-held page table `pagetable`: clear it if it is an IO leaf, otherwise read the page it names and reclaim it, and close the unrecorded section, which leaves the user view unchanged.
 fn unmap_1g_reclaim_leaf(
     krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, thrd_ptr: RwLockThreadPtr, cpu_id: CpuId, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
@@ -331,14 +335,17 @@ fn unmap_1g_reclaim_leaf(
     let l4_entry = table.higher.get_entry_l4(l4i).unwrap();
     let l3_entry = table.higher.get_entry_1g_l3(l4i, l3i, &l4_entry).unwrap();
     let pg_ptr = l3_entry.addr;
-    proof {
-        let ghost c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        c.higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(l4i, l3i);
-        mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l4i, l3i);
-        mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
-        page_index_valid_imply_page_ptr_valid(); krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
+    proof { whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(l4i, l3i); }
+    if l3_entry.perm.is_io {
+        remove_held_io_1g_mapping(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
+    } else {
+        proof {
+            mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l4i, l3i);
+            mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
+            page_index_valid_imply_page_ptr_valid(); krnl.thrd_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id());
+        }
+        reclaim_held_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect, direct, Tracked(&mut *lctx), pagetable_perm, thread_perm);
     }
-    reclaim_held_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect, direct, Tracked(&mut *lctx), pagetable_perm, thread_perm);
     proof {
         kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);

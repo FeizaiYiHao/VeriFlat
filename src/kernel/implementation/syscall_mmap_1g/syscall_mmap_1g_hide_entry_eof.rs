@@ -37,7 +37,7 @@ pub(super) open spec fn mmap_1g_hide_l3_entry_eof_transition_framing(pre: Kernel
     &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && (i4, i3) != (l4i, l3i) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
     &&& new_c.spec_held_l3(l4i, l3i) == Some(PageEntry { addr: old_c.spec_resolve_mapping_l3(l4i, l3i)->0.addr,
-            perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_resolve_mapping_l2(i4, i3, i2)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && (i4, i3) != (l4i, l3i) ==> new_c.spec_resolve_mapping_l2(i4, i3, i2) == old_c.spec_resolve_mapping_l2(i4, i3, i2)
     &&& forall|i2: L2Index| #![trigger new_c.spec_resolve_mapping_l2(l4i, l3i, i2)] pei_valid(i2) ==> new_c.spec_resolve_mapping_l2(l4i, l3i, i2) is None
@@ -77,6 +77,7 @@ pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, paget
     pre.default_pagetable_wf_at(pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
+        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
         assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
             broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;

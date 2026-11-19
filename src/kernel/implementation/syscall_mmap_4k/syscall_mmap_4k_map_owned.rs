@@ -73,7 +73,6 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             page_lock_perm.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().locking_thread()->Write_lock_id,
             thread_lock_perm.view().lock_id() == final(krnl).thrd_mp.spec_index(thrd_ptr).locking_thread()->Write_lock_id,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
-            final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list,
             final(krnl).thrd_mp.spec_index(thrd_ptr).being_killed() == false,
@@ -103,7 +102,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count == 1,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k()
                 == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().insert(va,
-                    MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container), }),
+                    MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container), }),
             forall|v: VAddr|
                 #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
                 #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
@@ -167,7 +166,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             thread.quota_4k = thread.quota_4k - 1;
             thread.syscall_progress = Ghost(mmap_4k_progress_after_leaf(thread.syscall_progress.view()));
         }
-        let target_entry = MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
+        let target_entry = MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
         pagetable_map_insert_4k(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable_ptr, indices, target_l2_ptr, target_l1_ptr, &target_entry, window_perm, Tracked(&mut *lctx),
             pagetable_lock_perm);
         proof {

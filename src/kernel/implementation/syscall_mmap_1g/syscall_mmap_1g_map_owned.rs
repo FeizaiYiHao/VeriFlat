@@ -87,7 +87,7 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
             final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == old(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container,
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g()
                 == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g().insert(va,
-                    MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container) }),
+                    MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(final(krnl).pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container) }),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m(),
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower,
@@ -149,7 +149,7 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
             thread.quota_1g = thread.quota_1g - 1;
             thread.syscall_progress = Ghost(mmap_1g_progress_after_leaf(thread.syscall_progress.view()));
         }
-        let target_entry = MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
+        let target_entry = MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
         pagetable_map_insert_1g(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable_ptr, (l4i, l3i), target_l3_ptr, &target_entry, Tracked(&mut *lctx), pagetable_lock_perm);
         proof {
             lctx.update_lock_id(KernelObjId::Page(pg_idx), old_page_lock_id, krnl.pg_arr.lock_id_by_index(pg_idx));

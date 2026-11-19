@@ -20,8 +20,9 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     &&& forall|other_pagetable: RwLockPageTableRoot|
         #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
-    &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
+    &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { is_io: false, addr: pg_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
+    &&& new_pt.mapping_1g() == old_pt.mapping_1g()
     &&& new_pt.page_closure() == old_pt.page_closure()
     &&& new_pt.lower.window_stale_cpus == old_pt.lower.window_stale_cpus
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_pt.lower.l2_entry(p, i)] new_pt.lower.l2_entry(p, i) == old_pt.lower.l2_entry(p, i)
@@ -33,6 +34,7 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
         old_pt.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_pt.spec_held_2m_l2(l4i, l3i, l2i) == old_pt.spec_held_2m_l2(l4i, l3i, l2i)
     &&& new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some
     &&& new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr
+    &&& !new_pt.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -96,6 +98,8 @@ proof fn map_owned_4k_page_eof_memory_management(pre: KernelK, post: KernelK, pg
     reveal(map_owned_4k_page_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
