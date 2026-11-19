@@ -34,6 +34,7 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
     &&& !transferred ==> post.irt.view() == pre.irt.view() && post.iommu_tlb == pre.iommu_tlb && post.prc_mp == pre.prc_mp
+    &&& post.irt.view().bars() == pre.irt.view().bars()
     &&& iommu_table == if transferred && pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some {
         pre.prc_mp.spec_index(sender_proc).view_rodata().view().iommu_table_ptr
     } else { None }

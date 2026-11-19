@@ -98,6 +98,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
         assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
         // A page record names a held leaf of its table (4K, 2M) or a 1G mapping; none is left in the user range.
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
+            process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); pre.default_pagetable_wf_at(pagetable);
             reveal(process_emptied_tables_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
             broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
         };
@@ -133,7 +134,9 @@ proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: Ker
         &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g()
         &&& post.it_mp.spec_index(iommu_table).view().page_closure() == pre.it_mp.spec_index(iommu_table).view().page_closure()
         &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr
+        &&& post.irt.view().bars() == pre.irt.view().bars()
     }) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };

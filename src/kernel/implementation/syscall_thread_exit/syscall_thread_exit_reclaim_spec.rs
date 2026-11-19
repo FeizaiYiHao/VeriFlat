@@ -40,6 +40,7 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
+    &&& post.irt.view().bars() == pre.irt.view().bars()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
         let owned = pre.irt.view().spec_index_owner(b, d, f) == table.view().proc_ptr;

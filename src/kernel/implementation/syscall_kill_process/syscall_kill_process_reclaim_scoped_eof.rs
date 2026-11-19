@@ -24,7 +24,7 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_owners(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io
             &&& old_page.mappings().contains((pagetable, va))
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
@@ -99,7 +99,7 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_mappings(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io
             &&& old_page.mappings().contains((pagetable, va))
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
@@ -143,7 +143,7 @@ proof fn kill_reclaim_held_4k_page_scoped_eof_page_relations(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io
             &&& old_page.mappings().contains((pagetable, va))
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
@@ -230,7 +230,7 @@ pub(crate) proof fn kill_reclaim_held_4k_page_scoped_eof(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io
             &&& old_page.mappings().contains((pagetable, va))
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
@@ -262,6 +262,8 @@ pub(crate) proof fn kill_reclaim_held_4k_page_scoped_eof(
     kill_reclaim_held_4k_page_scoped_eof_page_mappings(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_reclaim_held_4k_page_scoped_eof_page_relations(pre, post, pagetable, va, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_reclaim_held_4k_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, cpu_id, node_addr);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
@@ -301,7 +303,7 @@ proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_page_owners(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).is_io
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -380,7 +382,7 @@ proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_page_relations(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).is_io
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -480,7 +482,7 @@ pub(crate) proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).is_io
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
             &&& index_valid(NUM_CPUS, cpu_id)
@@ -506,6 +508,8 @@ pub(crate) proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof(
     kill_reclaim_unmapped_iommu_4k_page_scoped_eof_page_owners(pre, post, iommu_table, indices, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_reclaim_unmapped_iommu_4k_page_scoped_eof_page_relations(pre, post, iommu_table, indices, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_reclaim_unmapped_iommu_4k_page_scoped_eof_allocator_quota_wf(pre, post, iommu_table, indices, pg_ptr, allc_ptr, cpu_id, node_addr);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(iommu_table_tlb_entries_present);
@@ -773,6 +777,8 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
     kill_retire_table_page_scoped_eof_page_relations(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_retire_table_page_scoped_eof_allocator_quota_wf(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };

@@ -476,6 +476,45 @@ proof fn kill_retire_eof_page_pagetable(
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf); };
 }
 
+/// The retired process's object and table root pages were allocated, so none is a BAR page and freeing them keeps every BAR page Unavailable.
+proof fn kill_retire_eof_bar_pages(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
+)
+    requires
+        pre.inv(),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().higher.cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == ctn_ptr
+        },
+    ensures
+        pci_bar_slots_wf(post.irt.view().bars()),
+        pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+{
+    reveal(kill_retire_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+}
+
+/// Dropping the retired process's emptied tables keeps every IO leaf of the remaining tables on BAR pages.
+proof fn kill_retire_eof_io_mappings(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
+    allc_ptr: RwLockPageAllocatorPtr,
+)
+    requires
+        pre.inv(),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
+    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
+{
+    reveal(kill_retire_eof_transition_framing);
+    reveal(io_mappings_wf);
+}
+
 proof fn kill_retire_eof_container_process_mappings(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
     allc_ptr: RwLockPageAllocatorPtr,
@@ -739,6 +778,8 @@ pub(crate) proof fn kill_retire_eof_memory(
     kill_retire_eof_process_kernel_pages_owner(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_page_object_owner(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_page_pagetable(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
+    kill_retire_eof_bar_pages(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
+    kill_retire_eof_io_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_container_process_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_iommu_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_table_matches(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);

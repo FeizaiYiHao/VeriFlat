@@ -290,6 +290,8 @@ pub(crate) proof fn kill_retire_table_page_eof(
     kill_retire_table_page_eof_process_management_inv(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr);
     kill_retire_table_page_eof_tlb_caches(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };

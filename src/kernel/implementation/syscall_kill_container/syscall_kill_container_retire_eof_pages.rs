@@ -34,7 +34,6 @@ pub(crate) proof fn kill_container_retire_eof_page_moves(
             &&& i == page_ptr2page_index(ro.scheduler) || i == page_ptr2page_index(ro.cpu_set) || i == page_ptr2page_index(ro.allocator_ptr_4k) || i == page_ptr2page_index(ro.allocator_ptr_2m)
                 || i == page_ptr2page_index(ro.allocator_ptr_1g) || i == page_ptr2page_index(ctn_ptr) || i == page_ptr2page_index(ro.pcid_allocator)
             &&& post_page.owning_container == owner_ptr
-            &&& !pre_page.is_io_page && !post_page.is_io_page
             &&& post_page.free_list_node_storage.addr() == pre_page.free_list_node_storage.addr()
             &&& pre_page.state is Allocated4k ==> post_page.state == (PageState::Free4k { allocator_ptr: Ghost(owner_ro.allocator_ptr_4k), state: FreePageAllocatorState::GlobalList })
             &&& pre_page.state is Allocated2m ==> post_page.state == (PageState::Free2m { allocator_ptr: Ghost(owner_ro.allocator_ptr_2m), state: FreePageAllocatorState::GlobalList })
@@ -200,6 +199,20 @@ pub(crate) proof fn kill_container_retire_eof_hugepages(
     page_ptr_roundtrip(); page_index_roundtrip(); page_index_valid_imply_page_ptr_valid(); page_ptr_valid_imply_page_index_valid();
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
+}
+
+/// Retiring the container frees only its allocated object pages, none of which is a BAR page.
+pub(crate) proof fn kill_container_retire_eof_bar_pages(
+    pre: KernelK, post: KernelK, ctn_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
+)
+    requires
+        pre.inv(),
+        kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
+        kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
+    ensures pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+{
+    kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
+    reveal(pci_bar_pages_unavailable_wf);
 }
 
 /// Retiring the container, which owns no mapped page, keeps every page-table mapping.

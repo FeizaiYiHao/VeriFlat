@@ -368,20 +368,20 @@ pub open spec fn ipc_pages_target_free(table: PageTableU, range: VaRange4K) -> b
     }
 }
 
-/// Every page of `range` in `table` is owned by `container` or one of its ancestors.
+/// Every RAM page of `range` in `table` is owned by `container` or one of its ancestors; IO pages carry no owner.
 pub open spec fn ipc_pages_owners_compatible(u: KernelU, table: PageTableU, container: RwLockContainerPtr, range: VaRange4K) -> bool {
     forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> {
-        let owner = table.mapping_4k[range.view()[i]].owning_container.view();
+        let entry = table.mapping_4k[range.view()[i]];
+        let owner = entry.owning_container.view();
         &&& u.container_map.dom().contains(container)
-        &&& u.container_map.dom().contains(owner)
-        &&& (container == owner || u.container_map[container].uppertree_seq.contains(owner))
+        &&& !entry.is_io ==> u.container_map.dom().contains(owner) && (container == owner || u.container_map[container].uppertree_seq.contains(owner))
     }
 }
 
 /// The checks a pages rendezvous makes under both locked page tables, in the implementation's order:
 /// the source range lies above the user-VA bound, every source page is mapped, the receiver has 4K quota for
 /// the worst-case target directories, the target range lies above the user-VA bound and is free, and every
-/// source page is owned by the receiver's container or one of its ancestors.
+/// RAM source page is owned by the receiver's container or one of its ancestors.
 pub open spec fn ipc_pages_check_result(u: KernelU, cpu_id: CpuId) -> RetValueType {
     let progress = u.thread_map[u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
     let source = progress->IpcPages_source_range;

@@ -378,7 +378,6 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
                 let page = pre.pg_arr.spec_index(pages_4k[k]).view().view();
                 &&& index_valid(NUM_PAGES, pages_4k[k])
                 &&& page.owning_container == ctn_ptr
-                &&& !page.is_io_page
                 &&& page.state is Allocated4k
             }
             &&& pre.pg_arr.spec_index(pages_4k[0]).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsScheduler })
@@ -390,7 +389,6 @@ pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, ctn_ptr
                 let page = pre.pg_arr.spec_index(heads[k]).view().view();
                 &&& page_index_2m_valid(heads[k])
                 &&& page.owning_container == ctn_ptr
-                &&& !page.is_io_page
                 &&& page.state is Allocated2m
             }
             &&& pre.pg_arr.spec_index(heads[0]).view().view().state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer })
