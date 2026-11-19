@@ -436,6 +436,8 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(post.subsystems_inv()) by {
         reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);

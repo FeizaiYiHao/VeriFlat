@@ -36,7 +36,7 @@ pub open spec fn hide_user_l4_entry_eof_transition_framing(pre: KernelK, post: K
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_resolve_mapping_l4(i4) == old_c.spec_resolve_mapping_l4(i4)
     &&& forall|i4: L4Index| #![trigger new_c.spec_held_l4(i4)] old_c.kernel_l4_end() <= i4 && pei_valid(i4) && i4 != l4i ==> new_c.spec_held_l4(i4) == old_c.spec_held_l4(i4)
     &&& new_c.spec_held_l4(l4i) == Some(PageEntry { addr: old_c.spec_held_l4(l4i)->0.addr,
-            perm: PageEntryPerm { present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
+            perm: PageEntryPerm { is_io: false, present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: true } })
     &&& forall|i4: L4Index, i3: L3Index| #![trigger new_c.spec_held_l3(i4, i3)]
         old_c.kernel_l4_end() <= i4 && pei_valid(i4) && pei_valid(i3) ==> new_c.spec_held_l3(i4, i3) == old_c.spec_held_l3(i4, i3)
     &&& forall|i4: L4Index, i3: L3Index, i2: L2Index| #![trigger new_c.spec_held_l2(i4, i3, i2)]
@@ -68,6 +68,7 @@ pub(super) proof fn hide_user_l4_entry_eof(pre: KernelK, post: KernelK, pagetabl
     ensures post.inv(),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     pre.default_pagetable_wf_at(pagetable);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {

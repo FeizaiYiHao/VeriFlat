@@ -5,7 +5,7 @@ verus! {
 /// Reads the page that the 4K leaf of `indices` maps in a write-locked IOMMU table and the L1 page holding that leaf.
 pub(super) fn unmap_iommu_4k_mapped_page_ptr(
     krnl: &KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), Tracked(lctx): Tracked<&LocalContext>, iommu_table_perm: Tracked<&LockPerm>,
-) -> (ret: (PagePtr, PageMapPtr))
+) -> (ret: (PagePtr, PageMapPtr, bool))
     requires
         typed_lock_maps_aligned(krnl, lctx),
         krnl.it_mp.perms_wf(),
@@ -21,6 +21,7 @@ pub(super) fn unmap_iommu_4k_mapped_page_ptr(
         krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
     ensures
         ret.0 == krnl.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr,
+        ret.2 == krnl.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).is_io,
         krnl.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         krnl.it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == ret.1,
 {
@@ -29,13 +30,15 @@ pub(super) fn unmap_iommu_4k_mapped_page_ptr(
     let l4 = it.get_entry_l4(indices.0).unwrap();
     let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
     let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-    (it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr, l2.addr)
+    let leaf = it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap();
+    (leaf.addr, l2.addr, leaf.perm.is_io)
 }
 
-/// Reads the page that the 4K leaf `va` maps in the read- or write-locked page table `pagetable`.
+/// Reads the page that the 4K leaf `va` maps in the read- or write-locked page table `pagetable` and whether the leaf maps
+/// device memory.
 pub(super) fn unmap_4k_mapped_page_ptr(
     krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, indices: (L4Index, L3Index, L2Index, L1Index), Tracked(lctx): Tracked<&LocalContext>, pagetable_perm: Tracked<&LockPerm>,
-) -> (pg_ptr: PagePtr)
+) -> (ret: (PagePtr, bool))
     requires
         krnl.inv(),
         typed_lock_maps_aligned(krnl, lctx),
@@ -50,8 +53,9 @@ pub(super) fn unmap_4k_mapped_page_ptr(
         pagetable_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
         pagetable_perm.view().state() is ReadLock ==> krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
     ensures
-        pg_ptr == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr,
-        page_ptr_valid(pg_ptr),
+        ret.0 == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr,
+        ret.1 == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).is_io,
+        !ret.1 ==> page_ptr_valid(ret.0),
 {
     proof {
         spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
@@ -63,7 +67,8 @@ pub(super) fn unmap_4k_mapped_page_ptr(
     let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
     let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
     let l2 = pt.higher.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-    pt.higher.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap().addr
+    let leaf = pt.higher.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap();
+    (leaf.addr, leaf.perm.is_io)
 }
 
 /// Reads the L2 and L1 pages on the path to the 4K leaf `va` of the read- or write-locked page table `pagetable`.

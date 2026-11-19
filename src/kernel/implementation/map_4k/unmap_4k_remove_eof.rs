@@ -45,10 +45,8 @@ pub(super) open spec fn remove_4k_mapping_without_free_eof_transition_framing(pr
     &&& new_page.view().mappings() == old_page.view().mappings().remove((pagetable, va))
     &&& new_page.view().iommu_mappings() == old_page.view().iommu_mappings()
     &&& new_page.view().ref_count == old_page.view().ref_count - 1
-    &&& new_page.view().state == if old_page.view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable }
-    &&& old_page.view().ref_count > 1 ==> new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
-    &&& old_page.view().ref_count == 1 ==> new_page.view() == (Page { state: PageState::Unavailable, mappings: new_page.view().mappings, ref_count: 0, perm_4k: new_page.view().perm_4k, ..old_page.view() })
-        && new_page.view().perm_4k.view() is None
+    &&& new_page.view().state == PageState::Mapped4k
+    &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
 proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr)
@@ -61,7 +59,7 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
@@ -95,7 +93,6 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
     };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by {
-        assert(pre.pg_arr.spec_index(pg_idx).view().view().ref_count == 1 ==> pre.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().len() == 0);
         reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf);
     };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
@@ -112,7 +109,7 @@ proof fn remove_4k_mapping_without_free_eof_memory_management_inv(pre: KernelK, 
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
@@ -135,6 +132,8 @@ proof fn remove_4k_mapping_without_free_eof_memory_management_inv(pre: KernelK, 
     ensures post.memory_management_inv(),
 {
     reveal(remove_4k_mapping_without_free_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -177,7 +176,7 @@ pub(super) proof fn remove_4k_mapping_without_free_eof(pre: KernelK, post: Kerne
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),

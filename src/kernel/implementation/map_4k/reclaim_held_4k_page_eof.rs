@@ -39,10 +39,8 @@ pub(super) open spec fn remove_held_4k_mapping_without_free_eof_transition_frami
     &&& new_page.view().mappings() == old_page.view().mappings().remove((pagetable, va))
     &&& new_page.view().iommu_mappings() == old_page.view().iommu_mappings()
     &&& new_page.view().ref_count == old_page.view().ref_count - 1
-    &&& new_page.view().state == if old_page.view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable }
-    &&& old_page.view().ref_count > 1 ==> new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
-    &&& old_page.view().ref_count == 1 ==> new_page.view() == (Page { state: PageState::Unavailable, mappings: new_page.view().mappings, ref_count: 0, perm_4k: new_page.view().perm_4k, ..old_page.view() })
-        && new_page.view().perm_4k.view() is None
+    &&& new_page.view().state == PageState::Mapped4k
+    &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
 /// The page-table relations close after dropping the held, unresolvable 4K leaf `va` and its mapping record on `pg_ptr`.
@@ -56,7 +54,7 @@ proof fn remove_held_4k_mapping_without_free_eof_page_tables(pre: KernelK, post:
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         pagetable_perms_wf(post.pt_mp),
@@ -87,7 +85,6 @@ proof fn remove_held_4k_mapping_without_free_eof_page_tables(pre: KernelK, post:
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by {
-        assert(pre.pg_arr.spec_index(pg_idx).view().view().ref_count == 1 ==> pre.pg_arr.spec_index(pg_idx).view().view().iommu_mappings().len() == 0);
         reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf);
     };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
@@ -101,7 +98,7 @@ proof fn remove_held_4k_mapping_without_free_eof_memory_management_inv(pre: Kern
         pre.inv(),
         remove_held_4k_mapping_without_free_eof_transition_framing(pre, post, pagetable, va, pg_ptr),
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         post.pg_arr.inv(),
@@ -117,6 +114,8 @@ proof fn remove_held_4k_mapping_without_free_eof_memory_management_inv(pre: Kern
     ensures post.memory_management_inv(),
 {
     reveal(remove_held_4k_mapping_without_free_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -163,7 +162,7 @@ pub(super) proof fn remove_held_4k_mapping_without_free_eof(pre: KernelK, post: 
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == pg_ptr,
         page_ptr_valid(pg_ptr),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1 || pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().is_io_page,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
         pagetable_perms_wf(post.pt_mp),
@@ -349,7 +348,6 @@ proof fn remove_last_held_4k_mapping_to_allocator_eof_page_relations(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.mappings().contains((pagetable, va))
         }),
         pagetable_perms_wf(post.pt_mp),
@@ -559,7 +557,6 @@ pub(super) proof fn remove_last_held_4k_mapping_to_allocator_eof(
             &&& page_ptr_valid(pg_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
-            &&& !old_page.is_io_page
             &&& old_page.mappings().contains((pagetable, va))
             &&& old_page.owning_container == owner
             &&& old_page.free_list_node_storage.addr() == node_addr
@@ -595,6 +592,8 @@ pub(super) proof fn remove_last_held_4k_mapping_to_allocator_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_last_held_4k_mapping_to_allocator_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     assert(post.subsystems_inv()) by {
         reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);

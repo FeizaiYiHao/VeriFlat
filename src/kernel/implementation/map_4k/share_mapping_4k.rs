@@ -23,10 +23,12 @@ pub open spec fn share_mapping_4k_source_range_present(krnl: &KernelK, source_pa
             let pg_idx = page_ptr2page_index(source_entry.addr);
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va)
             &&& source_entry.present
-            &&& page_ptr_valid(source_entry.addr)
-            &&& index_valid(NUM_PAGES, pg_idx)
-            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
-            &&& krnl.pg_arr.spec_index(pg_idx).view().view().mappings().contains((source_pagetable, source_va))
+            &&& !source_entry.is_io ==> {
+                &&& page_ptr_valid(source_entry.addr)
+                &&& index_valid(NUM_PAGES, pg_idx)
+                &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
+                &&& krnl.pg_arr.spec_index(pg_idx).view().view().mappings().contains((source_pagetable, source_va))
+            }
         }
 }
 
@@ -52,10 +54,10 @@ pub open spec fn share_mapping_4k_leaf_structure_ready(krnl: &KernelK, source_pa
 }
 
 pub open spec fn share_mapping_4k_leaf_owner_compatible(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_va: VAddr) -> bool {
-    let owner = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).owning_container.view();
+    let entry = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va);
+    let owner = entry.owning_container.view();
     &&& krnl.ctn_mp.dom().contains(target_container)
-    &&& krnl.ctn_mp.dom().contains(owner)
-    &&& (target_container == owner || krnl.ctn_mp.spec_index(target_container).view().uppertree_seq.view().contains(owner))
+    &&& !entry.is_io ==> krnl.ctn_mp.dom().contains(owner) && (target_container == owner || krnl.ctn_mp.spec_index(target_container).view().uppertree_seq.view().contains(owner))
 }
 
 pub open spec fn share_mapping_4k_leaf_ready(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_va: VAddr, target_va: VAddr) -> bool {
@@ -714,11 +716,14 @@ pub fn share_mapping_4k_source_owner_precheck(
             held_pagetable_windows_unchanged_chain_implies_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx), &lctx_i);
             let va = source_range.view().spec_index(i as int);
             assert(page_compatible == share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, va)) by {
-                let pg_idx = page_ptr2page_index(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
-                reveal(share_mapping_4k_leaf_owner_compatible); page_ptr_valid_imply_page_index_valid();
-                mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
-                mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
-                container_owned_pages_wf_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, pg_idx); container_owned_pages_wf_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, pg_idx);
+                reveal(share_mapping_4k_leaf_owner_compatible);
+                if !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io {
+                    let pg_idx = page_ptr2page_index(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
+                    page_ptr_valid_imply_page_index_valid();
+                    mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
+                    mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
+                    container_owned_pages_wf_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, pg_idx); container_owned_pages_wf_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, pg_idx);
+                }
             };
             if !page_compatible { incompatible = i as int; }
         }
@@ -1225,7 +1230,7 @@ pub fn share_mapping_4k_build_and_share(
             }) by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
                 page_ptr_valid_imply_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
-                container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page);
+                if !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).is_io { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page); }
                 container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thrd_mp, quota_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thrd_mp, quota_thread);
             };
         }

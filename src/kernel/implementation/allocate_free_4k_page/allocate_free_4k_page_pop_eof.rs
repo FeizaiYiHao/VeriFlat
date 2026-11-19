@@ -704,6 +704,7 @@ pub(super) proof fn pop_stage_4k_page_eof_inv(pre: KernelK, post: KernelK, alloc
     pop_stage_4k_page_eof_mappings(pre, post, allocator, thread, container, page, node, source);
     pop_stage_4k_page_eof_allocator(pre, post, allocator, thread, container, page, node, source);
     pop_stage_4k_page_eof_quota(pre, post, allocator, thread, container, page, node, source);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); };
     assert(allocator_free_4k_pages_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(allocator_free_4k_pages_wf); };
     assert(allocator_free_2m_pages_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(allocator_free_2m_pages_wf); };

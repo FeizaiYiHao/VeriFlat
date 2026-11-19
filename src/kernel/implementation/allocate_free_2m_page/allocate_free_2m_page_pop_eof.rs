@@ -598,6 +598,9 @@ proof fn pop_stage_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     pop_stage_2m_page_eof_allocator_1g_pages(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_container_page_owner(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_container_process_page_pagetable(pre, post, allocator, thread, container, page, node, source);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pop_stage_2m_page_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pop_stage_2m_page_eof_transition_framing); reveal(io_mappings_wf); };
+    assert(pci_bar_slots_wf(post.irt.view().bars())) by { reveal(pop_stage_2m_page_eof_transition_framing); };
     pop_stage_2m_page_eof_container_pages(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_process_pages(pre, post, allocator, thread, container, page, node, source);
     pop_stage_2m_page_eof_page_object_owner(pre, post, allocator, thread, container, page, node, source);

@@ -116,45 +116,58 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
         source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
-    let pg_ptr = source_entry.addr;
-    let pg_idx = page_ptr2page_index(pg_ptr);
-    proof {
-        assert({
-            &&& index_valid(NUM_PAGES, pg_idx)
-            &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
-            &&& krnl.ctn_mp.dom().contains(krnl.pg_arr.spec_index(pg_idx).view().view().owning_container)
-        }) by {
-            page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
-            container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
-        };
-    }
-    let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
-    let page_owner;
-    {
-        proof { assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); }; }
-        let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
-        page_owner = page.owning_container;
-    }
-    proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); }
-    let page_compatible;
-    if page_owner == target_container {
-        page_compatible = true;
+    let page_compatible = if source_entry.is_io {
+        proof {
+            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+            kernel_cpu_process_thread_nonlock_fields_unchanged_for_equal(old(krnl), &*krnl);
+            kernel_endpoint_nonlock_fields_unchanged_for_equal(old(krnl).ep_mp, krnl.ep_mp);
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        }
+        true
     } else {
+        let pg_ptr = source_entry.addr;
+        let pg_idx = page_ptr2page_index(pg_ptr);
         proof {
             assert({
-                &&& container_perms_wf(krnl.ctn_mp)
-                &&& container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)
-                &&& krnl.ctn_mp.dom().contains(page_owner)
-                &&& krnl.ctn_mp.dom().contains(target_container)
-            }) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread); };
+                &&& index_valid(NUM_PAGES, pg_idx)
+                &&& krnl.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k
+                &&& krnl.ctn_mp.dom().contains(krnl.pg_arr.spec_index(pg_idx).view().view().owning_container)
+            }) by {
+                page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
+                container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread);
+            };
         }
-        page_compatible = container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, page_owner, target_container);
-    }
-    krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
+        let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
+        let page_owner;
+        {
+            proof { assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); }; }
+            let page = krnl.pg_arr.borrow_typed(pg_idx, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
+            page_owner = page.owning_container;
+        }
+        proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); }
+        let page_compatible;
+        if page_owner == target_container {
+            page_compatible = true;
+        } else {
+            proof {
+                assert({
+                    &&& container_perms_wf(krnl.ctn_mp)
+                    &&& container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)
+                    &&& krnl.ctn_mp.dom().contains(page_owner)
+                    &&& krnl.ctn_mp.dom().contains(target_container)
+                }) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); container_thread_wf_thread_at(krnl.ctn_mp, krnl.thrd_mp, target_thread); };
+            }
+            page_compatible = container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, page_owner, target_container);
+        }
+        krnl.wunlock_page(pg_idx, Tracked(&mut *lctx), Tracked(page_lock_perm));
+        proof {
+            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+                map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+            };
+        }
+        page_compatible
+    };
     proof {
-        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-            map_insert_remove_absent_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
-        };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {

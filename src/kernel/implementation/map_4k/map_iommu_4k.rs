@@ -88,6 +88,26 @@ pub fn map_shared_page_into_iommu_4k(
         let tracked source_lower = krnl.pt_lower.borrow().tracked_borrow(source_pagetable);
         source_entry = source.higher.resolve_mapping_4k_l1(Tracked(source_lower), source_indices.0, source_indices.1, source_indices.2, source_indices.3).2.unwrap();
     }
+    let target_l1_ptr;
+    {
+        let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+        let l4 = it.get_entry_l4(indices.0).unwrap();
+        let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
+        let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
+        target_l1_ptr = l2.addr;
+    }
+    if source_entry.is_io {
+        let ghost pre_k = *krnl;
+        iommu_table_map_insert_4k(&mut krnl.it_mp, iommu_table_ptr, indices, target_l1_ptr, &source_entry, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
+        proof {
+            pre_k.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
+            assert(map_shared_io_page_into_iommu_4k_eof_transition_framing(pre_k, *krnl, source_pagetable, va, iommu_table_ptr, iova)) by {
+                reveal(map_shared_io_page_into_iommu_4k_eof_transition_framing);
+            };
+            map_shared_io_page_into_iommu_4k_eof(pre_k, *krnl, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
+        }
+        return;
+    }
     let pg_ptr = source_entry.addr;
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {
@@ -97,14 +117,6 @@ pub fn map_shared_page_into_iommu_4k(
             &&& !lctx.page_lock_map().dom().contains(pg_idx)
             &&& krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR
         }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, va); };
-    }
-    let target_l1_ptr;
-    {
-        let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
-        let l4 = it.get_entry_l4(indices.0).unwrap();
-        let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-        target_l1_ptr = l2.addr;
     }
     let Tracked(page_lock_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;

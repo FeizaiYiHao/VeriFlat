@@ -38,7 +38,6 @@ pub(super) open spec fn install_staged_4k_iommu_table_page_eof_transition_framin
     &&& new_page.view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: iommu_table_ptr, table_type: IOMMU_TYPE } })
     &&& new_page.view().perm_4k.view() is None
     &&& new_page.view().addr == old_page.view().addr
-    &&& new_page.view().is_io_page == old_page.view().is_io_page
     &&& new_page.view().ref_count == old_page.view().ref_count
     &&& new_page.view().owning_container == old_page.view().owning_container
     &&& new_page.view().mappings.view() == old_page.view().mappings.view()
@@ -152,6 +151,8 @@ proof fn install_staged_4k_iommu_table_page_eof_memory_management_inv(
     ensures post.memory_management_inv(),
 {
     reveal(install_staged_4k_iommu_table_page_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };

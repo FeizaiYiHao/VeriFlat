@@ -606,6 +606,7 @@ pub(super) proof fn kill_container_move_free_page_4k_eof(
     kill_container_move_free_page_4k_eof_page_tables(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     kill_container_move_free_page_4k_eof_allocators(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
+    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     kill_container_move_free_page_4k_eof_process_management(pre, post, src, dst, src_allocator, dst_allocator, pg_ptr, node);
 }
 } // verus!
