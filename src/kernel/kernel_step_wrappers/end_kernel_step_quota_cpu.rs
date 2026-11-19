@@ -461,12 +461,7 @@ impl KernelSteps {
         let mid = KernelK { irt: snap.irt, pt_mp: snap.pt_mp, ..*krnl };
         reveal(kernel_process_nonlock_fields_unchanged);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
-        assert(process_pagetable_wf(mid.prc_mp, mid.pt_mp)) by {
-            let before = snap.pt_mp.spec_index(root).view().higher;
-            let after = krnl.pt_mp.spec_index(root).view().higher;
-            reveal(process_pagetable_wf);
-            assert(before.proc_ptr == after.proc_ptr && before.cr3 == after.cr3 && before.pcid_value() == after.pcid_value());
-        };
+        assert(process_pagetable_wf(mid.prc_mp, mid.pt_mp)) by { reveal(process_pagetable_wf); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&snap, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &mid)) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
@@ -494,7 +489,6 @@ impl KernelSteps {
             kernel_u_domains_projection(&snap); snap.irt.view().user_view_eq_owners_and_attached();
             kernel_cpu_projection_at(&snap, cpu_id); kernel_process_projection_at(&snap, prc_ptr); kernel_process_projection_at(&mid, prc_ptr);
             kernel_container_projection_at(&snap, snap.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container);
-            assert(snap.pt_mp.spec_index(root).view().higher.pci.mapping_counts().dom() =~= snap.pt_mp.spec_index(root).view().higher.pci.view().dom());
         };
         self.end_kernel_step_raw(krnl, lctx);
     }

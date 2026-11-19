@@ -100,7 +100,6 @@ impl PciFunctionArray {
     {
         proof { reveal(PciFunctionArray::wf); }
         let ret = Self { entries: Array::new_with_init_value(PciFunctionEntry { used: false, bdf: (0, 0, 0), count: 0 }), len: 0, owned: Ghost(Map::empty()) };
-        assert(ret.view() =~= Map::<PciBdf, Set<PciBarMapping>>::empty());
         assert(ret.owned.view().dom().len() == 0) by { broadcast use vstd::set::lemma_set_empty_len; };
         ret
     }
@@ -127,7 +126,7 @@ impl PciFunctionArray {
             ret == self.spec_entry(i as int).count,
             ret as nat == self.view()[self.spec_entry(i as int).bdf].len(),
     {
-        proof { reveal(PciFunctionArray::wf); }
+        proof { self.wf_entry_at(i as int); self.wf_function_at(self.spec_entry(i as int).bdf); }
         self.entries.get(i).count
     }
 
@@ -139,7 +138,6 @@ impl PciFunctionArray {
             (ret is Some) == self.view().dom().contains((bus, device, function)),
             ret matches Some(i) ==> i < PCI_FUNCTIONS_PER_PROCESS && i as int == self.index_of((bus, device, function)),
     {
-        proof { reveal(PciFunctionArray::wf); }
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
@@ -148,11 +146,14 @@ impl PciFunctionArray {
                 forall|j: int| #![trigger self.entries_view()[j]] 0 <= j < i ==> !(self.spec_entry(j).used && self.spec_entry(j).bdf == (bus, device, function)),
             decreases PCI_FUNCTIONS_PER_PROCESS - i,
         {
-            proof { reveal(PciFunctionArray::wf); }
             let e = self.entry(i);
-            if e.used && e.bdf.0 == bus && e.bdf.1 == device && e.bdf.2 == function { return Some(i); }
+            if e.used && e.bdf.0 == bus && e.bdf.1 == device && e.bdf.2 == function {
+                proof { self.wf_entry_at(i as int); }
+                return Some(i);
+            }
             i = i + 1;
         }
+        proof { if self.view().dom().contains((bus, device, function)) { self.wf_function_at((bus, device, function)); } }
         None
     }
 
@@ -163,7 +164,6 @@ impl PciFunctionArray {
         ensures
             ret == (self.view().dom() == Set::<PciBdf>::empty()),
     {
-        proof { reveal(PciFunctionArray::wf); }
         let mut i: usize = 0;
         while i < PCI_FUNCTIONS_PER_PROCESS
             invariant
@@ -172,9 +172,8 @@ impl PciFunctionArray {
                 forall|j: int| #![trigger self.entries_view()[j]] 0 <= j < i ==> !self.spec_entry(j).used,
             decreases PCI_FUNCTIONS_PER_PROCESS - i,
         {
-            proof { reveal(PciFunctionArray::wf); }
             if self.entry(i).used {
-                assert(self.view().dom().contains(self.spec_entry(i as int).bdf));
+                proof { self.wf_entry_at(i as int); }
                 return false;
             }
             i = i + 1;
@@ -198,12 +197,11 @@ impl PciFunctionArray {
             invariant
                 self.wf(),
                 self.view().dom() == self.owned.view().dom(),
-                self.len < PCI_FUNCTIONS_PER_PROCESS,
+                self.view().dom().len() < PCI_FUNCTIONS_PER_PROCESS,
                 i <= PCI_FUNCTIONS_PER_PROCESS,
                 forall|j: int| #![trigger self.entries_view()[j]] 0 <= j < i ==> self.spec_entry(j).used,
             decreases PCI_FUNCTIONS_PER_PROCESS - i,
         {
-            proof { reveal(PciFunctionArray::wf); }
             if !self.entry(i).used { return Some(i); }
             i = i + 1;
         }
@@ -211,10 +209,8 @@ impl PciFunctionArray {
             reveal(PciFunctionArray::wf);
             let dom = self.owned.view().dom();
             let bdfs = Seq::new(PCI_FUNCTIONS_PER_PROCESS as nat, |j: int| self.spec_entry(j).bdf);
-            assert(bdfs.no_duplicates());
             bdfs.unique_seq_to_set();
             bdfs.to_set_ensures();
-            assert(bdfs.to_set().subset_of(dom));
             lemma_len_subset(bdfs.to_set(), dom);
         }
         None
@@ -242,11 +238,7 @@ impl PciFunctionArray {
         self.entries.set(i, PciFunctionEntry { used: true, bdf: f, count: 0 });
         self.len = self.len + 1;
         self.owned = Ghost(self.owned.view().insert(f, (i as int, Set::<PciBarMapping>::empty())));
-        proof {
-            broadcast use vstd::set::lemma_set_insert_len, vstd::set::lemma_set_empty_len;
-            assert(self.owned.view().dom() =~= old(self).owned.view().dom().insert(f));
-        }
-        assert(self.view() =~= old(self).view().insert(f, Set::<PciBarMapping>::empty()));
+        proof { broadcast use vstd::set::lemma_set_insert_len, vstd::set::lemma_set_empty_len; }
     }
 
     /// The used entry `i` becomes unused; its function and that function's BAR mappings leave the array.
@@ -268,8 +260,6 @@ impl PciFunctionArray {
         proof { broadcast use vstd::set::lemma_set_remove_len, vstd::set::lemma_set_contains_len; }
         self.len = self.len - 1;
         self.owned = Ghost(self.owned.view().remove(f));
-        proof { assert(self.owned.view().dom() =~= old(self).owned.view().dom().remove(f)); }
-        assert(self.view() =~= old(self).view().remove(f));
     }
 }
 } // verus!

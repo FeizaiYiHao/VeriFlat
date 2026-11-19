@@ -282,8 +282,6 @@ impl KernelK {
         proof {
             pagetable_perms_wf_map(self.pt_mp);
             pagetable_perms_wf_at(self.pt_mp, pagetable_ptr);
-            assert(self.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty());
-            assert(self.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view() =~= Map::<PciBdf, Set<PciBarMapping>>::empty());
             if !released { assert(pci.view().dom() =~= Set::<PciBdf>::empty()); }
             assert(pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < PCI_FUNCTIONS_PER_PROCESS) =~= pci.view().dom());
         }

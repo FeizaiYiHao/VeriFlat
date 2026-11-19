@@ -365,6 +365,8 @@ pub fn iommu_root_table_detach_array(
             &&& final(irt).view().spec_index_iommu_root(b, d, f) == if owned { None } else { old(irt).view().spec_index_iommu_root(b, d, f) }
             &&& final(irt).view().spec_index_iommu_did(b, d, f) == if owned { None } else { old(irt).view().spec_index_iommu_did(b, d, f) }
         },
+        forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
+            pci.view().dom().contains((b, d, f)) ==> final(irt).view().spec_index_iommu_root(b, d, f) is None,
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
         final(iommu_table_map).typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id()),
@@ -383,6 +385,7 @@ pub fn iommu_root_table_detach_array(
         },
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did is None ==> *final(iommu_tlb) == *old(iommu_tlb),
 {
+    broadcast use PciFunctionArray::wf_function_at;
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).is_init() && iommu_table_map.spec_index(iommu_table_ptr).view().inv()) by {
         iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr);
