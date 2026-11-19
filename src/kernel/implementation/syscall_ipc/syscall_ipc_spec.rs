@@ -18,6 +18,8 @@ pub open spec fn ipc_rendezvous_ret(ret: RetValueType) -> bool {
     ||| ret is ErrorIpcCpuNotOff
     ||| ret is ErrorIpcSameProcess
     ||| ret is ErrorIpcPciOwnerMismatch
+    ||| ret is ErrorIpcPciBarMapped
+    ||| ret is ErrorIpcPciReceiverFull
 }
 
 /// The rejection decided before any rendezvous from the state at entry: a cpu no longer Running or marked by a killer, a killed caller, a receive-call

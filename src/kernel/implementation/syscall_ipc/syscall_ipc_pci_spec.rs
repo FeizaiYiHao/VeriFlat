@@ -2,129 +2,126 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Dequeues and schedules the endpoint waiter with `peer_result`; when `transferred`, also hands the PCI function
-/// `bdf` from the sender to the receiver process. An attached `bdf` is detached under the write lock of the sender's
-/// IOMMU table `iommu_table` (read from the sender's read-only mirror), which re-anchors at `anchor` or loses its DID
-/// when `bdf` was its anchor, and the old DID domain is invalidated down to what the IOMMU may cache in the detached root
-/// table; an absent `bdf` only changes owner.
+/// The page tables in the PCI part of the rendezvous: only the sender's and the receiver's page tables `sender_pt` and
+/// `receiver_pt` change, in their PCI function arrays alone; when `transferred`, `bdf` leaves the sender's array and enters the
+/// receiver's with no BAR mapping.
 #[verifier::opaque]
-pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
-    pre: KernelK, post: KernelK, peer_thrd_ptr: RwLockThreadPtr,
-    ep_ptr: RwLockEndpointPtr, peer_sched_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
-    sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
-    iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
+pub(super) open spec fn ipc_pci_rendezvous_eof_pagetable_frame(
+    pre: KernelK, mid: KernelK, sender_pt: RwLockPageTableRoot, receiver_pt: RwLockPageTableRoot, bdf: PciBdf, transferred: bool,
 ) -> bool {
-    &&& post.pt_mp == pre.pt_mp
-    &&& post.pt_lower == pre.pt_lower
-    &&& post.pg_arr == pre.pg_arr
-    &&& post.ctn_mp == pre.ctn_mp
-    &&& post.cpu_arr == pre.cpu_arr
-    &&& post.cpu_set_mp == pre.cpu_set_mp
-    &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
-    &&& post.pcid_allc_mp == pre.pcid_allc_mp
-    &&& post.allc_4k_mp == pre.allc_4k_mp
-    &&& post.allc_2m_mp == pre.allc_2m_mp
-    &&& post.allc_1g_mp == pre.allc_1g_mp
-    &&& post.cpu_offline_mp == pre.cpu_offline_mp
-    &&& post.cpu_op == pre.cpu_op
-    &&& post.cpu_regs == pre.cpu_regs
-    &&& post.cpu_trap_frame == pre.cpu_trap_frame
-    &&& post.cpu_tlb == pre.cpu_tlb
-    &&& post.rt_ctn == pre.rt_ctn
-    &&& post.dflt_pt == pre.dflt_pt
-    &&& post.pci_bars == pre.pci_bars
-    &&& !transferred ==> post.irt.view() == pre.irt.view() && post.iommu_tlb == pre.iommu_tlb && post.prc_mp == pre.prc_mp
+    &&& mid.pt_mp.dom() == pre.pt_mp.dom()
+    &&& forall|p: RwLockPageTableRoot| #![trigger mid.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) && p != sender_pt && p != receiver_pt ==> mid.pt_mp.spec_index(p) == pre.pt_mp.spec_index(p)
+    &&& mid.pt_mp.spec_index(sender_pt).view().higher == (PageTableHigher { pci: mid.pt_mp.spec_index(sender_pt).view().higher.pci, ..pre.pt_mp.spec_index(sender_pt).view().higher })
+    &&& mid.pt_mp.spec_index(receiver_pt).view().higher == (PageTableHigher { pci: mid.pt_mp.spec_index(receiver_pt).view().higher.pci, ..pre.pt_mp.spec_index(receiver_pt).view().higher })
+    &&& mid.pt_mp.spec_index(sender_pt).view().higher.pci.view() == if transferred { pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().remove(bdf) }
+        else { pre.pt_mp.spec_index(sender_pt).view().higher.pci.view() }
+    &&& mid.pt_mp.spec_index(receiver_pt).view().higher.pci.view() == if transferred { pre.pt_mp.spec_index(receiver_pt).view().higher.pci.view().insert(bdf, Set::<PciBarMapping>::empty()) }
+        else { pre.pt_mp.spec_index(receiver_pt).view().higher.pci.view() }
+    &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p)] pre.pt_mp.dom().contains(p) ==> {
+        let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+        let after = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p);
+        let counts = before.higher.pci.mapping_counts();
+        &&& after.mapping_4k() == before.mapping_4k()
+        &&& after.mapping_2m() == before.mapping_2m()
+        &&& after.mapping_1g() == before.mapping_1g()
+        &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
+        &&& after.higher.pci.mapping_counts() == if transferred && p == sender_pt { counts.remove(bdf) } else if transferred && p == receiver_pt { counts.insert(bdf, 0) } else { counts }
+    }
+    &&& mid.pt_mp.spec_index(sender_pt).being_killed() == pre.pt_mp.spec_index(sender_pt).being_killed()
+    &&& mid.pt_mp.spec_index(receiver_pt).being_killed() == pre.pt_mp.spec_index(receiver_pt).being_killed()
+}
+
+/// The PCI part of the rendezvous, from `pre`, with the sender's and the receiver's page tables `sender_pt` and `receiver_pt`
+/// write-held, to `mid`. When `transferred`, an attached `bdf` is first detached under the write lock of the sender's IOMMU
+/// table `iommu_table` (read from the sender's read-only mirror), which re-anchors at `anchor` or loses its DID when `bdf` was
+/// its anchor, and the old DID domain is invalidated down to what the IOMMU may cache in the detached root table; then `bdf`
+/// leaves the sender's PCI function array, unowned, and enters the receiver's, owned by the receiver. Otherwise only the
+/// page-table locks were taken.
+#[verifier::opaque]
+pub(super) open spec fn ipc_pci_rendezvous_eof_pci_handoff(
+    pre: KernelK, mid: KernelK, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, sender_pt: RwLockPageTableRoot, receiver_pt: RwLockPageTableRoot,
+    bdf: PciBdf, transferred: bool, thread_id: LockThreadId, iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
+) -> bool {
+    &&& mid == (KernelK { pt_mp: mid.pt_mp, irt: mid.irt, iommu_tlb: mid.iommu_tlb, it_mp: mid.it_mp, ..pre })
+    &&& ipc_pci_rendezvous_eof_pagetable_frame(pre, mid, sender_pt, receiver_pt, bdf, transferred)
+    &&& !transferred ==> mid.irt.view() == pre.irt.view() && mid.iommu_tlb == pre.iommu_tlb && mid.it_mp == pre.it_mp
+    &&& transferred ==> mid.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, Some(receiver_proc))
     &&& iommu_table == if transferred && pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some {
         pre.prc_mp.spec_index(sender_proc).view_rodata().view().iommu_table_ptr
     } else { None }
-    &&& iommu_table is None ==> post.it_mp == pre.it_mp && anchor is None
-    &&& transferred ==> post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver_proc)
-    &&& transferred && iommu_table is None ==> {
-        &&& post.iommu_tlb == pre.iommu_tlb
-        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-            #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-            &&& post.irt.view().spec_index_owner(b, d, f) == if (b, d, f) == bdf { receiver_proc } else { pre.irt.view().spec_index_owner(b, d, f) }
-            &&& post.irt.view().spec_index_iommu_root(b, d, f) == pre.irt.view().spec_index_iommu_root(b, d, f)
-            &&& post.irt.view().spec_index_iommu_did(b, d, f) == pre.irt.view().spec_index_iommu_did(b, d, f)
-        }
+    &&& iommu_table is None ==> mid.it_mp == pre.it_mp && mid.iommu_tlb == pre.iommu_tlb && anchor is None
+    &&& transferred && iommu_table is None ==> forall|b: usize, d: usize, f: usize| #![trigger mid.irt.view().spec_index_iommu_root(b, d, f)]
+        #![trigger mid.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+        &&& mid.irt.view().spec_index_iommu_root(b, d, f) == pre.irt.view().spec_index_iommu_root(b, d, f)
+        &&& mid.irt.view().spec_index_iommu_did(b, d, f) == pre.irt.view().spec_index_iommu_did(b, d, f)
     }
     &&& iommu_table matches Some(t) ==> {
         let table = pre.it_mp.spec_index(t);
+        let pci = pre.pt_mp.spec_index(sender_pt).view().higher.pci;
         let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
         let anchored = old_did == Some(pci_bdf_did(bdf.0, bdf.1, bdf.2));
         &&& transferred
         &&& pre.it_mp.dom().contains(t)
-        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-            #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-            let moved = anchor is Some && (b, d, f) != bdf && pre.irt.view().spec_index_owner(b, d, f) == table.view().proc_ptr && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did;
-            &&& post.irt.view().spec_index_owner(b, d, f) == if (b, d, f) == bdf { receiver_proc } else { pre.irt.view().spec_index_owner(b, d, f) }
-            &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(table.view().cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-            &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == bdf { None }
+        &&& forall|b: usize, d: usize, f: usize| #![trigger mid.irt.view().spec_index_iommu_root(b, d, f)] #![trigger mid.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> {
+            let moved = anchor is Some && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did;
+            &&& mid.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(table.view().cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
+            &&& mid.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == bdf { None }
                 else if moved { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
         }
         &&& anchor matches Some(a) ==> {
             &&& anchored
             &&& pci_bdf_valid(a.0, a.1, a.2)
             &&& a != bdf
-            &&& pre.irt.view().spec_index_owner(a.0, a.1, a.2) == table.view().proc_ptr
+            &&& pci.view().dom().contains(a)
             &&& pre.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == old_did
+            &&& forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did ==> !pci_bdf_lt((b, d, f), a)
             &&& forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
         }
-        &&& anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().owners()[b as int][d as int][f as int]] #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) && (anchor is None || pci_bdf_lt((b, d, f), anchor.unwrap())) && (b, d, f) != bdf && pre.irt.view().owners()[b as int][d as int][f as int] == table.view().proc_ptr
-                && pre.irt.view().spec_index_iommu_root(b, d, f) is Some ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did
-        &&& post.it_mp.unchanged_except(&pre.it_mp, t)
-        &&& post.it_mp.spec_index(t).being_killed() == table.being_killed()
-        &&& post.it_mp.spec_index(t).locking_thread() is Write
-        &&& post.it_mp.spec_index(t).locking_thread()->Write_thread_id == thread_id
-        &&& post.it_mp.spec_index(t).view() == (IommuTable { did: post.it_mp.spec_index(t).view().did, ..table.view() })
-        &&& post.it_mp.spec_index(t).view().page_closure() == table.view().page_closure()
-        &&& post.it_mp.spec_index(t).view().mapping_4k() == table.view().mapping_4k()
-        &&& post.it_mp.spec_index(t).view().mapping_2m() == table.view().mapping_2m()
-        &&& post.it_mp.spec_index(t).view().mapping_1g() == table.view().mapping_1g()
-        &&& post.it_mp.spec_index(t).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
+        &&& anchor is None && anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did
+        &&& mid.it_mp.unchanged_except(&pre.it_mp, t)
+        &&& mid.it_mp.spec_index(t).being_killed() == table.being_killed()
+        &&& mid.it_mp.spec_index(t).locking_thread() is Write
+        &&& mid.it_mp.spec_index(t).locking_thread()->Write_thread_id == thread_id
+        &&& mid.it_mp.spec_index(t).view() == (IommuTable { did: mid.it_mp.spec_index(t).view().did, ..table.view() })
+        &&& mid.it_mp.spec_index(t).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
             else if anchored { None } else { table.view().did }
         &&& old_did matches Some(did) ==> {
-            &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did))
-            &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
-            &&& iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.spec_index(did))
-            &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
-                == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
-            &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
-                ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
+            &&& mid.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, mid.iommu_tlb.spec_index(did))
+            &&& iommu_tlb_within_may_cache(KernelK { irt: mid.irt, ..pre }, did, mid.iommu_tlb.spec_index(did))
         }
-        &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+        &&& old_did is None ==> mid.iommu_tlb.view() == pre.iommu_tlb.view()
     }
-    &&& post.prc_mp.dom() == pre.prc_mp.dom()
-    &&& forall|key: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(key)] #![trigger post.prc_mp.spec_index(key)] pre.prc_mp.dom().contains(key) ==> {
-        let before = pre.prc_mp.spec_index(key);
-        let after = post.prc_mp.spec_index(key);
-        let pci = before.view_ghost().owned_pci_functions.view();
-        &&& after.is_init() == before.is_init()
-        &&& after.view() == before.view()
-        &&& after.view_rodata() == before.view_rodata()
-        &&& after.locking_thread() == before.locking_thread()
-        &&& after.killer_info() == before.killer_info()
-        &&& after.view_ghost().subtree_set == before.view_ghost().subtree_set
-        &&& after.view_ghost().owned_pci_functions.view() == if transferred && key == sender_proc { pci.remove(bdf) } else if transferred && key == receiver_proc { pci.insert(bdf) } else { pci }
-    }
-    &&& post.thrd_mp.dom() == pre.thrd_mp.dom()
-    &&& forall|key: RwLockThreadPtr| #![trigger pre.thrd_mp.spec_index(key)] #![trigger post.thrd_mp.spec_index(key)]
-        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_2m]
-        #![trigger pre.thrd_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_1g]
-        pre.thrd_mp.dom().contains(key) ==> {
-            let before = pre.thrd_mp.spec_index(key);
+}
+
+/// The PCI-payload rendezvous from `pre` through `mid`, after the PCI part `ipc_pci_rendezvous_eof_pci_handoff`, to `post`,
+/// which dequeues and schedules the endpoint waiter with `peer_result`.
+#[verifier::opaque]
+pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
+    pre: KernelK, mid: KernelK, post: KernelK, peer_thrd_ptr: RwLockThreadPtr, ep_ptr: RwLockEndpointPtr, peer_sched_ptr: RwLockSchedulerPtr,
+    wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, sender_pt: RwLockPageTableRoot, receiver_pt: RwLockPageTableRoot,
+    bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId, iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
+) -> bool {
+    &&& ipc_pci_rendezvous_eof_pci_handoff(pre, mid, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, thread_id, iommu_table, anchor)
+    &&& post == (KernelK { thrd_mp: post.thrd_mp, ep_mp: post.ep_mp, sched_mp: post.sched_mp, ..mid })
+    &&& post.thrd_mp.dom() == mid.thrd_mp.dom()
+    &&& forall|key: RwLockThreadPtr| #![trigger mid.thrd_mp.spec_index(key)] #![trigger post.thrd_mp.spec_index(key)]
+        #![trigger mid.thrd_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger mid.thrd_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thrd_mp.spec_index(key).view().temp_alloc_cache_1g]
+        mid.thrd_mp.dom().contains(key) ==> {
+            let before = mid.thrd_mp.spec_index(key);
             let after = post.thrd_mp.spec_index(key);
-            &&& post.thrd_mp.view().spec_index(key).is_init() == pre.thrd_mp.view().spec_index(key).is_init()
-            &&& post.thrd_mp.view().spec_index(key).addr() == pre.thrd_mp.view().spec_index(key).addr()
+            &&& post.thrd_mp.view().spec_index(key).is_init() == mid.thrd_mp.view().spec_index(key).is_init()
+            &&& post.thrd_mp.view().spec_index(key).addr() == mid.thrd_mp.view().spec_index(key).addr()
             &&& after.view().temp_alloc_cache_2m == before.view().temp_alloc_cache_2m
             &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
             &&& !(key == peer_thrd_ptr) ==> after == before
         }
     &&& {
-        let before = pre.thrd_mp.spec_index(peer_thrd_ptr);
+        let before = mid.thrd_mp.spec_index(peer_thrd_ptr);
         let after = post.thrd_mp.spec_index(peer_thrd_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
@@ -138,16 +135,16 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& after.view().endpoint_linkedlist_node.is_init()
         &&& !after.view().scheduler_linkedlist_node.is_init()
     }
-    &&& post.ep_mp.dom() == pre.ep_mp.dom()
-    &&& forall|key: RwLockEndpointPtr| #![trigger pre.ep_mp.spec_index(key)] #![trigger post.ep_mp.spec_index(key)] pre.ep_mp.dom().contains(key) ==> {
-        let before = pre.ep_mp.spec_index(key);
+    &&& post.ep_mp.dom() == mid.ep_mp.dom()
+    &&& forall|key: RwLockEndpointPtr| #![trigger mid.ep_mp.spec_index(key)] #![trigger post.ep_mp.spec_index(key)] mid.ep_mp.dom().contains(key) ==> {
+        let before = mid.ep_mp.spec_index(key);
         let after = post.ep_mp.spec_index(key);
-        &&& post.ep_mp.view().spec_index(key).is_init() == pre.ep_mp.view().spec_index(key).is_init()
-        &&& post.ep_mp.view().spec_index(key).addr() == pre.ep_mp.view().spec_index(key).addr()
+        &&& post.ep_mp.view().spec_index(key).is_init() == mid.ep_mp.view().spec_index(key).is_init()
+        &&& post.ep_mp.view().spec_index(key).addr() == mid.ep_mp.view().spec_index(key).addr()
         &&& !(key == ep_ptr) ==> after == before
     }
     &&& {
-        let before = pre.ep_mp.spec_index(ep_ptr);
+        let before = mid.ep_mp.spec_index(ep_ptr);
         let after = post.ep_mp.spec_index(ep_ptr);
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
@@ -159,19 +156,19 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& after.view().queue.lock_minor() == before.view().queue.lock_minor()
         &&& after.view().queue.view() == before.view().queue.view().skip(1)
         &&& after.view().queue.length as int == before.view().queue.length as int - 1
-        &&& after.view().queue.map() == before.view().queue.map().remove(pre.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
-        &&& after.view().queue.dom() == before.view().queue.dom().remove(pre.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
+        &&& after.view().queue.map() == before.view().queue.map().remove(mid.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
+        &&& after.view().queue.dom() == before.view().queue.dom().remove(mid.thrd_mp.spec_index(peer_thrd_ptr).view().endpoint_linkedlist_node.addr())
     }
-    &&& post.sched_mp.dom() == pre.sched_mp.dom()
-    &&& forall|key: RwLockSchedulerPtr| #![trigger pre.sched_mp.spec_index(key)] #![trigger post.sched_mp.spec_index(key)] pre.sched_mp.dom().contains(key) ==> {
-        let before = pre.sched_mp.spec_index(key);
+    &&& post.sched_mp.dom() == mid.sched_mp.dom()
+    &&& forall|key: RwLockSchedulerPtr| #![trigger mid.sched_mp.spec_index(key)] #![trigger post.sched_mp.spec_index(key)] mid.sched_mp.dom().contains(key) ==> {
+        let before = mid.sched_mp.spec_index(key);
         let after = post.sched_mp.spec_index(key);
-        &&& post.sched_mp.view().spec_index(key).is_init() == pre.sched_mp.view().spec_index(key).is_init()
-        &&& post.sched_mp.view().spec_index(key).addr() == pre.sched_mp.view().spec_index(key).addr()
+        &&& post.sched_mp.view().spec_index(key).is_init() == mid.sched_mp.view().spec_index(key).is_init()
+        &&& post.sched_mp.view().spec_index(key).addr() == mid.sched_mp.view().spec_index(key).addr()
         &&& !(key == peer_sched_ptr) ==> after == before
     }
     &&& {
-        let before = pre.sched_mp.spec_index(peer_sched_ptr);
+        let before = mid.sched_mp.spec_index(peer_sched_ptr);
         let after = post.sched_mp.spec_index(peer_sched_ptr);
         let shard_before = before.shards.spec_index(wake_cpu).view();
         let shard_after = after.shards.spec_index(wake_cpu).view();
@@ -185,8 +182,8 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& shard_after.locking_thread()->Write_thread_id == thread_id
         &&& shard_after.view().queue.view() == shard_before.view().queue.view().push(peer_thrd_ptr)
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
-        &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr(), peer_thrd_ptr)
-        &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr())
+        &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(mid.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr(), peer_thrd_ptr)
+        &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(mid.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr())
     }
 }
 }
