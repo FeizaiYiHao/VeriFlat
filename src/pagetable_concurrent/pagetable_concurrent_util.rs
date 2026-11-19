@@ -212,7 +212,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// Word of entry `target_l3i` of the L3 page that the held root entry `l4_entry` links: a held L3 link when present or kernel-present
-    /// and not huge, a held 1G leaf when kernel-present and huge.
+    /// and not huge, a held 1G leaf when kernel-present and huge; under a present root entry it resolves the same way.
     pub fn get_l3_entry_word(&self, target_l4i: L4Index, target_l3i: L3Index, l4_entry: &PageEntry) -> (ret: PageEntry)
         requires
             self.inv(),
@@ -222,6 +222,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         ensures
             self.spec_held_l3(target_l4i, target_l3i) =~= (if (ret.perm.present || ret.perm.kernel_present) && !ret.perm.ps { Some(ret) } else { None }),
             self.spec_held_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
+            self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= (if ret.perm.present && !ret.perm.ps { Some(ret) } else { None }),
+            self.spec_resolve_mapping_l4(target_l4i) is Some ==> self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) =~= (if ret.perm.kernel_present && ret.perm.ps { Some(ret) } else { None }),
     {
         proof {
             self.wf_l4_at(target_l4i);

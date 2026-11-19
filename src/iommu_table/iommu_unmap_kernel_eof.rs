@@ -200,13 +200,41 @@ impl IommuTable {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::unmap_4k_page_kernel_eof_wf_mapping_4k_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        reveal(IommuTable::wf_mapping_4k);
+    }
+
+    /// EOF closure of `unmap_4k_page_kernel`: the body of `wf_mapping_4k`, stated for each index.
+    proof fn unmap_4k_page_kernel_eof_wf_mapping_4k_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pei_valid(target_l1i),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger post.mapping_4k.view().spec_index(spec_index2va((l4i,l3i,l2i,l1i)))]
+                #![trigger post.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
+                post.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> {
+                    &&& post.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                    &&& post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
+                        ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
+                        && (post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write)
+                        && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
+                        && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
+                        && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
+                },
+    {
         reveal(IommuTable::unmap_4k_page_kernel_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by {
-            reveal(IommuTable::wf_mapping_4k);
-            spec_index2va_injective();
-            post.resolve_l2_unchanged(&pre);
-            broadcast use IommuTable::disjoint_l2_implies_resolve_l2_addr_unique_at, IommuTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
-        };
+        reveal(IommuTable::wf_mapping_4k);
+        spec_index2va_injective();
+        post.resolve_l2_unchanged(&pre);
+        broadcast use IommuTable::disjoint_l2_implies_resolve_l2_addr_unique_at, IommuTable::wf_l2_implies_resolve_l2_target_in_l1_rev_map_at;
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: `user_only`.

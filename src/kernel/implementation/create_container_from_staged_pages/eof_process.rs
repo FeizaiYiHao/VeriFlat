@@ -882,8 +882,175 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         reveal(publish_staged_container_root_eof_preconditions); reveal(container_kill_retire_wf); reveal(container_uppertree_seq_wf);
         broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
     };
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
+    publish_staged_container_root_eof_pci_bar_pages_unavailable_wf(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    publish_staged_container_root_eof_io_mappings_wf(
+        pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+}
+
+/// `io_mappings_wf`: the BAR slots, the IOMMU tables and every existing page table are unchanged, and the new page table is
+/// empty.
+pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        container_page != pcid_allocator_page,
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        page_ptr_valid(thread_page),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).len() == 8,
+        !new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(thread_page),
+        funding_pages.no_duplicates(),
+        !funding_pages.to_set().contains(thread_page),
+        funding_pages.to_set().disjoint(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page)),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        forall|pg_ptr: PagePtr| #![trigger funding_pages.to_set().contains(pg_ptr)] funding_pages.to_set().contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
+{
+    broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
+    reveal(publish_staged_container_root_eof_transition_framing);
+    reveal(io_mappings_wf);
+}
+
+/// `pci_bar_pages_unavailable_wf`: the BAR slots are unchanged and every page the publish changes was owned by the current thread,
+/// so no BAR page changes state.
+pub(super) proof fn publish_staged_container_root_eof_pci_bar_pages_unavailable_wf(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        container_page != pcid_allocator_page,
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        page_ptr_valid(thread_page),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).len() == 8,
+        !new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(thread_page),
+        funding_pages.no_duplicates(),
+        !funding_pages.to_set().contains(thread_page),
+        funding_pages.to_set().disjoint(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page)),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        forall|pg_ptr: PagePtr| #![trigger funding_pages.to_set().contains(pg_ptr)] funding_pages.to_set().contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+{
+    broadcast use publish_staged_container_root_eof_pci_bar_page_unavailable_at;
+    reveal(pci_bar_pages_unavailable_wf);
+}
+
+/// Page `pg_idx` of a BAR slot keeps its `Unavailable` state through the publish.
+pub(super) broadcast proof fn publish_staged_container_root_eof_pci_bar_page_unavailable_at(
+    pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, pg_idx: PageIndex,
+)
+    requires
+        pre.inv(),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        container_page != pcid_allocator_page,
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        page_ptr_valid(thread_page),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).len() == 8,
+        !new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(thread_page),
+        funding_pages.no_duplicates(),
+        !funding_pages.to_set().contains(thread_page),
+        funding_pages.to_set().disjoint(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page)),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        forall|pg_ptr: PagePtr| #![trigger funding_pages.to_set().contains(pg_ptr)] funding_pages.to_set().contains(pg_ptr) ==> page_ptr_valid(pg_ptr),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        #![trigger
+            publish_staged_container_root_eof_transition_framing(
+                pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+                allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+                allocator_quota_4k, process_quota_4k,
+            ),
+            post.pg_arr.spec_index(pg_idx).view().view().state
+        ]
+        index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.irt.view().bars(), page_index2page_ptr(pg_idx)) ==> post.pg_arr.spec_index(pg_idx).view().view().state is Unavailable,
+{
+    if index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.irt.view().bars(), page_index2page_ptr(pg_idx)) {
+        assert(post.irt.view().bars() == pre.irt.view().bars()) by { reveal(publish_staged_container_root_eof_transition_framing); };
+        pci_bar_pages_unavailable_wf_at(pre.irt.view().bars(), pre.pg_arr, pg_idx);
+        publish_staged_container_root_eof_unmodified_object_page_state_eq(
+            pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k, pg_idx,
+        );
+    }
 }
 
 /// The root process's object page, page-table root page, and L4 page belong to the new container; every other process

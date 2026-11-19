@@ -472,12 +472,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         self.higher.l3_tables.view().dom() + self.lower.l2_perms.dom() + self.lower.l1_rev_map.dom() + self.higher.l4_table.view().dom()
     }
 
-    // The L4/L3 walk belongs to the big-lock payload; inline so both levels share one trigger term.
-    #[verifier::inline]
     pub open spec fn spec_project_4k_source(&self, va: VAddr) -> Option<MapEntry> {
         project_4k_source_from_mappings(self.mapping_4k(), self.mapping_2m(), self.mapping_1g(), va)
     }
 
+    // The L4/L3 walk belongs to the big-lock payload; inline so both levels share one trigger term.
+    #[verifier::inline]
     pub open spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry> { self.higher.spec_resolve_mapping_l4(l4i) }
     #[verifier::inline]
     pub open spec fn spec_resolve_mapping_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry> { self.higher.spec_resolve_mapping_1g_l3(l4i, l3i) }

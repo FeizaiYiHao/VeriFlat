@@ -808,7 +808,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_memory_management_inv(
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
     assert(pci_bar_slots_wf(post.irt.view().bars())) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
     assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(io_mappings_wf); };
+    create_process_from_staged_pages_eof_io_mappings_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
 }
 
 /// The new process's object page, both root pages, and both L4 pages belong to its container; every other page keeps its
