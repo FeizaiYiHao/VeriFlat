@@ -27,15 +27,15 @@ metadata:
   function's candidate DID (that function becomes the anchor); later
   attaches reuse the table's DID. An IPC transfer of an attached non-anchor
   function invalidates the DID and keeps it. Transferring the anchor
-  re-anchors deterministically at the lexicographically smallest remaining
-  attached B/D/F of the same owner and DID (`IommuRootTable::first_attached_owned`),
-  moving every remaining entry to that B/D/F's candidate DID
+  re-anchors deterministically at the lexicographically smallest other
+  function of the sender's PCI function array attached in that DID
+  (`iommu_root_table_detach_owned`, `IommuRootTable::first_attached_in_did`),
+  moving every such entry to that B/D/F's candidate DID
   (`iommu_root_table_migrate_did`: clear, invalidate the old DID, republish,
   with the old DID invalidated before and after), or drops the DID when none
-  remains; the U contract is `pci_handoff_table_did`. Thread exit
-  (`iommu_root_table_detach_all`) and kill (`iommu_root_table_reassign_detach_all`,
-  or `iommu_root_table_reassign_owned` for a table-less owner) detach every
-  function the owner owns, invalidate the DID once, and drop it.
+  remains; the U contract is `pci_handoff_table_did`. Thread exit and kill
+  (`iommu_root_table_detach_array`) clear the context entry of every function
+  in the owner's array, invalidate the DID once, and drop it.
 - Every DID change (`iommu_table_map_set_did`) happens inside an
   `iommu_subsystem_mutation.rs` helper with the root-table lock and the
   table's write lock held (root table 10005 before IOMMU table 10006).
@@ -46,39 +46,62 @@ metadata:
   `ProcessRO.iommu_cr3` mirrors its root and `ProcessRO.iommu_table_ptr`
   (K-only) the table pointer (`process_iommu_table_match`), so IPC locks the
   sender's table without locking the sender process.
-- Every valid BDF has exactly one process owner, independently of whether DMA
-  translation is enabled. "Not attached" means the context entry is not
-  present; it does not remove ownership.
-- `ProcessGhost.owned_pci_functions` (lock-free ghost) is the reverse index;
-  the root-table lock serializes its updates. `process_pci_function_ownership_wf`
-  aligns it with the owner slots both ways; a zombie keeps its functions.
-  There is no exec counter.
-- Ownership moves through an IPC `Pci` rendezvous (sender to receiver, the
-  function detached) and through kill (the target's functions go to the
-  killer's process). `syscall_pci_attach_dma` attaches an owned function to
-  its owner's IOMMU table; there is no detach syscall.
+- A valid B/D/F is owned by at most one process. The root table keeps a real
+  `owned` flag and a ghost owner per function; the owner's page table keeps
+  the function in its sealed 8-entry `PciFunctionArray`
+  (`PageTableHigher.pci`, under the page-table big lock) with its BAR mapping
+  count and ghost mapping set (memory-model note).
+  `pci_function_ownership_wf` keeps both sides in agreement; both change only
+  with the owner's page-table write lock and the root-table lock held, through
+  `KernelK::update_pci_entry` (Claim or Release of one entry) and
+  `KernelK::release_pci_functions` (every entry). "Not attached" means the
+  context entry is not present; it does not remove ownership.
+- Every function starts unowned at boot (`IommuRootTable::new_disabled`).
+  Only the root process of the root container (no parent process, container
+  without parent) claims an unowned function (`syscall_pci_claim`): cpu,
+  process unless killed, page table write lock, a free entry, then the root
+  table lock and the ownership check.
+- An IPC `Pci` rendezvous moves a function between the two arrays: both page
+  tables write-locked (`wlock_pagetable_pair`), the sender must hold it with
+  count 0 and the receiver must have a free entry; then the root table lock,
+  the sender's IOMMU table when the function is attached (detached first), and
+  Release plus Claim. Otherwise the peer gets `ErrorIpcPciOwnerMismatch`,
+  `ErrorIpcPciBarMapped`, or `ErrorIpcPciReceiverFull` and nothing moves.
+- Kill and last-thread exit: lock the page table, hide the user root entries,
+  flush, then release every function (the IOMMU table write-locked and
+  detached under the root table lock, `iommu_root_table_detach_array`, then
+  `release_pci_functions`); nothing goes to the killer. The root-table lock is
+  taken only when the array is non-empty; a process with an IOMMU table and no
+  function only write-locks that table, which has no DID. No path scans the
+  65,536-entry table. `process_emptied_tables_wf` keeps a TablesEmptied or
+  zombie process's array empty.
+- `syscall_pci_attach_dma` reads ownership from the array under the
+  page-table read lock, then takes the root-table lock and the IOMMU table
+  write lock to attach; there is no detach syscall.
 
 ## Root table
 
 - `KernelK.irt` is one `LockCell` over the whole table
   (`IOMMU_ROOT_TABLE_LOCK_MAJOR = PAGE_TABLE_LOCK_MAJOR + 1`, below
   `IOMMU_TABLE_LOCK_MAJOR`, so DID changes can write-lock an IOMMU table under
-  it); it is taken and released inside one step and is not U-visible.
+  it); it is taken and released inside one step and is not U-visible. It is
+  taken by claim, IPC PCI transfer, attach, and the release of a dying
+  process that owns functions.
 - `IommuRootTable` is an opaque, pinned legacy VT-d image with logical
-  `owners`, `iommu_roots`, and `iommu_dids` `Seq3` views. External specs use
-  `spec_index_owner`, `spec_index_iommu_root`, and `spec_index_iommu_did`
-  (`context_wf_at`: a DID is present exactly when a root is, and is valid),
-  not nested sequence indexing. Exec operations: `owner`, `is_attached`,
-  `iommu_did`, `set_owner`, `attach(…, root, did)`, `detach`,
-  `first_attached_owned`, `detach_owned_contexts`. Kernel code mutates it
-  through `iommu_subsystem_mutation.rs`, except that an IPC transfer of an
-  unattached function calls `set_owner` directly.
+  `owners` (Option-valued), `iommu_roots`, and `iommu_dids` `Seq3` views.
+  External specs use `spec_index_owner`, `spec_index_iommu_root`, and
+  `spec_index_iommu_did` (`context_wf_at`: a DID is present exactly when a
+  root is, and is valid), not nested sequence indexing. Exec operations:
+  `is_owned`, `is_attached`, `iommu_did`, `claim`, `release`, `attach(…, root,
+  did)`, `detach`, `first_attached_in_did`, `detach_array`. Kernel code
+  mutates it through `iommu_subsystem_mutation.rs` and
+  `pci_ownership_mutation.rs`.
 - Context entries are written only through the trusted volatile stores
   `publish_context_entry` (upper word with DID and address width first,
   P-carrying lower word last) and `clear_context_entry` (lower word first).
 - Physical lookup is root entry `[bus]`, then context entry
   `[(device << 3) | function]`. The object contains one 4 KiB root page, 256
-  4 KiB context tables, and 128 pages of owner metadata: 385 pages / 1,576,960
+  4 KiB context tables, and 16 pages of `owned` flags: 273 pages / 1,118,208
   bytes total.
 - The object must remain pinned after its embedded addresses are initialized;
   never construct or return it as a large stack value.
@@ -151,6 +174,8 @@ Primary code: `src/iommu/root_table.rs`, `src/iommu/root_table_u.rs`,
 `src/kernel/memory_management/process_iommu_table_spec.rs`,
 `src/kernel/memory_management/pages_pagetable_spec.rs`,
 `src/kernel/process_management/process_pci_function_spec.rs`,
+`src/pagetable_concurrent/pci_function_array.rs`,
+`src/kernel/iommu_tlb_management/pci_ownership_mutation.rs`,
 `src/kernel/iommu_tlb_management/iotlb_wf_spec.rs`,
 `src/kernel/iommu_tlb_management/iommu_subsystem_mutation.rs`,
 `src/kernel/implementation/syscall_pci/`,
