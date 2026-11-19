@@ -142,6 +142,7 @@ pub fn syscall_pci_attach_dma(
             &&& kernel_process_nonlock_fields_unchanged(steps.snapshot_k().prc_mp, krnl.prc_mp)
             &&& kernel_thread_nonlock_fields_unchanged(steps.snapshot_k().thrd_mp, krnl.thrd_mp)
             &&& krnl.dflt_pt == steps.snapshot_k().dflt_pt
+            &&& krnl.pci_bars == steps.snapshot_k().pci_bars
         }) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());

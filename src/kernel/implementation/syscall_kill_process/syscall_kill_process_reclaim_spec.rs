@@ -81,7 +81,7 @@ pub(crate) open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post:
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, prc_mp: post.prc_mp, ..pre })
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
-    &&& post.irt.view().bars() == pre.irt.view().bars()
+    &&& post.pci_bars.view() == pre.pci_bars.view()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
         #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
         let owned = pre.irt.view().spec_index_owner(b, d, f) == target;

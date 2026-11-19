@@ -209,7 +209,7 @@ pub(super) proof fn lock_pagetable_window_eof(pre: KernelK, post: KernelK, root:
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         pagetable_invariant_fields_unchanged_implies_process_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
 }
@@ -298,7 +298,7 @@ pub(super) proof fn unlock_pagetable_window_eof(pre: KernelK, post: KernelK, roo
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         pagetable_invariant_fields_unchanged_implies_process_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
 }

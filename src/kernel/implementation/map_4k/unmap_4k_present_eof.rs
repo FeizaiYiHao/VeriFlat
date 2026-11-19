@@ -57,7 +57,7 @@ pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pa
     ensures post.inv(),
 {
     reveal(clear_4k_mapping_present_eof_transition_framing);
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by {
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
         broadcast use spec_va_4k_valid_index_roundtrip;
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable);
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));

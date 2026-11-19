@@ -123,7 +123,7 @@ pub proof fn merge_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     merge_2m_commit_eof_implies_object_page_invariants(pre, post, thread, allocator_4k, allocator_2m, candidate);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(merge_2m_commit_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(merge_2m_commit_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
     assert(post.process_management_inv()) by {
         thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thrd_mp, post.thrd_mp);
         thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp);

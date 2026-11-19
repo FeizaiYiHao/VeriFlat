@@ -541,9 +541,9 @@ proof fn pop_stage_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     pop_stage_1g_page_eof_page_types(pre, post, allocator, thread, container, page, node);
     pop_stage_1g_page_eof_staged_pages(pre, post, allocator, thread, container, page, node);
     pop_stage_1g_page_eof_free_pages(pre, post, allocator, thread, container, page, node);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pop_stage_1g_page_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(pop_stage_1g_page_eof_transition_framing); reveal(io_mappings_wf); };
-    assert(pci_bar_slots_wf(post.irt.view().bars())) by { reveal(pop_stage_1g_page_eof_transition_framing); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pop_stage_1g_page_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pop_stage_1g_page_eof_transition_framing); reveal(io_mappings_wf); };
+    assert(pci_bar_table_wf(post.pci_bars.view())) by { reveal(pop_stage_1g_page_eof_transition_framing); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(pop_stage_1g_page_eof_transition_framing); reveal(container_kill_retire_wf); };
 }
 

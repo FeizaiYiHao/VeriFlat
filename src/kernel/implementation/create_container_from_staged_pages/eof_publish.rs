@@ -85,6 +85,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().mappings()]
         #![trigger pre.pg_arr.spec_index(index).view().view().mappings()]

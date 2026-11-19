@@ -135,8 +135,8 @@ broadcast proof fn kernel_owned_1g_page_implies_u_2m_mapping_outside_its_frame_a
         let a = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr;
         let idx = page_ptr2page_index(a);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io && addr <= a < addr + 0x40000000 {
-            assert(pci_bar_page(k.irt.view().bars(), (a as int + 0 * PAGE_SZ_4K as int) as usize)) by {
-                io_mappings_wf_2m_at(k.irt.view().bars(), k.pt_mp, k.pt_lower.view(), pt, v);
+            assert(pci_bar_page(k.pci_bars.view(), (a as int + 0 * PAGE_SZ_4K as int) as usize)) by {
+                io_mappings_wf_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, v);
                 assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute);
             };
             hugepage_1g_wf_head_at(k.pg_arr, head);
@@ -144,7 +144,7 @@ broadcast proof fn kernel_owned_1g_page_implies_u_2m_mapping_outside_its_frame_a
                 requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x40000000, head % 0x40000 == 0, head < NUM_PAGES, NUM_PAGES % 0x40000 == 0;
             hugepage_1g_wf_tail_forward_at(k.pg_arr, head, idx);
             assert(a % 0x1000 == 0 && page_index2page_ptr(idx) == (a as int + 0 * PAGE_SZ_4K as int) as usize) by { assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute); };
-            pci_bar_pages_unavailable_wf_at(k.irt.view().bars(), k.pg_arr, idx);
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, idx);
         }
     }
 }
@@ -182,13 +182,13 @@ broadcast proof fn kernel_owned_1g_page_implies_u_4k_mapping_outside_its_frame_a
         let a = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).addr;
         let idx = page_ptr2page_index(a);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).is_io && addr <= a < addr + 0x40000000 {
-            io_mappings_wf_4k_at(k.irt.view().bars(), k.pt_mp, k.pt_lower.view(), pt, v);
+            io_mappings_wf_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, v);
             hugepage_1g_wf_head_at(k.pg_arr, head);
             assert(head <= idx < head + 0x40000 && idx < NUM_PAGES) by (nonlinear_arith)
                 requires addr % 0x1000 == 0, head == addr / 4096, idx == a / 4096, addr <= a < addr + 0x40000000, head % 0x40000 == 0, head < NUM_PAGES, NUM_PAGES % 0x40000 == 0;
             hugepage_1g_wf_tail_forward_at(k.pg_arr, head, idx);
             assert(a % 0x1000 == 0 && page_index2page_ptr(idx) == a) by { assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute); };
-            pci_bar_pages_unavailable_wf_at(k.irt.view().bars(), k.pg_arr, idx);
+            pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, idx);
         }
     }
 }

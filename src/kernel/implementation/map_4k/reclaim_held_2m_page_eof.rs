@@ -110,8 +110,8 @@ proof fn remove_held_2m_mapping_without_free_eof_memory_management_inv(pre: Kern
     ensures post.memory_management_inv(),
 {
     reveal(remove_held_2m_mapping_without_free_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -665,8 +665,8 @@ pub(super) proof fn remove_last_held_2m_mapping_to_allocator_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_last_held_2m_mapping_to_allocator_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     assert(post.subsystems_inv()) by {
         reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);

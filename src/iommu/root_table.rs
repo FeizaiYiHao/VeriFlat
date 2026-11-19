@@ -136,12 +136,10 @@ pub struct IommuRootTable {
     context_entries: Array<VtdLegacyEntry, PCI_BDF_COUNT>,
     owner_slots: Array<RwLockProcessPtr, PCI_BDF_COUNT>,
     table_base: Ghost<PAddr>,
-    /// The BAR slots of every PCI function, fixed at boot.
-    bar_slots: PciBarSlots,
 }
 
 impl IommuRootTable {
-    pub fn new_disabled(table_base: PAddr, owner_process: RwLockProcessPtr, bar_slots: PciBarSlots) -> (ret: Self)
+    pub fn new_disabled(table_base: PAddr, owner_process: RwLockProcessPtr) -> (ret: Self)
         requires
             table_base % VTD_TABLE_SIZE == 0,
             table_base as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
@@ -150,7 +148,6 @@ impl IommuRootTable {
         ensures
             ret.wf(),
             ret.table_base() == table_base,
-            ret.bars() == bar_slots.view(),
             forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_iommu_root(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_iommu_root(bus, device, function) is None,
             forall|bus: usize, device: usize, function: usize| #![trigger ret.spec_index_owner(bus, device, function)] pci_bdf_valid(bus, device, function) ==> ret.spec_index_owner(bus, device, function) == owner_process,
     {
@@ -190,21 +187,13 @@ impl IommuRootTable {
         }
         let context_entries: Array<VtdLegacyEntry, PCI_BDF_COUNT> = Array::new_with_init_value(VtdLegacyEntry::disabled());
         let owner_slots: Array<RwLockProcessPtr, PCI_BDF_COUNT> = Array::new_with_init_value(owner_process);
-        let ret = Self { root_entries, context_entries, owner_slots, table_base: Ghost(table_base), bar_slots };
+        let ret = Self { root_entries, context_entries, owner_slots, table_base: Ghost(table_base) };
         assert(ret.wf()) by { reveal(IommuRootTable::wf); }
         ret
     }
 
     /// Physical address the table is pinned at; also its lock minor.
     pub closed spec fn table_base(&self) -> PAddr { self.table_base.view() }
-
-    /// The BAR slots of every PCI function; an absent key is an empty slot. No method changes them.
-    pub closed spec fn bars(&self) -> Map<BarKey, BarRegion> { self.bar_slots.view() }
-
-    /// Indexes BAR slot `bar` of one PCI function.
-    pub open spec fn spec_index_bar(&self, bus: usize, device: usize, function: usize, bar: usize) -> Option<BarRegion> {
-        if self.bars().contains_key(((bus, device, function), bar)) { Some(self.bars()[((bus, device, function), bar)]) } else { None }
-    }
 
     closed spec fn context_table_address(&self, bus: usize) -> PAddr
         recommends
@@ -331,7 +320,6 @@ impl IommuRootTable {
             final(self).root_entries == old(self).root_entries,
             final(self).owner_slots == old(self).owner_slots,
             final(self).table_base == old(self).table_base,
-            final(self).bar_slots == old(self).bar_slots,
     {
         let entry = &mut self.context_entries.ar[slot];
         unsafe { core::ptr::write_volatile(&mut entry.upper as *mut usize, upper); }
@@ -352,7 +340,6 @@ impl IommuRootTable {
             final(self).root_entries == old(self).root_entries,
             final(self).owner_slots == old(self).owner_slots,
             final(self).table_base == old(self).table_base,
-            final(self).bar_slots == old(self).bar_slots,
     {
         let entry = &mut self.context_entries.ar[slot];
         unsafe { core::ptr::write_volatile(&mut entry.lower as *mut usize, 0); }
@@ -433,7 +420,6 @@ impl IommuRootTable {
         ensures
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
-            final(self).bars() == old(self).bars(),
             final(self).iommu_roots() == old(self).iommu_roots(),
             final(self).iommu_dids() == old(self).iommu_dids(),
             final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, owner),
@@ -468,7 +454,6 @@ impl IommuRootTable {
         ensures
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
-            final(self).bars() == old(self).bars(),
             final(self).owners() == old(self).owners(),
             final(self).iommu_roots() == seq3_update(old(self).iommu_roots(), bus as int, device as int, function as int, None),
             final(self).iommu_dids() == seq3_update(old(self).iommu_dids(), bus as int, device as int, function as int, None),
@@ -500,7 +485,6 @@ impl IommuRootTable {
         ensures
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
-            final(self).bars() == old(self).bars(),
             final(self).owners() == old(self).owners(),
             final(self).iommu_roots() == seq3_update(old(self).iommu_roots(), bus as int, device as int, function as int, Some(root)),
             final(self).iommu_dids() == seq3_update(old(self).iommu_dids(), bus as int, device as int, function as int, Some(did)),
@@ -681,7 +665,6 @@ impl IommuRootTable {
         ensures
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
-            final(self).bars() == old(self).bars(),
             owner == recipient ==> final(self).owners() == old(self).owners(),
             forall|b: usize, d: usize, f: usize| #![trigger old(self).spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) ==> (old(self).spec_index_iommu_did(b, d, f) is Some) == (old(self).spec_index_iommu_root(b, d, f) is Some),
@@ -700,7 +683,6 @@ impl IommuRootTable {
             invariant
                 self.wf(),
                 self.table_base() == old(self).table_base(),
-                self.bars() == old(self).bars(),
                 owner == recipient ==> self.owners() == old(self).owners(),
                 bus <= PCI_BUS_COUNT,
                 device < PCI_DEVICE_COUNT,

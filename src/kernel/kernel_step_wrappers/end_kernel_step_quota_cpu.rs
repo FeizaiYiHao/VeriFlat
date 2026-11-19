@@ -258,6 +258,7 @@ impl KernelSteps {
             kernel_process_nonlock_fields_unchanged(old(self).snapshot_k().prc_mp, krnl.prc_mp),
             kernel_thread_nonlock_fields_unchanged(old(self).snapshot_k().thrd_mp, krnl.thrd_mp),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.pci_bars == old(self).snapshot_k().pci_bars,
             krnl.it_mp.dom() == old(self).snapshot_k().it_mp.dom(),
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
                 old(self).snapshot_k().it_mp.dom().contains(p) ==> {

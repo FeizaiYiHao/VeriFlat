@@ -77,7 +77,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
         pagetable_invariant_fields_unchanged_implies_page_mappings_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
         pagetable_invariant_fields_unchanged_implies_pagetable_pages_wf_preserved_forall();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
@@ -186,7 +186,7 @@ pub(super) proof fn runlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         pagetable_invariant_fields_unchanged_implies_page_mappings_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
         pagetable_invariant_fields_unchanged_implies_pagetable_pages_wf_preserved_forall();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
@@ -238,7 +238,7 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
         pagetable_invariant_fields_unchanged_implies_page_mappings_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
         pagetable_invariant_fields_unchanged_implies_pagetable_pages_wf_preserved_forall();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };
@@ -302,7 +302,7 @@ pub(super) proof fn downgrade_pagetable_eof(pre: KernelK, post: KernelK, thread_
         pagetable_invariant_fields_unchanged_implies_page_mappings_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
         pagetable_invariant_fields_unchanged_implies_pagetable_pages_wf_preserved_forall();
-        assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
     assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_tlb_wf_preserved_forall(); };

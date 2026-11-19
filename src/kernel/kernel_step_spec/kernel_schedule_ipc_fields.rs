@@ -57,6 +57,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.cpu_tlb.view() == match flushed_pcid {
@@ -262,6 +263,7 @@ pub open spec fn kernel_ipc_block_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == if flushed_default_pcid {
         pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
     } else { pre.cpu_tlb.view() }
@@ -379,6 +381,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == match flushed_pcid {
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
@@ -605,6 +608,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == match flushed_pcid {
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
@@ -802,6 +806,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.cpu_tlb.structure_caches() == pre.cpu_tlb.structure_caches()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
         pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]

@@ -1354,11 +1354,15 @@ specifications.
 
 Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.rs`):
 
-- The PCI table (`IommuRootTable`) holds sealed ghost BAR slots (`PciBarSlots`),
-  keyed by `(B/D/F, BAR index 0..5)`, each the exact byte range of one memory
-  BAR. The boot glue fills them once; no syscall changes them, PCI transfer and
-  attachment included. A BAR page is a 4K page in the outward-rounded 4K
-  envelope of some slot (`pci_bar_page`).
+- The kernel holds a sealed, read-only BAR table (`KernelK.pci_bars`, a
+  `PciBarTable` of at most `PCI_BAR_TABLE_CAPACITY` = 1024 `PciBarEntry`s in
+  the boot glue's static), each entry a `(B/D/F, BAR index 0..5)` and the exact
+  byte range of one memory BAR. It is read without a lock. The boot glue fills
+  it once; no syscall changes it, PCI transfer and attachment included. Its
+  entries are pairwise byte-disjoint, and BARs whose 4K envelopes share a page
+  belong to the same PCI function (`pci_bar_table_wf`). A BAR page is a 4K page
+  in the outward-rounded 4K envelope of some entry (`pci_bar_page`, through
+  `pci_bar_entry_of_page`).
 - BAR pages have no page-array bookkeeping: a page-array page in an envelope is
   `Unavailable` for good (`pci_bar_pages_unavailable_wf`), and an IO mapping has
   no owner, reference count, reverse map, or quota.
@@ -1392,7 +1396,7 @@ sections named; an IO leaf is one more entry of `mapping_4k` or `mapping_2m`):
   `kill_container` (§19): every 4K and 2M IO leaf of the reclaimed page tables
   is cleared with no page-array bookkeeping and no refund.
 - `send_pci`, `receive_pci` (§11), `pci_attach_dma` (§4d), and the PCI
-  reassignment of the kills leave the BAR slots and every IO mapping as they
+  reassignment of the kills leave the BAR table and every IO mapping as they
   are.
 
 Threat model. Holding a mapping of a device's registers is control of that

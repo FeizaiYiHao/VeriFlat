@@ -8,8 +8,9 @@
 //! free 1G head's node into the global 1G pool at that final address, and hands the rest to the verified initializer.
 //!
 //! Device memory: the loader reports every assigned memory BAR as a BAR slot and maps every page of every slot's page
-//! envelope into dom0 with a 4K IO leaf. The verified initializer takes the slots (sealed `PciBarSlots`) and the IO
-//! leaves on trust; `check_bar_slots` and `walk_dom0` check at boot what it assumes about them.
+//! envelope into dom0 with a 4K IO leaf. The glue copies the slots into the sealed `PciBarTable` in its own static; the
+//! verified initializer takes the table and the IO leaves on trust, and `check_bar_slots` and `walk_dom0` check at boot
+//! what it assumes about them.
 
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
@@ -66,7 +67,7 @@ const PTE_IO_CACHE: u64 = PAGE_ENTRY_IO_CACHE_MASK;
 /// leaf) and G stay clear, so PCD|PWT select PAT entry 3, UC.
 const IO_LEAF_FLAGS: u64 = PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_WRITE_MASK | PAGE_ENTRY_USER_MASK | PTE_IO_CACHE | PAGE_ENTRY_ACCESSED_MASK
     | PAGE_ENTRY_DIRTY_MASK | PAGE_ENTRY_KERNEL_PRESENT_MASK | PTE_IO | PAGE_ENTRY_EXECUTE_MASK;
-/// End of the physical addresses a BAR slot may cover: `BarRegion::wf` (`start + len <= MEM_4K_MASK + 4K`, 2^48).
+/// End of the physical addresses a BAR slot may cover: `PciBarEntry::wf` (`base + size <= MEM_4K_MASK + 4K`, 2^48).
 const IO_ADDRESS_LIMIT: u64 = MEM_4K_MASK + PAGE_SIZE as u64;
 /// The fixed MMIO pages the kernel drives besides the VT-d units and ECAM windows: IOAPIC, and the xAPIC default.
 const IOAPIC_BASE: u64 = 0xfec0_0000;
@@ -112,6 +113,10 @@ static mut KERNEL: KernelSlot = KernelSlot(MaybeUninit::uninit());
 /// identity-mapped kernel image, and each node's permission is created exactly once, when boot parks it in its page.
 static mut PAGE_FREE_LIST_NODES: MaybeUninit<[Node<PageIndex>; NUM_PAGES]> = MaybeUninit::uninit();
 
+/// Storage of the PCI BAR table, outside the kernel object, which keeps a shared reference to it; written once by
+/// [`init_kernel`] and only read afterwards.
+static mut PCI_BAR_TABLE: MaybeUninit<PciBarTable> = MaybeUninit::uninit();
+
 /// The verified kernel object; valid after [`init_kernel`].
 pub fn kernel() -> &'static mut KernelK {
     unsafe { (*(&raw mut KERNEL)).0.assume_init_mut() }
@@ -146,11 +151,13 @@ fn envelope(slot: &BarSlot) -> (u64, u64) {
     slot.envelope().unwrap_or_else(|| panic!("BAR{} of {:02x}:{:02x}.{}: base {:#x} + size {:#x} overflows", slot.bar, b, d, f, slot.base, slot.size))
 }
 
-/// Checks at boot everything `finish_init_from_boot` takes on trust about the BAR slots (`pci_bar_slots_wf`,
+/// Checks at boot everything `finish_init_from_boot` takes on trust about the BAR slots (`pci_bar_table_wf`,
 /// `pci_bar_pages_unavailable_wf`) and what the platform needs of them; panics with the slot otherwise:
+/// - there are at most `PCI_BAR_TABLE_CAPACITY` slots;
 /// - each slot's key is unique and its BAR index below 6 (the B/D/F is valid by its 16-bit encoding);
-/// - each range is nonempty, a naturally aligned power of two, and ends at or below 2^48 (`BarRegion::wf`), below the
+/// - each range is nonempty, a naturally aligned power of two, and ends at or below 2^48 (`PciBarEntry::wf`), below the
 ///   processor's physical address width, and below the DMAR host address width;
+/// - no two slots' byte ranges overlap, and slots of different PCI functions never share a page of their envelopes;
 /// - no page envelope overlaps firmware RAM at any address, nor the MMIO the kernel drives: IOAPIC, local APIC,
 ///   VT-d register pages, ECAM windows;
 /// - every page-array page in an envelope has the loader type Reserved: not the kernel image, a boot page table,
@@ -172,6 +179,7 @@ fn check_bar_slots(boot_info: &BootInfo) -> usize {
         kernel_mmio[n] = (base, base + size);
         n += 1;
     }
+    assert!(boot_info.bar_slots.len() <= PCI_BAR_TABLE_CAPACITY, "{} BAR slots, more than the BAR table's {}", boot_info.bar_slots.len(), PCI_BAR_TABLE_CAPACITY);
     let mut pages = 0;
     for (k, slot) in boot_info.bar_slots.iter().enumerate() {
         let (b, d, f) = bdf_text(slot.bdf);
@@ -182,6 +190,19 @@ fn check_bar_slots(boot_info: &BootInfo) -> usize {
         );
         assert!(slot.size.is_power_of_two() && slot.base % slot.size == 0, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} is not a naturally aligned power of two", slot.bar, b, d, f, slot.base, slot.size);
         let (start, end) = envelope(slot);
+        for o in boot_info.bar_slots[..k].iter() {
+            let (ob, od, of) = bdf_text(o.bdf);
+            assert!(
+                !overlaps((slot.base, slot.base + slot.size), (o.base, o.base + o.size)),
+                "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} overlaps BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x}",
+                slot.bar, b, d, f, slot.base, slot.size, o.bar, ob, od, of, o.base, o.size
+            );
+            assert!(
+                o.bdf == slot.bdf || !overlaps((start, end), envelope(o)),
+                "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} shares a page with BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x}",
+                slot.bar, b, d, f, slot.base, slot.size, o.bar, ob, od, of, o.base, o.size
+            );
+        }
         assert!(end <= IO_ADDRESS_LIMIT, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends above 2^48, beyond the kernel's IO leaves", slot.bar, b, d, f, slot.base, slot.size);
         assert!(end <= 1 << cpu_width, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends beyond the processor's {}-bit physical addresses", slot.bar, b, d, f, slot.base, slot.size, cpu_width);
         assert!(end <= 1 << iommu_width, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends beyond the VT-d {}-bit host addresses", slot.bar, b, d, f, slot.base, slot.size, iommu_width);
@@ -566,17 +587,23 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let cpu_tlb = CpuTLB::new_empty();
     let iommu_tlb = IommuTLB::new_empty();
 
-    // 8. The PCI table's BAR slots: the ghost map from (B/D/F, BAR index) to each slot's exact byte range, built from
-    // `boot_info.bar_slots` (checked by `check_bar_slots`); like every ghost argument it is erased in this build.
-    let bar_slots = PciBarSlots::new(Ghost::assume_new());
+    // 8. The BAR table, in its static: one entry per slot of `boot_info.bar_slots` (checked by `check_bar_slots`), with
+    // its B/D/F, BAR index and exact byte range.
+    let empty = PciBarEntry { bdf: (0, 0, 0), bar: 0, base: 0, size: 0 };
+    let mut bar_entries = Array { ar: [empty; PCI_BAR_TABLE_CAPACITY] };
+    for (entry, slot) in bar_entries.ar.iter_mut().zip(boot_info.bar_slots.iter()) {
+        let (b, d, f) = bdf_text(slot.bdf);
+        *entry = PciBarEntry { bdf: (b as usize, d as usize, f as usize), bar: slot.bar as usize, base: slot.base as usize, size: slot.size as usize };
+    }
+    let pci_bars: &'static PciBarTable = (*(&raw mut PCI_BAR_TABLE)).write(PciBarTable::new(bar_entries, boot_info.bar_slots.len()));
 
     // Ghost arguments, in order: the kernel's L4 entries, dom0's 4K manifest (every present user leaf `walk_dom0`
-    // checked, RAM and IO, at its VA, owned by the root container), the BAR slots, every page pointer, every PCI
-    // function, and the boot table reverse maps.
+    // checked, RAM and IO, at its VA, owned by the root container), every page pointer, every PCI function, and the boot
+    // table reverse maps; the BAR table sits between the manifest and the page pointers.
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_array, cpu_tlb, iommu_tlb,
         free_4k_pool, free_2m_pool, free_1g_pool,
-        Ghost::assume_new(), Ghost::assume_new(), bar_slots, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
+        Ghost::assume_new(), Ghost::assume_new(), pci_bars, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

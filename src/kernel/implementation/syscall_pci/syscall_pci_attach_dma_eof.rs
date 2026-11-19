@@ -24,7 +24,7 @@ pub(super) open spec fn pci_attach_dma_eof_transition_framing(pre: KernelK, post
         }
     }
     &&& post.irt.view().owners() == pre.irt.view().owners()
-    &&& post.irt.view().bars() == pre.irt.view().bars()
+    &&& post.pci_bars.view() == pre.pci_bars.view()
     &&& post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread()
     &&& post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed()
 }
@@ -140,7 +140,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
             }
         },
         post.irt.view().owners() == pre.irt.view().owners(),
-        post.irt.view().bars() == pre.irt.view().bars(),
+        post.pci_bars.view() == pre.pci_bars.view(),
         iommu_table_perms_wf(post.it_mp),
         post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread(),
         post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed(),
@@ -160,7 +160,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
     pci_attach_dma_eof_process_tables(pre, post, prc_ptr, table, bus, device, function);
     pci_attach_dma_eof_pages(pre, post, prc_ptr, table, bus, device, function);
     pci_attach_dma_eof_iotlb(pre, post, prc_ptr, table, bus, device, function);
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

@@ -494,11 +494,11 @@ proof fn kill_retire_eof_bar_pages(
             &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == ctn_ptr
         },
     ensures
-        pci_bar_slots_wf(post.irt.view().bars()),
-        pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+        pci_bar_table_wf(post.pci_bars.view()),
+        pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
 {
     reveal(kill_retire_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
 }
 
 /// Dropping the retired process's emptied tables keeps every IO leaf of the remaining tables on BAR pages.
@@ -509,7 +509,7 @@ proof fn kill_retire_eof_io_mappings(
     requires
         pre.inv(),
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(kill_retire_eof_transition_framing);
     reveal(io_mappings_wf);

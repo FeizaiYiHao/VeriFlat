@@ -713,6 +713,7 @@ impl KernelK {
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
             final(self).dflt_pt == old(self).dflt_pt,
+            final(self).pci_bars == old(self).pci_bars,
             final(self).prc_mp.perms_wf(),
             process_perms_wf(old(self).prc_mp) ==> process_perms_wf(final(self).prc_mp),
             final(self).prc_mp.dom() =~= old(self).prc_mp.dom().insert(pg_ptr),

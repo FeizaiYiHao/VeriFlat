@@ -393,7 +393,7 @@ pub proof fn split_2m_commit_eof_implies_kernel_inv(pre: KernelK, post: KernelK,
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     split_2m_commit_eof_implies_object_page_invariants(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(split_2m_commit_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
     split_2m_commit_eof_implies_process_management_inv(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
     split_2m_commit_eof_implies_typed_lock_maps_aligned(pre, post, thread, allocator_4k, allocator_2m, head, source, lctx);
     assert(post.inv()) by { reveal(split_2m_commit_eof_transition_framing); };

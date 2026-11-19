@@ -449,8 +449,8 @@ pub(crate) proof fn kill_reclaim_held_1g_page_scoped_eof(
     kill_reclaim_held_1g_page_scoped_eof_free_1g_pages(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr, owner);
     kill_reclaim_held_1g_page_scoped_eof_page_owners(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);
     kill_reclaim_held_1g_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr, owner);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     assert(post.memory_management_inv()) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     kill_reclaim_held_1g_page_scoped_eof_cpu_caches(pre, post, pagetable, va, pg_ptr, allc_ptr, node_addr);

@@ -450,8 +450,8 @@ pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
     mmap_1g_reclaim_table_page_to_cache_eof_page_relations(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     mmap_1g_reclaim_table_page_to_cache_eof_cpu_caches(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };

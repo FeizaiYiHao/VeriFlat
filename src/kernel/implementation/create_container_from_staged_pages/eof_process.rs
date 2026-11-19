@@ -894,7 +894,7 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
     );
 }
 
-/// `io_mappings_wf`: the BAR slots, the IOMMU tables and every existing page table are unchanged, and the new page table is
+/// `io_mappings_wf`: the BAR table, the IOMMU tables and every existing page table are unchanged, and the new page table is
 /// empty.
 pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -936,14 +936,14 @@ pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+        io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
     reveal(publish_staged_container_root_eof_transition_framing);
     reveal(io_mappings_wf);
 }
 
-/// `pci_bar_pages_unavailable_wf`: the BAR slots are unchanged and every page the publish changes was owned by the current thread,
+/// `pci_bar_pages_unavailable_wf`: the BAR table is unchanged and every page the publish changes was owned by the current thread,
 /// so no BAR page changes state.
 pub(super) proof fn publish_staged_container_root_eof_pci_bar_pages_unavailable_wf(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -985,13 +985,13 @@ pub(super) proof fn publish_staged_container_root_eof_pci_bar_pages_unavailable_
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+        pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
 {
     broadcast use publish_staged_container_root_eof_pci_bar_page_unavailable_at;
     reveal(pci_bar_pages_unavailable_wf);
 }
 
-/// Page `pg_idx` of a BAR slot keeps its `Unavailable` state through the publish.
+/// Page `pg_idx` of a BAR keeps its `Unavailable` state through the publish.
 pub(super) broadcast proof fn publish_staged_container_root_eof_pci_bar_page_unavailable_at(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -1040,11 +1040,11 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_pci_bar_page_una
             ),
             post.pg_arr.spec_index(pg_idx).view().view().state
         ]
-        index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.irt.view().bars(), page_index2page_ptr(pg_idx)) ==> post.pg_arr.spec_index(pg_idx).view().view().state is Unavailable,
+        index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.pci_bars.view(), page_index2page_ptr(pg_idx)) ==> post.pg_arr.spec_index(pg_idx).view().view().state is Unavailable,
 {
-    if index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.irt.view().bars(), page_index2page_ptr(pg_idx)) {
-        assert(post.irt.view().bars() == pre.irt.view().bars()) by { reveal(publish_staged_container_root_eof_transition_framing); };
-        pci_bar_pages_unavailable_wf_at(pre.irt.view().bars(), pre.pg_arr, pg_idx);
+    if index_valid(NUM_PAGES, pg_idx) && pci_bar_page(post.pci_bars.view(), page_index2page_ptr(pg_idx)) {
+        assert(post.pci_bars.view() == pre.pci_bars.view()) by { reveal(publish_staged_container_root_eof_transition_framing); };
+        pci_bar_pages_unavailable_wf_at(pre.pci_bars.view(), pre.pg_arr, pg_idx);
         publish_staged_container_root_eof_unmodified_object_page_state_eq(
             pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,

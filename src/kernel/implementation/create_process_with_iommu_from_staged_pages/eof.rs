@@ -806,8 +806,8 @@ proof fn create_process_with_iommu_from_staged_pages_eof_memory_management_inv(
     create_process_from_staged_pages_eof_page_object_owner_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     create_process_from_staged_pages_eof_container_kill_retire_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
-    assert(pci_bar_slots_wf(post.irt.view().bars())) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_table_wf(post.pci_bars.view())) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
     create_process_from_staged_pages_eof_io_mappings_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, true, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
 }
 

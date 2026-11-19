@@ -209,7 +209,7 @@ pub(crate) proof fn kill_container_retire_eof_bar_pages(
         pre.inv(),
         kill_container_retire_eof_transition_framing(pre, post, ctn_ptr, parent_ptr, owner_ptr),
         kill_container_retire_eof_target_empty(pre, ctn_ptr, parent_ptr, owner_ptr),
-    ensures pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr),
+    ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
 {
     kill_container_retire_eof_page_moves(pre, post, ctn_ptr, parent_ptr, owner_ptr);
     reveal(pci_bar_pages_unavailable_wf);

@@ -90,7 +90,7 @@ proof fn remove_io_4k_mapping_eof_io_mappings_wf(pre: KernelK, post: KernelK, pa
     requires
         pre.inv(),
         remove_io_4k_mapping_eof_transition_framing(pre, post, pagetable, va),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(remove_io_4k_mapping_eof_transition_framing);
     reveal(io_mappings_wf);
@@ -206,7 +206,7 @@ proof fn remove_held_io_4k_mapping_eof_io_mappings_wf(pre: KernelK, post: Kernel
     requires
         pre.inv(),
         remove_held_io_4k_mapping_eof_transition_framing(pre, post, pagetable, va),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(remove_held_io_4k_mapping_eof_transition_framing);
     reveal(io_mappings_wf);
@@ -333,7 +333,7 @@ proof fn remove_held_io_2m_mapping_eof_io_mappings_wf(pre: KernelK, post: Kernel
     requires
         pre.inv(),
         remove_held_io_2m_mapping_eof_transition_framing(pre, post, pagetable, va),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(remove_held_io_2m_mapping_eof_transition_framing);
     reveal(io_mappings_wf);
@@ -459,7 +459,7 @@ proof fn remove_io_2m_mapping_in_window_eof_io_mappings_wf(pre: KernelK, post: K
     requires
         pre.inv(),
         remove_io_2m_mapping_in_window_eof_transition_framing(pre, post, pagetable, va, l2_ptr),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
+    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(remove_io_2m_mapping_in_window_eof_transition_framing);
     reveal(io_mappings_wf);

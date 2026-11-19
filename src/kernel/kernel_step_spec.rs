@@ -125,6 +125,7 @@ pub open spec fn kernel_cpu_process_thread_nonlock_fields_unchanged(pre: &Kernel
     &&& post.cpu_regs.view().view() == pre.cpu_regs.view().view()
     &&& post.cpu_trap_frame.view().view() == pre.cpu_trap_frame.view().view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
 }
 
 /// Every container field other than its own lock mode is unchanged, including the lock mode of its cpu set.
@@ -279,6 +280,7 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
@@ -416,6 +418,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& pre.prc_mp.dom().contains(prc_ptr)
@@ -567,6 +570,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& pre.prc_mp.dom().contains(prc_ptr)
@@ -717,6 +721,7 @@ pub open spec fn kernel_process_quota_1g_changed(pre: &KernelK, post: &KernelK, 
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& pre.prc_mp.dom().contains(prc_ptr)
@@ -1271,6 +1276,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flushed_default_pcid)
     &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& !(cpu.state is Off)
@@ -1429,6 +1435,7 @@ pub open spec fn kernel_new_endpoint_fields(
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.pt_mp == pre.pt_mp
     &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
@@ -1490,6 +1497,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
         pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
     } else { pre.cpu_tlb.view() }
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pci_bars == pre.pci_bars
     &&& post.pt_mp == pre.pt_mp
     &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp

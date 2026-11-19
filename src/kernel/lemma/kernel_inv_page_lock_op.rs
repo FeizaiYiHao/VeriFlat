@@ -21,7 +21,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
         pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()),
         iommu_table_perms_wf(pre.it_mp),
         page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr),
-        post.irt.view().bars() == pre.irt.view().bars(),
+        post.pci_bars.view() == pre.pci_bars.view(),
         post.pt_mp == pre.pt_mp,
         post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
@@ -38,7 +38,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     ensures
         post.memory_management_inv(),
 {
-    assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.allc_2m_mp, post.allc_2m_mp, pre.pg_arr, post.pg_arr);
@@ -90,7 +90,7 @@ pub proof fn page_invariant_fields_unchanged_implies_memory_management_inv_prese
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
             pre.memory_management_inv() && pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
-                &&& post.irt.view().bars() == pre.irt.view().bars()
+                &&& post.pci_bars.view() == pre.pci_bars.view()
                 &&& post.pt_mp == pre.pt_mp
                 &&& post.pt_lower == pre.pt_lower
                 &&& post.it_mp == pre.it_mp
@@ -108,7 +108,7 @@ pub proof fn page_invariant_fields_unchanged_implies_memory_management_inv_prese
 {
     assert forall|pre: KernelK, post: KernelK| #![auto]
         pre.memory_management_inv() && pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
-                &&& post.irt.view().bars() == pre.irt.view().bars()
+                &&& post.pci_bars.view() == pre.pci_bars.view()
             &&& post.pt_mp == pre.pt_mp
             &&& post.pt_lower == pre.pt_lower
             &&& post.it_mp == pre.it_mp

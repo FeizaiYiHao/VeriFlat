@@ -35,7 +35,6 @@ pub fn iommu_root_table_reassign_detached(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         final(irt).view().owners() == seq3_update(old(irt).view().owners(), bus as int, device as int, function as int, owner),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
             #![trigger final(irt).view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
@@ -143,7 +142,6 @@ fn iommu_root_table_migrate_did(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         final(irt).view().owners() == old(irt).view().owners(),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_iommu_root(b, d, f)] #![trigger final(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> {
@@ -171,7 +169,6 @@ fn iommu_root_table_migrate_did(
             irt.wlocked_by(lctx),
             irt.locking_thread() == old(irt).locking_thread(),
             irt.view().table_base() == old(irt).view().table_base(),
-            irt.view().bars() == old(irt).view().bars(),
             irt.view().owners() == old(irt).view().owners(),
             iommu_tlb.inv(),
             iommu_tlb.view() =~= old(iommu_tlb).view().insert(old_did, iommu_tlb.spec_index(old_did)),
@@ -239,7 +236,6 @@ pub fn iommu_root_table_detach(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         final(irt).view().owners() == old(irt).view().owners(),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] final(irt).view().spec_index_owner(b, d, f) == old(irt).view().spec_index_owner(b, d, f),
         final(irt).view().iommu_roots() == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, None),
@@ -300,7 +296,6 @@ pub fn iommu_root_table_attach(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         final(irt).view().owners() == old(irt).view().owners(),
         final(irt).view().iommu_roots() == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3)),
         final(irt).view().iommu_dids() == seq3_update(old(irt).view().iommu_dids(), bus as int, device as int, function as int, Some(did)),
@@ -365,7 +360,6 @@ pub fn iommu_root_table_detach_all(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         final(irt).view().owners() == old(irt).view().owners(),
         forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> (old(irt).view().spec_index_iommu_did(b, d, f) is Some) == (old(irt).view().spec_index_iommu_root(b, d, f) is Some),
@@ -437,7 +431,6 @@ pub fn iommu_root_table_reassign_detach_all(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> (old(irt).view().spec_index_iommu_did(b, d, f) is Some) == (old(irt).view().spec_index_iommu_root(b, d, f) is Some),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
@@ -497,7 +490,6 @@ pub fn iommu_root_table_reassign_owned(
         iommu_root_table_typed_lock_map_aligned(*final(irt), lctx.iommu_root_table_lock_map(), lctx.thread_id()),
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
-        final(irt).view().bars() == old(irt).view().bars(),
         forall|b: usize, d: usize, f: usize| #![trigger old(irt).view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> (old(irt).view().spec_index_iommu_did(b, d, f) is Some) == (old(irt).view().spec_index_iommu_root(b, d, f) is Some),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]

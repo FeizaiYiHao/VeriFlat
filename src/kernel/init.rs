@@ -88,7 +88,7 @@ pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_cont
 
 /// Every IO mapping of dom0's boot 4K manifest maps a BAR page.
 #[verifier::opaque]
-pub open spec fn boot_dom0_io_manifest_wf(manifest_4k: Map<VAddr, MapEntry>, bars: Map<BarKey, BarRegion>) -> bool {
+pub open spec fn boot_dom0_io_manifest_wf(manifest_4k: Map<VAddr, MapEntry>, bars: Seq<PciBarEntry>) -> bool {
     forall|va: VAddr| #![trigger manifest_4k.dom().contains(va)]
         manifest_4k.dom().contains(va) && manifest_4k.spec_index(va).is_io ==> pci_bar_page(bars, manifest_4k.spec_index(va).addr)
 }
@@ -985,7 +985,7 @@ pub fn finish_init_from_boot(
     cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
     free_4k_pool: LinkedList<PagePtr, 233>,
     free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
-    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, bar_slots: PciBarSlots, owned_pages: Ghost<Set<PagePtr>>,
+    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, pci_bars: &'static PciBarTable, owned_pages: Ghost<Set<PagePtr>>,
     owned_pci_functions: Ghost<Set<PciBdf>>, cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(cpu_l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(container_page_perm): Tracked<PagePerm2m>,
@@ -1022,9 +1022,9 @@ pub fn finish_init_from_boot(
         boot_dom0_manifest_wf(manifest_4k.view(), layout.root_container),
         boot_dom0_pagetable_model(layout.cpu_cr3, layout.root_process, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), cpu_l4_tables, cpu_l3_tables, cpu_l2_tables, cpu_l1_tables, cpu_rev_maps.view()).wf(),
         boot_page_array_ready(page_array, layout, cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom(), manifest_4k.view(), &free_4k_pool, &free_2m_pool, &free_1g_pool),
-        boot_dom0_io_manifest_wf(manifest_4k.view(), bar_slots.view()),
-        pci_bar_slots_wf(bar_slots.view()),
-        pci_bar_pages_unavailable_wf(bar_slots.view(), page_array),
+        pci_bar_table_wf(pci_bars.view()),
+        pci_bar_pages_unavailable_wf(pci_bars.view(), page_array),
+        boot_dom0_io_manifest_wf(manifest_4k.view(), pci_bars.view()),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),
@@ -1136,8 +1136,7 @@ pub fn finish_init_from_boot(
     let irt_addr = irt_cell_base();
     let irt_base = irt_addr + VTD_TABLE_SIZE;
     assert(VTD_TABLE_SIZE == 4096) by (compute);
-    let ghost bars = bar_slots.view();
-    let irt = TokenLock::from_token(irt_cell_init(LockCell::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process, bar_slots), (), Ghost(()))));
+    let irt = TokenLock::from_token(irt_cell_init(LockCell::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()))));
 
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,
@@ -1196,7 +1195,7 @@ pub fn finish_init_from_boot(
     let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
         pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), cpu_regs: Tracked(cpu_regs), cpu_trap_frame: Tracked(cpu_trap_frame), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
-        prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
+        prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt, pci_bars,
     };
     proof {
         boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,

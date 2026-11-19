@@ -613,6 +613,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.cpu_tlb == before.cpu_tlb,
         after.iommu_tlb == before.iommu_tlb,
         after.dflt_pt == before.dflt_pt,
+        after.pci_bars == before.pci_bars,
         after.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child)),
         cpu_offline_requests_of(after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child))) == Seq::new(NUM_CPUS as nat, |i: int| false),
         forall|c: RwLockContainerPtr| #![trigger after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))] before.ctn_mp.dom().contains(c) ==>
