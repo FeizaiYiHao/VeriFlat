@@ -55,7 +55,6 @@ pub(crate) fn kill_retire_structure_pages(
             &&& pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger pt.lower.l2_owner(p, i)] pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> pt.lower.l2_owner(p, i) is None
         }),
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -206,7 +205,6 @@ pub(crate) fn kill_retire_table_pages(
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger pt.lower.l2_owner(p, i)] pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> pt.lower.l2_owner(p, i) is None
         },
         iommu ==> old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table) && *it_perm == Some(*table_perm),
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         same ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
         same ==> old(krnl).thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, ..entry_thread }),
         same ==> *old(direct) == old(krnl).thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),
@@ -348,7 +346,6 @@ pub(crate) fn kill_retire_table_pages(
                 &&& forall|p: PageMapPtr, i: L2Index| #![trigger pt.lower.l2_owner(p, i)] pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> pt.lower.l2_owner(p, i) is None
             },
             iommu ==> old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table) && *it_perm == Some(*table_perm),
-            old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
             same ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
             same ==> krnl.thrd_mp.spec_index(thrd_ptr).view() == (Thread { direct_free_quota_pending_4k: krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k, ..entry_thread }),
             same ==> *direct == krnl.thrd_mp.spec_index(thrd_ptr).view().direct_free_quota_pending_4k.view(),

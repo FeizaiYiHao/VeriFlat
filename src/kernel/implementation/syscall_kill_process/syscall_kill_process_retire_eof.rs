@@ -27,7 +27,6 @@ pub(crate) proof fn kill_retire_eof(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         pre.prc_mp.dom().contains(parent_ptr),

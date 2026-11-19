@@ -3,7 +3,7 @@ use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk_spec::*;
-use super::super::syscall_kill_process::syscall_kill_process_reclaim::{kill_reclaim_target, kill_reassign_functions, kill_retire_zombie, kill_reclaim_live};
+use super::super::syscall_kill_process::syscall_kill_process_reclaim::{kill_reclaim_target, kill_retire_zombie, kill_reclaim_live};
 use super::syscall_kill_container_retire_root::kill_container_retire_root;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_spec::*;
@@ -151,8 +151,6 @@ pub(crate) fn kill_container_kill_processes(
             ptarget = parent;
         }
     }
-    kill_reassign_functions(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, ptarget, Ghost(pchain), Tracked(&pchain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, ptarget); }
     let zombie = {
         let tracked ptarget_perm = pchain_perms.tracked_borrow(ptarget);

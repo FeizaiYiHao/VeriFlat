@@ -13,7 +13,7 @@ use super::syscall_kill_process_retire_spec::*;
 use super::syscall_kill_process_retire_eof::*;
 
 verus! {
-/// Retire the empty zombie target, which owns no PCI function, and walk its parent again: write-hold its process page, its
+/// Retire the empty zombie target and walk its parent again: write-hold its process page, its
 /// tables' object pages, and its tables, unlink their structure pages, then retire the process with its tables and their
 /// root pages.
 pub(crate) fn kill_retire_target(
@@ -35,7 +35,6 @@ pub(crate) fn kill_retire_target(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),
@@ -109,7 +108,6 @@ pub(crate) fn kill_retire_hold_tables(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pagetable == pagetable,
         old(krnl).prc_mp.spec_index(target).view().iommu_table == iommu_table,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -235,7 +233,6 @@ pub(crate) fn kill_retire_process(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),
@@ -364,7 +361,6 @@ pub(crate) fn kill_retire_end_step(
         base.prc_mp.spec_index(target).view().zombie,
         base.prc_mp.spec_index(target).view().children.view().len() == 0,
         base.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        base.prc_mp.spec_index(target).view().pci_cleared.view(),
         base.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         base.prc_mp.spec_index(target).view().uppertree_seq.view().contains(parent_ptr),
         base.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
@@ -436,7 +432,7 @@ pub(crate) fn kill_retire_end_step(
         let pre_u = kernel_k_to_kernel_u(base);
         let post_u = kernel_k_to_kernel_u(*krnl);
         let before = steps.view();
-        kill_step_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Retire, scope); process_pci_cleared_implies_no_owned_pci_functions(base, target); kill_retire_pre_from_k(&base, target, parent_ptr);
+        kill_step_pre_from_k(&base, &base_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Retire, scope); kill_retire_pre_from_k(&base, target, parent_ptr);
         kernel_zombie_process_retired_implies_u_step(&base, &retired, target, parent_ptr, ctn_ptr, allc_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired, &*krnl, thrd_ptr);
         kill_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired), post_u, cpu_id, thrd_ptr, target, parent_ptr, retired.allc_4k_mp.spec_index(allc_ptr).quota.view().view(), scope);
@@ -468,7 +464,6 @@ pub(crate) fn kill_retire_commit(
         old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        old(krnl).prc_mp.spec_index(target).view().pci_cleared.view(),
         old(krnl).prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
         old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         old(krnl).prc_mp.spec_index(target).view().pagetable == pagetable,
@@ -642,7 +637,7 @@ pub(crate) fn kill_retire_commit(
     proof {
         assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, Some(parent_ptr), ctn_ptr, allc_ptr)) by { reveal(kill_retire_eof_transition_framing); };
         assert(mid.inv() && !mid.ctn_mp.spec_index(ctn_ptr).view_ghost().owned_processes.view().is_empty()) by {
-            reveal(LockedMap::typed_lock_map_aligned); process_pci_cleared_implies_no_owned_pci_functions(entry, target);
+            reveal(LockedMap::typed_lock_map_aligned);
             kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, ctn_ptr, allc_ptr);
         };
     }
@@ -694,7 +689,6 @@ pub(crate) fn kill_retire_unlink_process(
             &&& new_p.view_ghost().subtree_set.view() == if old(krnl).prc_mp.spec_index(target).view().uppertree_seq.view().contains(p) {
                 old_p.view_ghost().subtree_set.view().remove(target) } else { old_p.view_ghost().subtree_set.view() }
             &&& new_p.view().uppertree_seq == old_p.view().uppertree_seq
-            &&& new_p.view_ghost().owned_pci_functions == old_p.view_ghost().owned_pci_functions
             &&& new_p.view_rodata() == old_p.view_rodata()
             &&& new_p.is_init() == old_p.is_init()
             &&& new_p.locking_thread() == old_p.locking_thread()

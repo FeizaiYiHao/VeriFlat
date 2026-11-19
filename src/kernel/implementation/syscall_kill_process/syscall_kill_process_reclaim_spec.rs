@@ -5,9 +5,9 @@ use super::syscall_kill_process_walk_spec::{KillScope, kill_chain_state};
 
 verus! {
 /// The killer at `stage` on `chain` in `scope`, as in `kill_chain_state`, reclaims the empty live target, the last
-/// process of the chain, which owns no PCI function. Besides its cpu, its process, itself, the chain, and the containers
-/// of `scope`, it write-holds exactly the target's page table `pagetable` with `pagetable_perm` and the target's IOMMU
-/// table `iommu_table`, if any, with `iommu_perm`.
+/// process of the chain. Besides its cpu, its process, itself, the chain, and the containers of `scope`, it write-holds
+/// exactly the target's page table `pagetable` with `pagetable_perm` and, when `iommu_perm` is some, the target's IOMMU
+/// table `iommu_table` with it.
 pub open spec fn kill_reclaim_state(
     k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
     stage: KillStage, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, pagetable: RwLockPageTableRoot,
@@ -46,21 +46,20 @@ pub open spec fn kill_reclaim_state(
     &&& lctx.pagetable_lock_map().dom() =~= set![pagetable]
     &&& lctx.pagetable_window_lock_map().dom().is_empty()
     &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write)
-    &&& lctx.iommu_table_lock_map().dom() =~= match iommu_table { Some(it) => set![it], None => Set::empty() }
-    &&& iommu_table is Some ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table->Some_0, TypedLockMode::Write)
+    &&& lctx.iommu_table_lock_map().dom() =~= match iommu_perm { Some(_) => set![iommu_table->Some_0], None => Set::empty() }
+    &&& iommu_perm is Some ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table->Some_0, TypedLockMode::Write)
     &&& !target.view().zombie
     &&& target.view().pagetable == pagetable
     &&& target.view().iommu_table == iommu_table
     &&& target.view().children.view().len() == 0
     &&& target.view().owned_threads.view().len() == 0
-    &&& target.view().pci_cleared.view()
     &&& k.pt_mp.dom().contains(pagetable)
     &&& k.pt_mp.spec_index(pagetable).view().higher.proc_ptr == chain[chain.len() - 1]
     &&& pagetable_perm.state() is WriteLock
     &&& pagetable_perm.thread_id() == lctx.thread_id()
     &&& pagetable_perm.lock_id() == k.pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id
-    &&& (iommu_perm is Some) == (iommu_table is Some)
-    &&& iommu_table is Some ==> {
+    &&& iommu_perm is Some ==> iommu_table is Some
+    &&& iommu_perm is Some ==> {
         let it = k.it_mp.spec_index(iommu_table->Some_0);
         &&& k.it_mp.dom().contains(iommu_table->Some_0)
         &&& it.view().proc_ptr == chain[chain.len() - 1]
@@ -70,63 +69,47 @@ pub open spec fn kill_reclaim_state(
     }
 }
 
-/// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` under the root-table lock and
-/// the write lock of the target's IOMMU table `iommu_table`, if any: every function `target` owns moves to `owner`
-/// detached, the table drops its DID, whose IOTLB domain alone is emptied and whose context-cache entries stay only where
-/// still present, and `owner`'s reverse set absorbs `target`'s.
-/// Lock owners, lock ids, and every other object stay.
+/// Detaching every PCI function in the array of the target's write-held page table `pagetable` under the root-table lock and
+/// the write lock of the target's IOMMU table `iommu_table`: each such function loses its context entry, owners untouched,
+/// and the table drops its DID, whose IOTLB domain alone is emptied and whose context-cache entries stay only where still
+/// present. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub(crate) open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>) -> bool {
+pub(crate) open spec fn kill_unown_detach_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot) -> bool {
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
-    &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, prc_mp: post.prc_mp, ..pre })
+    let pci = pre.pt_mp.spec_index(pagetable).view().higher.pci;
+    let table = pre.it_mp.spec_index(iommu_table);
+    &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
-    &&& post.pci_bars.view() == pre.pci_bars.view()
+    &&& post.irt.view().owners() == pre.irt.view().owners()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
         #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-        let owned = pre.irt.view().spec_index_owner(b, d, f) == target;
-        &&& post.irt.view().spec_index_owner(b, d, f) == if owned { owner } else { pre.irt.view().spec_index_owner(b, d, f) }
-        &&& post.irt.view().spec_index_iommu_root(b, d, f) == if owned { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-        &&& post.irt.view().spec_index_iommu_did(b, d, f) == if owned { None } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
+        let detached = pci.view().dom().contains((b, d, f));
+        &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
+        &&& post.irt.view().spec_index_iommu_root(b, d, f) == if detached { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
+        &&& post.irt.view().spec_index_iommu_did(b, d, f) == if detached { None } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
     }
-    &&& pre.prc_mp.spec_index(target).view().iommu_table == iommu_table
-    &&& iommu_table is None ==> post.it_mp == pre.it_mp && post.iommu_tlb == pre.iommu_tlb
-    &&& iommu_table matches Some(t) ==> {
-        let table = pre.it_mp.spec_index(t);
-        &&& pre.it_mp.dom().contains(t)
-        &&& table.locking_thread() is Write
-        &&& post.it_mp.unchanged_except(&pre.it_mp, t)
-        &&& post.it_mp.spec_index(t).locking_thread() == table.locking_thread()
-        &&& post.it_mp.spec_index(t).being_killed() == table.being_killed()
-        &&& post.it_mp.spec_index(t).view() == (IommuTable { did: None, ..table.view() })
-        &&& post.it_mp.spec_index(t).view().page_closure() == table.view().page_closure()
-        &&& post.it_mp.spec_index(t).view().mapping_4k() == table.view().mapping_4k()
-        &&& post.it_mp.spec_index(t).view().mapping_2m() == table.view().mapping_2m()
-        &&& post.it_mp.spec_index(t).view().mapping_1g() == table.view().mapping_1g()
-        &&& table.view().did matches Some(did) ==> {
-            &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
-            &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
-            &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
-                == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
-            &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
-                ==> iommu_context_cache_entry_present(post, bdf, post.iommu_tlb.context_cache()[bdf])
-        }
-        &&& table.view().did is None ==> post.iommu_tlb == pre.iommu_tlb
+    &&& pre.pt_mp.dom().contains(pagetable)
+    &&& pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr == table.view().proc_ptr
+    &&& pre.it_mp.dom().contains(iommu_table)
+    &&& table.locking_thread() is Write
+    &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table)
+    &&& post.it_mp.spec_index(iommu_table).locking_thread() == table.locking_thread()
+    &&& post.it_mp.spec_index(iommu_table).being_killed() == table.being_killed()
+    &&& post.it_mp.spec_index(iommu_table).view() == (IommuTable { did: None, ..table.view() })
+    &&& post.it_mp.spec_index(iommu_table).view().page_closure() == table.view().page_closure()
+    &&& post.it_mp.spec_index(iommu_table).view().mapping_4k() == table.view().mapping_4k()
+    &&& post.it_mp.spec_index(iommu_table).view().mapping_2m() == table.view().mapping_2m()
+    &&& post.it_mp.spec_index(iommu_table).view().mapping_1g() == table.view().mapping_1g()
+    &&& table.view().did matches Some(did) ==> {
+        &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
+        &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+        &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
+            == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+        &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
+            ==> iommu_context_cache_entry_present(post, bdf, post.iommu_tlb.context_cache()[bdf])
     }
-    &&& post.prc_mp.dom() == pre.prc_mp.dom()
-    &&& forall|p: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(p)] #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) ==> {
-        let before = pre.prc_mp.spec_index(p);
-        let after = post.prc_mp.spec_index(p);
-        let pci = before.view_ghost().owned_pci_functions.view();
-        &&& after.is_init() == before.is_init()
-        &&& after.view() == before.view()
-        &&& after.view_rodata() == before.view_rodata()
-        &&& after.locking_thread() == before.locking_thread()
-        &&& after.being_killed() == before.being_killed()
-        &&& after.killer_info() == before.killer_info()
-        &&& after.view_ghost() == (ProcessGhost { owned_pci_functions: after.view_ghost().owned_pci_functions, ..before.view_ghost() })
-        &&& after.view_ghost().owned_pci_functions.view() == if p == target { Set::empty() } else if p == owner { pci.union(pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view()) } else { pci }
-    }
+    &&& table.view().did is None ==> post.iommu_tlb == pre.iommu_tlb
 }
 
 /// The write-held allocator `allc_ptr` regains `returned` quota; nothing else in its map changes.

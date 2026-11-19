@@ -4,159 +4,120 @@ use crate::*;
 use super::syscall_kill_process_reclaim_spec::*;
 
 verus! {
-/// Marking the killed, threadless process after its PCI set was drained preserves the kernel invariant.
-pub(crate) proof fn kill_reassign_pci_cleared_eof_implies_inv(pre: KernelK, post: KernelK, target: RwLockProcessPtr, lctx: LocalContext)
+proof fn kill_unown_detach_eof_memory(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        typed_lock_maps_aligned(&pre, &lctx),
-        typed_lock_map_contains_mode(lctx.process_lock_map(), target, TypedLockMode::Write),
-        pre.prc_mp.dom().contains(target),
-        pre.prc_mp.spec_index(target).being_killed(),
-        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().is_empty(),
-        post == (KernelK { prc_mp: post.prc_mp, ..pre }),
-        post.prc_mp.perms_wf(),
-        post.prc_mp.unchanged_except(&pre.prc_mp, target),
-        post.prc_mp.spec_index(target).view() == (Process { pci_cleared: Ghost(true), ..pre.prc_mp.spec_index(target).view() }),
-        post.prc_mp.spec_index(target).is_init() == pre.prc_mp.spec_index(target).is_init(),
-        post.prc_mp.spec_index(target).view_rodata() == pre.prc_mp.spec_index(target).view_rodata(),
-        post.prc_mp.spec_index(target).view_ghost() == pre.prc_mp.spec_index(target).view_ghost(),
-        post.prc_mp.spec_index(target).locking_thread() == pre.prc_mp.spec_index(target).locking_thread(),
-        post.prc_mp.spec_index(target).control() == pre.prc_mp.spec_index(target).control(),
-        post.prc_mp.spec_index(target).killer_info() == pre.prc_mp.spec_index(target).killer_info(),
-    ensures
-        post.inv(),
-        typed_lock_maps_aligned(&post, &lctx),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
-{
-    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
-    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_fields_unchanged_implies_process_pagetable_wf_preserved_forall(); };
-    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); };
-    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
-    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp); };
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thrd_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp); };
-    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { process_rodata_unchanged_implies_container_process_wf_preserved_forall(); };
-    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(post.ctn_mp, pre.prc_mp, post.prc_mp); };
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall(); };
-    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
-    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
-    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
-    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_thread_wf); };
-    assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
-    assert(post.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-}
-
-proof fn kill_reassign_eof_memory(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
-    requires
-        pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
+        kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
         post.subsystems_inv(),
         iommu_table_perms_wf(post.it_mp),
     ensures post.memory_management_inv(),
 {
-    reveal(kill_reassign_eof_transition_framing);
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
+    reveal(kill_unown_detach_eof_transition_framing);
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_pages_wf(post.prc_mp, post.pg_arr)) by { process_domain_unchanged_implies_process_pages_wf_preserved_forall(); };
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { process_pagetable_fields_unchanged_implies_process_pagetable_wf_preserved_forall(); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
-    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
-    container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thrd_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp);
-    container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thrd_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp);
-    container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thrd_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp);
 }
 
-proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
+/// The root table stays tied to the processes: a function still attached is not in the array, so its owner is another process,
+/// whose table keeps its DID, and the table that dropped its DID anchors none.
+proof fn kill_unown_detach_eof_root_table(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
-        post.subsystems_inv(),
-    ensures post.process_management_inv(),
+        kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        post.irt.inv(),
+        pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
+    ensures
+        iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
-    reveal(kill_reassign_eof_transition_framing);
-    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { process_rodata_unchanged_implies_container_process_wf_preserved_forall(); };
-    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(post.ctn_mp, pre.prc_mp, post.prc_mp); };
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { process_pagetable_fields_unchanged_implies_process_cpu_wf_preserved_forall(); };
-    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
-    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
-    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
-    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_thread_wf); };
-    assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+    reveal(kill_unown_detach_eof_transition_framing);
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
+        reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); reveal(process_iommu_table_wf);
+    };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
-/// The IOTLB stays well formed: the only emptied domain is the dropped DID of the target's table, whose anchor the target
-/// owned, so no cached context keeps it, and the candidate domain of every other function the target owned carried no
-/// present entry, so it was inactive and already empty.
-proof fn kill_reassign_eof_iotlb(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
+/// The IOTLB stays well formed: the only emptied domain is the dropped DID of the target's table, whose anchor sat in the array,
+/// so no cached context keeps it.
+proof fn kill_unown_detach_eof_iotlb(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
-        pre.prc_mp.dom().contains(target),
-        target != owner,
+        kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
         post.iommu_tlb.inv(),
+        pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
         forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
-    reveal(kill_reassign_eof_transition_framing);
-    reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv);
-    if let Some(t) = iommu_table {
-        if let Some(did) = pre.it_mp.spec_index(t).view().did {
-            assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]));
-        }
+    reveal(kill_unown_detach_eof_transition_framing);
+    reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf); reveal(IommuTLB::inv);
+    if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
+        assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]));
     }
 }
 
-/// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` keeps the kernel invariant:
-/// the only emptied domain is the dropped DID of the target's table, and the candidate domain of every other function the
-/// target owned carried no present entry, so it was inactive and already empty.
-pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
+/// Every function in the array of the target's page table is a valid B/D/F, so the detach left it without a context entry.
+proof fn kill_unown_detach_eof_array_detached(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
-        pre.prc_mp.dom().contains(target),
-        pre.prc_mp.dom().contains(owner),
-        target != owner,
-        !pre.prc_mp.spec_index(owner).view().pci_cleared.view(),
+        kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+    ensures
+        forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+            post.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains((b, d, f)) ==> post.irt.view().spec_index_iommu_root(b, d, f) is None,
+{ reveal(kill_unown_detach_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
+/// Detaching every function in the array of the target's page table `pagetable` and dropping the DID of its IOMMU table
+/// `iommu_table` keeps the kernel invariant.
+pub(crate) proof fn kill_unown_detach_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
+    requires
+        pre.inv(),
+        kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
         post.irt.inv(),
         post.iommu_tlb.inv(),
-        post.prc_mp.perms_wf(),
         iommu_table_perms_wf(post.it_mp),
         forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
             pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+            post.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains((b, d, f)) ==> post.irt.view().spec_index_iommu_root(b, d, f) is None,
 {
-    reveal(kill_reassign_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
-    kill_reassign_eof_memory(pre, post, target, owner, iommu_table);
-    kill_reassign_eof_process(pre, post, target, owner, iommu_table);
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    kill_reassign_eof_iotlb(pre, post, target, owner, iommu_table);
+    reveal(kill_unown_detach_eof_transition_framing);
+    kill_unown_detach_eof_array_detached(pre, post, pagetable, iommu_table);
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    kill_unown_detach_eof_memory(pre, post, pagetable, iommu_table);
+    kill_unown_detach_eof_root_table(pre, post, pagetable, iommu_table);
+    kill_unown_detach_eof_iotlb(pre, post, pagetable, iommu_table);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
+
+/// The walks, leaves, and mappings of the target's page table, whose higher part changed only in its PCI function array, are
+/// as before.
+pub(crate) proof fn kill_unown_eof_pagetable_walks(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        post.mapping_4k() == pre.mapping_4k(),
+        post.mapping_2m() == pre.mapping_2m(),
+        post.mapping_1g() == pre.mapping_1g(),
+        post.kernel_l4_end() == pre.kernel_l4_end(),
+        forall|l4i: L4Index| #![trigger post.spec_resolve_mapping_l4(l4i)] post.spec_resolve_mapping_l4(l4i) == pre.spec_resolve_mapping_l4(l4i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
+            post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)] post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)] post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
+{}
 
 proof fn kill_quota_eof_allocator_quota(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
@@ -278,7 +239,7 @@ pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, prc_ptr: RwLockP
     kill_quota_eof_process(pre, post, prc_ptr, allc_ptr, size);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_process_fields_except_quota(); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { iommu_root_table_process_wf_preserved_for_process_fields_except_quota(); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { process_pci_function_ownership_wf_preserved_for_process_fields_except_quota(); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { pci_function_ownership_wf_preserved_for_process_fields_except_quota(); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { iommu_tlb_wf_spec_preserved_for_process_fields_except_quota(); };
 }
 
@@ -363,6 +324,7 @@ pub(crate) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, prc_ptr
         forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i) is None,
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
     ensures post.inv(),
 {
     reveal(kill_tables_emptied_eof_transition_framing);
@@ -387,7 +349,7 @@ pub(crate) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, prc_ptr
     };
     kill_tables_emptied_eof_process(pre, post, prc_ptr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
@@ -464,19 +426,9 @@ pub(crate) proof fn kill_zombify_eof(pre: KernelK, post: KernelK, prc_ptr: RwLoc
     };
     kill_zombify_eof_process(pre, post, prc_ptr, pcid_allc_ptr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
-/// EOF closure of `kill_reassign_functions` when the scan finds no function `target` owns: its reverse set is empty.
-pub(crate) proof fn kill_reassign_none_eof(root_table: IommuRootTable, process_map: ProcessLockedMap, target: RwLockProcessPtr)
-    requires
-        process_pci_function_ownership_wf(root_table, process_map),
-        process_map.dom().contains(target),
-        forall|b: usize, d: usize, f: usize| #![trigger root_table.spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> root_table.spec_index_owner(b, d, f) != target,
-    ensures process_map.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
-{
-    assert(process_map.spec_index(target).view_ghost().owned_pci_functions.view() =~= Set::<PciBdf>::empty()) by { reveal(process_pci_function_ownership_wf); };
-}
 } // verus!

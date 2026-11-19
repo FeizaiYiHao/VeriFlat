@@ -34,7 +34,7 @@ pub(crate) fn kill_reclaim_hide_roots(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
@@ -45,7 +45,7 @@ pub(crate) fn kill_reclaim_hide_roots(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower == entry_pt.lower,
@@ -54,7 +54,6 @@ pub(crate) fn kill_reclaim_hide_roots(
         entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         entry_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         forall|p: PageMapPtr, i: L2Index| #![trigger entry_pt.lower.l2_owner(p, i)] entry_pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> entry_pt.lower.l2_owner(p, i) is None,
-        iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
     ensures
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
             old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
@@ -69,7 +68,7 @@ pub(crate) fn kill_reclaim_hide_roots(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         final(steps).view().len() <= old(steps).view().len() + 512 - KERNEL_MEM_END_L4INDEX,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
@@ -81,7 +80,6 @@ pub(crate) fn kill_reclaim_hide_roots(
         forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -114,7 +112,7 @@ pub(crate) fn kill_reclaim_flush(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
     cr3: PageTableRoot, pcid: Pcid, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
@@ -125,7 +123,7 @@ pub(crate) fn kill_reclaim_flush(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view_rodata().view().cr3 == cr3,
@@ -138,7 +136,6 @@ pub(crate) fn kill_reclaim_flush(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,
-        iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -153,7 +150,7 @@ pub(crate) fn kill_reclaim_flush(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         final(steps).view().len() <= old(steps).view().len() + NUM_CPUS + 1,
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
@@ -165,7 +162,6 @@ pub(crate) fn kill_reclaim_flush(
         forall|l4i: L4Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_perms == entry_pt.lower.l2_perms,
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -223,7 +219,7 @@ pub(crate) fn kill_reclaim_flush(
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-                iommu_table, *pagetable_perm, *iommu_perm),
+                iommu_table, *pagetable_perm, None),
             target == chain[chain.len() - 1],
             krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             krnl.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
@@ -234,7 +230,6 @@ pub(crate) fn kill_reclaim_flush(
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
-            iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && krnl.it_mp.spec_index(iommu_table->Some_0).view().did is None,
             c <= NUM_CPUS,
             steps.view().len() <= old(steps).view().len() + c,
             krnl.pt_mp.spec_index(pagetable).view().higher.cr3 == cr3,
@@ -396,7 +391,7 @@ pub(crate) fn kill_reclaim_held_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
     same: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
@@ -408,7 +403,7 @@ pub(crate) fn kill_reclaim_held_leaves(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
@@ -424,7 +419,6 @@ pub(crate) fn kill_reclaim_held_leaves(
         entry_pt.lower.hidden_l1_tables_in_locked_windows(),
         forall|p: PageMapPtr, i: L2Index| #![trigger entry_pt.lower.l2_owner(p, i)] entry_pt.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> entry_pt.lower.l2_owner(p, i) is None,
         entry_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
-        iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
     ensures
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
@@ -439,7 +433,7 @@ pub(crate) fn kill_reclaim_held_leaves(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         scope is Subtree ==> final(steps).view().len() <= old(steps).view().len() + 3 * (MAX_CONTAINER_TREE_DEPTH + 1),
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, *iommu_perm),
+            iommu_table, *pagetable_perm, None),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
@@ -456,7 +450,6 @@ pub(crate) fn kill_reclaim_held_leaves(
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(l4i, l3i, l2i) is None,
         forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i) is None,
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0 && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -537,13 +530,13 @@ pub(crate) fn kill_reclaim_held_leaves(
         proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, target); }
     } else {
         kill_reclaim_held_leaves_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-            Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(entry_pt), same, Ghost(start), Ghost(pre),
+            Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Ghost(entry_pt), same, Ghost(start), Ghost(pre),
             Ghost(scope), Ghost(ctx));
     }
 }
 
 /// Remove every 4K leaf of the target's write-locked IOMMU table, which lost its DID when the target's functions were
-/// reassigned, so no domain caches it and no IOTLB flush is needed; one step per leaf. In a process kill (`same`), whose
+/// released, so no domain caches it and no IOTLB flush is needed; one step per leaf. In a process kill (`same`), whose
 /// target shares the killer's container, each present leaf is removed directly and the quota of the freed pages is refunded
 /// to the killer's container chain at the end; otherwise each leaf is hidden in its own step and then unmapped, a freed
 /// page crediting its owner's quota in its own step.

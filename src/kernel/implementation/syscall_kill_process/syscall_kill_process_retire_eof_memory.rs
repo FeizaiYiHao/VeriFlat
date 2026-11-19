@@ -725,7 +725,6 @@ pub(crate) proof fn kill_retire_eof_memory(
         pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(target).view().children.view().len() == 0,
         pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         pre.prc_mp.spec_index(target).view_rodata().view().parent == parent,
         pre.prc_mp.spec_index(target).view_rodata().view().owning_container == ctn_ptr,
         parent is Some ==> {

@@ -73,6 +73,7 @@ pub(crate) open spec fn kill_retire_table_page_eof_transition_framing(
         &&& new_table.view().higher.cr3 == old_table.view().higher.cr3
         &&& new_table.view().higher.pcid == old_table.view().higher.pcid
         &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
+        &&& new_table.view().higher.pci == old_table.view().higher.pci
     }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, pg_idx)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
