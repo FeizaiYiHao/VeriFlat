@@ -5,8 +5,8 @@ use super::syscall_pci_spec::*;
 use super::syscall_pci_trace::*;
 
 verus! {
-/// Attaches DMA translation of `(bus, device, function)`, a PCI function owned by the running process,
-/// to that process's IOMMU table: under the root-table lock and then the table's write lock, the function's context entry
+/// Attaches DMA translation of `(bus, device, function)`, a PCI function in the running process's page-table PCI function
+/// array (read under the page-table read lock), to that process's IOMMU table: under the root-table lock and then the table's write lock, the function's context entry
 /// now points at the table's root and carries the table's DID, which a table without one adopts from the function's
 /// candidate DID. The trap layer validates the B/D/F.
 pub fn syscall_pci_attach_dma(
@@ -82,22 +82,37 @@ pub fn syscall_pci_attach_dma(
     proof { assert(krnl.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() != 0) by {
         thread_cpu_wf_cpu_at(krnl.thrd_mp, krnl.cpu_arr, cpu_id); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
     }; }
+    let process = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm));
+    let pagetable_ptr = process.pagetable;
+    let iommu_table = process.iommu_table;
+    proof {
+        assert(old(krnl).pt_mp.dom().contains(pagetable_ptr) && krnl.pt_mp.dom().contains(pagetable_ptr)) by {
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_pagetable_wf_process_at(old(krnl).prc_mp, old(krnl).pt_mp, prc_ptr);
+        };
+        assert(!old(krnl).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by { reveal(KernelK::all_objects_unlocked); };
+    }
+    let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(lctx));
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
+    let owns = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).higher.pci.find(bus, device, function).is_some();
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
-    let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus, device, function);
     let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, device, function);
-    let iommu_table = krnl.prc_mp.borrow_typed(prc_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).iommu_table;
-    let result = if owner != prc_ptr { RetValueType::ErrorPciOwnerMismatch }
+    let result = if !owns { RetValueType::ErrorPciOwnerMismatch }
         else if iommu_table.is_none() { RetValueType::ErrorPciNoIommuTable }
         else if attached { RetValueType::ErrorPciAlreadyAttached }
         else { RetValueType::Success };
+    proof { pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result); }
     proof {
-        assert(result == pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function)) by {
-            process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), prc_ptr);
-            pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result);
-        };
+        pagetable_perms_wf_map(old(krnl).pt_mp); pagetable_perms_wf_at(old(krnl).pt_mp, pagetable_ptr);
+        if old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is Read {
+            assert(old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id())
+                =~= old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map);
+        } else {
+            assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
+        }
     }
-    if owner != prc_ptr || iommu_table.is_none() || attached {
+    if !owns || iommu_table.is_none() || attached {
         krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
+        krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(lctx), Tracked(pagetable_lock_perm));
         krnl.wunlock_process(prc_ptr, Tracked(lctx), Tracked(process_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
@@ -113,7 +128,10 @@ pub fn syscall_pci_attach_dma(
     }
     let iommu_table_ptr = iommu_table.unwrap();
     proof {
-        assert(old(krnl).prc_mp.spec_index(prc_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), prc_ptr); };
+        assert(krnl.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr)) by {
+            process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);
+            pci_function_ownership_wf_pagetable_at(krnl.irt.view(), krnl.prc_mp, krnl.pt_mp, pagetable_ptr, (bus, device, function));
+        };
         assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr) by { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, prc_ptr); };
     }
     let Tracked(iommu_table_lock_perm) = krnl.wlock_iommu_table(iommu_table_ptr, Tracked(lctx));
@@ -130,6 +148,7 @@ pub fn syscall_pci_attach_dma(
     let ghost attached_k = *krnl;
     krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_process(prc_ptr, Tracked(lctx), Tracked(process_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {

@@ -41,13 +41,13 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr:
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(table),
-        pre.irt.view().spec_index_owner(bus, device, function) == prc_ptr,
+        pre.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr),
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
     ensures
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
     reveal(pci_attach_dma_eof_transition_framing);
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
@@ -56,7 +56,7 @@ proof fn pci_attach_dma_eof_process_tables(pre: KernelK, post: KernelK, prc_ptr:
         reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf);
         assert(pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function)) by (nonlinear_arith) requires pci_bdf_valid(bus, device, function);
     };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 
 proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, table: RwLockPageTableRoot, bus: usize, device: usize, function: usize)
@@ -71,7 +71,7 @@ proof fn pci_attach_dma_eof_pages(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(table),
-        pre.irt.view().spec_index_owner(bus, device, function) == prc_ptr,
+        pre.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr),
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
     ensures
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
@@ -98,7 +98,7 @@ proof fn pci_attach_dma_eof_iotlb(pre: KernelK, post: KernelK, prc_ptr: RwLockPr
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(table),
-        pre.irt.view().spec_index_owner(bus, device, function) == prc_ptr,
+        pre.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr),
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
         process_iommu_table_wf(post.prc_mp, post.it_mp),
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
@@ -148,7 +148,7 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, prc_ptr: RwL
         pre.it_mp.spec_index(table).view().leaves_present(),
         pre.prc_mp.dom().contains(prc_ptr),
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(table),
-        pre.irt.view().spec_index_owner(bus, device, function) == prc_ptr,
+        pre.irt.view().spec_index_owner(bus, device, function) == Some(prc_ptr),
         pre.irt.view().spec_index_iommu_root(bus, device, function) is None,
     ensures
         post.inv(),
