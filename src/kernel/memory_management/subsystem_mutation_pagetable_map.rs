@@ -376,6 +376,7 @@ pub fn pagetable_map_insert_2m_wlocked(
         pagetable_window_holders_hold_pagetable(*final(pagetable_map), *final(pt_lower)),
         pagetable_hidden_leaves_only_when_locked(*final(pagetable_map), *final(pt_lower)),
         pagetable_hidden_l1_only_when_locked(*final(pagetable_map), *final(pt_lower)),
+        whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows() ==> whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.hidden_l1_tables_in_locked_windows(),
         pagetable_window_stale_cpus_only_when_locked(*final(pagetable_map), *final(pt_lower)),
         whole_pagetable(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.window_stale_cpus == whole_pagetable(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.window_stale_cpus,
         pagetable_window_typed_lock_map_aligned(*final(pagetable_map), *final(pt_lower), final(lctx).pagetable_window_lock_map(), final(lctx).pagetable_lock_map(), final(lctx).thread_id()),

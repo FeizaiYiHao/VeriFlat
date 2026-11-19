@@ -125,6 +125,14 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
         final(krnl).cpu_arr.spec_index(local_cpu).view().being_killed() == old(krnl).cpu_arr.spec_index(local_cpu).view().being_killed(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().killer_info() == old(krnl).cpu_arr.spec_index(local_cpu).view().killer_info(),
         final(krnl).pt_mp.dom().contains(pagetable),
+        (forall|l4i: L4Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some)
+            ==> forall|l4i: L4Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l4(l4i) is Some ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l4(l4i) is Some,
+        (forall|l4i: L4Index, l3i: L3Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some ==> old(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some)
+            ==> forall|l4i: L4Index, l3i: L3Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i)]
+                final(krnl).pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_held_l3(l4i, l3i) is Some ==> final(krnl).pt_mp.spec_index(pagetable).view().higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
         final(krnl).pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { table_stale_cpus: final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
         !WRITE ==> final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
@@ -304,6 +312,7 @@ pub fn flush_pagetable_tlbs<const WRITE: bool>(krnl: &mut KernelK, pagetable: Rw
     krnl.runlock_cpu_set(local_cpu, cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_perm));
     proof {
         flush_pagetable_tlbs_eol_exit(*old(krnl), krnl_flushed, *krnl, old(lctx), &held, old(steps), steps, cpu_id, pagetable, pcid, local_cpu, thrd_ptr, cpu_set_ptr, cpu_set_entry, WRITE);
+        flush_pagetable_tlbs_eof_held_entries(old(krnl).pt_mp.spec_index(pagetable).view().higher, krnl.pt_mp.spec_index(pagetable).view().higher);
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged; };
         assert(Set::range(cpu_id, NUM_CPUS) =~= Set::<CpuId>::empty());
         if typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write) {

@@ -269,4 +269,14 @@ pub(super) proof fn flush_pagetable_tlbs_eol_exit(pre: KernelK, cur: KernelK, po
 {
     reveal(flush_pagetable_tlbs_eol_loop_framing);
 }
+
+/// EOF closure of `flush_pagetable_tlbs`: only the table's stale-CPU set changed in its big-lock payload, so every held and resolved
+/// root and L3 entry is as before.
+pub(super) proof fn flush_pagetable_tlbs_eof_held_entries(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires post == (PageTableHigher { table_stale_cpus: post.table_stale_cpus, ..pre }),
+    ensures
+        forall|l4i: L4Index| #![trigger post.spec_held_l4(l4i)] post.spec_held_l4(l4i) == pre.spec_held_l4(l4i) && post.spec_resolve_mapping_l4(l4i) == pre.spec_resolve_mapping_l4(l4i),
+        forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_l3(l4i, l3i)]
+            post.spec_held_l3(l4i, l3i) == pre.spec_held_l3(l4i, l3i) && post.spec_resolve_mapping_l3(l4i, l3i) == pre.spec_resolve_mapping_l3(l4i, l3i),
+{}
 }
