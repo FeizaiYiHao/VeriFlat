@@ -95,6 +95,13 @@ impl KernelK {
             final(self).pt_mp.spec_index(pagetable_ptr).view().higher
                 == (PageTableHigher { pci: final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci, ..old(self).pt_mp.spec_index(pagetable_ptr).view().higher }),
             final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup == old(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup,
+            forall|l4i: L4Index| #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)
+                && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)
+                && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i)
+                    == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i),
             update is Claim ==> final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).used,
             update is Release ==> !final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).used,
             forall|j: int| #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(j)]
@@ -190,6 +197,13 @@ impl KernelK {
             final(self).pt_mp.spec_index(pagetable_ptr).view().higher
                 == (PageTableHigher { pci: final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci, ..old(self).pt_mp.spec_index(pagetable_ptr).view().higher }),
             final(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup == old(self).pt_mp.spec_index(pagetable_ptr).view().lower_backup,
+            forall|l4i: L4Index| #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l4(l4i)
+                && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l4(l4i),
+            forall|l4i: L4Index, l3i: L3Index| #![trigger final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)]
+                final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i) == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_held_l3(l4i, l3i)
+                && final(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i)
+                    == old(self).pt_mp.spec_index(pagetable_ptr).view().higher.spec_resolve_mapping_l3(l4i, l3i),
             final(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
