@@ -285,6 +285,11 @@ pub enum RetValueType {
     ErrorPciAlreadyOwned,
     /// The caller's process already owns `PCI_FUNCTIONS_PER_PROCESS` PCI functions.
     ErrorPciFunctionArrayFull,
+    // ---- PCI BAR mapping failure modes ----
+    /// The BAR slot or the page or chunk index inside it names no BAR page or 2M chunk.
+    ErrorPciBarSlotInvalid,
+    /// The leaf at `va` is absent or is not an IO leaf.
+    ErrorPciBarNotMapped,
 }
 pub type PTType = bool;
 
