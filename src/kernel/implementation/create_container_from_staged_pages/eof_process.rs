@@ -936,7 +936,7 @@ pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
+        io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
 {
     broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
     reveal(publish_staged_container_root_eof_transition_framing);

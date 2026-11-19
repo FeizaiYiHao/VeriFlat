@@ -86,18 +86,11 @@ pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_cont
         }
 }
 
-/// Every IO mapping of dom0's boot manifests maps BAR pages over its whole span; the 2M and 1G manifests hold present
-/// IO mappings only.
+/// Every IO mapping of dom0's boot 4K manifest maps a BAR page.
 #[verifier::opaque]
-pub open spec fn boot_dom0_io_manifests_wf(
-    manifest_4k: Map<VAddr, MapEntry>, manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, bars: Map<BarKey, BarRegion>,
-) -> bool {
-    &&& forall|va: VAddr| #![trigger manifest_4k.dom().contains(va)]
+pub open spec fn boot_dom0_io_manifest_wf(manifest_4k: Map<VAddr, MapEntry>, bars: Map<BarKey, BarRegion>) -> bool {
+    forall|va: VAddr| #![trigger manifest_4k.dom().contains(va)]
         manifest_4k.dom().contains(va) && manifest_4k.spec_index(va).is_io ==> pci_bar_page(bars, manifest_4k.spec_index(va).addr)
-    &&& forall|va: VAddr| #![trigger manifest_2m.dom().contains(va)]
-        manifest_2m.dom().contains(va) ==> manifest_2m.spec_index(va).present && manifest_2m.spec_index(va).is_io && io_span_in_bars(bars, manifest_2m.spec_index(va).addr, PAGE_SZ_2M)
-    &&& forall|va: VAddr| #![trigger manifest_1g.dom().contains(va)]
-        manifest_1g.dom().contains(va) ==> manifest_1g.spec_index(va).present && manifest_1g.spec_index(va).is_io && io_span_in_bars(bars, manifest_1g.spec_index(va).addr, PAGE_SZ_1G)
 }
 
 /// Reverse maps recording where the boot loader linked each L3, L2, and L1 table page of dom0's page table.
@@ -105,14 +98,13 @@ pub type BootRevMaps = (Map<PageMapPtr, L4Index>, Map<PageMapPtr, (L4Index, L3In
 
 pub open spec fn boot_dom0_pagetable_model(
     raw_cr3: PageTableRoot, prc_ptr: RwLockProcessPtr, kernel_l4_end: usize, kernel_entries: Seq<PageEntry>,
-    manifest_4k: Map<VAddr, MapEntry>, manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>,
-    l4_tables: Map<PageMapPtr, PointsTo<PageMap>>, l3_tables: Map<PageMapPtr, PointsTo<PageMap>>,
+    manifest_4k: Map<VAddr, MapEntry>, l4_tables: Map<PageMapPtr, PointsTo<PageMap>>, l3_tables: Map<PageMapPtr, PointsTo<PageMap>>,
     l2_tables: Map<PageMapPtr, PointsTo<PageMap>>, l1_tables: Map<PageMapPtr, PointsTo<PageMap>>, rev_maps: BootRevMaps,
 ) -> PageTable<PT_TYPE> {
     PageTable {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.2), l1_tables: Tracked(l1_tables),
-        mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(manifest_2m), mapping_1g: Ghost(manifest_1g), kernel_entries: Ghost(kernel_entries), proc_ptr: prc_ptr,
+        mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries: Ghost(kernel_entries), proc_ptr: prc_ptr,
     }
 }
 
@@ -281,8 +273,7 @@ pub open spec fn boot_page_array_ready(
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
     raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, prc_ptr: RwLockProcessPtr, kernel_l4_end: usize,
-    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, manifest_2m: Ghost<Map<VAddr, MapEntry>>,
-    manifest_1g: Ghost<Map<VAddr, MapEntry>>, root_container: RwLockContainerPtr, rev_maps: Ghost<BootRevMaps>,
+    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, root_container: RwLockContainerPtr, rev_maps: Ghost<BootRevMaps>,
     Tracked(l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
 ) -> (ret: (PageTableHigher<PT_TYPE>, Tracked<PageTableLower<PT_TYPE>>))
@@ -306,7 +297,7 @@ pub fn adopt_boot_dom0_pagetable(
         l3_tables.dom().disjoint(l1_tables.dom()),
         l2_tables.dom().disjoint(l1_tables.dom()),
         boot_dom0_manifest_wf(manifest_4k.view(), root_container),
-        boot_dom0_pagetable_model(raw_cr3, prc_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
+        boot_dom0_pagetable_model(raw_cr3, prc_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).wf(),
         forall|p: PageMapPtr, i: L2Index| #![trigger ret.1.view().l2_owner(p, i)] ret.1.view().l2_owner(p, i) is None,
@@ -329,12 +320,12 @@ pub fn adopt_boot_dom0_pagetable(
         ret.1.view().l1_rev_map.dom() == l1_tables.dom(),
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
-        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_2m() == manifest_2m.view(),
-        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_1g() == manifest_1g.view(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: manifest_1g, kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: prc_ptr, table_stale_cpus: Ghost(Set::empty()),
     };
     (higher, Tracked::assume_new())
 }
@@ -631,7 +622,7 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
 /// Operation summary of `finish_init_from_boot`: every field of the kernel object it assembles.
 pub open spec fn boot_kernel_state(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    pg_arr: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -714,8 +705,8 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.kernel_entries.view() == kernel_entries
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).page_closure() =~= cpu_page_closure
     &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
-    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == manifest_2m
-    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == manifest_1g
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& forall|l4i: L4Index|
         #![trigger krnl.pt_mp.spec_index(layout.cpu_pagetable).view().higher.spec_held_l4(l4i)]
@@ -994,8 +985,7 @@ pub fn finish_init_from_boot(
     cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, cpu_array: CpuLockedArray, cpu_tlb: CpuTLB, iommu_tlb: IommuTLB,
     free_4k_pool: LinkedList<PagePtr, 233>,
     free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
-    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, manifest_2m: Ghost<Map<VAddr, MapEntry>>,
-    manifest_1g: Ghost<Map<VAddr, MapEntry>>, bar_slots: PciBarSlots, owned_pages: Ghost<Set<PagePtr>>,
+    kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, bar_slots: PciBarSlots, owned_pages: Ghost<Set<PagePtr>>,
     owned_pci_functions: Ghost<Set<PciBdf>>, cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(cpu_l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(container_page_perm): Tracked<PagePerm2m>,
@@ -1030,10 +1020,9 @@ pub fn finish_init_from_boot(
         cpu_l3_tables.dom().disjoint(cpu_l1_tables.dom()),
         cpu_l2_tables.dom().disjoint(cpu_l1_tables.dom()),
         boot_dom0_manifest_wf(manifest_4k.view(), layout.root_container),
-        boot_dom0_pagetable_model(layout.cpu_cr3, layout.root_process, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(),
-            cpu_l4_tables, cpu_l3_tables, cpu_l2_tables, cpu_l1_tables, cpu_rev_maps.view()).wf(),
+        boot_dom0_pagetable_model(layout.cpu_cr3, layout.root_process, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), cpu_l4_tables, cpu_l3_tables, cpu_l2_tables, cpu_l1_tables, cpu_rev_maps.view()).wf(),
         boot_page_array_ready(page_array, layout, cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom(), manifest_4k.view(), &free_4k_pool, &free_2m_pool, &free_1g_pool),
-        boot_dom0_io_manifests_wf(manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), bar_slots.view()),
+        boot_dom0_io_manifest_wf(manifest_4k.view(), bar_slots.view()),
         pci_bar_slots_wf(bar_slots.view()),
         pci_bar_pages_unavailable_wf(bar_slots.view(), page_array),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
@@ -1104,7 +1093,7 @@ pub fn finish_init_from_boot(
     let tracked mut kernel_perm = kernel_perm;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
     let (cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
-        layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, manifest_2m, manifest_1g, layout.root_container, cpu_rev_maps,
+        layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
         Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
     let (iommu_l4, Tracked(iommu_l4_perm)) = iommu_page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
@@ -1210,13 +1199,13 @@ pub fn finish_init_from_boot(
         prc_mp, thrd_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
     };
     proof {
-        boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
-        boot_memory_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_memory_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
-        boot_process_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_process_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
-        boot_kernel_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), manifest_2m.view(), manifest_1g.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
     }
     PPtr::<KernelK>::from_usize(layout.kernel_ptr).put(Tracked(&mut kernel_perm), krnl);

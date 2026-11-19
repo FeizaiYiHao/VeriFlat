@@ -6,9 +6,9 @@ use super::syscall_kill_process_reclaim_scoped::kill_reclaim_held_4k_page_scoped
 use super::syscall_kill_process_reclaim_scoped_2m::kill_reclaim_held_2m_page_scoped;
 use super::syscall_kill_process_reclaim_scoped_1g::kill_reclaim_held_1g_page_scoped;
 #[cfg(feature = "split-crates")]
-use veriflat_map_4k::map_4k::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping, remove_held_io_1g_mapping};
+use veriflat_map_4k::map_4k::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping};
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping, remove_held_io_1g_mapping};
+use crate::kernel::implementation::map_4k::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_spec::*;
 
@@ -215,7 +215,7 @@ fn kill_reclaim_held_leaf_scoped(
             &&& c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger c.lower.l2_owner(p, i)] c.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> c.lower.l2_owner(p, i) is None
             &&& KERNEL_MEM_END_L4INDEX <= next.0 && pei_valid(next.0) && pei_valid(next.1) && pei_valid(next.2) && pei_valid(next.3)
-            &&& kind is L1g ==> next.2 == 0 && next.3 == 0 && c.spec_held_1g_l3(next.0, next.1) is Some && c.spec_held_1g_l3(next.0, next.1)->0.addr == pg_ptr && c.spec_held_1g_l3(next.0, next.1)->0.perm.is_io == is_io
+            &&& kind is L1g ==> next.2 == 0 && next.3 == 0 && c.spec_held_1g_l3(next.0, next.1) is Some && c.spec_held_1g_l3(next.0, next.1)->0.addr == pg_ptr
             &&& kind is L2m ==> next.3 == 0 && c.spec_held_2m_l2(next.0, next.1, next.2) is Some && c.spec_held_2m_l2(next.0, next.1, next.2)->0.addr == pg_ptr
                 && c.spec_held_2m_l2(next.0, next.1, next.2)->0.perm.is_io == is_io
             &&& kind is L4k ==> c.spec_held_4k_l1(next.0, next.1, next.2, next.3) is Some && c.spec_held_4k_l1(next.0, next.1, next.2, next.3)->0.addr == pg_ptr
@@ -283,28 +283,13 @@ fn kill_reclaim_held_leaf_scoped(
     match kind {
         HeldLeaf::L1g => {
             proof {
-                let (l4i, l3i) = (next.0, next.1);
-                assert(spec_va_1g_valid(va) && spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i) by (bit_vector)
-                    requires va == spec_index2va((l4i, l3i, 0usize, 0usize)), KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512;
-                spec_index2va_injective();
+                mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1);
+                mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_imply_page_ptr_valid();
+                spec_va_1g_valid_index_roundtrip(va); spec_index2va_injective();
                 assert(c.spec_held_l3(next.0, next.1) is None);
             }
-            if is_io {
-                remove_held_io_1g_mapping(krnl, pagetable, va, Tracked(&mut *lctx), Tracked(pagetable_perm));
-                proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-                    krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                }
-            } else {
-                proof {
-                    mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1);
-                    mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va); page_index_valid_imply_page_ptr_valid();
-                }
-                kill_reclaim_held_1g_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, Tracked(pagetable_perm),
-                    Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
-            }
+            kill_reclaim_held_1g_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, pagetable, va, pg_ptr, Tracked(pagetable_perm),
+                Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
             proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
             (next.0, next.1, 511, 512)
         },

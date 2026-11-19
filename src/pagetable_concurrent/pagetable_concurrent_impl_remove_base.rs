@@ -1102,7 +1102,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         let mut l3_entry = self.get_entry_1g_l3(target_l4i, target_l3i, &l4_entry).unwrap();
         proof {
             self.wf_l3_at(l4_entry.addr);
-            if !l3_entry.perm.is_io { page_ptr_valid_imply_mem_valid(l3_entry.addr); } else { reveal(io_page_range_valid); }
+            page_ptr_valid_imply_mem_valid(l3_entry.addr);
         }
         l3_entry.perm.present = false;
         page_map_set_published_in_map(l4_entry.addr, Tracked(self.l3_tables.borrow_mut()), target_l3i, l3_entry, Tracked(&mut *lctx));

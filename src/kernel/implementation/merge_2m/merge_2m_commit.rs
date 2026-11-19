@@ -25,6 +25,7 @@ use super::merge_2m_entry_folds::*;
 use super::merge_2m_quota_folds::*;
 
 verus! {
+#[verifier::rlimit(40)]
 pub fn merge_2m_commit(krnl: &mut KernelK, thread: RwLockThreadPtr,
     allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, candidate: &Merge2mCandidate,
     Tracked(lctx): Tracked<&LocalContext>, Tracked(cache_perms): Tracked<&Map<CpuId, LockPerm>>,

@@ -113,7 +113,7 @@ impl KernelK{
         // device BAR pages: the BAR slots are well formed, their pages are never kernel-managed, and every IO leaf maps them
         &&& pci_bar_slots_wf(self.irt.view().bars())
         &&& pci_bar_pages_unavailable_wf(self.irt.view().bars(), self.pg_arr)
-        &&& io_mappings_wf(self.irt.view().bars(), self.pt_mp, self.pt_lower.view(), self.it_mp)
+        &&& io_mappings_wf(self.irt.view().bars(), self.pt_mp, self.pt_lower.view())
         // allocator pages, page owners, and huge pages
         &&& allocator_pages_wf(self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp, self.pg_arr)
         &&& container_owned_pages_wf(self.ctn_mp, self.pg_arr)

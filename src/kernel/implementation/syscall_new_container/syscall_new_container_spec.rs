@@ -11,7 +11,7 @@ verus! {
 /// arguments or funding, a cpu no longer Running or marked by a killer, a killed parent container, a parent write-held
 /// by a live dynamic owner below the caller's process, a zombie parent container, a parent at the maximum tree depth, a
 /// killed process or caller, an empty `ep_idx` descriptor, too little caller 4K or 2M quota, a source range
-/// below the first user L4 index or with a page that has no present 4K leaf, and a transfer cpu that the parent
+/// below the first user L4 index or with a page that has no present 4K RAM leaf, and a transfer cpu that the parent
 /// container does not own or that is not Off. `Success` stands for `SuccessThreeUsize`, whose fresh container, process,
 /// and thread pointers the state does not determine.
 pub open spec fn new_container_syscall_result(
@@ -37,7 +37,9 @@ pub open spec fn new_container_syscall_result(
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if ep_idx is Some && thread.endpoint_descriptors[ep_idx->Some_0 as int] is None { RetValueType::Error }
     else if thread.quota_4k < 9 + funding + 3 * range || thread.quota_2m < 2 { RetValueType::ErrorNoQuota }
-    else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j])) { RetValueType::Error }
+    else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && !mapping[va_range.view()[j]].is_io) {
+        RetValueType::Error
+    }
     else if transfer.owning_container != thread.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
     else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }
     else { RetValueType::Success }
@@ -80,7 +82,7 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     &&& process_quota <= funding <= usize::MAX - 9 - 3 * range.len
     &&& thread.quota_4k >= 9 + funding + 3 * range.len
     &&& thread.quota_2m >= 2
-    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i]) && !pagetable.mapping_4k[range.view()[i]].is_io
     &&& index_valid(NUM_CPUS, transfer_cpu)
     &&& transfer.state is Off
     &&& transfer.owning_container == thread.owning_container

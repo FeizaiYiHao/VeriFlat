@@ -9,10 +9,6 @@ use super::syscall_kill_process_walk_spec::kill_scope_progress;
 use veriflat_map_4k::map_4k::reclaim_held_4k_page::remove_held_4k_mapping_without_free;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::reclaim_held_4k_page::remove_held_4k_mapping_without_free;
-#[cfg(feature = "split-crates")]
-use veriflat_map_4k::map_4k::unmap_io_leaf::remove_iommu_io_4k_mapping;
-#[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::unmap_io_leaf::remove_iommu_io_4k_mapping;
 use super::syscall_kill_process_reclaim_scoped_last::{kill_reclaim_last_held_4k_mapping_scoped, kill_reclaim_last_iommu_4k_mapping_scoped};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_spec::*;
@@ -302,7 +298,6 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
         !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == pg_ptr,
-        !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).is_io,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
@@ -491,18 +486,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
     let l4 = it.get_entry_l4(indices.0).unwrap();
     let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
     let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-    let l1 = it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap();
-    if l1.perm.is_io {
-        remove_iommu_io_4k_mapping(krnl, iommu_table, indices, l2.addr, Ghost(false), Tracked(&mut *lctx), Tracked(iommu_perm));
-        proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        }
-        return;
-    }
-    let pg_ptr = l1.addr;
+    let pg_ptr = it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr;
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(pg_idx).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(pg_idx, Tracked(&mut *lctx));

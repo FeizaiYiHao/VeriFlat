@@ -226,20 +226,19 @@ pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
                 &&& pt_mp.dom().contains(pt)
                 &&& va_1g_valid(va)
                 &&& leaf is Some
-                &&& !leaf->0.perm.is_io
                 &&& leaf->0.addr == page_index2page_ptr(p_i)
             }
-    // Every RAM 1G mapping of a table points at a Mapped1g page that lists it and shares its container.
+    // Every present 1G mapping of a table points at a Mapped1g page that lists it and shares its container.
     &&& forall|pt: RwLockPageTableRoot, va: VAddr|
         #![trigger whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va)]
-        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va) && !whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).is_io ==> {
+        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va) ==> {
             let entry = whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va);
             let page = pg_arr.spec_index(page_ptr2page_index(entry.addr)).view().view();
             &&& page.state == PageState::Mapped1g
             &&& page.mappings().contains((pt, va))
             &&& entry.owning_container.view() == page.owning_container
         }
-    // Every RAM user 1G L3 entry with the kernel_present and PS bits set points at a Mapped1g page that lists it.
+    // Every user 1G L3 entry with the kernel_present and PS bits set points at a Mapped1g page that lists it.
     &&& forall|pt: RwLockPageTableRoot|
         #![trigger pt_mp.dom().contains(pt)]
         pt_mp.dom().contains(pt)
@@ -250,7 +249,6 @@ pub open spec fn mapped_1g_page_pagetable_wf(pt_mp: PageTableLockedMap, pt_lower
                     && pei_valid(l4i)
                     && pei_valid(l3i)
                     && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i) is Some
-                    && !whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.perm.is_io
                     ==> {
                         let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.addr);
                         &&& index_valid(NUM_PAGES, pg_idx)
@@ -273,12 +271,11 @@ pub proof fn mapped_1g_page_pagetable_wf_page_at(
             &&& pt_mp.dom().contains(pt_ptr)
             &&& va_1g_valid(va)
             &&& leaf is Some
-            &&& !leaf->0.perm.is_io
             &&& leaf->0.addr == page_index2page_ptr(pg_idx)
         },
 { reveal(mapped_1g_page_pagetable_wf); }
 
-/// A RAM user 1G L3 entry of `pt_ptr` with the kernel_present and PS bits set (present bit set or clear) points at a valid `Mapped1g` page that lists `(pt_ptr, va)` in its mappings.
+/// A user 1G L3 entry of `pt_ptr` with the kernel_present and PS bits set (present bit set or clear) points at a valid `Mapped1g` page that lists `(pt_ptr, va)` in its mappings.
 pub proof fn mapped_1g_page_pagetable_wf_held_leaf_at(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pg_arr: PageLockedArray, pt_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index,
 )
@@ -290,7 +287,6 @@ pub proof fn mapped_1g_page_pagetable_wf_held_leaf_at(
             && pei_valid(l4i)
             && pei_valid(l3i)
             && whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i) is Some
-            && !whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)->0.perm.is_io
             ==> ({
                 let pg_idx = page_ptr2page_index(whole_pagetable(pt_mp, pt_lower, pt_ptr).spec_held_1g_l3(l4i, l3i)->0.addr);
                 &&& index_valid(NUM_PAGES, pg_idx)

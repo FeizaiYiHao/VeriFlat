@@ -530,7 +530,7 @@ impl PageTable<PT_TYPE> {
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && mapping_1g_target_valid(self.mapping_1g.view().spec_index(va).addr, self.mapping_1g.view().spec_index(va).is_io)
+            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<PT_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// mapping_4k holds exactly the resolved 4K leaves, with their frame, write, execute_disable and present bits.

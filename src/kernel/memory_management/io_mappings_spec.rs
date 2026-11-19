@@ -28,18 +28,15 @@ pub open spec fn io_span_in_bars(bars: Map<BarKey, BarRegion>, addr: PAddr, size
         0 <= offset < size as int / PAGE_SZ_4K as int ==> pci_bar_page(bars, (addr as int + offset * PAGE_SZ_4K as int) as usize)
 }
 
-/// Every IO leaf of a CPU page table (present or held) and of an IOMMU table maps BAR pages over its whole span.
+/// Every IO leaf of a CPU page table (present or held) maps BAR pages over its whole span.
 #[verifier::opaque]
-pub open spec fn io_mappings_wf(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap) -> bool {
+pub open spec fn io_mappings_wf(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     &&& forall|pt: RwLockPageTableRoot, va: VAddr| #![trigger whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().spec_index(va)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().spec_index(va).is_io
             ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().spec_index(va).addr)
     &&& forall|pt: RwLockPageTableRoot, va: VAddr| #![trigger whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().spec_index(va)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().spec_index(va).is_io
             ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().spec_index(va).addr, PAGE_SZ_2M)
-    &&& forall|pt: RwLockPageTableRoot, va: VAddr| #![trigger whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va)]
-        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).is_io
-            ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).addr, PAGE_SZ_1G)
     &&& forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
         #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)]
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
@@ -50,14 +47,6 @@ pub open spec fn io_mappings_wf(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLo
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
             && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
             ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr, PAGE_SZ_2M)
-    &&& forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index|
-        #![trigger whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)]
-        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.perm.is_io
-            ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.addr, PAGE_SZ_1G)
-    &&& forall|it: RwLockPageTableRoot, iova: VAddr| #![trigger it_mp.spec_index(it).view().mapping_4k().spec_index(iova)]
-        it_mp.dom().contains(it) && it_mp.spec_index(it).view().mapping_4k().contains_key(iova) && it_mp.spec_index(it).view().mapping_4k().spec_index(iova).is_io
-            ==> pci_bar_page(bars, it_mp.spec_index(it).view().mapping_4k().spec_index(iova).addr)
 }
 
 /// The present BAR slot `bar` names a valid PCI function, a BAR index below 6, and a well-formed byte range.
@@ -73,35 +62,27 @@ pub proof fn pci_bar_pages_unavailable_wf_at(bars: Map<BarKey, BarRegion>, pg_ar
 { reveal(pci_bar_pages_unavailable_wf); }
 
 /// The present IO 4K mapping `va` of page table `pt` maps a BAR page.
-pub proof fn io_mappings_wf_4k_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot, va: VAddr)
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
+pub proof fn io_mappings_wf_4k_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot, va: VAddr)
+    requires io_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().spec_index(va).is_io
             ==> pci_bar_page(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_4k().spec_index(va).addr),
 { reveal(io_mappings_wf); }
 
 /// The present IO 2M mapping `va` of page table `pt` maps BAR pages over its whole span.
-pub proof fn io_mappings_wf_2m_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot, va: VAddr)
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
+pub proof fn io_mappings_wf_2m_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot, va: VAddr)
+    requires io_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().spec_index(va).is_io
             ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_2m().spec_index(va).addr, PAGE_SZ_2M),
 { reveal(io_mappings_wf); }
 
-/// The present IO 1G mapping `va` of page table `pt` maps BAR pages over its whole span.
-pub proof fn io_mappings_wf_1g_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot, va: VAddr)
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
-    ensures
-        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().contains_key(va) && whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).is_io
-            ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).mapping_1g().spec_index(va).addr, PAGE_SZ_1G),
-{ reveal(io_mappings_wf); }
-
 /// The held IO 4K L1 entry `(l4i, l3i, l2i, l1i)` of page table `pt` maps a BAR page.
 pub proof fn io_mappings_wf_held_4k_at(
-    bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot,
+    bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot,
     l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index,
 )
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
+    requires io_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
             && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
@@ -110,33 +91,13 @@ pub proof fn io_mappings_wf_held_4k_at(
 
 /// The held IO 2M L2 entry `(l4i, l3i, l2i)` of page table `pt` maps BAR pages over its whole span.
 pub proof fn io_mappings_wf_held_2m_at(
-    bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot,
+    bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pt: RwLockPageTableRoot,
     l4i: L4Index, l3i: L3Index, l2i: L2Index,
 )
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
+    requires io_mappings_wf(bars, pt_mp, pt_lower),
     ensures
         pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
             && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.perm.is_io
             ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_2m_l2(l4i, l3i, l2i)->0.addr, PAGE_SZ_2M),
-{ reveal(io_mappings_wf); }
-
-/// The held IO 1G L3 entry `(l4i, l3i)` of page table `pt` maps BAR pages over its whole span.
-pub proof fn io_mappings_wf_held_1g_at(
-    bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, pt: RwLockPageTableRoot,
-    l4i: L4Index, l3i: L3Index,
-)
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
-    ensures
-        pt_mp.dom().contains(pt) && whole_pagetable(pt_mp, pt_lower, pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
-            && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i) is Some && whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.perm.is_io
-            ==> io_span_in_bars(bars, whole_pagetable(pt_mp, pt_lower, pt).spec_held_1g_l3(l4i, l3i)->0.addr, PAGE_SZ_1G),
-{ reveal(io_mappings_wf); }
-
-/// The IO 4K leaf `iova` of IOMMU table `it` maps a BAR page.
-pub proof fn io_mappings_wf_iommu_4k_at(bars: Map<BarKey, BarRegion>, pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, it_mp: IommuTableLockedMap, it: RwLockPageTableRoot, iova: VAddr)
-    requires io_mappings_wf(bars, pt_mp, pt_lower, it_mp),
-    ensures
-        it_mp.dom().contains(it) && it_mp.spec_index(it).view().mapping_4k().contains_key(iova) && it_mp.spec_index(it).view().mapping_4k().spec_index(iova).is_io
-            ==> pci_bar_page(bars, it_mp.spec_index(it).view().mapping_4k().spec_index(iova).addr),
 { reveal(io_mappings_wf); }
 }

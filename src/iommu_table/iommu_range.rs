@@ -26,7 +26,7 @@ impl IommuTable {
                 &&& pei_valid(indices.3)
                 &&& self.mapping_4k().dom().contains(va)
                 &&& self.mapping_4k().spec_index(va).present
-                &&& mapping_4k_target_valid(self.mapping_4k().spec_index(va).addr, self.mapping_4k().spec_index(va).is_io)
+                &&& page_ptr_valid(self.mapping_4k().spec_index(va).addr)
                 &&& {
                     let resolved = self.spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3);
                     &&& resolved is Some
@@ -468,7 +468,7 @@ impl IommuTable {
                         &&& pei_valid(indices.3)
                         &&& self.mapping_4k().dom().contains(va)
                         &&& self.mapping_4k().spec_index(va).present
-                        &&& mapping_4k_target_valid(self.mapping_4k().spec_index(va).addr, self.mapping_4k().spec_index(va).is_io)
+                        &&& page_ptr_valid(self.mapping_4k().spec_index(va).addr)
                         &&& {
                             let resolved = self.spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3);
                             &&& resolved is Some
@@ -506,7 +506,7 @@ impl IommuTable {
                     &&& pei_valid(checked_indices.3)
                     &&& self.mapping_4k().dom().contains(checked_va)
                     &&& self.mapping_4k().spec_index(checked_va).present
-                    &&& mapping_4k_target_valid(self.mapping_4k().spec_index(checked_va).addr, self.mapping_4k().spec_index(checked_va).is_io)
+                    &&& page_ptr_valid(self.mapping_4k().spec_index(checked_va).addr)
                     &&& {
                         let spec_resolved = self.spec_resolve_mapping_4k_l1(checked_indices.0, checked_indices.1, checked_indices.2, checked_indices.3);
                         &&& spec_resolved is Some

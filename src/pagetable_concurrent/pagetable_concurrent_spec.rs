@@ -321,7 +321,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && mapping_1g_target_valid(self.mapping_1g.view().spec_index(va).addr, self.mapping_1g.view().spec_index(va).is_io)
+            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.
@@ -470,10 +470,6 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
 
     pub open spec fn page_closure(&self) -> Set<PagePtr> {
         self.higher.l3_tables.view().dom() + self.lower.l2_perms.dom() + self.lower.l1_rev_map.dom() + self.higher.l4_table.view().dom()
-    }
-
-    pub open spec fn spec_project_4k_source(&self, va: VAddr) -> Option<MapEntry> {
-        project_4k_source_from_mappings(self.mapping_4k(), self.mapping_2m(), self.mapping_1g(), va)
     }
 
     // The L4/L3 walk belongs to the big-lock payload; inline so both levels share one trigger term.

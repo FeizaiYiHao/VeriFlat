@@ -32,7 +32,8 @@ pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va:
             let endpoint_missing = ep_idx is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) is None;
             let funded = unkilled && has_pcid && !endpoint_missing && thread.view().quota_4k >= base + 3 * range;
             let mapped = table.kernel_l4_end() <= spec_v2l4index(va) && forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < range
-                ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present;
+                ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present
+                && !table.mapping_4k().spec_index(va_range.view().spec_index(j)).is_io;
             &&& live ==> cpu.view().view().current_thread is Some && krnl.thrd_mp.dom().contains(thrd_ptr) && krnl.prc_mp.dom().contains(prc_ptr)
             &&& unkilled ==> krnl.ctn_mp.dom().contains(ctn_ptr)
             &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
@@ -99,6 +100,7 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& table.view().higher.kernel_l4_end <= spec_v2l4index(range.start)
             &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view().spec_index(j))
                 && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).present
+                && !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).is_io
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - base) / 3
             &&& ep_idx is Some ==> edp_idx_valid(ep_idx->Some_0) && ep_ptr is Some && thread.view().endpoint_descriptors.spec_index(ep_idx->Some_0) == ep_ptr

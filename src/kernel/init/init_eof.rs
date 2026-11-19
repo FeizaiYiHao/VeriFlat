@@ -7,7 +7,7 @@ use super::boot_eof_pages::*;
 
 pub(super) proof fn boot_subsystems_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -30,9 +30,8 @@ pub(super) proof fn boot_subsystems_inv_eof(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifests_wf(manifest_4k, manifest_2m, manifest_1g, krnl.irt.view().bars()),
     ensures
         krnl.subsystems_inv(),
 {
@@ -42,7 +41,7 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view())) by {
         reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::l3_links_l2_wf); reveal(PageTableHigher::wf_l4);
     };
-    assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); reveal(boot_dom0_io_manifests_wf); };
+    assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_hidden_l1_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_l1_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_table_stale_cpus_only_when_write_locked(krnl.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
@@ -75,7 +74,7 @@ pub(super) proof fn boot_subsystems_inv_eof(
 
 proof fn boot_memory_management_inv_eof_allocator_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -98,7 +97,7 @@ proof fn boot_memory_management_inv_eof_allocator_pages(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         allocator_pages_wf(krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, krnl.pg_arr),
@@ -108,7 +107,7 @@ proof fn boot_memory_management_inv_eof_allocator_pages(
 
 proof fn boot_memory_management_inv_eof_allocator_free_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -131,7 +130,7 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         allocator_free_page_ptrs_wf(krnl.allc_4k_mp),
@@ -144,7 +143,7 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
 
 proof fn boot_memory_management_inv_eof_free_4k(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -167,7 +166,7 @@ proof fn boot_memory_management_inv_eof_free_4k(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         allocator_free_4k_pages_wf(krnl.allc_4k_mp, krnl.pg_arr),
@@ -177,7 +176,7 @@ proof fn boot_memory_management_inv_eof_free_4k(
 
 proof fn boot_memory_management_inv_eof_free_2m(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -200,7 +199,7 @@ proof fn boot_memory_management_inv_eof_free_2m(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         allocator_free_2m_pages_wf(krnl.allc_2m_mp, krnl.pg_arr),
@@ -210,7 +209,7 @@ proof fn boot_memory_management_inv_eof_free_2m(
 
 proof fn boot_memory_management_inv_eof_free_1g(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -233,7 +232,7 @@ proof fn boot_memory_management_inv_eof_free_1g(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         allocator_free_1g_pages_wf(krnl.allc_1g_mp, krnl.pg_arr),
@@ -245,7 +244,7 @@ proof fn boot_memory_management_inv_eof_free_1g(
 
 proof fn boot_memory_management_inv_eof_object_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -268,7 +267,7 @@ proof fn boot_memory_management_inv_eof_object_pages(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         container_pages_wf(krnl.ctn_mp, krnl.pg_arr),
@@ -282,46 +281,46 @@ proof fn boot_memory_management_inv_eof_object_pages(
         endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr),
 {
     boot_memory_management_inv_eof_container_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_process_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_pagetable_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_thread_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_scheduler_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_cpu_set_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_pcid_allocator_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_thread_staged_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_endpoint_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
 }
 
 proof fn boot_memory_management_inv_eof_mappings(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -344,9 +343,8 @@ proof fn boot_memory_management_inv_eof_mappings(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifests_wf(manifest_4k, manifest_2m, manifest_1g, krnl.irt.view().bars()),
     ensures
         hugepage_2m_wf(krnl.pg_arr),
         hugepage_1g_wf(krnl.pg_arr),
@@ -357,7 +355,7 @@ proof fn boot_memory_management_inv_eof_mappings(
     assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(page_mappings_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by {
-        reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k); reveal(boot_dom0_io_manifests_wf);
+        reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
         reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2); page_ptr_valid_imply_page_index_valid();
         broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
             WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
@@ -366,10 +364,10 @@ proof fn boot_memory_management_inv_eof_mappings(
     assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(boot_page_array_ready); };
 }
 
-/// EOF closure of `finish_init_from_boot` for the IO leaves: the boot manifests are the dom0 table's only mappings.
+/// EOF closure of `finish_init_from_boot` for the IO leaves: the boot 4K manifest is the dom0 table's only mapping.
 proof fn boot_memory_management_inv_eof_io_mappings(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -392,14 +390,14 @@ proof fn boot_memory_management_inv_eof_io_mappings(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifests_wf(manifest_4k, manifest_2m, manifest_1g, krnl.irt.view().bars()),
+        boot_dom0_io_manifest_wf(manifest_4k, krnl.irt.view().bars()),
     ensures
-        io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp),
+        io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view()),
 {
-    assert(io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by {
-        reveal(io_mappings_wf); reveal(boot_dom0_io_manifests_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
+    assert(io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view())) by {
+        reveal(io_mappings_wf); reveal(boot_dom0_io_manifest_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
         reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
         broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
             WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
@@ -408,7 +406,7 @@ proof fn boot_memory_management_inv_eof_io_mappings(
 
 pub(super) proof fn boot_memory_management_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -431,44 +429,44 @@ pub(super) proof fn boot_memory_management_inv_eof(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifests_wf(manifest_4k, manifest_2m, manifest_1g, krnl.irt.view().bars()),
+        boot_dom0_io_manifest_wf(manifest_4k, krnl.irt.view().bars()),
         pci_bar_slots_wf(krnl.irt.view().bars()),
         pci_bar_pages_unavailable_wf(krnl.irt.view().bars(), page_array),
     ensures
         krnl.memory_management_inv(),
 {
     boot_memory_management_inv_eof_allocator_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_allocator_free_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_free_4k(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_free_2m(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_free_1g(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_object_pages(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_mappings(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     boot_memory_management_inv_eof_io_mappings(
-        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_page_closure,
         free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
     );
     prove_boot_container_page_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages);
@@ -489,7 +487,7 @@ pub(super) proof fn boot_memory_management_inv_eof(
 
 pub(super) proof fn boot_process_management_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -512,7 +510,7 @@ pub(super) proof fn boot_process_management_inv_eof(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
     ensures
         krnl.process_management_inv(),
@@ -563,7 +561,7 @@ pub(super) proof fn boot_process_management_inv_eof(
 
 pub(super) proof fn boot_kernel_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
-    manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_hw_cr3_pcid: CpuHwCr3PcidArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
     cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
     free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
@@ -586,7 +584,7 @@ pub(super) proof fn boot_kernel_inv_eof(
         owned_pci_functions.len() == VTD_DOMAIN_COUNT,
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
-        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, manifest_2m, manifest_1g, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
         krnl.subsystems_inv(),
         krnl.memory_management_inv(),

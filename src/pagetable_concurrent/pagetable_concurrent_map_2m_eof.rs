@@ -211,7 +211,49 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.user_only(),
     {
+        Self::map_2m_page_eof_user_only_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
+        reveal(WholePageTable::user_only);
+    }
+
+    /// EOF closure of `map_2m_page`: both halves of `user_only`; the new leaf is a user entry and every L1 page stays.
+    proof fn map_2m_page_eof_user_only_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)
+        requires
+            pre.user_only(),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
+        ensures
+            forall|p: PageMapPtr|
+                #![trigger post.lower.l2_perms.dom().contains(p)]
+                post.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
+                    #![trigger post.lower.l2_entry(p, i)]
+                    pei_valid(i) && post.lower.l2_entry(p, i).perm.present ==> post.lower.l2_entry(p, i).perm.user,
+            forall|p: PageMapPtr|
+                #![trigger post.lower.l2_perms.dom().contains(p)]
+                post.lower.l2_perms.dom().contains(p) ==> forall|l2i: L2Index, l1i: L1Index|
+                    #![trigger post.lower.l1_page(p, l2i).spec_index(l1i)]
+                    pei_valid(l2i) && post.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                        && pei_valid(l1i) && post.lower.l1_page(p, l2i).spec_index(l1i).perm.present
+                        ==> post.lower.l1_page(p, l2i).spec_index(l1i).perm.user,
+    {
+        broadcast use WholePageTable::map_2m_page_eof_user_only_l1_at;
         reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::user_only);
+    }
+
+    /// EOF closure of `map_2m_page`: the L1 half of `user_only` at one entry; every L1 page stays where it was.
+    pub(super) broadcast proof fn map_2m_page_eof_user_only_l1_at(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+        target_entry: MapEntry, p: PageMapPtr, l2i: L2Index, l1i: L1Index)
+        requires
+            pre.user_only(),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
+        ensures
+            #![trigger Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry), post.lower.l1_page(p, l2i).spec_index(l1i)]
+            post.lower.l2_perms.dom().contains(p) && pei_valid(l2i) && post.lower.l2_page(p).entry_lock(l2i).l1() is Some && pei_valid(l1i) && post.lower.l1_page(p, l2i).spec_index(l1i).perm.present
+                ==> post.lower.l1_page(p, l2i).spec_index(l1i).perm.user,
+    {
+        assert(post.lower.l2_perms.dom().contains(p) == pre.lower.l2_perms.dom().contains(p) && post.lower.l2_page(p).entry_lock(l2i).l1() == pre.lower.l2_page(p).entry_lock(l2i).l1()
+            && post.lower.l1_page(p, l2i).spec_index(l1i) == pre.lower.l1_page(p, l2i).spec_index(l1i)) by { reveal(WholePageTable::map_2m_page_eof_transition_framing); };
         reveal(WholePageTable::user_only);
     }
 

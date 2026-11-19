@@ -509,7 +509,7 @@ proof fn kill_retire_eof_io_mappings(
     requires
         pre.inv(),
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
+    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(kill_retire_eof_transition_framing);
     reveal(io_mappings_wf);

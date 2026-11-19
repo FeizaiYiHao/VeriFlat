@@ -343,17 +343,17 @@ impl IommuTable {
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             #![trigger self.mapping_4k.view().dom().contains(va)]
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
-            self.mapping_4k.view().dom().contains(va) ==> iova_4k_valid(va) && mapping_4k_target_valid(self.mapping_4k.view().spec_index(va).addr, self.mapping_4k.view().spec_index(va).is_io)
+            self.mapping_4k.view().dom().contains(va) ==> iova_4k_valid(va) && page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m.view().dom().contains(va)]
             #![trigger self.mapping_2m.view().dom().contains(va), page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)]
             #![trigger self.mapping_2m.view().dom().contains(va)]
-            self.mapping_2m.view().dom().contains(va) ==> iova_2m_valid(va) && mapping_2m_target_valid(self.mapping_2m.view().spec_index(va).addr, self.mapping_2m.view().spec_index(va).is_io)
+            self.mapping_2m.view().dom().contains(va) ==> iova_2m_valid(va) && page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> iova_1g_valid(va) && mapping_1g_target_valid(self.mapping_1g.view().spec_index(va).addr, self.mapping_1g.view().spec_index(va).is_io)
+            self.mapping_1g.view().dom().contains(va) ==> iova_1g_valid(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
 
     /// Held leaves retain their frame, software XD, and historical write permission; present leaves also agree on hardware W.

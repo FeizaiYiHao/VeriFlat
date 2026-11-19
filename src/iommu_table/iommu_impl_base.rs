@@ -338,7 +338,8 @@ impl IommuTable {
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             old(self).spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is None
                 || old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
-            mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
+            page_ptr_valid(target_entry.addr),
+            !target_entry.is_io,
             target_entry.present,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
@@ -375,7 +376,7 @@ impl IommuTable {
             self.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
             self.wf_l1_at(self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr, target_l1i);
         }
-        assert(mem_valid(target_entry.addr)) by { if !target_entry.is_io { page_ptr_valid_imply_mem_valid(target_entry.addr); } else { reveal(io_page_range_valid); } };
+        assert(mem_valid(target_entry.addr)) by { page_ptr_valid_imply_mem_valid(target_entry.addr); };
         iommu_page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i,
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { is_io: target_entry.is_io, present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: false, kernel_present: true } },
             Tracked(&mut *lctx));

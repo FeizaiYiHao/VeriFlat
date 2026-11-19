@@ -65,27 +65,6 @@ pub struct MapEntry {
     pub owning_container: Ghost<RwLockContainerPtr>,
 }
 
-pub open spec fn project_4k_source_from_mappings(m4: Map<VAddr, MapEntry>, m2: Map<VAddr, MapEntry>,
-    m1: Map<VAddr, MapEntry>, va: VAddr) -> Option<MapEntry> {
-    let base_2m = (va / PAGE_SZ_2M * PAGE_SZ_2M) as usize;
-    let base_1g = (va / PAGE_SZ_1G * PAGE_SZ_1G) as usize;
-    if m4.dom().contains(va) {
-        if m4[va].present { Some(m4[va]) } else { None }
-    } else if m2.dom().contains(base_2m) {
-        if m2[base_2m].present && m2[base_2m].is_io {
-            Some(MapEntry { addr: (m2[base_2m].addr + (va - base_2m)) as usize, ..m2[base_2m] })
-        } else { None }
-    } else if m1.dom().contains(base_1g) && m1[base_1g].present && m1[base_1g].is_io {
-        Some(MapEntry { addr: (m1[base_1g].addr + (va - base_1g)) as usize, ..m1[base_1g] })
-    } else { None }
-}
-
-pub open spec fn project_4k_source_view(m4: Map<VAddr, MapEntry>, m2: Map<VAddr, MapEntry>,
-    m1: Map<VAddr, MapEntry>) -> Map<VAddr, MapEntry> {
-    Map::new(Set::range(0usize, 0x0001_0000_0000_0000usize).filter(|va: VAddr| spec_va_4k_valid(va) && project_4k_source_from_mappings(m4, m2, m1, va) is Some),
-        |va: VAddr| project_4k_source_from_mappings(m4, m2, m1, va)->Some_0)
-}
-
 pub struct TLBEntry {
     pub addr: PAddr,
     pub write: bool,
@@ -95,7 +74,7 @@ pub struct TLBEntry {
 /// An IO leaf of `size` at `addr` is aligned and lies below 2^48.
 #[verifier::opaque]
 pub open spec fn io_page_range_valid(addr: PAddr, size: usize) -> bool {
-    &&& size == PAGE_SZ_4K || size == PAGE_SZ_2M || size == PAGE_SZ_1G
+    &&& size == PAGE_SZ_4K || size == PAGE_SZ_2M
     &&& mem_valid(addr)
     &&& addr % size == 0
     &&& addr <= 0x0001_0000_0000_0000usize - size
@@ -107,10 +86,6 @@ pub open spec fn mapping_4k_target_valid(addr: PAddr, is_io: bool) -> bool {
 
 pub open spec fn mapping_2m_target_valid(addr: PAddr, is_io: bool) -> bool {
     if is_io { io_page_range_valid(addr, PAGE_SZ_2M) } else { page_ptr_2m_valid(addr) }
-}
-
-pub open spec fn mapping_1g_target_valid(addr: PAddr, is_io: bool) -> bool {
-    if is_io { io_page_range_valid(addr, PAGE_SZ_1G) } else { page_ptr_1g_valid(addr) }
 }
 
 pub open spec fn spec_page_entry_to_map_entry(p: &PageEntry, owning_container: Ghost<RwLockContainerPtr>) -> MapEntry {

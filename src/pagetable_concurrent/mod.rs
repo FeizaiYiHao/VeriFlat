@@ -40,4 +40,3 @@ pub mod pagetable_concurrent_held_walk;
 pub use pagetable_concurrent_range::*;
 pub use pagetable_concurrent_structure_scan::*;
 pub use pagetable_concurrent_held_walk::*;
-pub mod pagetable_concurrent_project_source;

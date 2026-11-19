@@ -301,7 +301,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
 {
     assert(pci_bar_slots_wf(post.irt.view().bars())) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); };
     assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(io_mappings_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(io_mappings_wf); };
     reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(pre, post, pagetable, va, pg_ptr, thrd_ptr, owner, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing); reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };

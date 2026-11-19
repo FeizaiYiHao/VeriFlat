@@ -5,7 +5,7 @@ verus! {
 /// The result of `syscall_iommu_map_4k` from the state at entry, in the implementation's check order: malformed
 /// arguments, a cpu no longer Running or marked by a killer, a killed process or caller, a process without an IOMMU table, less than
 /// three 4K quota per page (one per IOMMU directory level that may be missing), a va range below the first user L4 index,
-/// a va page not mapped in the page table, and an iova page already mapped in the IOMMU table.
+/// a va page not mapped in the page table or mapping device memory, and an iova page already mapped in the IOMMU table.
 pub open spec fn iommu_map_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
@@ -21,7 +21,8 @@ pub open spec fn iommu_map_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VA
     // Each page may need a new directory page under its IOMMU L4, L3, and L2 entries, one 4K quota each; the leaf costs none.
     else if thread.quota_4k < 3 * range { RetValueType::ErrorNoQuota }
     else if !user_va_range(pre, va_range) { RetValueType::Error }
-    else if !(forall|i: int| #![trigger process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < range ==> process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])) {
+    else if !(forall|i: int| #![trigger process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < range
+        ==> process.pagetable->Some_0.mapping_4k.dom().contains(va_range.view()[i]) && !process.pagetable->Some_0.mapping_4k[va_range.view()[i]].is_io) {
         RetValueType::ErrorIommuVaNotMapped
     }
     else if !(forall|i: int| #![trigger process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < range ==> !process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])) {
@@ -69,7 +70,8 @@ pub open spec fn iommu_map_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, va_r
     &&& va_range.len > 0
     &&& iova_range.len == va_range.len
     &&& user_va_range(old_u, va_range)
-    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < va_range.len ==> pagetable.mapping_4k.dom().contains(va_range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(va_range.view()[i])] 0 <= i < va_range.len
+        ==> pagetable.mapping_4k.dom().contains(va_range.view()[i]) && !pagetable.mapping_4k[va_range.view()[i]].is_io
     &&& forall|i: int| #![trigger iommu_table.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len ==> !iommu_table.mapping_4k.dom().contains(iova_range.view()[i])
 }
 
@@ -139,6 +141,7 @@ pub open spec fn iommu_map_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& progress->IommuMap4k_mapped < progress->IommuMap4k_iova_range.len
     &&& progress->IommuMap4k_iova_range.len == progress->IommuMap4k_va_range.len
     &&& process.pagetable->Some_0.mapping_4k.dom().contains(va)
+    &&& !process.pagetable->Some_0.mapping_4k[va].is_io
     &&& !process.iommu_table->Some_0.mapping_4k.dom().contains(iova)
 }
 

@@ -148,7 +148,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     proof { assert(va_range == spec_va_range_4k(va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); }; }
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows::<false>(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
-        if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+        if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)).0 {
             proof { va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
             unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, prc_ptr, thrd_ptr, pagetable, cr3, pcid, Ghost(entry_lctx),
                 Tracked(cpu_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));

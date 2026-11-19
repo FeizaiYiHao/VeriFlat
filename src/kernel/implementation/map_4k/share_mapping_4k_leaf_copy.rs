@@ -137,26 +137,6 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
             target_c.wf_mapping_4k_at(target_indices.0, target_indices.1, target_indices.2, target_indices.3);
         };
     }
-    if source_entry.is_io {
-        let ghost pre_k = *krnl;
-        proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
-        if target_write_held {
-            pagetable_map_insert_4k_wlocked(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l2_ptr, target_l1_ptr, &source_entry,
-                Tracked(window_perm), Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-        } else {
-            pagetable_map_insert_4k(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l2_ptr, target_l1_ptr, &source_entry,
-                Tracked(window_perm), Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-        }
-        proof {
-            assert(share_one_io_mapping_4k_eof_transition_framing(pre_k, *krnl, source_pagetable, source_va, target_pagetable, target_va)) by {
-                reveal(share_one_io_mapping_4k_eof_transition_framing);
-                if target_write_held { pre_k.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
-                else { pre_k.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
-            };
-            share_one_io_mapping_4k_eof(pre_k, *krnl, source_pagetable, source_va, target_pagetable, target_va, target_process, target_container, target_thread);
-        }
-        return;
-    }
     let pg_ptr = source_entry.addr;
     let pg_idx = page_ptr2page_index(pg_ptr);
     proof {

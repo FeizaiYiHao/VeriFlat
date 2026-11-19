@@ -3,7 +3,7 @@ use crate::*;
 use super::reclaim_held_4k_page::reclaim_held_4k_page;
 use super::reclaim_held_2m_page::reclaim_held_2m_page;
 use super::reclaim_held_1g_page::reclaim_held_1g_page;
-use super::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping, remove_held_io_1g_mapping};
+use super::unmap_io_leaf::{remove_held_io_4k_mapping, remove_held_io_2m_mapping};
 #[cfg(verus_keep_ghost)]
 use super::reclaim_held_leaves_eol::*;
 
@@ -221,7 +221,6 @@ fn reclaim_held_leaf(
             &&& c.kernel_l4_end() <= next.0 && pei_valid(next.0) && pei_valid(next.1) && pei_valid(next.2) && pei_valid(next.3)
             &&& spec_l4_index_path_le(cursor, next)
             &&& kind is L1g ==> next.2 == 0 && next.3 == 0 && c.spec_held_1g_l3(next.0, next.1) is Some && c.spec_held_1g_l3(next.0, next.1)->0.addr == pg_ptr
-                && c.spec_held_1g_l3(next.0, next.1)->0.perm.is_io == is_io
             &&& kind is L2m ==> next.3 == 0 && c.spec_held_2m_l2(next.0, next.1, next.2) is Some && c.spec_held_2m_l2(next.0, next.1, next.2)->0.addr == pg_ptr
                 && c.spec_held_2m_l2(next.0, next.1, next.2)->0.perm.is_io == is_io
             &&& kind is L4k ==> c.spec_held_4k_l1(next.0, next.1, next.2, next.3) is Some && c.spec_held_4k_l1(next.0, next.1, next.2, next.3)->0.addr == pg_ptr
@@ -265,20 +264,11 @@ fn reclaim_held_leaf(
                 spec_index2va_2m_valid(next.0, next.1, 0);
                 assert(c.spec_held_l3(next.0, next.1) is None);
             }
-            if is_io {
-                proof {
-                    let (l4i, l3i) = (next.0, next.1);
-                    assert(spec_va_1g_valid(va) && spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i) by (bit_vector)
-                        requires va == spec_index2va((l4i, l3i, 0usize, 0usize)), KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512;
-                }
-                remove_held_io_1g_mapping(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
-            } else {
-                proof {
-                    mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1);
-                    mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
-                }
-                reclaim_held_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect_1g, direct_1g, Tracked(&mut *lctx), pagetable_perm, thread_perm);
+            proof {
+                mapped_1g_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1);
+                mapped_1g_page_pagetable_wf_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
             }
+            reclaim_held_1g_page(krnl, pagetable, va, pg_ptr, thrd_ptr, indirect_1g, direct_1g, Tracked(&mut *lctx), pagetable_perm, thread_perm);
             let ghost (krnl_c, lctx_c) = (*krnl, *lctx);
             proof {
                 kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));

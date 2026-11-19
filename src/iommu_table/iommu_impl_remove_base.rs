@@ -54,6 +54,13 @@ impl IommuTable {
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(target_l1_p);
         let l1_tbl: &IommuPageMap = PPtr::<IommuPageMap>::from_usize(target_l1_p).borrow(Tracked(l1_perm));
         let mut l1_entry = l1_tbl.get(target_l1i);
+        proof {
+            let raw = l1_tbl.ar.view().spec_index(target_l1i as int);
+            assert(!l1_entry.perm.is_io) by {
+                l1_tbl.wf_at(target_l1i);
+                assert(raw & PAGE_ENTRY_IO_MASK as usize == 0) by (bit_vector) requires raw & !IOMMU_WORD_MASK == 0;
+            };
+        }
         l1_entry.perm.present = false;
         l1_entry.perm.write = false;
         iommu_page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i, l1_entry, Tracked(&mut *lctx));

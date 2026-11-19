@@ -123,7 +123,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
             kernel_endpoint_nonlock_fields_unchanged_for_equal(old(krnl).ep_mp, krnl.ep_mp);
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
-        true
+        false
     } else {
         let pg_ptr = source_entry.addr;
         let pg_idx = page_ptr2page_index(pg_ptr);

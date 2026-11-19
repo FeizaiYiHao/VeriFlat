@@ -173,7 +173,8 @@ pub fn iommu_table_map_insert_4k(
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is None
             || !old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(spec_index2va(indices)),
-        mapping_4k_target_valid(target_entry.addr, target_entry.is_io),
+        page_ptr_valid(target_entry.addr),
+        !target_entry.is_io,
         target_entry.present,
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),

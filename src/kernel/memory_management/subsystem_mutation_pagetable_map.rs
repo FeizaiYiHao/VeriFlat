@@ -2472,7 +2472,7 @@ pub fn pagetable_map_insert_1g(
         whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).spec_held_l3(indices.0, indices.1) is None,
         whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).spec_resolve_mapping_1g_l3(indices.0, indices.1) is None || !whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0))),
         !whole_pagetable(*old(pagetable_map), *pt_lower, pagetable_ptr).page_closure().contains(target_entry.addr),
-        mapping_1g_target_valid(target_entry.addr, target_entry.is_io),
+        page_ptr_1g_valid(target_entry.addr),
         page_table_key_1g_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, 0, 0))),
         target_entry.present,
     ensures

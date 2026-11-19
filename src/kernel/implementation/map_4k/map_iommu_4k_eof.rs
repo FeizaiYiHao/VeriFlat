@@ -34,125 +34,6 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_page.view().owning_container == old_page.view().owning_container
 }
 
-/// Copies the IO 4K leaf `va` of `source_pagetable` into IOMMU table `iommu_table_ptr` at `iova`; every other kernel field, the
-/// page array included, is unchanged.
-#[verifier::opaque]
-pub(super) open spec fn map_shared_io_page_into_iommu_4k_eof_transition_framing(
-    pre: KernelK, post: KernelK, source_pagetable: RwLockPageTableRoot, va: VAddr, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr,
-) -> bool {
-    let old_it = pre.it_mp.spec_index(iommu_table_ptr);
-    let new_it = post.it_mp.spec_index(iommu_table_ptr);
-    &&& post == (KernelK { it_mp: post.it_mp, ..pre })
-    &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr)
-    &&& new_it.locking_thread() == old_it.locking_thread()
-    &&& new_it.being_killed() == old_it.being_killed()
-    &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va))
-    &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
-    &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
-    &&& new_it.view().page_closure() == old_it.view().page_closure()
-    &&& new_it.view().cr3 == old_it.view().cr3
-    &&& new_it.view().proc_ptr == old_it.view().proc_ptr
-    &&& new_it.view().did == old_it.view().did
-}
-
-/// The IOMMU-table relations close: the page array is unchanged and the new leaf maps device memory, which no page records.
-proof fn map_shared_io_page_into_iommu_4k_eof_iommu_tables(
-    pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, source_pagetable: RwLockPageTableRoot, va: VAddr, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr,
-)
-    requires
-        pre.inv(),
-        map_shared_io_page_into_iommu_4k_eof_transition_framing(pre, post, source_pagetable, va, iommu_table_ptr, iova),
-        pre.pt_mp.dom().contains(source_pagetable),
-        pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
-        pre.it_mp.dom().contains(iommu_table_ptr),
-        pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr,
-        pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
-        !pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova),
-        pre.prc_mp.dom().contains(prc_ptr),
-        pre.thrd_mp.dom().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
-        !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
-        iommu_table_perms_wf(post.it_mp),
-    ensures
-        page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
-        process_iommu_table_wf(post.prc_mp, post.it_mp),
-        iommu_table_no_huge_leaf_wf(post.it_mp),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
-{
-    reveal(map_shared_io_page_into_iommu_4k_eof_transition_framing);
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
-    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
-        reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); process_thread_wf_thread_at(pre.prc_mp, pre.thrd_mp, thrd_ptr);
-        process_perms_wf_at(pre.prc_mp, prc_ptr); process_emptied_threads_wf_at(pre.prc_mp, pre.thrd_mp, prc_ptr, thrd_ptr);
-    };
-}
-
-/// `io_mappings_wf`: the new IOMMU leaf copies the source IO leaf, which maps a BAR page.
-proof fn map_shared_io_page_into_iommu_4k_eof_io_mappings_wf(
-    pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, source_pagetable: RwLockPageTableRoot, va: VAddr, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr,
-)
-    requires
-        pre.inv(),
-        map_shared_io_page_into_iommu_4k_eof_transition_framing(pre, post, source_pagetable, va, iommu_table_ptr, iova),
-        pre.pt_mp.dom().contains(source_pagetable),
-        pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
-        pre.it_mp.dom().contains(iommu_table_ptr),
-        pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr,
-        pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
-        !pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova),
-        pre.prc_mp.dom().contains(prc_ptr),
-        pre.thrd_mp.dom().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
-        !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
-        iommu_table_perms_wf(post.it_mp),
-    ensures io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp),
-{
-    reveal(map_shared_io_page_into_iommu_4k_eof_transition_framing);
-    io_mappings_wf_4k_at(pre.irt.view().bars(), pre.pt_mp, pre.pt_lower.view(), pre.it_mp, source_pagetable, va);
-    reveal(io_mappings_wf);
-}
-
-/// EOF closure of the IO branch of `map_shared_page_into_iommu_4k`: the kernel invariant holds after the IO leaf is copied.
-pub(super) proof fn map_shared_io_page_into_iommu_4k_eof(
-    pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, source_pagetable: RwLockPageTableRoot, va: VAddr, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr,
-)
-    requires
-        pre.inv(),
-        map_shared_io_page_into_iommu_4k_eof_transition_framing(pre, post, source_pagetable, va, iommu_table_ptr, iova),
-        pre.pt_mp.dom().contains(source_pagetable),
-        pre.pt_mp.spec_index(source_pagetable).view().higher.proc_ptr == prc_ptr,
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).is_io,
-        pre.it_mp.dom().contains(iommu_table_ptr),
-        pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == prc_ptr,
-        pre.it_mp.spec_index(iommu_table_ptr).locking_thread() is Write,
-        !pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova),
-        pre.prc_mp.dom().contains(prc_ptr),
-        pre.thrd_mp.dom().contains(thrd_ptr),
-        pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
-        !thread_is_dangling(pre.thrd_mp.spec_index(thrd_ptr)),
-        !pre.thrd_mp.spec_index(thrd_ptr).view().exited.view(),
-        iommu_table_perms_wf(post.it_mp),
-    ensures post.inv(),
-{
-    reveal(map_shared_io_page_into_iommu_4k_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    map_shared_io_page_into_iommu_4k_eof_iommu_tables(pre, post, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
-    map_shared_io_page_into_iommu_4k_eof_io_mappings_wf(pre, post, prc_ptr, thrd_ptr, source_pagetable, va, iommu_table_ptr, iova);
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
-}
-
 /// A `(it_ptr, iova)` record on the mapped page `p_i` names a 4K leaf of IOMMU table `it_ptr`.
 pub(super) proof fn page_iommu_table_wf_page_at(
     container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray, p_i: PageIndex, it_ptr: RwLockPageTableRoot, iova: VAddr,
@@ -198,7 +79,7 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
 {
     reveal(map_shared_page_into_iommu_4k_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };

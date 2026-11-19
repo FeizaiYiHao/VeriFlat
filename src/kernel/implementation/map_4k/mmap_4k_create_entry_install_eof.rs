@@ -249,7 +249,7 @@ proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.irt.view().bars(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(io_mappings_wf); };
+    assert(io_mappings_wf(post.irt.view().bars(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
@@ -317,7 +317,9 @@ broadcast proof fn install_staged_4k_page_table_page_eof_structure_cache_at(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid,
 )
     requires
-        pre.inv(),
+        structure_cache_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        pagetable_perms_wf(pre.pt_mp),
+        pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()),
         install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
         pre.pt_mp.dom().contains(pagetable_ptr),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),

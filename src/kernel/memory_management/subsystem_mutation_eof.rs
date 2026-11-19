@@ -2007,14 +2007,6 @@ proof fn iommu_table_map_set_did_eof_table_disjoint(pre_table: IommuTable, post_
         post_table.disjoint_l2(),
 { reveal(IommuTable::disjoint_l4); reveal(IommuTable::disjoint_l3); reveal(IommuTable::disjoint_l2); }
 
-/// EOF closure of `iommu_table_map_set_did` for the 4K walks, which do not read the DID: each resolves as before.
-proof fn iommu_table_map_set_did_eof_resolve_4k(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)
-    requires post_table == (IommuTable { did, ..pre_table }),
-    ensures
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post_table.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
-            post_table.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre_table.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
-{}
-
 /// EOF closure of `iommu_table_map_set_did` for the changed table's mappings, which do not read the DID.
 proof fn iommu_table_map_set_did_eof_table_mappings(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)
     requires
@@ -2024,11 +2016,7 @@ proof fn iommu_table_map_set_did_eof_table_mappings(pre_table: IommuTable, post_
         post_table.wf_mapping_4k(),
         post_table.wf_mapping_2m(),
         post_table.wf_mapping_1g(),
-{
-    assert(post_table.wf_mapping_4k()) by { iommu_table_map_set_did_eof_resolve_4k(pre_table, post_table, did); reveal(IommuTable::wf_mapping_4k); };
-    assert(post_table.wf_mapping_2m()) by { reveal(IommuTable::wf_mapping_2m); };
-    assert(post_table.wf_mapping_1g()) by { reveal(IommuTable::wf_mapping_1g); };
-}
+{ reveal(IommuTable::wf_mapping_4k); reveal(IommuTable::wf_mapping_2m); reveal(IommuTable::wf_mapping_1g); }
 
 /// EOF closure of `iommu_table_map_set_did` for the changed table's entry permissions, which do not read the DID.
 proof fn iommu_table_map_set_did_eof_table_permissions(pre_table: IommuTable, post_table: IommuTable, did: Option<VtdDomainId>)

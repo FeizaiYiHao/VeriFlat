@@ -55,7 +55,8 @@ pub(super) proof fn new_container_enter_step_from_u(
             &&& process_quota <= funding <= usize::MAX - 9 - 3 * range.len
             &&& thread.quota_4k >= 9 + funding + 3 * range.len
             &&& thread.quota_2m >= 2
-            &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> process.pagetable->Some_0.mapping_4k.dom().contains(range.view()[i])
+            &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len
+                ==> process.pagetable->Some_0.mapping_4k.dom().contains(range.view()[i]) && !process.pagetable->Some_0.mapping_4k[range.view()[i]].is_io
             &&& index_valid(NUM_CPUS, transfer_cpu)
             &&& transfer.state is Off
             &&& transfer.owning_container == ctn_ptr
@@ -349,7 +350,9 @@ pub(super) proof fn new_container_result_from_k(
                 else if ep_idx is Some && t.endpoint_descriptors.spec_index(ep_idx->Some_0) is None { RetValueType::Error }
                 else if t.quota_4k < 9 + funding_page_count + 3 * range || t.quota_2m < 2 { RetValueType::ErrorNoQuota }
                 else if !(spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
-                    ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present) { RetValueType::Error }
+                    ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present && !table.mapping_4k()[va_range.view()[j]].is_io) {
+                    RetValueType::Error
+                }
                 else if transfer.owning_container != t.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
                 else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }
                 else { RetValueType::Success }
