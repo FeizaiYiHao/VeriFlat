@@ -282,6 +282,43 @@ pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, prc_ptr: RwLockP
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { iommu_tlb_wf_spec_preserved_for_process_fields_except_quota(); };
 }
 
+/// The reclaimed process owns no thread, and every other process keeps its threads.
+proof fn kill_tables_emptied_eof_process_thread_wf(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
+    requires
+        process_thread_wf(pre.prc_mp, pre.thrd_mp),
+        kill_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
+    ensures process_thread_wf(post.prc_mp, post.thrd_mp),
+{
+    reveal(kill_tables_emptied_eof_transition_framing);
+    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { process_thread_membership_fields_unchanged_implies_process_thread_wf_preserved_forall(); };
+}
+
+/// The reclaimed process owns no thread, so its emptied state lists no thread.
+proof fn kill_tables_emptied_eof_process_emptied_threads_wf(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
+    requires
+        process_emptied_threads_wf(pre.prc_mp, pre.thrd_mp),
+        kill_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
+    ensures process_emptied_threads_wf(post.prc_mp, post.thrd_mp),
+{ reveal(kill_tables_emptied_eof_transition_framing); reveal(process_emptied_threads_wf); }
+
+/// The process's state and lock fields close `process_state_lock_wf` as before.
+proof fn kill_tables_emptied_eof_process_state_lock_wf(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
+    requires
+        pre.inv(),
+        kill_tables_emptied_eof_transition_framing(pre, post, prc_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view().owned_threads.view().len() == 0,
+        post.subsystems_inv(),
+    ensures process_state_lock_wf(post.prc_mp),
+{ reveal(kill_tables_emptied_eof_transition_framing); reveal(process_state_lock_wf); process_perms_wf_at(pre.prc_mp, prc_ptr); }
+
 proof fn kill_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr)
     requires
         pre.inv(),
@@ -300,9 +337,9 @@ proof fn kill_tables_emptied_eof_process(pre: KernelK, post: KernelK, prc_ptr: R
     assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-    assert(process_thread_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_thread_wf); };
-    assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); process_perms_wf_at(pre.prc_mp, prc_ptr); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thrd_mp)) by { reveal(process_emptied_threads_wf); };
+    kill_tables_emptied_eof_process_thread_wf(pre, post, prc_ptr);
+    kill_tables_emptied_eof_process_state_lock_wf(pre, post, prc_ptr);
+    kill_tables_emptied_eof_process_emptied_threads_wf(pre, post, prc_ptr);
 }
 
 /// Marking the write-held reclaimed target `prc_ptr`, whose tables map nothing and which owns no thread, as having

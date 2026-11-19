@@ -62,10 +62,10 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     {
         Self::create_entry_l4_eof_wf_l4(pre, post, target_l4i, page_map_ptr);
         Self::create_entry_l4_eof_disjoint_l4(pre, post, target_l4i, page_map_ptr);
+        Self::create_entry_l4_eof_wf_mapping_1g(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
-        assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); };
         assert(post.higher.user_only()) by { reveal(PageTableHigher::user_only); };
         assert(post.higher.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
         assert(post.higher.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
@@ -203,6 +203,39 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
     }
 
+    /// EOF closure of `create_entry_l4`: every 4K walk resolves as before; the new L3 page is empty.
+    proof fn create_entry_l4_eof_resolve_4k(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
+    /// EOF closure of `create_entry_l4`: `wf_mapping_1g`.
+    proof fn create_entry_l4_eof_wf_mapping_1g(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            post.higher.wf_mapping_1g(),
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); };
+    }
+
     /// EOF closure of `create_entry_l4`: `wf_mapping_4k`.
     proof fn create_entry_l4_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
@@ -215,8 +248,26 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
+        Self::create_entry_l4_eof_resolve_4k(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); };
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
+    }
+
+    /// EOF closure of `create_entry_l4`: every 2M walk resolves as before; the new L3 page is empty.
+    proof fn create_entry_l4_eof_resolve_2m(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_held_l4(target_l4i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+    {
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
     }
 
     /// EOF closure of `create_entry_l4`: `wf_mapping_2m`.
@@ -231,8 +282,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
+        Self::create_entry_l4_eof_resolve_2m(pre, post, target_l4i, page_map_ptr);
         reveal(WholePageTable::create_entry_l4_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
     }
 
     /// EOF closure of `create_entry_l4`: `tables_reachable_wf`.
@@ -577,6 +629,27 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); };
     }
 
+    /// EOF closure of `create_entry_l3`: every 2M walk resolves as before; the new L2 page is empty.
+    proof fn create_entry_l3_eof_resolve_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_held_l3(target_l4i, target_l3i) is None,
+            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            page_ptr_valid(page_map_ptr),
+            pre.page_closure().contains(page_map_ptr) == false,
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+    {
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf);
+    }
+
     /// EOF closure of `create_entry_l3`: `wf_mapping_2m`.
     proof fn create_entry_l3_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
@@ -593,8 +666,9 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
+        Self::create_entry_l3_eof_resolve_2m(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); };
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
     }
 
     /// EOF closure of `create_entry_l3`: `tables_reachable_wf`.
@@ -1138,7 +1212,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         ensures
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && (l4i, l3i, l2i) != (target_l4i, target_l3i, target_l2i) ==> post.spec_held_l2(l4i, l3i, l2i) == pre.spec_held_l2(l4i, l3i, l2i),
-            post.spec_held_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr, perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
+            post.spec_held_l2(target_l4i, target_l3i, target_l2i) == Some(PageEntry { addr: page_map_ptr,
+                perm: PageEntryPerm { is_io: false, present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } }),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)]

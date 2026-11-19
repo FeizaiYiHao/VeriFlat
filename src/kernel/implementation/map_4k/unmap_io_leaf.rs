@@ -76,9 +76,10 @@ pub fn remove_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
     proof {
         assert(remove_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_io_4k_mapping_eof_transition_framing); };
         remove_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k);
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k
+            =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k
+            && kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by {
             broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
         };
@@ -117,7 +118,8 @@ pub fn remove_io_4k_mapping_in_window(krnl: &mut KernelK, pagetable: RwLockPageT
         *final(krnl) == (KernelK { pt_lower: final(krnl).pt_lower, ..*old(krnl) }),
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().remove(va),
-        forall|v: VAddr| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)] #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)] v != va ==> {
+        forall|v: VAddr| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)]
+            #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)] v != va ==> {
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(v)
                 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(v)
@@ -153,9 +155,10 @@ pub fn remove_io_4k_mapping_in_window(krnl: &mut KernelK, pagetable: RwLockPageT
     proof {
         assert(remove_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_io_4k_mapping_eof_transition_framing); };
         remove_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k);
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k
+            =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k
+            && kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by {
             broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
         };
@@ -269,7 +272,8 @@ pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableR
             &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
-            &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
+            &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)]
+                (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
             &&& new_c.lower.l2_entry(old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)).is_empty()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
             &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]
@@ -419,9 +423,9 @@ pub fn remove_io_2m_mapping_in_window(
 {
     let indices = va2index(va);
     proof {
-        broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va));
-        assert(window_of(va).va == va);
+        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && window_of(va).va == va) by {
+            broadcast use spec_va_2m_valid_index_roundtrip;
+        };
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
     }

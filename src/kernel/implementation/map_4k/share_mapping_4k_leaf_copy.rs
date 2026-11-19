@@ -154,10 +154,6 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
                 else { pre_k.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
             };
             share_one_io_mapping_4k_eof(pre_k, *krnl, source_pagetable, source_va, target_pagetable, target_va, target_process, target_container, target_thread);
-            assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(target_pagetable, krnl.pt_lower.view().spec_index(target_pagetable)));
-            assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k
-                =~= whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k.insert(target_va,
-                    whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)));
         }
         return;
     }

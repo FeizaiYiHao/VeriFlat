@@ -277,7 +277,8 @@ fn reclaim_unmapped_4k_page_under_window(
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
                 broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-                map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+                map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                    TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
             };
         }
     }
@@ -409,7 +410,8 @@ pub fn reclaim_unmapped_4k_page_in_window(
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
                 broadcast use typed_lock_map_insert_absent_then_remove_implies_unchanged;
-                map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
+                map_insert_overwrite_lemma(old(lctx).page_lock_map(), pg_idx, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
+                    TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pg_idx), mode: TypedLockMode::Write });
             };
         }
     }

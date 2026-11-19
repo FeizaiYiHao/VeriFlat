@@ -224,7 +224,8 @@ impl IommuTable {
                     &&& post.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                     &&& post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                         ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
-                        && (post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write)
+                        && (post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present
+                            ==> post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write)
                         && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
                         && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).is_io == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.is_io
                         && post.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present

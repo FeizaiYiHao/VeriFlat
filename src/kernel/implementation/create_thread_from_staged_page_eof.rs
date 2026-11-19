@@ -272,6 +272,19 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
     reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_owned_pages_wf); reveal(page_array_wf); page_ptr_roundtrip(); page_index_roundtrip();
 }
 
+/// The new thread's page leaves Owned4k for a thread page, so no page enters or leaves the CPU-set pages.
+proof fn create_thread_from_staged_page_eof_cpu_set_pages_wf(
+    pre: KernelK, post: KernelK, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
+    ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
+)
+    requires
+        pre.inv(),
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thrd_ptr }),
+        create_thread_from_staged_page_eof_transition_framing(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr),
+    ensures cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
+{ reveal(create_thread_from_staged_page_eof_transition_framing); reveal(cpu_set_pages_wf); }
+
 proof fn create_thread_from_staged_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, pg_ptr: PagePtr, prc_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, sched_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
@@ -332,7 +345,7 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_pages_wf); page_ptr_roundtrip(); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
-    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
+    create_thread_from_staged_page_eof_cpu_set_pages_wf(pre, post, pg_ptr, prc_ptr, staging_thrd_ptr, ctn_ptr, sched_ptr, cpu_id, process_node_addr, sched_node_addr);
     assert(pcid_allocator_pages_wf(post.pcid_allc_mp, post.pg_arr)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pcid_allc_mp, post.pcid_allc_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_4k_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_4k_pages_wf); };
     assert(thread_staged_2m_pages_wf(post.thrd_mp, post.pg_arr)) by { reveal(thread_staged_2m_pages_wf); };

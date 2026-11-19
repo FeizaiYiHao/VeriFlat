@@ -301,6 +301,46 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.wf_l2()) by { broadcast use WholePageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
     }
 
+    /// EOF closure of `unlink_hidden_l1_page`: `wf_mapping_4k`.
+    proof fn unlink_hidden_l1_page_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+        target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.lower.l2_entry_hides_l1(target_l2_p, target_l2i),
+            !pre.lower.l2_entry(target_l2_p, target_l2i).perm.ps,
+            Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_mapping_4k(),
+    {
+        reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
+    }
+
+    /// EOF closure of `unlink_hidden_l1_page`: `wf_mapping_2m`.
+    proof fn unlink_hidden_l1_page_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
+        target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.lower.l2_entry_hides_l1(target_l2_p, target_l2i),
+            !pre.lower.l2_entry(target_l2_p, target_l2i).perm.ps,
+            Self::unlink_hidden_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_mapping_2m(),
+    {
+        reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
+    }
+
     /// EOF closure of `unlink_hidden_l1_page`: the 4K and 2M abstract-mapping leaves. No walk reads the hidden entry.
     proof fn unlink_hidden_l1_page_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         target_l1_p: PageMapPtr)
@@ -318,9 +358,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_4k(),
             post.wf_mapping_2m(),
     {
-        reveal(WholePageTable::unlink_hidden_l1_page_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_resolve_l3_addr_unique_at; };
+        Self::unlink_hidden_l1_page_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::unlink_hidden_l1_page_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
     }
 
     /// EOF closure of `unlink_hidden_l1_page`: `tables_reachable_wf`. Every L1 page left in the reverse index is owned by
@@ -501,6 +540,52 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         assert(post.wf_l2()) by { broadcast use WholePageTable::disjoint_l2_implies_l2_entry_addr_unique_at; reveal(WholePageTable::wf_l2); };
     }
 
+    /// EOF closure of `unlink_unresolvable_l1_page`: `wf_mapping_4k`.
+    proof fn unlink_unresolvable_l1_page_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_held_l3(target_l4i, target_l3i) is Some,
+            pre.spec_held_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is Some,
+            pre.lower.l2_entry(target_l2_p, target_l2i).addr == target_l1_p,
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            Self::unlink_unresolvable_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_mapping_4k(),
+    {
+        reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
+        pre.wf_l2_at(target_l2_p, target_l2i);
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; };
+    }
+
+    /// EOF closure of `unlink_unresolvable_l1_page`: `wf_mapping_2m`.
+    proof fn unlink_unresolvable_l1_page_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_held_l3(target_l4i, target_l3i) is Some,
+            pre.spec_held_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() is Some,
+            pre.lower.l2_entry(target_l2_p, target_l2i).addr == target_l1_p,
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            Self::unlink_unresolvable_l1_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_mapping_2m(),
+    {
+        reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
+        pre.wf_l2_at(target_l2_p, target_l2i);
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; };
+    }
+
     /// EOF closure of `unlink_unresolvable_l1_page`: the 4K and 2M abstract-mapping leaves; the target entry resolved nothing before and after.
     proof fn unlink_unresolvable_l1_page_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
         requires
@@ -520,10 +605,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             post.wf_mapping_4k(),
             post.wf_mapping_2m(),
     {
-        reveal(WholePageTable::unlink_unresolvable_l1_page_eof_transition_framing);
-        pre.wf_l2_at(target_l2_p, target_l2i);
-        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; };
-        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); broadcast use PageTableHigher::disjoint_l4_l3_implies_held_l3_addr_unique_at, PageTableHigher::spec_resolve_mapping_l3_some_implies_spec_held_l3_eq; };
+        Self::unlink_unresolvable_l1_page_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::unlink_unresolvable_l1_page_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
     }
 
     /// EOF closure of `unlink_unresolvable_l1_page`: `tables_reachable_wf`.

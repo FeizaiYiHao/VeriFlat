@@ -119,6 +119,30 @@ proof fn table_stale_cpus_update_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, p
     assert(post.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
 }
 
+/// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_4k`: the leaves and mappings are unchanged.
+proof fn table_stale_cpus_update_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures post.wf_mapping_4k(),
+{
+    table_stale_cpus_update_eof_higher_inv(pre.higher, post.higher);
+    reveal(WholePageTable::wf_mapping_4k);
+}
+
+/// EOF closure of `KernelK::replace_table_stale_cpus` for `wf_mapping_2m`: the leaves and mappings are unchanged.
+proof fn table_stale_cpus_update_eof_wf_mapping_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { table_stale_cpus: post.higher.table_stale_cpus, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures post.wf_mapping_2m(),
+{
+    table_stale_cpus_update_eof_higher_inv(pre.higher, post.higher);
+    reveal(WholePageTable::wf_mapping_2m);
+}
+
 /// EOF closure of `KernelK::replace_table_stale_cpus` for the table itself: no table invariant reads the table record.
 proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
     requires
@@ -135,8 +159,8 @@ proof fn table_stale_cpus_update_eof_table_wf(pre: WholePageTable<PT_TYPE>, post
     assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
     assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
     assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
-    assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); };
-    assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
+    table_stale_cpus_update_eof_wf_mapping_4k(pre, post);
+    table_stale_cpus_update_eof_wf_mapping_2m(pre, post);
     assert(post.user_only()) by { reveal(WholePageTable::user_only); };
     assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
     assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
