@@ -328,7 +328,7 @@ pub open spec fn kill_process_flushed_step(old_u: KernelU, new_u: KernelU, cpu_i
     })
 }
 
-/// Once the flush is recorded and the page table holds no leaf, the target's page table drops every PCI function it holds,
+/// Once the flush is recorded and the page table maps nothing, the target's page table drops every PCI function it holds,
 /// each of which becomes unowned; its IOMMU table, if any, is write-locked, every function of the array is detached, and
 /// the table drops its DID, whose IOTLB domain alone is emptied.
 #[verifier::opaque]

@@ -11,8 +11,8 @@ use super::syscall_thread_exit_reclaim_unown::thread_exit_reclaim_unown;
 
 verus! {
 /// Reclaim the user memory of the running last thread's process inside its exit: write-lock the process's page table,
-/// hide every user root entry of it, flush the process's PCID from every cpu once, and reclaim the pages of the held
-/// leaves; then give up the process's PCI functions, which write-locks its IOMMU table, if any, and detaches it; remove
+/// hide every user root entry of it, and flush the process's PCID from every cpu once; then give up the process's PCI
+/// functions, which write-locks its IOMMU table, if any, and detaches it; reclaim the pages of the held leaves; remove
 /// every IOMMU 4K leaf of the detached table while refunding their quota to the thread's container chain, return the
 /// thread's and the process's quota of every size to their container, and unlock the tables. Each user-visible change is
 /// one middle step of the partial trace that starts at `start`.
@@ -136,11 +136,11 @@ pub(super) fn thread_exit_reclaim(
     thread_exit_reclaim_flush(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(ctn_ptr), Ghost(prc_ptr), thrd_ptr, pagetable, cr3, pcid, Ghost(entry_k),
         Ghost(entry_lctx), Ghost(pt_entry), Ghost(entry_pt), Ghost(table_lctx), Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm),
         Tracked(&pagetable_lock_perm), Ghost(start), Ghost(pre));
-    thread_exit_reclaim_unmap_leaves(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(ctn_ptr), Ghost(prc_ptr), thrd_ptr, pagetable, Ghost(cr3), Ghost(pcid),
-        Ghost(entry_k), Ghost(entry_lctx), Ghost(pt_entry), Ghost(entry_pt), Ghost(table_lctx), Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm),
-        Tracked(&pagetable_lock_perm), Ghost(start), Ghost(pre));
     let (Tracked(iommu_table_lock_perm), Ghost(it_entry)) = thread_exit_reclaim_unown(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(ctn_ptr), Ghost(prc_ptr),
         Ghost(thrd_ptr), pagetable, iommu_table, Ghost(entry_lctx), Ghost(pt_entry), Ghost(table_lctx), Tracked(&pagetable_lock_perm), Ghost(start), Ghost(pre));
+    thread_exit_reclaim_unmap_leaves(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Ghost(ctn_ptr), Ghost(prc_ptr), thrd_ptr, pagetable, Ghost(cr3), Ghost(pcid),
+        Ghost(entry_k), Ghost(entry_lctx), Ghost(pt_entry), Ghost(entry_pt), Ghost(table_lctx), Ghost(iommu_table), Ghost(it_entry), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+        Tracked(thread_lock_perm), Tracked(&pagetable_lock_perm), Ghost(start), Ghost(pre));
     let ghost emptied_pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     let ghost locked_it = krnl.it_mp.spec_index(iommu_table->Some_0);
     if let Some(it) = iommu_table {

@@ -101,6 +101,8 @@ pub(crate) open spec fn kill_reclaim_held_2m_page_scoped_eof_transition_framing(
     &&& new_table.locking_thread() is Write
     &&& new_table.being_killed() == old_table.being_killed()
     &&& new_c.higher == old_c.higher
+    &&& forall|r: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(r)]
+        pre.pt_mp.dom().contains(r) ==> post.pt_mp.spec_index(r).view().higher == pre.pt_mp.spec_index(r).view().higher
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new_c.spec_held_l2(l4i, l3i, l2i)]

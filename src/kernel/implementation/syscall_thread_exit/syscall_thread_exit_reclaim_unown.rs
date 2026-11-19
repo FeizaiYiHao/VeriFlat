@@ -8,7 +8,8 @@ use super::syscall_thread_exit_reclaim_spec::thread_exit_detach_process_function
 use super::syscall_thread_exit_reclaim_eof::thread_exit_detach_process_functions_eof;
 
 verus! {
-/// Give up the PCI functions of the running last thread's process once its page table is emptied and flushed. A process
+/// Give up the PCI functions of the running last thread's process once its page table maps nothing and is flushed, before
+/// its held leaves are reclaimed. A process
 /// with functions write-locks the root table and then its IOMMU table, if any, detaches that table from every function of
 /// the array, releases every function, and unlocks the root table; a process without functions never takes the root-table
 /// lock and only write-locks its IOMMU table, if any, which has no DID. A change of the user view is one unown step of the
@@ -67,6 +68,9 @@ pub(super) fn thread_exit_reclaim_unown(
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(krnl).pt_mp.dom().contains(pagetable),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

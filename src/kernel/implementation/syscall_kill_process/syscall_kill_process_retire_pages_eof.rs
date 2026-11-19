@@ -254,6 +254,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
         !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
         !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         pre.thrd_mp.spec_index(thrd_ptr).locking_thread() is Write,
         !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
@@ -291,7 +292,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
     kill_retire_table_page_eof_tlb_caches(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };

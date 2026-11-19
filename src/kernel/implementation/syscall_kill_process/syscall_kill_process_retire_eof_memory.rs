@@ -501,18 +501,18 @@ proof fn kill_retire_eof_bar_pages(
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
 }
 
-/// Dropping the retired process's emptied tables keeps every IO leaf of the remaining tables on BAR pages.
-proof fn kill_retire_eof_io_mappings(
+/// Dropping the retired process's emptied tables keeps every BAR mapping record and IO leaf of the remaining tables.
+proof fn kill_retire_eof_pagetable_pci_mappings_wf(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, ctn_ptr: RwLockContainerPtr,
     allc_ptr: RwLockPageAllocatorPtr,
 )
     requires
         pre.inv(),
         kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr),
-    ensures io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(kill_retire_eof_transition_framing);
-    reveal(io_mappings_wf);
+    reveal(pagetable_pci_mappings_wf);
 }
 
 proof fn kill_retire_eof_container_process_mappings(
@@ -778,7 +778,7 @@ pub(crate) proof fn kill_retire_eof_memory(
     kill_retire_eof_page_object_owner(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_page_pagetable(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_bar_pages(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
-    kill_retire_eof_io_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
+    kill_retire_eof_pagetable_pci_mappings_wf(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_container_process_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_iommu_mappings(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);
     kill_retire_eof_table_matches(pre, post, cpu_id, target, parent, ctn_ptr, allc_ptr);

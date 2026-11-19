@@ -19,8 +19,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>,
-    same: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>,
+    Ghost(entry_pt): Ghost<WholePageTable<PT_TYPE>>, same: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
         same == (scope is Subtree),
@@ -32,10 +32,11 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, None),
+            iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -61,12 +62,14 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*final(krnl), *final(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, None),
+            iommu_table, *pagetable_perm, *iommu_perm),
         final(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        final(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
+        iommu_perm is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0) == old(krnl).it_mp.spec_index(iommu_table->Some_0),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
@@ -127,7 +130,7 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-                iommu_table, *pagetable_perm, None),
+                iommu_table, *pagetable_perm, *iommu_perm),
             target == chain[chain.len() - 1],
             krnl.thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
             !same,
@@ -138,6 +141,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
             cursor.3 <= 512,
             krnl.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher { l3_tables: krnl.pt_mp.spec_index(pagetable).view().higher.l3_tables, mapping_1g: krnl.pt_mp.spec_index(pagetable).view().higher.mapping_1g, ..old(krnl).pt_mp.spec_index(pagetable).view().higher }),
             krnl.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
+            iommu_perm is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0) == old(krnl).it_mp.spec_index(iommu_table->Some_0),
             whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
             forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
                 KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
@@ -176,8 +181,8 @@ pub(crate) fn kill_reclaim_held_leaves_scoped(
     {
         let (next, kind, leaf) = found.unwrap();
         cursor = kill_reclaim_held_leaf_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, prc_ptr, thrd_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-            Tracked(process_perm), Tracked(thread_perm), pagetable, Ghost(iommu_table), Tracked(pagetable_perm), next, kind, leaf.addr, leaf.perm.is_io, Ghost(start), Ghost(pre),
-            Ghost(scope), Ghost(ctx));
+            Tracked(process_perm), Tracked(thread_perm), pagetable, Ghost(iommu_table), Tracked(pagetable_perm), Tracked(iommu_perm), next, kind, leaf.addr, leaf.perm.is_io,
+            Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
         proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         found = pagetable_map_next_held_leaf_from(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, cursor, Tracked(&*lctx), Tracked(pagetable_perm));
     }
@@ -189,7 +194,7 @@ fn kill_reclaim_held_leaf_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, prc_ptr: RwLockProcessPtr,
     thrd_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Tracked(pagetable_perm): Tracked<&LockPerm>,
+    Ghost(iommu_table): Ghost<Option<RwLockPageTableRoot>>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>,
     next: (L4Index, L3Index, L2Index, L1Index), kind: HeldLeaf, pg_ptr: PagePtr, is_io: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>,
     Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (ret: (L4Index, L3Index, L2Index, L1Index))
@@ -201,9 +206,10 @@ fn kill_reclaim_held_leaf_scoped(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-            iommu_table, *pagetable_perm, None),
+            iommu_table, *pagetable_perm, *iommu_perm),
         target == chain[chain.len() - 1],
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         ({
             let c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             &&& c.kernel_l4_end() == KERNEL_MEM_END_L4INDEX
