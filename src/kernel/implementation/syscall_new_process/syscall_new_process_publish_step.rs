@@ -32,7 +32,6 @@ pub(super) fn end_new_process_publish_step(
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)] old(steps).snapshot_k().prc_mp.dom().contains(p) ==> {
             &&& old(krnl).prc_mp.spec_index(p).view_rodata() == old(steps).snapshot_k().prc_mp.spec_index(p).view_rodata()
             &&& old(krnl).prc_mp.spec_index(p).view().uppertree_seq == old(steps).snapshot_k().prc_mp.spec_index(p).view().uppertree_seq
-            &&& old(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions == old(steps).snapshot_k().prc_mp.spec_index(p).view_ghost().owned_pci_functions
             &&& old(krnl).prc_mp.spec_index(p).view_ghost().subtree_set.view() == if old(steps).snapshot_k().prc_mp.spec_index(parent_ptr).view().uppertree_seq.view().push(parent_ptr).contains(p) {
                 old(steps).snapshot_k().prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(child_ptr)
             } else { old(steps).snapshot_k().prc_mp.spec_index(p).view_ghost().subtree_set.view() }
@@ -46,7 +45,6 @@ pub(super) fn end_new_process_publish_step(
         !old(krnl).prc_mp.spec_index(child_ptr).view().zombie,
         old(krnl).prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr,
         old(krnl).prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table,
-        old(krnl).prc_mp.spec_index(child_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         old(krnl).prc_mp.spec_index(child_ptr).view().quota_4k == 0,
         old(krnl).prc_mp.spec_index(child_ptr).view().quota_2m == 0,
         old(krnl).prc_mp.spec_index(child_ptr).view().quota_1g == 0,
@@ -91,6 +89,7 @@ pub(super) fn end_new_process_publish_step(
             ==> old(krnl).pt_mp.spec_index(p) == old(steps).snapshot_k().pt_mp.spec_index(p) && old(krnl).pt_lower.view().spec_index(p) == old(steps).snapshot_k().pt_lower.view().spec_index(p),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable_ptr, TypedLockMode::Write),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).is_empty(),
+        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         iommu_table is None ==> old(krnl).it_mp == old(steps).snapshot_k().it_mp,

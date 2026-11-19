@@ -74,6 +74,7 @@ use super::syscall_mmap_1g_map_owned_eof::{map_owned_1g_page_eof, map_owned_1g_p
             final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pci == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.pci,
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.kernel_l4_end,
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus,
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3 == old(krnl).pt_mp.spec_index(pagetable_ptr).view().higher.cr3,

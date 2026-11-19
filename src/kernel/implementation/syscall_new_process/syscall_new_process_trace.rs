@@ -211,7 +211,10 @@ pub(super) proof fn new_process_publish_step_from_u(
         },
         {
             let ancestors = pre.process_map[parent_ptr].uppertree_seq.push(parent_ptr);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+            let empty_table = PageTableU {
+                lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(),
+                pagetable_window_locks: Map::empty(), pci_functions: Map::empty(),
+            };
             let cost: usize = if with_iommu { 5 } else { 3 };
             let origin = Share4kOrigin::NewProcess(NewProcessProgress { range, regs, endpoint_index: ep_idx, with_iommu, child: Some(child_ptr) });
             let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
@@ -231,7 +234,7 @@ pub(super) proof fn new_process_publish_step_from_u(
             })
             &&& post.process_map[child_ptr] == (ProcessU {
                 lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr, owned_pci_functions: Set::empty(),
+                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid, owning_container: ctn_ptr,
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent_ptr), children: Seq::empty(),
                 depth: (pre.process_map[parent_ptr].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,

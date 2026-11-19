@@ -467,6 +467,7 @@ fn flush_unmap_2m_range_tlbs(
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+            &&& final(krnl).pt_mp.spec_index(pt).view().higher.pci.mapping_counts() == final(steps).snapshot_k().pt_mp.spec_index(pt).view().higher.pci.mapping_counts()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(final(steps).snapshot_k().pt_mp, final(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
         },
         ({

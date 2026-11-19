@@ -141,7 +141,10 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let child = new_u.process_map[parent].children.last();
     let cp = new_u.process_map[child].pcid;
     let ancestors = old_u.process_map[parent].uppertree_seq.push(parent);
-    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
+    let empty_table = PageTableU {
+        lock_state: LockStateU::WriteLocked { writer: cpu_id }, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(),
+        pagetable_window_locks: Map::empty(), pci_functions: Map::empty(),
+    };
     // The child's process, page-table object, and L4 page, plus the IOMMU table object and its root page with an IOMMU table.
     let cost: usize = if progress->NewProcess_0.with_iommu { 5 } else { 3 };
     let range = progress->NewProcess_0.range;
@@ -160,7 +163,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& new_u.process_map[child] == (ProcessU {
         lock_state: LockStateU::WriteLocked { writer: cpu_id }, zombie: false, pagetable: Some(empty_table),
         iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: cp, owning_container: container,
-        owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
+        quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
         depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     })
     &&& new_u == (KernelU {

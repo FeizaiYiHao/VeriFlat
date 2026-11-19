@@ -22,7 +22,7 @@ pub(super) open spec fn mmap_1g_hide_l3_entry_eof_transition_framing(pre: Kernel
     &&& old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i)
     &&& old_c.spec_resolve_mapping_l3(l4i, l3i) is Some
     &&& new_h.table_stale_cpus == old_h.table_stale_cpus && new_h.kernel_l4_end == old_h.kernel_l4_end && new_h.kernel_entries == old_h.kernel_entries
-    &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr
+    &&& new_h.cr3 == old_h.cr3 && new_h.pcid == old_h.pcid && new_h.did == old_h.did && new_h.proc_ptr == old_h.proc_ptr && new_h.pci == old_h.pci
     &&& new_h.l3_rev_map == old_h.l3_rev_map && new_h.l2_rev_map == old_h.l2_rev_map
     &&& new_c.lower.l2_perms == old_c.lower.l2_perms && new_c.lower.l1_rev_map == old_c.lower.l1_rev_map && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& new_c.page_closure() == old_c.page_closure()
@@ -94,5 +94,6 @@ pub(super) proof fn mmap_1g_hide_l3_entry_eof(pre: KernelK, post: KernelK, paget
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
     };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
 }
 } // verus!
