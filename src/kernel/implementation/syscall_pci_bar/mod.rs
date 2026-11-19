@@ -1,0 +1,22 @@
+pub mod syscall_pci_bar_spec;
+mod syscall_pci_bar_read;
+mod syscall_pci_bar_unmap_4k;
+mod syscall_pci_bar_unmap_4k_finish;
+mod syscall_pci_bar_unmap_4k_trace;
+mod syscall_pci_bar_unmap_2m;
+mod syscall_pci_bar_unmap_2m_finish;
+mod syscall_pci_bar_unmap_2m_trace;
+mod syscall_pci_bar_map_4k;
+mod syscall_pci_bar_map_4k_finish;
+mod syscall_pci_bar_map_4k_exit;
+mod syscall_pci_bar_map_4k_trace;
+mod syscall_pci_bar_map_2m;
+mod syscall_pci_bar_map_2m_finish;
+mod syscall_pci_bar_map_2m_exit;
+mod syscall_pci_bar_map_2m_l1;
+mod syscall_pci_bar_map_2m_trace;
+
+pub use syscall_pci_bar_map_4k::syscall_map_pci_bar_4k;
+pub use syscall_pci_bar_map_2m::syscall_map_pci_bar_2m;
+pub use syscall_pci_bar_unmap_4k::syscall_unmap_pci_bar_4k;
+pub use syscall_pci_bar_unmap_2m::syscall_unmap_pci_bar_2m;
