@@ -281,7 +281,7 @@ proof fn map_owned_1g_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         map_owned_1g_page_eof_page_mappings_4k(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va); map_owned_1g_page_eof_page_mappings_2m(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
         map_owned_1g_page_eof_page_mappings_1g(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);

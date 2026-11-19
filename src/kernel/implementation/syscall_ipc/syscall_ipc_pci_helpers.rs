@@ -396,6 +396,7 @@ verus! {
             sender_index < PCI_FUNCTIONS_PER_PROCESS,
             old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.spec_entry(sender_index as int).used,
             old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.spec_entry(sender_index as int).bdf == (bus, dev, fun),
+            old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.spec_entry(sender_index as int).count == 0,
             old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains((bus, dev, fun)),
             receiver_index < PCI_FUNCTIONS_PER_PROCESS,
             !old(krnl).pt_mp.spec_index(receiver_pt).view().higher.pci.spec_entry(receiver_index as int).used,

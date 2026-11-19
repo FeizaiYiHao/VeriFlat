@@ -118,7 +118,7 @@ pub(super) proof fn ipc_pci_detach_eof(
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); reveal(process_iommu_table_wf);
     };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 
@@ -312,7 +312,7 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
     ipc_pci_rendezvous_eof_object_pages_wf(pre, mid, post, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf,
         transferred, peer_result, thread_id, iommu_table, anchor);
     assert(post.memory_management_inv()) by {
-        assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };

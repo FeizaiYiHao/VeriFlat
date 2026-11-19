@@ -271,7 +271,15 @@ proof fn map_owned_2m_page_eof_memory_management_inv(pre: KernelK, post: KernelK
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+        assert(old_pt.spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is None) by {
+            reveal(KernelK::default_pagetable_wf); pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); spec_va_2m_valid_index_roundtrip(va);
+            old_pt.wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
+            old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(spec_v2l4index(va), spec_v2l3index(va));
+        };
+        reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+    };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         map_owned_2m_page_eof_page_mappings_4k(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va); map_owned_2m_page_eof_page_mappings_2m(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);
         map_owned_2m_page_eof_page_mappings_1g(pre, post, pg_ptr, thrd_ptr, pagetable_ptr, va);

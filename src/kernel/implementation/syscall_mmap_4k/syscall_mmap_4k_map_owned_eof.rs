@@ -99,7 +99,15 @@ proof fn map_owned_4k_page_eof_memory_management(pre: KernelK, post: KernelK, pg
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+        let idx = spec_va2index(va);
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+        old_pt.wf_mapping_4k_at(idx.0, idx.1, idx.2, idx.3);
+        old_pt.spec_resolve_mapping_l2_some_implies_spec_held_l2_eq(idx.0, idx.1, idx.2); old_pt.higher.spec_resolve_mapping_l3_some_implies_spec_held_l3_eq(idx.0, idx.1);
+        reveal(pagetable_pci_mappings_wf);
+    };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(allocator_pages_wf(post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp, post.pg_arr)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.allc_4k_mp, post.allc_4k_mp, pre.pg_arr, post.pg_arr);
