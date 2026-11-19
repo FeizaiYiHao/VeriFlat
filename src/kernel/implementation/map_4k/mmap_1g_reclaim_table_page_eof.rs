@@ -35,6 +35,10 @@ pub(super) open spec fn mmap_1g_reclaim_table_page_to_cache_eof_transition_frami
     &&& new_table.view().higher.did == old_table.view().higher.did
     &&& new_table.view().higher.proc_ptr == old_table.view().higher.proc_ptr
     &&& new_table.view().higher.pci == old_table.view().higher.pci
+    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr]
+        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.proc_ptr == pre.pt_mp.spec_index(pt).view().higher.proc_ptr
+    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.pci]
+        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.pci == pre.pt_mp.spec_index(pt).view().higher.pci
     &&& new_table.view().higher.table_stale_cpus.view() == Set::<CpuId>::empty()
     &&& new_c.page_closure() == old_c.page_closure().remove(pg_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
@@ -405,6 +409,24 @@ proof fn mmap_1g_reclaim_table_page_to_cache_eof_cpu_caches(
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
 }
 
+/// The table's PCI records and the PCI function owners close: the reclaimed table page held no leaf, and no table changes its
+/// process or its PCI function array.
+proof fn mmap_1g_reclaim_table_page_to_cache_eof_pci(
+    pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    node_addr: usize,
+)
+    requires
+        pre.inv(),
+        mmap_1g_reclaim_table_page_to_cache_eof_transition_framing(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr),
+    ensures
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{
+    reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+}
+
 /// The table page leaving the write-held table for the cpu cache of its owner, whose 4K quota grows by one, keeps the kernel invariant and every non-lock field of processes, threads, CPUs and endpoints.
 pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
     pre: KernelK, post: KernelK, table: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1: bool, pg_ptr: PagePtr, owner: RwLockContainerPtr,
@@ -452,7 +474,6 @@ pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
     mmap_1g_reclaim_table_page_to_cache_eof_cpu_caches(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(mmap_1g_reclaim_table_page_to_cache_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
@@ -463,6 +484,6 @@ pub(super) proof fn mmap_1g_reclaim_table_page_to_cache_eof(
         kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    mmap_1g_reclaim_table_page_to_cache_eof_pci(pre, post, table, l4i, l3i, l2i, l1, pg_ptr, allc_ptr, cpu_id, node_addr);
 }
 }
