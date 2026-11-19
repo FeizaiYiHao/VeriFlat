@@ -93,7 +93,7 @@ pub open spec fn boot_dom0_io_manifests_wf(
     manifest_4k: Map<VAddr, MapEntry>, manifest_2m: Map<VAddr, MapEntry>, manifest_1g: Map<VAddr, MapEntry>, bars: Map<BarKey, BarRegion>,
 ) -> bool {
     &&& forall|va: VAddr| #![trigger manifest_4k.dom().contains(va)]
-        manifest_4k.dom().contains(va) && manifest_4k.spec_index(va).is_io ==> io_span_in_bars(bars, manifest_4k.spec_index(va).addr, PAGE_SZ_4K)
+        manifest_4k.dom().contains(va) && manifest_4k.spec_index(va).is_io ==> pci_bar_page(bars, manifest_4k.spec_index(va).addr)
     &&& forall|va: VAddr| #![trigger manifest_2m.dom().contains(va)]
         manifest_2m.dom().contains(va) ==> manifest_2m.spec_index(va).present && manifest_2m.spec_index(va).is_io && io_span_in_bars(bars, manifest_2m.spec_index(va).addr, PAGE_SZ_2M)
     &&& forall|va: VAddr| #![trigger manifest_1g.dom().contains(va)]

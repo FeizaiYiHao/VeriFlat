@@ -39,6 +39,23 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::hide_1g_leaf_eof_mappings(pre, post, target_l4i, target_l3i, target_l3_p);
     }
 
+    /// EOF closure of `hide_1g_leaf`: the root level, which the hidden leaf does not change.
+    proof fn hide_1g_leaf_eof_higher_wf_l4(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is Some,
+            Self::hide_1g_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p),
+        ensures
+            post.higher.wf_l4(),
+    {
+        reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
+        reveal(PageTableHigher::wf_l4);
+    }
+
     /// EOF closure of `hide_1g_leaf`: the big-lock invariant.
     proof fn hide_1g_leaf_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr)
         requires
@@ -55,7 +72,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         Self::hide_1g_leaf_eof_resolve(pre, post, target_l4i, target_l3i, target_l3_p);
         reveal(WholePageTable::hide_1g_leaf_eof_transition_framing);
         assert(post.higher.va_addr_valid()) by { pre.higher.wf_mapping_1g_at(target_l4i, target_l3i); };
-        assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+        Self::hide_1g_leaf_eof_higher_wf_l4(pre, post, target_l4i, target_l3i, target_l3_p);
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
         assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };

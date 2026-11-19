@@ -398,10 +398,12 @@ proof fn boot_memory_management_inv_eof_io_mappings(
     ensures
         io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp),
 {
-    reveal(io_mappings_wf); reveal(boot_dom0_io_manifests_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
-    reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
-    broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
-        WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
+    assert(io_mappings_wf(krnl.irt.view().bars(), krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by {
+        reveal(io_mappings_wf); reveal(boot_dom0_io_manifests_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
+        reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
+        broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
+            WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
+    };
 }
 
 pub(super) proof fn boot_memory_management_inv_eof(

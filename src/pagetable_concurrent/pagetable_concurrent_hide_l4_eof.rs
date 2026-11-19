@@ -129,7 +129,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
         reveal(WholePageTable::wf_mapping_4k);
         spec_index2va_injective();
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
+        broadcast use spec_va_4k_valid_index_roundtrip, iova_4k_valid_index_roundtrip;
     }
 
     /// EOF closure of `hide_l4_entry`: `wf_mapping_2m`; every 2M leaf under the root entry leaves the map with its walk.
@@ -145,7 +145,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
         reveal(WholePageTable::hide_l4_entry_eof_transition_framing);
         reveal(WholePageTable::wf_mapping_2m);
         spec_index2va_injective();
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
+        broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
     }
 
     /// EOF closure of `hide_l4_entry`: `wf_window_locks`; every window under the root entry leaves the map with its walk, and
