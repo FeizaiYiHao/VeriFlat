@@ -140,7 +140,6 @@ impl PciBarTable {
         proof {
             let b = self.view();
             assert(p % 4096 == 0) by (nonlinear_arith) requires p == e.base / 4096 * 4096 + page_index * 4096;
-            assert(b[i as int].envelope_contains(p));
             assert(pci_bar_entry_of_page(b, p) is Some && b[pci_bar_entry_of_page(b, p)->0].bdf == e.bdf) by { pci_bar_table_wf_at(b, i as int, pci_bar_entry_of_page(b, p)->0, p); };
             assert(io_page_range_valid(p, PAGE_SZ_4K)) by {
                 reveal(io_page_range_valid);

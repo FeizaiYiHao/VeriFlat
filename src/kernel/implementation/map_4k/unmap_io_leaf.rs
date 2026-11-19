@@ -34,11 +34,9 @@ fn io_leaf_function_entry(krnl: &KernelK, pagetable: RwLockPageTableRoot, addr: 
     index
 }
 
-/// Clear the held, unresolvable IO 4K leaf `va`, which maps `addr`, of the write-held `pagetable`, which lists no CPU stale, and
-/// drop its BAR mapping `(va, 4K)` from the function owning `addr`; the page array is not touched.
-pub fn remove_held_io_4k_mapping(
-    krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, addr: PAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>,
-)
+/// Clear the held, unresolvable IO 4K leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
+/// were released; the page array is not touched.
+pub fn remove_held_io_4k_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -49,12 +47,12 @@ pub fn remove_held_io_4k_mapping(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is Some,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.perm.is_io,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))->0.addr == addr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -70,21 +68,10 @@ pub fn remove_held_io_4k_mapping(
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        pci_bar_function_of_page(old(krnl).pci_bars.view(), addr) is Some,
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
-            let f = pci_bar_function_of_page(old(krnl).pci_bars.view(), addr)->0;
-            &&& old_c.higher.pci.view().dom().contains(f) && old_c.higher.pci.view()[f].contains((va, PageSize::SZ4k))
-            &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
-            &&& new_c.higher.pci.view() == old_c.higher.pci.view().insert(f, old_c.higher.pci.view()[f].remove((va, PageSize::SZ4k)))
-            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
-            &&& new_c.higher.pci.mapping_counts() == old_c.higher.pci.mapping_counts().insert(f, (old_c.higher.pci.mapping_counts()[f] - 1) as nat)
-            &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)] new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-            &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_4k() == old_c.mapping_4k().remove(va) && !old_c.mapping_4k().dom().contains(va)
-            &&& new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -98,6 +85,7 @@ pub fn remove_held_io_4k_mapping(
                     ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
             &&& new_c.spec_held_4k_l1(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)) is None
         }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
@@ -106,23 +94,17 @@ pub fn remove_held_io_4k_mapping(
     proof {
         spec_va_4k_valid_index_roundtrip(va); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-        pagetable_pci_mappings_wf_held_4k_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, indices.0, indices.1, indices.2, indices.3);
     }
-    let index = io_leaf_function_entry(krnl, pagetable, addr, Ghost((va, PageSize::SZ4k)), Tracked(&*lctx), pagetable_perm);
     pagetable_map_clear_held_4k_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, Tracked(&mut *lctx), pagetable_perm);
-    pagetable_map_update_pci_mapping(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, index, Ghost((va, PageSize::SZ4k)), false, Tracked(&*lctx), pagetable_perm);
     proof {
-        let f = pci_bar_function_of_page(old(krnl).pci_bars.view(), addr)->0;
-        assert(remove_held_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va, f)) by { reveal(remove_held_io_4k_mapping_eof_transition_framing); };
-        remove_held_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va, f);
+        assert(remove_held_io_4k_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_held_io_4k_mapping_eof_transition_framing); };
+        remove_held_io_4k_mapping_eof(*old(krnl), *krnl, pagetable, va);
     }
 }
 
-/// Clear the held, unresolvable IO 2M leaf `va`, which maps the chunk `addr`, of the write-held `pagetable`, which lists no CPU
-/// stale, and drop its BAR mapping `(va, 2M)` from the function owning `addr`; the page array is not touched.
-pub fn remove_held_io_2m_mapping(
-    krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, addr: PAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>,
-)
+/// Clear the held, unresolvable IO 2M leaf `va` of the write-held `pagetable`, which lists no CPU stale and whose PCI functions
+/// were released; the page array is not touched.
+pub fn remove_held_io_2m_mapping(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -133,12 +115,12 @@ pub fn remove_held_io_2m_mapping(
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(spec_v2l4index(va)) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.perm.is_io,
-        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_held_2m_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))->0.addr == addr,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.view().state() is WriteLock,
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -154,21 +136,10 @@ pub fn remove_held_io_2m_mapping(
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable, final(krnl).pt_lower.view().spec_index(pagetable)),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        pci_bar_function_of_page(old(krnl).pci_bars.view(), addr) is Some,
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
-            let f = pci_bar_function_of_page(old(krnl).pci_bars.view(), addr)->0;
-            &&& old_c.higher.pci.view().dom().contains(f) && old_c.higher.pci.view()[f].contains((va, PageSize::SZ2m))
-            &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
-            &&& new_c.higher.pci.view() == old_c.higher.pci.view().insert(f, old_c.higher.pci.view()[f].remove((va, PageSize::SZ2m)))
-            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
-            &&& new_c.higher.pci.mapping_counts() == old_c.higher.pci.mapping_counts().insert(f, (old_c.higher.pci.mapping_counts()[f] - 1) as nat)
-            &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)] new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
-            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
-            &&& new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_2m() == old_c.mapping_2m().remove(va) && !old_c.mapping_2m().dom().contains(va)
-            &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_1g() == old_c.mapping_1g() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)]
@@ -184,6 +155,7 @@ pub fn remove_held_io_2m_mapping(
             &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
                 old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> new_c.spec_held_4k_l1(l4i, l3i, l2i, l1i) == old_c.spec_held_4k_l1(l4i, l3i, l2i, l1i)
         }),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
@@ -192,15 +164,11 @@ pub fn remove_held_io_2m_mapping(
     proof {
         spec_va_2m_valid_index_roundtrip(va); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va));
-        pagetable_pci_mappings_wf_held_2m_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, indices.0, indices.1, indices.2);
     }
-    let index = io_leaf_function_entry(krnl, pagetable, addr, Ghost((va, PageSize::SZ2m)), Tracked(&*lctx), pagetable_perm);
     pagetable_map_clear_held_2m_leaf(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), pagetable_perm);
-    pagetable_map_update_pci_mapping(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow()), pagetable, index, Ghost((va, PageSize::SZ2m)), false, Tracked(&*lctx), pagetable_perm);
     proof {
-        let f = pci_bar_function_of_page(old(krnl).pci_bars.view(), addr)->0;
-        assert(remove_held_io_2m_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va, f)) by { reveal(remove_held_io_2m_mapping_eof_transition_framing); };
-        remove_held_io_2m_mapping_eof(*old(krnl), *krnl, pagetable, va, f);
+        assert(remove_held_io_2m_mapping_eof_transition_framing(*old(krnl), *krnl, pagetable, va)) by { reveal(remove_held_io_2m_mapping_eof_transition_framing); };
+        remove_held_io_2m_mapping_eof(*old(krnl), *krnl, pagetable, va);
     }
 }
 
@@ -271,7 +239,7 @@ pub fn remove_io_4k_mapping(
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
         c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(indices.0, indices.1, indices.2, indices.3);
-        pagetable_pci_mappings_wf_held_4k_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, indices.0, indices.1, indices.2, indices.3);
+        pagetable_pci_mappings_wf_present_4k_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, va);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         assert(spec_v2l4index(window_of(va).va) == indices.0 && spec_v2l3index(window_of(va).va) == indices.1 && spec_v2l2index(window_of(va).va) == indices.2) by {
             broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
@@ -355,7 +323,7 @@ pub fn remove_io_2m_mapping(
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c.wf_mapping_2m_at(indices.0, indices.1, indices.2);
         c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(indices.0, indices.1, indices.2);
-        pagetable_pci_mappings_wf_held_2m_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, indices.0, indices.1, indices.2);
+        pagetable_pci_mappings_wf_present_2m_at(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view(), pagetable, va);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
     }
     let index = io_leaf_function_entry(krnl, pagetable, addr, Ghost((va, PageSize::SZ2m)), Tracked(&*lctx), pagetable_perm);

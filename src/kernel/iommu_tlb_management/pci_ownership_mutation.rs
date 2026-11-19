@@ -64,6 +64,8 @@ impl KernelK {
                 let bdf = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).bdf;
                 &&& old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).used
                 &&& old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).count == 0
+                    || whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_4k().dom() == Set::<VAddr>::empty()
+                    && whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_2m().dom() == Set::<VAddr>::empty()
                 &&& old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
                     ==> old(self).irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None
             },
@@ -159,9 +161,10 @@ impl KernelK {
         }
     }
 
-    /// Release every function of the PCI function array of page table `pagetable_ptr`, which this thread write-holds, under the
-    /// held root-table lock: each function, detached, leaves the array and becomes unowned. Context entries, the rest of the
-    /// table, and every other kernel object stay.
+    /// Release every function of the PCI function array of page table `pagetable_ptr`, which this thread write-holds and whose
+    /// user L4 entries are hidden and flushed (no present user leaf, no stale CPU), under the held root-table lock: each function,
+    /// detached, leaves the array with its BAR mappings and becomes unowned. Context entries, the rest of the table, and every
+    /// other kernel object stay.
     pub fn release_pci_functions(
         &mut self, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>, Tracked(pagetable_perm): Tracked<&LockPerm>,
         Tracked(irt_perm): Tracked<&LockPerm>,
@@ -181,9 +184,9 @@ impl KernelK {
             old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
                 ==> forall|b: usize, d: usize, f: usize| #![trigger old(self).irt.view().spec_index_iommu_root(b, d, f)]
                 old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f)) ==> old(self).irt.view().spec_index_iommu_root(b, d, f) is None,
-            forall|f: PciBdf| #![trigger old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view()[f]]
-                old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains(f)
-                    ==> old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view()[f] == Set::<PciBarMapping>::empty(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_4k().dom() == Set::<VAddr>::empty(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).mapping_2m().dom() == Set::<VAddr>::empty(),
+            old(self).pt_mp.spec_index(pagetable_ptr).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         ensures
             final(self).inv(),
             typed_lock_maps_aligned(final(self), lctx),
@@ -225,7 +228,8 @@ impl KernelK {
                 released ==> self.irt.view().owners() == pci_owners_released(old(self).irt.view().owners(), pci.view().dom().filter(|f: PciBdf| pci.index_of(f) < i)),
                 !released ==> self.irt.view().owners() == old(self).irt.view().owners(),
                 !released ==> forall|j: int| #![trigger pci.spec_entry(j)] 0 <= j < i ==> !pci.spec_entry(j).used,
-                forall|f: PciBdf| #![trigger pci.view()[f]] pci.view().dom().contains(f) ==> pci.view()[f] == Set::<PciBarMapping>::empty(),
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), pagetable_ptr).mapping_4k().dom() == Set::<VAddr>::empty(),
+                whole_pagetable(self.pt_mp, self.pt_lower.view(), pagetable_ptr).mapping_2m().dom() == Set::<VAddr>::empty(),
                 typed_lock_maps_aligned(self, lctx),
                 old(self).inv(),
                 old(self).pt_mp.dom().contains(pagetable_ptr),
@@ -266,10 +270,6 @@ impl KernelK {
             proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, pagetable_ptr); }
             let used = self.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm)).higher.pci.entry(i).used;
             if used {
-                proof {
-                    old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.wf_entry_at(i as int);
-                    assert(pci.spec_entry(i as int).count == 0) by { broadcast use vstd::set::lemma_set_empty_len; };
-                }
                 let ghost cur = self.irt.view().owners();
                 self.update_pci_entry(pagetable_ptr, i, PciEntryUpdate::Release, Tracked(lctx), Tracked(pagetable_perm), Tracked(irt_perm));
                 proof {

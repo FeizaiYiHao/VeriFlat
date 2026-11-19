@@ -150,7 +150,6 @@ pub proof fn kernel_pci_bar_4k_unmapped_implies_u_step(pre: &KernelK, post: &Ker
                 process_map: a.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { pci_functions: t.pci_functions.insert(f, (t.pci_functions[f] - 1) as nat), ..t }), ..p }),
                 ..a
             })
-            &&& kernel_u_pci_bar_counts_changed(a, kernel_k_to_kernel_u(*post), prc_ptr)
             &&& a != kernel_k_to_kernel_u(*post)
         }),
 {
@@ -170,7 +169,6 @@ pub proof fn kernel_pci_bar_4k_unmapped_implies_u_step(pre: &KernelK, post: &Ker
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
     assert(a != b) by { assert(b.process_map[prc_ptr].pagetable->Some_0.pci_functions[f] != t.pci_functions[f]); };
-    assert(kernel_u_pci_bar_counts_changed(a, b, prc_ptr)) by { reveal(kernel_u_pci_bar_counts_changed); assert(new_t.pci_functions.dom() =~= t.pci_functions.dom()); };
 }
 
 /// Removing the IO 2M leaf at `va`, which the user no longer sees, from page table `pagetable` of the live process together with the
@@ -208,7 +206,6 @@ pub proof fn kernel_pci_bar_2m_unmapped_implies_u_step(pre: &KernelK, post: &Ker
                 process_map: a.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { pci_functions: t.pci_functions.insert(f, (t.pci_functions[f] - 1) as nat), ..t }), ..p }),
                 ..a
             })
-            &&& kernel_u_pci_bar_counts_changed(a, kernel_k_to_kernel_u(*post), prc_ptr)
             &&& a != kernel_k_to_kernel_u(*post)
         }),
 {
@@ -228,6 +225,5 @@ pub proof fn kernel_pci_bar_2m_unmapped_implies_u_step(pre: &KernelK, post: &Ker
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
     assert(a != b) by { assert(b.process_map[prc_ptr].pagetable->Some_0.pci_functions[f] != t.pci_functions[f]); };
-    assert(kernel_u_pci_bar_counts_changed(a, b, prc_ptr)) by { reveal(kernel_u_pci_bar_counts_changed); assert(new_t.pci_functions.dom() =~= t.pci_functions.dom()); };
 }
 }

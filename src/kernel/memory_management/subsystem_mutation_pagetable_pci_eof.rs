@@ -1,7 +1,5 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::iommu_tlb_management::pci_ownership_mutation_eof::update_pci_entry_eof_table_wf;
 
 verus! {
 /// S of `pagetable_map_update_pci_mapping`: of the write-held table `pagetable_ptr` only the PCI function array of the big-lock
@@ -29,6 +27,92 @@ pub(super) open spec fn pagetable_map_update_pci_mapping_eof_transition_framing(
         #![trigger whole_pagetable(pre_pt, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         whole_pagetable(post_pt, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
 }
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for the big-lock payload: only the PCI function array changed, and it stays well
+/// formed.
+proof fn pagetable_map_update_pci_mapping_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: PageTableHigher<PT_TYPE>)
+    requires
+        pre.inv(),
+        post == (PageTableHigher { pci: post.pci, ..pre }),
+        post.pci.wf(),
+    ensures
+        post.inv(),
+{
+    assert(post.l4_table == pre.l4_table && post.cr3 == pre.cr3 && post.kernel_l4_end == pre.kernel_l4_end && post.l3_tables == pre.l3_tables);
+    assert(post.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
+    assert(post.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
+    assert(post.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
+    assert(post.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
+    assert(post.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); };
+    assert(post.user_only()) by { reveal(PageTableHigher::user_only); };
+    assert(post.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
+    assert(post.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
+    assert(post.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
+    assert(post.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
+}
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for the table itself: no table invariant other than the payload's reads the PCI
+/// function array.
+proof fn pagetable_map_update_pci_mapping_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.higher.pci.wf(),
+        post.lower == pre.lower,
+    ensures
+        post.higher.inv(),
+        post.wf(),
+{
+    pagetable_map_update_pci_mapping_eof_higher_inv(pre.higher, post.higher);
+    assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
+    assert(post.l3_links_l2_wf()) by { reveal(WholePageTable::l3_links_l2_wf); };
+    assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+    assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+    assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
+    pagetable_map_update_pci_mapping_eof_wf_mapping_4k(pre, post);
+    pagetable_map_update_pci_mapping_eof_resolve_2m(pre, post);
+    assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); };
+    assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+    assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+    assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
+    assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
+}
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for `wf_mapping_4k`: the leaves and mappings are unchanged.
+proof fn pagetable_map_update_pci_mapping_eof_wf_mapping_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        pre.wf(),
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.higher.pci.wf(),
+        post.lower == pre.lower,
+    ensures post.wf_mapping_4k(),
+{
+    pagetable_map_update_pci_mapping_eof_resolve_4k(pre, post);
+    reveal(WholePageTable::wf_mapping_4k);
+}
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for the 4K walks, which do not read the PCI function array: each resolves as
+/// before.
+proof fn pagetable_map_update_pci_mapping_eof_resolve_4k(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        post.kernel_l4_end() == pre.kernel_l4_end(),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+            post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+{}
+
+/// EOF closure of `pagetable_map_update_pci_mapping` for the 2M walks, which do not read the PCI function array: each resolves as
+/// before.
+proof fn pagetable_map_update_pci_mapping_eof_resolve_2m(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+    requires
+        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
+        post.lower == pre.lower,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+            post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+{}
 
 /// EOF closure of `pagetable_map_update_pci_mapping`: the big-lock and window-half invariants hold after the PCI function array of
 /// the write-held table changed.
@@ -63,7 +147,7 @@ pub(super) proof fn pagetable_map_update_pci_mapping_eof(
     reveal(pagetable_map_update_pci_mapping_eof_transition_framing);
     pagetable_perms_wf_at(pre_pt, pagetable_ptr);
     pagetable_lower_wf_at(pre_pt, pt_lower, pagetable_ptr);
-    update_pci_entry_eof_table_wf(whole_pagetable(pre_pt, pt_lower, pagetable_ptr), whole_pagetable(post_pt, pt_lower, pagetable_ptr));
+    pagetable_map_update_pci_mapping_eof_table_wf(whole_pagetable(pre_pt, pt_lower, pagetable_ptr), whole_pagetable(post_pt, pt_lower, pagetable_ptr));
     assert(pagetable_perms_wf(post_pt)) by { lock_op_implies_pagetable_perms_wf_preserved_forall(); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);

@@ -52,6 +52,7 @@ pub fn reclaim_held_leaves(
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
@@ -65,10 +66,7 @@ pub fn reclaim_held_leaves(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
-        forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len()
-            ==> kernel_u_pci_bar_counts_changed(final(steps).view()[j].old_u, final(steps).view()[j].new_u, old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr),
+        final(steps).view() == old(steps).view(),
         final(steps).snapshot_k() == *final(krnl),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
@@ -99,9 +97,7 @@ pub fn reclaim_held_leaves(
         ({
             let old_c = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             let new_c = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable);
-            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, pci: new_c.higher.pci, ..old_c.higher })
-            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
-            &&& forall|f: PciBdf| #![trigger new_c.higher.pci.view()[f]] new_c.higher.pci.view().dom().contains(f) ==> new_c.higher.pci.view()[f] =~= Set::<PciBarMapping>::empty()
+            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
             &&& new_c.mapping_1g().submap_of(old_c.mapping_1g()) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& new_c.lower.hidden_l1_tables_in_locked_windows()
@@ -136,10 +132,7 @@ pub fn reclaim_held_leaves(
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.kernel_view_locking_state() is Acquire,
             steps.snapshot_k() == *krnl,
-            old(steps).view().len() <= steps.view().len(),
-            forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
-            forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len()
-                ==> kernel_u_pci_bar_counts_changed(steps.view()[j].old_u, steps.view()[j].new_u, old(krnl).pt_mp.spec_index(pagetable).view().higher.proc_ptr),
+            steps.view() == old(steps).view(),
             KERNEL_MEM_END_L4INDEX <= cursor.0 && pei_valid(cursor.0) && pei_valid(cursor.1) && pei_valid(cursor.2) && cursor.3 <= 512,
             e == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable),
             e.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
@@ -164,6 +157,7 @@ pub fn reclaim_held_leaves(
             pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
             old(krnl).pt_mp.dom().contains(pagetable),
             old(krnl).pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+            old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty(),
             forall|l4i: L4Index| #![trigger e.spec_resolve_mapping_l4(l4i)] e.kernel_l4_end() <= l4i && pei_valid(l4i) ==> e.spec_resolve_mapping_l4(l4i) is None,
             forall|p: PageMapPtr, i: L2Index| #![trigger e.lower.l2_owner(p, i)] e.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> e.lower.l2_owner(p, i) is None,
             reclaim_held_leaves_eol_loop_framing(*old(krnl), *krnl, old(lctx), pagetable, thrd_ptr, *indirect_4k, *direct_4k, *indirect_2m, *direct_2m, *indirect_1g, *direct_1g, cursor),
@@ -218,6 +212,7 @@ fn reclaim_held_leaf(
         k0.pt_mp.dom().contains(pagetable),
         whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         k0.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        k0.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty(),
         forall|l4i: L4Index| #![trigger whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
         forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable).lower.l2_owner(p, i)]
@@ -248,10 +243,7 @@ fn reclaim_held_leaf(
         final(lctx).thread_id() == lctx0.thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
-        forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len()
-            ==> kernel_u_pci_bar_counts_changed(final(steps).view()[j].old_u, final(steps).view()[j].new_u, k0.pt_mp.spec_index(pagetable).view().higher.proc_ptr),
+        final(steps).view() == old(steps).view(),
         reclaim_held_leaves_eol_loop_framing(k0, *final(krnl), &lctx0, pagetable, thrd_ptr, *final(indirect_4k), *final(direct_4k), *final(indirect_2m), *final(direct_2m), *final(indirect_1g),
             *final(direct_1g), ret),
         kind is L1g ==> ret == (next.0, next.1, 511usize, 512usize),
@@ -298,13 +290,8 @@ fn reclaim_held_leaf(
                 assert(c.spec_held_1g_l3(next.0, next.1) is None);
             }
             if is_io {
-                remove_held_io_2m_mapping(krnl, pagetable, va, pg_ptr, Tracked(&mut *lctx), pagetable_perm);
-                proof {
-                    let prc_ptr = krnl_i.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
-                    process_pagetable_wf_pagetable_at(krnl_i.prc_mp, krnl_i.pt_mp, pagetable); process_perms_wf_at(krnl_i.prc_mp, prc_ptr);
-                    process_emptied_tables_wf_at(krnl_i.prc_mp, krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.it_mp, krnl_i.pg_arr, prc_ptr);
-                    kernel_pci_bar_2m_unmapped_implies_u_step(&krnl_i, &*krnl, pagetable, va, pci_bar_function_of_page(krnl_i.pci_bars.view(), pg_ptr)->0);
-                }
+                proof { assert(krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty()) by { reveal(reclaim_held_leaves_eol_loop_framing); }; }
+                remove_held_io_2m_mapping(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
             } else {
                 proof {
                     mapped_2m_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1, next.2);
@@ -314,12 +301,8 @@ fn reclaim_held_leaf(
             }
             let ghost (krnl_c, lctx_c) = (*krnl, *lctx);
             proof {
-                if is_io {
-                    krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-                } else {
-                    kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
-                    krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                }
+                kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
+                krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
                 reclaim_held_leaves_eol_step_2m(k0, krnl_i, krnl_c, *krnl, &lctx0, &lctx_i, &lctx_c, pagetable, thrd_ptr, va, *indirect_4k, *direct_4k, indirect_i, direct_i, *indirect_2m,
                     *direct_2m, *indirect_1g, *direct_1g, cursor, next);
             }
@@ -334,13 +317,8 @@ fn reclaim_held_leaf(
                 assert(c.spec_held_1g_l3(next.0, next.1) is None);
             }
             if is_io {
-                remove_held_io_4k_mapping(krnl, pagetable, va, pg_ptr, Tracked(&mut *lctx), pagetable_perm);
-                proof {
-                    let prc_ptr = krnl_i.pt_mp.spec_index(pagetable).view().higher.proc_ptr;
-                    process_pagetable_wf_pagetable_at(krnl_i.prc_mp, krnl_i.pt_mp, pagetable); process_perms_wf_at(krnl_i.prc_mp, prc_ptr);
-                    process_emptied_tables_wf_at(krnl_i.prc_mp, krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.it_mp, krnl_i.pg_arr, prc_ptr);
-                    kernel_pci_bar_4k_unmapped_implies_u_step(&krnl_i, &*krnl, pagetable, va, pci_bar_function_of_page(krnl_i.pci_bars.view(), pg_ptr)->0);
-                }
+                proof { assert(krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty()) by { reveal(reclaim_held_leaves_eol_loop_framing); }; }
+                remove_held_io_4k_mapping(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
             } else {
                 proof {
                     mapped_4k_page_pagetable_wf_held_leaf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, next.0, next.1, next.2, next.3);
@@ -350,12 +328,8 @@ fn reclaim_held_leaf(
             }
             let ghost (krnl_c, lctx_c) = (*krnl, *lctx);
             proof {
-                if is_io {
-                    krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-                } else {
-                    kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
-                    krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                }
+                kernel_restored_locks_implies_u_eq(&steps.snapshot_k(), &*krnl, cpu_id, None, None, Some(thrd_ptr), None, Some(pagetable));
+                krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
                 reclaim_held_leaves_eol_step_4k(k0, krnl_i, krnl_c, *krnl, &lctx0, &lctx_i, &lctx_c, pagetable, thrd_ptr, va, indirect_i, direct_i, *indirect_4k, *direct_4k, *indirect_2m,
                     *direct_2m, *indirect_1g, *direct_1g, cursor, next);
             }

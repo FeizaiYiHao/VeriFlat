@@ -857,7 +857,10 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by {
         broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
-    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf); };
+    assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by {
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page).cr3() == post.pt_mp.spec_index(pagetable_page).view().higher.cr3);
+        reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); reveal(process_pagetable_wf);
+    };
     publish_staged_container_root_eof_allocator_free_pages_wf(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,

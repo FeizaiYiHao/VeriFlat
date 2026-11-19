@@ -419,7 +419,6 @@ pub fn pagetable_map_insert_2m_wlocked(
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
             old(pagetable_map).typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr);
         };
-        assert(whole_pagetable(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
         let va = spec_index2va((indices.0, indices.1, indices.2, 0));
         assert(pagetable_map_insert_2m_wlocked_eof_transition_framing(*old(pagetable_map), *old(pt_lower), *pagetable_map, *pt_lower, pagetable_ptr, va, *target_entry)) by {
             reveal(pagetable_map_insert_2m_wlocked_eof_transition_framing);

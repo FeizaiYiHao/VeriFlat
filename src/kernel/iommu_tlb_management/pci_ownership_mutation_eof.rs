@@ -90,7 +90,7 @@ proof fn update_pci_entry_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: Pa
 
 /// EOF closure of `KernelK::update_pci_entry` for the table itself: no table invariant other than the payload's reads the PCI
 /// function array.
-pub(crate) proof fn update_pci_entry_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+proof fn update_pci_entry_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
@@ -155,7 +155,10 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
             &&& !(process.state.view() is TablesEmptied)
             &&& !(process.state.view() is Zombie)
         },
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used && pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0,
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
+            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
+            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
         update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
     ensures
         post.subsystems_inv(),
@@ -277,6 +280,8 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
             let bdf = pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).bdf;
             &&& pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used
             &&& pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
+                || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
+                && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty()
             &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None
         },
     ensures

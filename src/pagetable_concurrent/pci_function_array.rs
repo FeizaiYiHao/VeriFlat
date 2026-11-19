@@ -266,9 +266,6 @@ impl PciFunctionArray {
         self.entries.set(i, PciFunctionEntry { count: e.count + 1, ..e });
         self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.insert(m))));
         proof {
-            assert(self.owned.view().dom() =~= old(self).owned.view().dom());
-            assert(self.view() =~= old(self).view().insert(f, old(self).view()[f].insert(m)));
-            assert(self.mapping_counts() =~= old(self).mapping_counts().insert(f, (old(self).mapping_counts()[f] + 1) as nat));
         }
     }
 
@@ -296,9 +293,6 @@ impl PciFunctionArray {
         self.entries.set(i, PciFunctionEntry { count: e.count - 1, ..e });
         self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.remove(m))));
         proof {
-            assert(self.owned.view().dom() =~= old(self).owned.view().dom());
-            assert(self.view() =~= old(self).view().insert(f, old(self).view()[f].remove(m)));
-            assert(self.mapping_counts() =~= old(self).mapping_counts().insert(f, (old(self).mapping_counts()[f] - 1) as nat));
         }
     }
 
