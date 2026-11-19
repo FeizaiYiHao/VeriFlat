@@ -1388,62 +1388,105 @@ recorded peer is `IPC_TRANSIT` with partner `T`, and `ipc_pages_held` states
 `edp_idx_valid(endpoint_index)`; the proof assumes nothing beyond the step
 specifications.
 
-## 13a. Device (IO) pages
+## 13a. Device (IO) pages and BAR mapping
 
-Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.rs`):
+Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.rs`,
+`src/pagetable_concurrent/pci_function_array.rs`):
 
 - The kernel holds a sealed, read-only BAR table (`KernelK.pci_bars`, a
   `PciBarTable` of at most `PCI_BAR_TABLE_CAPACITY` = 1024 `PciBarEntry`s in
-  the boot glue's static), each entry a `(B/D/F, BAR index 0..5)` and the exact
-  byte range of one memory BAR. It is read without a lock. The boot glue fills
-  it once; no syscall changes it, PCI transfer and attachment included. Its
-  entries are pairwise byte-disjoint, and BARs whose 4K envelopes share a page
-  belong to the same PCI function (`pci_bar_table_wf`). A BAR page is a 4K page
-  in the outward-rounded 4K envelope of some entry (`pci_bar_page`, through
-  `pci_bar_entry_of_page`).
+  the boot glue's static; `KernelU.pci_bars`), each entry a `(B/D/F, BAR index
+  0..5)` and the exact byte range of one memory BAR. It is read without a lock.
+  The boot glue fills it once, from the loader's BAR slots in the loader's
+  order, so slot `i` of `NR_PCI_BAR` (trap layer, syscall 56) is table index
+  `i`; no syscall changes it. Its entries are pairwise byte-disjoint, and BARs
+  whose 4K envelopes share a page belong to the same PCI function
+  (`pci_bar_table_wf`). A BAR page is a 4K page in the outward-rounded 4K
+  envelope of some entry (`pci_bar_page`, through `pci_bar_entry_of_page`).
 - BAR pages have no page-array bookkeeping: a page-array page in an envelope is
   `Unavailable` for good (`pci_bar_pages_unavailable_wf`), and an IO mapping has
   no owner, reference count, reverse map, or quota.
 - An IO leaf is a page-table leaf with the IO bit (bit 53,
-  `PAGE_ENTRY_IO_MASK`); it always carries PCD and PWT (uncached). Only 4K and
-  2M CPU leaves can be IO leaves: IOMMU tables map RAM pages only (an IOMMU
-  entry has no IO bit), and every 1G leaf is a RAM leaf. Every IO leaf, present
-  or held, maps BAR pages over its whole span (`io_mappings_wf`).
-- IO leaves come from boot only: dom0's boot page table maps every page `p` of
-  every slot envelope at `PCI_BAR_WINDOW_BASE + p` (`0xd0_0000_0000 + p`) as a
-  writable, execute-disabled 4K IO leaf (`boot_dom0_io_manifest_wf`). No
-  syscall creates, copies, or shares an IO leaf; it can only be removed. No
-  syscall maps a physical address.
+  `PAGE_ENTRY_IO_MASK`): present, writable, execute-disabled, and uncached (PCD
+  and PWT). Only 4K and 2M CPU leaves can be IO leaves: IOMMU tables map RAM
+  pages only, and every 1G leaf is a RAM leaf.
+- Each process's page table keeps, per owned PCI function (array entry, at most
+  8), the count of its mapped BAR pages and the ghost set of those mappings
+  `(va, SZ4k | SZ2m)`; `PageTableU.pci_functions` shows the counts.
+  `pagetable_pci_mappings_wf`: every recorded mapping has a held IO leaf of
+  that table whose target belongs to the function (a 2M one to a whole 2M chunk
+  of one BAR, `pci_bar_2m_chunk_of`); every present 4K or 2M IO leaf is recorded
+  under its function, which the process owns; every held IO leaf targets BAR
+  pages. So a process maps BAR pages only of functions it owns.
+- Boot maps no IO leaf: the loader reports the BAR slots and maps none of them,
+  and `finish_init_from_boot` accepts RAM leaves only (`boot_dom0_manifest_wf`
+  requires `!entry.is_io`; the glue's `walk_dom0` panics on an IO bit or PWT/PCD
+  in dom0's boot page table). Every function starts unowned (§4e); dom0 claims a
+  function and maps its BARs with the syscalls below.
 
-Per syscall, as implemented on this branch (the U step specs are those of the
-sections named; an IO leaf is one more entry of `mapping_4k` or `mapping_2m`):
+New syscalls (crate `veriflat_syscall_pci_bar`), one page per call, the big
+lock of the caller's page table in WRITE mode, the CPU and the thread
+write-held (the mmap pattern). The trap layer passes every argument through;
+every bad value is a verified result.
 
-- `mmap_4k`, `mmap_2m`, `mmap_1g` (§6, §7c): every new leaf is a RAM leaf.
-- `unmap_4k` (§7): an IO leaf of the range is removed under the same window
-  lock and TLB flush as a RAM leaf; no page changes state and the refund step
-  refunds nothing for it. `unmap_2m` (§7d) removes a 2M IO leaf the same way;
-  none exists yet, since boot builds 4K IO leaves only.
-- `share_4k` (§8), used by `send_pages`/`receive_pages` (§13), `new_process*`
-  (§9), and `new_container*` (§10), copies RAM leaves only. `new_process*` and
-  `new_container*` fail their source check (Error) when a source page is an IO
-  leaf; a pages rendezvous fails its owner check (PageOwnerMismatch) when a
+- `syscall_map_pci_bar_4k(slot, page_index, va)` (syscall 58): results in check
+  order Error (`!spec_va_4k_valid(va)`), CpuIdle, ThreadKilled,
+  `ErrorPciBarSlotInvalid` (`slot` past the table, or `page_index` past the
+  BAR's 4K envelope: `spec_page_4k`), `ErrorPciOwnerMismatch` (the caller's
+  process does not own the slot's function), `ErrorVaInUse` (a 1G, 2M, or 4K
+  leaf covers `va`), `ErrorNoQuota` (the thread has less than mmap's four 4K
+  quota), then Success. Steps (`syscall_pci_bar_spec.rs`): enter (CPU, thread,
+  page table, and the window of `va` when it exists write-locked; progress
+  `MapPciBar4k { va, directory: None }`), one directory step per missing L4, L3,
+  and L2 entry (charged to the thread like `mmap_4k`, `map_pci_bar_4k_directory_step`),
+  and exit, which maps `va` to the IO leaf `map_pci_bar_io_entry(page, owning
+  container)`, raises the function's count by one, clears the progress, and
+  unlocks everything.
+- `syscall_map_pci_bar_2m(slot, index, va)` (syscall 59): the same with a
+  2M-aligned `va`, the `index`-th 2M chunk lying wholly in the BAR
+  (`spec_chunk_2m`; a BAR without one gives `ErrorPciBarSlotInvalid`), the 2M
+  window of `va` free of every leaf (`ErrorVaInUse`), and two 4K quota. An empty
+  L1 page under the slot is hidden, flushed, and reclaimed as `mmap_2m` does
+  (progress `MapPciBar2m { va, directory, flushed }`).
+- `syscall_unmap_pci_bar_4k(va)` (syscall 60): Error, CpuIdle, ThreadKilled,
+  `ErrorPciBarNotMapped` (`va` has no present 4K IO leaf in the caller's table:
+  a RAM page included), then Success. Steps: hide (enter with the locks, `va`
+  leaves `mapping_4k`, progress `UnmapPciBar4k { va, flushed: false }`), at most
+  one TLB flush step per CPU, the flushed step, and exit, which removes the
+  leaf and lowers its function's count by one.
+- `syscall_unmap_pci_bar_2m(va)` (syscall 61): the same for a 2M IO leaf
+  (progress `UnmapPciBar2m`).
+
+IO-page rules in the other syscalls:
+
+- No sharing: `share_4k` (§8), used by `send_pages`/`receive_pages` (§13),
+  `new_process*` (§9), and `new_container*` (§10), copies RAM leaves only.
+  `new_process*` and `new_container*` fail their source check (Error) when a
+  source page is an IO leaf; a pages rendezvous fails its owner check
+  (PageOwnerMismatch).
+- No IOMMU mapping: `iommu_map_4k` (§7a) fails with IommuVaNotMapped when a
   source page is an IO leaf.
-- `iommu_map_4k` (§7a): a source page that is an IO leaf fails the source
-  check (IommuVaNotMapped).
-- `thread_exit` of a process's last thread (§17), `kill_process` (§18), and
-  `kill_container` (§19): every 4K and 2M IO leaf of the reclaimed page tables
-  is cleared with no page-array bookkeeping and no refund.
-- `send_pci`, `receive_pci` (§11), `pci_claim` (§4e), `pci_attach_dma`
-  (§4d), and the PCI release at exit and kill leave the BAR table and every IO
-  mapping as they are.
+- Generic unmap refuses: `unmap_4k` (§7) and `unmap_2m` (§7d) fail as a whole
+  with Error, changing nothing, when a page of the range holds an IO leaf
+  (`unmap_4k_enter_step_pre` / `unmap_2m_enter_step_pre` and the leaf step
+  preconditions require RAM leaves). Only `unmap_pci_bar_4k/2m` remove an IO
+  leaf.
+- No sending while mapped: `send_pci`/`receive_pci` (§11) fail with
+  `ErrorIpcPciBarMapped` on both sides when the sender's count of the function
+  is not 0.
+- Kill and exit: `kill_process` (§18), `kill_container` (§19), and the
+  `thread_exit` of a process's last thread (§17) hide every user root entry,
+  flush, then release every PCI function (the unown step requires the page
+  table to have no user 4K, 2M, or 1G mapping and no window lock, and the flush
+  to be recorded), and reclaim the hidden leaves: an IO leaf like a RAM leaf,
+  with no page-array bookkeeping, no refund, and no count update (the array is
+  already empty). The function is unowned afterwards and can be claimed again.
 
 Threat model. Holding a mapping of a device's registers is control of that
-device. IO mappings are not tied to PCI ownership: owning a function (and its
-DMA attachment) and mapping its BARs are separate, and moving ownership with
-`send_pci` does not revoke dom0's boot IO mappings. Small BARs of different
-devices that share a 4K page are mapped together, so holding that page
-controls every one of them. An IO page that dom0 has unmapped is gone: nothing
-can map it again.
+device. A process maps only BARs of functions it owns, and a function cannot
+leave its owner while any of its BAR pages is mapped; when its owner dies, its
+mappings are gone before the function becomes unowned. Small BARs of one
+function that share a 4K page are mapped together.
 
 ## 14. Syscall entry list
 
@@ -1472,6 +1515,7 @@ can map it again.
 | `syscall_call` (`call`, `call_usize`), `syscall_receive_call`, `syscall_reply_and_receive` (`reply_and_receive`, `reply_and_receive_usize`) | §11a |
 | `syscall_pci_attach_dma` | §4d |
 | `syscall_pci_claim` (syscall 57) | §4e |
+| `syscall_map_pci_bar_4k` (syscall 58), `syscall_map_pci_bar_2m` (59), `syscall_unmap_pci_bar_4k` (60), `syscall_unmap_pci_bar_2m` (61) | §13a |
 | `syscall_thread_exit` | §17 |
 | `syscall_kill_process` | §18 |
 | `syscall_kill_container` | §19 |
@@ -1683,6 +1727,15 @@ functions are detached by `iommu_root_table_detach_array`) are the only
 writers. A process without functions never takes the root-table lock in kill
 or exit. New results: `ErrorIpcPciBarMapped`, `ErrorIpcPciReceiverFull`,
 `ErrorPciNotRootProcess`, `ErrorPciAlreadyOwned`, `ErrorPciFunctionArrayFull`.
+
+PCI BAR mapping (phase 3, 2026-11-19; §13a): the loader no longer maps BARs
+into dom0 and the boot contract accepts no IO leaf; dom0 maps BAR pages of
+functions it owns with `map_pci_bar_4k/2m` and removes them with
+`unmap_pci_bar_4k/2m` (syscalls 58 to 61). Each page-table PCI array entry
+counts its function's mapped BAR pages (`pagetable_pci_mappings_wf` replaces
+`io_mappings_wf`); `pci_function_mapping_count_lt_usize_max` is the one new
+trusted axiom (count increment). New results: `ErrorPciBarSlotInvalid` (index
+56), `ErrorPciBarNotMapped` (index 57).
 
 PCI device ownership (approved 2026-10-08, applied):
 `KernelK.irt: IommuRootTableLock = RwLock<IommuRootTable, (), (), NO_KILL_STATE>`

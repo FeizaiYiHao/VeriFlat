@@ -83,6 +83,7 @@ use veriflat_monolith::kernel::implementation::syscall_new_thread::syscall_new_t
 use veriflat_monolith::kernel::implementation::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint;
 use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_attach_dma::syscall_pci_attach_dma;
 use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_claim::syscall_pci_claim;
+use veriflat_monolith::kernel::implementation::syscall_pci_bar::{syscall_map_pci_bar_2m, syscall_map_pci_bar_4k, syscall_unmap_pci_bar_2m, syscall_unmap_pci_bar_4k};
 use veriflat_monolith::kernel::implementation::syscall_schedule::syscall_schedule::{syscall_schedule, ScheduleResult};
 use veriflat_monolith::kernel::implementation::syscall_thread_exit::syscall_thread_exit::syscall_thread_exit;
 use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4k;
@@ -572,6 +573,8 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorPciNotRootProcess => 53,
         ErrorPciAlreadyOwned => 54,
         ErrorPciFunctionArrayFull => 55,
+        ErrorPciBarSlotInvalid => 56,
+        ErrorPciBarNotMapped => 57,
     }
 }
 
@@ -658,7 +661,8 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             return;
         }
         vsys::NR_PCI_BAR => {
-            // Reads the loader's BAR slot record only, outside any kernel step.
+            // Reads the loader's BAR slot record only, outside any kernel step. The glue built the kernel's BAR table from
+            // this list in this order, so slot `a1` here is BAR-table index `a1` of `map_pci_bar_4k/2m`.
             match crate::boot::get_boot_info().bar_slots.get(a1) {
                 Some(b) => {
                     regs.rax = (b.vendor as u64) << 40 | (b.device as u64) << 24 | (b.bdf as u64) << 8 | b.bar as u64;
@@ -846,6 +850,11 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             require!(bdf_ok(a1, a2, a3));
             syscall_pci_claim(k, t!(), t!(), cpu_id, a1, a2, a3)
         }
+        // The BAR calls take any argument: a bad slot, page or chunk index, or VA is a verified result.
+        vsys::NR_MAP_PCI_BAR_4K => syscall_map_pci_bar_4k(k, t!(), t!(), cpu_id, a1, a2, a3),
+        vsys::NR_MAP_PCI_BAR_2M => syscall_map_pci_bar_2m(k, t!(), t!(), cpu_id, a1, a2, a3),
+        vsys::NR_UNMAP_PCI_BAR_4K => syscall_unmap_pci_bar_4k(k, t!(), t!(), cpu_id, a1),
+        vsys::NR_UNMAP_PCI_BAR_2M => syscall_unmap_pci_bar_2m(k, t!(), t!(), cpu_id, a1),
         _ => {
             set_trap_error(regs, vsys::ERR_INVALID_SYSCALL);
             return;

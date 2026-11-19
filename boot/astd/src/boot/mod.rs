@@ -31,10 +31,6 @@ pub const MAX_RAM_RANGES: usize = 256;
 /// The most PCI ECAM (MMCONFIG) windows the loader reports.
 pub const MAX_MMCONFIG_WINDOWS: usize = 8;
 
-/// Virtual base of dom0's BAR window: the loader maps every 4K page `p` of the page envelope of every BAR slot at
-/// `PCI_BAR_WINDOW_BASE + p` in dom0's initial page table, as a 4K IO leaf.
-pub const PCI_BAR_WINDOW_BASE: u64 = 0xd0_0000_0000;
-
 /// The type of physical memory.
 ///
 /// This is a simplified version of `BootMemoryType` in aloader.
@@ -96,8 +92,8 @@ pub struct BootInfo {
     pub pci_devices: ArrayVec<PciDevice, MAX_PCI_DEVICES>,
 
     /// Every assigned memory BAR of every PCI function (type 0 headers: 6 registers, type 1: 2; a 64-bit BAR takes
-    /// two), in B/D/F and BAR order: the PCI table's BAR slots. dom0's boot page table maps each slot's page
-    /// envelope at `PCI_BAR_WINDOW_BASE + p` with 4K IO leaves.
+    /// two), in B/D/F and BAR order: the PCI table's BAR slots, in the order of the kernel's BAR table:
+    /// slot `i` here is BAR-table index `i` of `map_pci_bar_4k/2m`. Nothing maps them at boot.
     pub bar_slots: ArrayVec<BarSlot, MAX_BAR_SLOTS>,
 
     /// The firmware memory map's RAM ranges as `(base, size)`, above 4 GiB too: usable, ACPI reclaim, ACPI NVS,
@@ -129,7 +125,7 @@ pub struct DmaTestDevice {
     pub mmio: u64,
 }
 
-/// A PCI function whose memory BAR0 the loader enabled; dom0 sees BAR0 at `PCI_BAR_WINDOW_BASE + bar0_base`.
+/// A PCI function whose memory BAR0 the loader enabled.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PciDevice {

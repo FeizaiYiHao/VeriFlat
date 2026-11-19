@@ -34,7 +34,7 @@ use core::slice;
 use x86::cpuid::cpuid;
 
 use aelf::ElfHandle;
-use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES, PCI_BAR_WINDOW_BASE};
+use astd::boot::{BootInfo, DomainMapping, Payload, PhysicalMemoryType, MAX_PAGES};
 use astd::heapless::Vec as ArrayVec;
 use astd::io::{Cursor, Read, Seek, SeekFrom};
 use astd::memory::{USERSPACE_BASE, USERSPACE_PAYLOAD_BASE};
@@ -267,24 +267,8 @@ pub extern "C" fn main() -> ! {
         }
     }
 
-    // Every page of every BAR slot's page envelope in dom0's BAR window, as a 4K IO leaf; a page two small BARs share
-    // is mapped once. The kernel's boot glue checks the slots and these leaves before it hands them to the verified
-    // initializer.
-    let mut io_leaves = 0usize;
-    for slot in boot_info.bar_slots.iter() {
-        let (start, end) = slot.envelope().expect("BAR range overflows");
-        let window_end = PCI_BAR_WINDOW_BASE.checked_add(end).filter(|e| *e <= 1 << 47);
-        assert!(
-            window_end.is_some(),
-            "BAR{} of {:02x}:{:02x}.{} at {:#x} lies beyond dom0's BAR window", slot.bar, slot.bdf >> 8, (slot.bdf >> 3) & 0x1f, slot.bdf & 7, slot.base
-        );
-        let mut page = start;
-        while page < end {
-            io_leaves += unsafe { dom0_space.map_user_io_4k(bootstrap_allocator, PCI_BAR_WINDOW_BASE + page, page) } as usize;
-            page += PAGE_SIZE as u64;
-        }
-    }
-    log::info!("dom0 BAR window: {} BAR slots, {} 4K IO leaves at {:#x} + physical address", boot_info.bar_slots.len(), io_leaves, PCI_BAR_WINDOW_BASE);
+    // The BAR slots are reported, not mapped: dom0 maps a BAR page of a function it owns with `map_pci_bar_4k/2m`.
+    log::info!("{} BAR slots reported to the kernel", boot_info.bar_slots.len());
 
     log::info!("Physical memory map after loading:");
     memory::dump_physical_memory_map();

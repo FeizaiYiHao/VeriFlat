@@ -13,10 +13,11 @@
 # rp1 (`-device pcie-root-port,id=rp1,chassis=1 -drive file=$OUT/nvme.img,if=none,id=nvm,format=raw
 # -device nvme,drive=nvm,serial=veriflat0,bus=rp1`), as an SSD sits on a real server, so every boot takes the loader
 # across a PCI-to-PCI bridge; it is backed by a 64 MiB sparse raw image created once in the build output directory.
-# The loader maps every page of every assigned memory BAR into dom0 at 0xd0_0000_0000 + physical address as a 4K IO
-# leaf, BARs above 4 GiB too. A high BAR for a test: append
+# The loader reports every assigned memory BAR, above 4 GiB too, and maps none: dom0 maps BAR pages of functions it
+# owns with map_pci_bar_4k/2m. A high BAR for a test: append
 # `-object memory-backend-ram,id=hm,size=2G -device ivshmem-plain,memdev=hm` (SeaBIOS places the 2 GiB BAR2 above
-# 4 GiB); dom0's `io_high_bar` check then writes and reads it.
+# 4 GiB); dom0's `io_high_bar` check then claims ivshmem, maps two 2M chunks of BAR2 with map_pci_bar_2m, and writes
+# and reads them.
 # `+invtsc` makes the TSC rate known to QEMU, which then reports it in the hypervisor leaf 4000_0010H.
 # NVME_BLOCK_SIZE=4096 (default 512) formats the emulated NVMe namespace with that logical block size.
 set -euo pipefail

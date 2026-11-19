@@ -40,11 +40,8 @@ pub const NR_DEBUG_DMA_PROBE: usize = 29;
 pub const NR_DEBUG_NULL: usize = 36;
 /// Reads the loader's record of a PCI function (see `sys_pci_info`).
 pub const NR_PCI_INFO: usize = 55;
-/// Reads the loader's BAR slot `i` (see `sys_pci_bar`).
+/// Reads the loader's BAR slot `i` (see `sys_pci_bar`); `i` is also the kernel's BAR-table index.
 pub const NR_PCI_BAR: usize = 56;
-/// dom0's boot page table maps every page `p` of every BAR slot's page envelope at virtual address
-/// `PCI_BAR_WINDOW_BASE + p`, as a 4K IO leaf.
-pub const PCI_BAR_WINDOW_BASE: usize = 0xd0_0000_0000;
 // ---- verified entries (SystemCalls.md section 14) ----
 pub const NR_ALLOC_QUOTA_4K: usize = 2;
 pub const NR_SCHEDULE: usize = 3;
@@ -97,6 +94,10 @@ pub const NR_ALLOC_THREAD_QUOTA_1G: usize = 52;
 pub const NR_MERGE_2M: usize = 53;
 pub const NR_SPLIT_2M: usize = 54;
 pub const NR_PCI_CLAIM: usize = 57;
+pub const NR_MAP_PCI_BAR_4K: usize = 58;
+pub const NR_MAP_PCI_BAR_2M: usize = 59;
+pub const NR_UNMAP_PCI_BAR_4K: usize = 60;
+pub const NR_UNMAP_PCI_BAR_2M: usize = 61;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -106,7 +107,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 56] = [
+const RET_VALUE_NAMES: [&str; 58] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -120,6 +121,7 @@ const RET_VALUE_NAMES: [&str; 56] = [
     "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild", "ErrorIommuIovaAlreadyMapped",
     "ErrorIommuIovaNotMapped", "ErrorIommuVaNotMapped", "ErrorContainerLockOrderConflict", "ErrorIpcRangeNotUser",
     "ErrorIpcPciBarMapped", "ErrorIpcPciReceiverFull", "ErrorPciNotRootProcess", "ErrorPciAlreadyOwned", "ErrorPciFunctionArrayFull",
+    "ErrorPciBarSlotInvalid", "ErrorPciBarNotMapped",
 ];
 
 /// Names the result in `rax`.
@@ -456,7 +458,7 @@ pub unsafe fn sys_debug_dma_write_probe() -> isize {
 /// Looks up the loader's record of PCI function `bus:dev.fun`. Returns `(rax, rdx, rsi)`: `rax` is
 /// `(class << 48) | (subclass << 40) | (vendor << 16) | device` for a recorded function, or
 /// `ERR_INVALID_ARGUMENT` when it is not recorded; `rdx` is the BAR0 physical base and `rsi` its page
-/// count (both 0 on error). dom0 sees the BAR0 pages at `PCI_BAR_WINDOW_BASE + base`.
+/// count (both 0 on error).
 pub unsafe fn sys_pci_info(bus: usize, dev: usize, fun: usize) -> (isize, usize, usize) {
     let r = syscall3(NR_PCI_INFO, bus, dev, fun);
     (r.rax, r.rdx, r.rsi)
@@ -464,10 +466,34 @@ pub unsafe fn sys_pci_info(bus: usize, dev: usize, fun: usize) -> (isize, usize,
 
 /// Reads BAR slot `i` of the loader's inventory (every assigned memory BAR, in B/D/F and BAR order). Returns
 /// `(rax, rdx, rsi)`: `rax` is `(vendor << 40) | (device << 24) | (bdf << 8) | bar` and `rdx`, `rsi` the BAR's
-/// physical base and size in bytes, or `rax` is `ERR_INVALID_ARGUMENT` past the last slot.
+/// physical base and size in bytes, or `rax` is `ERR_INVALID_ARGUMENT` past the last slot. Slot `i` is index `i` of the
+/// kernel's BAR table, the `slot` of `sys_map_pci_bar_4k/2m`.
 pub unsafe fn sys_pci_bar(i: usize) -> (isize, usize, usize) {
     let r = syscall1(NR_PCI_BAR, i);
     (r.rax, r.rdx, r.rsi)
+}
+
+/// Maps the 4K page `page_index` of BAR slot `slot` (counted from the slot's first page) at the 4K-aligned `va` as a
+/// writable, non-executable, uncached IO leaf, when the caller's process owns the slot's function and nothing maps `va`;
+/// directory pages are charged to the calling thread's 4K quota like `mmap_4k` (four 4K quota required).
+pub unsafe fn sys_map_pci_bar_4k(slot: usize, page_index: usize, va: usize) -> isize {
+    syscall3(NR_MAP_PCI_BAR_4K, slot, page_index, va).rax
+}
+
+/// Maps the 2M chunk `index` of BAR slot `slot` at the 2M-aligned `va` as a 2M IO leaf, when the whole chunk lies in the
+/// slot, the caller's process owns the slot's function and nothing maps into the 2M window of `va` (two 4K quota required).
+pub unsafe fn sys_map_pci_bar_2m(slot: usize, index: usize, va: usize) -> isize {
+    syscall3(NR_MAP_PCI_BAR_2M, slot, index, va).rax
+}
+
+/// Removes the 4K IO leaf at `va`; `ErrorPciBarNotMapped` when `va` holds no 4K IO leaf (a RAM page included).
+pub unsafe fn sys_unmap_pci_bar_4k(va: usize) -> isize {
+    syscall1(NR_UNMAP_PCI_BAR_4K, va).rax
+}
+
+/// Removes the 2M IO leaf at `va`; `ErrorPciBarNotMapped` when `va` holds no 2M IO leaf.
+pub unsafe fn sys_unmap_pci_bar_2m(va: usize) -> isize {
+    syscall1(NR_UNMAP_PCI_BAR_2M, va).rax
 }
 
 pub unsafe fn sys_debug_null(force_iret: bool) -> isize {
