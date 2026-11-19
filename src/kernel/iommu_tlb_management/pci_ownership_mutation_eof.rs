@@ -90,7 +90,7 @@ proof fn update_pci_entry_eof_higher_inv(pre: PageTableHigher<PT_TYPE>, post: Pa
 
 /// EOF closure of `KernelK::update_pci_entry` for the table itself: no table invariant other than the payload's reads the PCI
 /// function array.
-proof fn update_pci_entry_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
+pub(crate) proof fn update_pci_entry_eof_table_wf(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
     requires
         pre.wf(),
         post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
@@ -145,6 +145,7 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(root),
+        0 <= index < PCI_FUNCTIONS_PER_PROCESS,
         pre.pt_mp.spec_index(root).locking_thread() is Write,
         post.pt_mp.perms_wf(),
         post.irt.inv(),
@@ -154,10 +155,12 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
             &&& !(process.state.view() is TablesEmptied)
             &&& !(process.state.view() is Zombie)
         },
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used && pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0,
+        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
     ensures
         post.subsystems_inv(),
         page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
-        io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
         process_pagetable_wf(post.prc_mp, post.pt_mp),
@@ -183,7 +186,11 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
     assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        broadcast use vstd::set::lemma_set_contains_len;
+        if update is Release { pre.pt_mp.spec_index(root).view().higher.pci.wf_entry_at(index); }
+        reveal(pagetable_pci_mappings_wf);
+    };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
@@ -265,9 +272,11 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
             &&& !(process.state.view() is Zombie)
         },
         update matches PciEntryUpdate::Claim { bus, device, function } ==> pre.irt.view().spec_index_owner(bus, device, function) is None,
+        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
         update is Release ==> {
             let bdf = pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).bdf;
             &&& pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used
+            &&& pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
             &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None
         },
     ensures

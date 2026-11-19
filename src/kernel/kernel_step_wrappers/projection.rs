@@ -103,7 +103,7 @@ pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &Ke
         kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    assert(post.irt.view().user_view() == pre.irt.view().user_view() && post.dflt_pt == pre.dflt_pt) by {
+    assert(post.irt.view().user_view() == pre.irt.view().user_view() && post.dflt_pt == pre.dflt_pt && post.pci_bars == pre.pci_bars) by {
         reveal(IommuRootTable::user_view); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
     };
     kernel_lock_states_unchanged_implies_u_cpu_array(pre, post);

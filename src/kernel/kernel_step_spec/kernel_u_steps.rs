@@ -918,6 +918,19 @@ pub open spec fn kernel_u_pci_claim_changed(old_u: KernelU, new_u: KernelU, cpu_
     })
 }
 
+/// Only the mapped-BAR-page counts of the PCI functions in the page table of the live process `prc_ptr` change; the functions
+/// stay and nothing else changes.
+#[verifier::opaque]
+pub open spec fn kernel_u_pci_bar_counts_changed(old_u: KernelU, new_u: KernelU, prc_ptr: RwLockProcessPtr) -> bool {
+    let process = old_u.process_map[prc_ptr];
+    let table = process.pagetable->Some_0;
+    let functions = new_u.process_map[prc_ptr].pagetable->Some_0.pci_functions;
+    &&& old_u.process_map.dom().contains(prc_ptr)
+    &&& process.pagetable is Some
+    &&& functions.dom() == table.pci_functions.dom()
+    &&& new_u == (KernelU { process_map: old_u.process_map.insert(prc_ptr, ProcessU { pagetable: Some(PageTableU { pci_functions: functions, ..table }), ..process }), ..old_u })
+}
+
 /// The non-Off cpu `cpu_id`, whose container `C` has a pending request for it, goes Off and unlocked: its running
 /// thread, if any, is requeued at the tail of shard `cpu_id` of `C`'s scheduler, `C`'s request bit for the cpu is
 /// cleared, and the cpu's TLB entries are flushed except an unflushed default-PCID entry.

@@ -70,3 +70,6 @@ pub mod subsystem_mutation_eof_l3;
 pub use subsystem_mutation_eof_l3::*;
 pub mod io_mappings_spec;
 pub use io_mappings_spec::*;
+pub mod subsystem_mutation_pagetable_pci;
+pub use subsystem_mutation_pagetable_pci::*;
+mod subsystem_mutation_pagetable_pci_eof;

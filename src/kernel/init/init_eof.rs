@@ -374,12 +374,11 @@ proof fn boot_memory_management_inv_eof_io_mappings(
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifest_wf(manifest_4k, krnl.pci_bars.view()),
     ensures
-        io_mappings_wf(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view()),
+        pagetable_pci_mappings_wf(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view()),
 {
-    assert(io_mappings_wf(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
-        reveal(io_mappings_wf); reveal(boot_dom0_io_manifest_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
+    assert(pagetable_pci_mappings_wf(krnl.pci_bars.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
+        reveal(pagetable_pci_mappings_wf); reveal(boot_page_array_ready); reveal(WholePageTable::wf_mapping_4k);
         reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::l3_links_l2_wf); reveal(WholePageTable::wf_l2);
         broadcast use spec_va_4k_valid_index_roundtrip, WholePageTable::spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq,
             WholePageTable::spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq, PageTableHigher::spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve;
@@ -411,7 +410,6 @@ pub(super) proof fn boot_memory_management_inv_eof(
         forall|pg_ptr: PagePtr| #![trigger owned_pages.contains(pg_ptr)] owned_pages.contains(pg_ptr) <==> page_ptr_valid(pg_ptr),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, scheduler_node_addr, process_node_addr),
-        boot_dom0_io_manifest_wf(manifest_4k, krnl.pci_bars.view()),
         pci_bar_table_wf(krnl.pci_bars.view()),
         pci_bar_pages_unavailable_wf(krnl.pci_bars.view(), page_array),
     ensures

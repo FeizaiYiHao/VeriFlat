@@ -14,6 +14,7 @@ pub proof fn kernel_u_user_domains_projection(krnl: &KernelK)
         kernel_k_user_projection(*krnl).cpu_tlb == krnl.cpu_tlb.view(),
         kernel_k_user_projection(*krnl).iommu_tlb == krnl.iommu_tlb.view(),
         kernel_k_user_projection(*krnl).kernel_l4_end == krnl.dflt_pt.view().kernel_l4_end,
+        kernel_k_user_projection(*krnl).pci_bars == krnl.pci_bars.view(),
 {}
 
 /// One cpu slot of the unwrapped user projection, without unfolding the other projected maps.

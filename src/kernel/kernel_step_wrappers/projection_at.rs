@@ -22,6 +22,7 @@ pub proof fn kernel_u_domains_projection(krnl: &KernelK)
         kernel_k_to_kernel_u(*krnl).cpu_tlb == krnl.cpu_tlb.view(),
         kernel_k_to_kernel_u(*krnl).iommu_tlb == krnl.iommu_tlb.view(),
         kernel_k_to_kernel_u(*krnl).kernel_l4_end == krnl.dflt_pt.view().kernel_l4_end,
+        kernel_k_to_kernel_u(*krnl).pci_bars == krnl.pci_bars.view(),
 { reveal(kernel_k_to_kernel_u); }
 
 /// One cpu slot of the user projection, without unfolding the other projected maps.

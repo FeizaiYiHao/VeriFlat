@@ -42,7 +42,8 @@ pub(super) open spec fn reclaim_held_leaves_eol_loop_framing(pre: KernelK, cur: 
     &&& cur.pt_mp.dom().contains(pagetable)
     &&& cur.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& cur.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& c.higher == (PageTableHigher { l3_tables: c.higher.l3_tables, mapping_1g: c.higher.mapping_1g, ..e.higher })
+    &&& c.higher == (PageTableHigher { l3_tables: c.higher.l3_tables, mapping_1g: c.higher.mapping_1g, pci: c.higher.pci, ..e.higher })
+    &&& c.higher.pci.view().dom() == e.higher.pci.view().dom()
     &&& c.mapping_1g().submap_of(e.mapping_1g()) && c.mapping_4k() == e.mapping_4k() && c.mapping_2m() == e.mapping_2m() && c.page_closure() == e.page_closure()
     &&& c.lower.l2_perms.dom() == e.lower.l2_perms.dom() && c.lower.pagetable_window_locks == e.lower.pagetable_window_locks && c.lower.window_stale_cpus == e.lower.window_stale_cpus
     &&& c.lower.hidden_l1_tables_in_locked_windows()
@@ -96,8 +97,10 @@ pub(super) proof fn reclaim_held_leaves_eol_iteration_pre(pre: KernelK, cur: Ker
         forall|depth: int| #![trigger indirect_1g[depth]] 0 <= depth < cur.thrd_mp.spec_index(thrd_ptr).view().container_depth ==> indirect_1g[depth] == cur.thrd_mp.spec_index(thrd_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth),
         cur.pt_mp.dom().contains(pagetable),
         cur.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        cur.pt_mp.spec_index(pagetable).view().higher
-            == (PageTableHigher { l3_tables: cur.pt_mp.spec_index(pagetable).view().higher.l3_tables, mapping_1g: cur.pt_mp.spec_index(pagetable).view().higher.mapping_1g, ..pre.pt_mp.spec_index(pagetable).view().higher }),
+        cur.pt_mp.spec_index(pagetable).view().higher == (PageTableHigher {
+            l3_tables: cur.pt_mp.spec_index(pagetable).view().higher.l3_tables, mapping_1g: cur.pt_mp.spec_index(pagetable).view().higher.mapping_1g,
+            pci: cur.pt_mp.spec_index(pagetable).view().higher.pci, ..pre.pt_mp.spec_index(pagetable).view().higher
+        }),
         whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
         forall|l4i: L4Index| #![trigger whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).spec_resolve_mapping_l4(l4i) is None,
@@ -158,7 +161,11 @@ pub(super) proof fn reclaim_held_leaves_eol_step_4k(pre: KernelK, mid: KernelK, 
         ({
             let old_c = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(call.pt_mp, call.pt_lower.view(), pagetable);
-            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher }) && new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
+            &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)] new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
+            &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -233,7 +240,11 @@ pub(super) proof fn reclaim_held_leaves_eol_step_2m(pre: KernelK, mid: KernelK, 
         ({
             let old_c = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(call.pt_mp, call.pt_lower.view(), pagetable);
-            &&& new_c.higher == old_c.higher && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
+            &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher }) && new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
+            &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_l3(l4i, l3i)] new_c.spec_held_l3(l4i, l3i) == old_c.spec_held_l3(l4i, l3i)
+            &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_held_1g_l3(l4i, l3i)] new_c.spec_held_1g_l3(l4i, l3i) == old_c.spec_held_1g_l3(l4i, l3i)
+            &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& old_c.lower.hidden_l1_tables_in_locked_windows() ==> new_c.lower.hidden_l1_tables_in_locked_windows()
             &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (old_c.spec_held_l3(spec_v2l4index(va), spec_v2l3index(va))->0.addr, spec_v2l2index(va)) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
@@ -336,6 +347,8 @@ pub(super) proof fn reclaim_held_leaves_eol_exit(pre: KernelK, cur: KernelK, pre
     indirect_4k: [usize; MAX_CONTAINER_TREE_DEPTH], direct_4k: usize, indirect_2m: [usize; MAX_CONTAINER_TREE_DEPTH], direct_2m: usize, indirect_1g: [usize; MAX_CONTAINER_TREE_DEPTH], direct_1g: usize,
     cursor: (L4Index, L3Index, L2Index, L1Index))
     requires
+        cur.inv(),
+        pre.pt_mp.dom().contains(pagetable),
         reclaim_held_leaves_eol_loop_framing(pre, cur, pre_lctx, pagetable, thrd_ptr, indirect_4k, direct_4k, indirect_2m, direct_2m, indirect_1g, direct_1g, cursor),
         forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable).spec_held_4k_l1(i4, i3, i2, i1)]
             pei_valid(i4) && pei_valid(i3) && pei_valid(i2) && pei_valid(i1) && spec_l4_index_path_le(cursor, (i4, i3, i2, i1))
@@ -364,7 +377,9 @@ pub(super) proof fn reclaim_held_leaves_eol_exit(pre: KernelK, cur: KernelK, pre
         ({
             let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
             let new_c = whole_pagetable(cur.pt_mp, cur.pt_lower.view(), pagetable);
-            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
+            &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, pci: new_c.higher.pci, ..old_c.higher })
+            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
+            &&& forall|f: PciBdf| #![trigger new_c.higher.pci.view()[f]] new_c.higher.pci.view().dom().contains(f) ==> new_c.higher.pci.view()[f] =~= Set::<PciBarMapping>::empty()
             &&& new_c.mapping_1g().submap_of(old_c.mapping_1g()) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.page_closure() == old_c.page_closure()
             &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom() && new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks && new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
             &&& new_c.lower.hidden_l1_tables_in_locked_windows()
@@ -382,5 +397,8 @@ pub(super) proof fn reclaim_held_leaves_eol_exit(pre: KernelK, cur: KernelK, pre
         }),
 {
     reveal(reclaim_held_leaves_eol_loop_framing);
+    reveal(pagetable_pci_mappings_wf);
+    cur.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
 }
 }

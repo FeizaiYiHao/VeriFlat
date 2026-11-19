@@ -85,6 +85,12 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             0 <= i < range.len && self.mapping_4k().dom().contains(range.view().spec_index(i)) ==> !self.mapping_4k().spec_index(range.view().spec_index(i)).is_io
     }
 
+    /// No mapped address in the 2M range maps device memory.
+    pub open spec fn spec_mapping_2m_va_range_ram(&self, range: &VaRange2M) -> bool {
+        forall|i: int| #![trigger self.mapping_2m().dom().contains(range.view().spec_index(i))]
+            0 <= i < range.len && self.mapping_2m().dom().contains(range.view().spec_index(i)) ==> !self.mapping_2m().spec_index(range.view().spec_index(i)).is_io
+    }
+
     pub broadcast proof fn mapping_4k_index_range_empty_implies_va_empty_at(&self, start_l4i: L4Index, start_l3i: L3Index, start_l2i: L2Index, start_l1i: L1Index, end_l4i: L4Index, end_l3i: L3Index,
         end_l2i: L2Index, end_l1i: L1Index, va: VAddr)
         requires

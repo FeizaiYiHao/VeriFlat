@@ -241,6 +241,67 @@ impl PciFunctionArray {
         proof { broadcast use vstd::set::lemma_set_insert_len, vstd::set::lemma_set_empty_len; }
     }
 
+    /// The function of the used entry `i` gains the BAR mapping `m`; its count grows by one.
+    pub fn add_mapping(&mut self, i: usize, Ghost(m): Ghost<PciBarMapping>)
+        requires
+            old(self).wf(),
+            i < PCI_FUNCTIONS_PER_PROCESS,
+            old(self).spec_entry(i as int).used,
+            !old(self).view()[old(self).spec_entry(i as int).bdf].contains(m),
+            old(self).view()[old(self).spec_entry(i as int).bdf].len() < usize::MAX,
+        ensures
+            final(self).wf(),
+            final(self).view() == old(self).view().insert(old(self).spec_entry(i as int).bdf, old(self).view()[old(self).spec_entry(i as int).bdf].insert(m)),
+            final(self).view().dom() == old(self).view().dom(),
+            final(self).mapping_counts()
+                == old(self).mapping_counts().insert(old(self).spec_entry(i as int).bdf, (old(self).mapping_counts()[old(self).spec_entry(i as int).bdf] + 1) as nat),
+            final(self).spec_entry(i as int) == (PciFunctionEntry { count: (old(self).spec_entry(i as int).count + 1) as usize, ..old(self).spec_entry(i as int) }),
+            forall|j: int| #![trigger final(self).spec_entry(j)] j != i ==> final(self).spec_entry(j) == old(self).spec_entry(j),
+            forall|f: PciBdf| #![trigger final(self).index_of(f)] final(self).index_of(f) == old(self).index_of(f),
+    {
+        proof { reveal(PciFunctionArray::wf); }
+        let e = *self.entries.get(i);
+        let ghost f = e.bdf;
+        proof { broadcast use vstd::set::lemma_set_insert_len; }
+        self.entries.set(i, PciFunctionEntry { count: e.count + 1, ..e });
+        self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.insert(m))));
+        proof {
+            assert(self.owned.view().dom() =~= old(self).owned.view().dom());
+            assert(self.view() =~= old(self).view().insert(f, old(self).view()[f].insert(m)));
+            assert(self.mapping_counts() =~= old(self).mapping_counts().insert(f, (old(self).mapping_counts()[f] + 1) as nat));
+        }
+    }
+
+    /// The function of the used entry `i` loses its BAR mapping `m`; its count drops by one.
+    pub fn remove_mapping(&mut self, i: usize, Ghost(m): Ghost<PciBarMapping>)
+        requires
+            old(self).wf(),
+            i < PCI_FUNCTIONS_PER_PROCESS,
+            old(self).spec_entry(i as int).used,
+            old(self).view()[old(self).spec_entry(i as int).bdf].contains(m),
+        ensures
+            final(self).wf(),
+            final(self).view() == old(self).view().insert(old(self).spec_entry(i as int).bdf, old(self).view()[old(self).spec_entry(i as int).bdf].remove(m)),
+            final(self).view().dom() == old(self).view().dom(),
+            final(self).mapping_counts()
+                == old(self).mapping_counts().insert(old(self).spec_entry(i as int).bdf, (old(self).mapping_counts()[old(self).spec_entry(i as int).bdf] - 1) as nat),
+            final(self).spec_entry(i as int) == (PciFunctionEntry { count: (old(self).spec_entry(i as int).count - 1) as usize, ..old(self).spec_entry(i as int) }),
+            forall|j: int| #![trigger final(self).spec_entry(j)] j != i ==> final(self).spec_entry(j) == old(self).spec_entry(j),
+            forall|f: PciBdf| #![trigger final(self).index_of(f)] final(self).index_of(f) == old(self).index_of(f),
+    {
+        proof { reveal(PciFunctionArray::wf); }
+        let e = *self.entries.get(i);
+        let ghost f = e.bdf;
+        proof { broadcast use vstd::set::lemma_set_remove_len, vstd::set::lemma_set_contains_len; }
+        self.entries.set(i, PciFunctionEntry { count: e.count - 1, ..e });
+        self.owned = Ghost(self.owned.view().insert(f, (i as int, self.owned.view()[f].1.remove(m))));
+        proof {
+            assert(self.owned.view().dom() =~= old(self).owned.view().dom());
+            assert(self.view() =~= old(self).view().insert(f, old(self).view()[f].remove(m)));
+            assert(self.mapping_counts() =~= old(self).mapping_counts().insert(f, (old(self).mapping_counts()[f] - 1) as nat));
+        }
+    }
+
     /// The used entry `i` becomes unused; its function and that function's BAR mappings leave the array.
     pub fn remove(&mut self, i: usize)
         requires

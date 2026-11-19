@@ -88,9 +88,28 @@ proof fn remove_2m_mapping_without_free_in_window_eof_page_tables(pre: KernelK, 
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }
 
+/// `pagetable_pci_mappings_wf`: the removed leaf at `va` was the RAM leaf the page lists, so no BAR mapping record names it, and every
+/// other leaf and record is unchanged.
+proof fn remove_2m_mapping_without_free_in_window_eof_pagetable_pci_mappings_wf(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, l2_ptr: PageMapPtr)
+    requires
+        pre.inv(),
+        remove_2m_mapping_without_free_in_window_eof_transition_framing(pre, post, pagetable, va, pg_ptr, l2_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{
+    reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid();
+    mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
+    reveal(pagetable_pci_mappings_wf);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+}
+
 /// The memory-management invariant closes after the non-present 2M leaf `va` and its record on `pg_ptr` leave together.
 proof fn remove_2m_mapping_without_free_in_window_eof_memory_management_inv(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, l2_ptr: PageMapPtr)
     requires
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
         pre.inv(),
         remove_2m_mapping_without_free_in_window_eof_transition_framing(pre, post, pagetable, va, pg_ptr, l2_ptr),
         page_ptr_valid(pg_ptr),
@@ -108,7 +127,6 @@ proof fn remove_2m_mapping_without_free_in_window_eof_memory_management_inv(pre:
 {
     reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -229,6 +247,7 @@ pub(super) proof fn remove_2m_mapping_without_free_in_window_eof(pre: KernelK, p
     assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(page_array_wf); reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     remove_2m_mapping_without_free_in_window_eof_page_tables(pre, post, pagetable, va, pg_ptr, l2_ptr);
+    remove_2m_mapping_without_free_in_window_eof_pagetable_pci_mappings_wf(pre, post, pagetable, va, pg_ptr, l2_ptr);
     remove_2m_mapping_without_free_in_window_eof_memory_management_inv(pre, post, pagetable, va, pg_ptr, l2_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     reclaim_unmapped_2m_page_in_window_eof_cpu_caches(pre, post, pagetable, va, l2_ptr);
@@ -633,7 +652,11 @@ pub(super) proof fn remove_last_2m_mapping_to_allocator_in_window_eof(
 {
     reveal(remove_last_2m_mapping_to_allocator_in_window_eof_transition_framing);
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(io_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
+        page_ptr_valid_imply_page_index_valid();
+        mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);
+        reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+    };
     assert(post.subsystems_inv()) by {
         reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(thread_ipc_transit_wf); reveal(KernelK::default_pagetable_wf);

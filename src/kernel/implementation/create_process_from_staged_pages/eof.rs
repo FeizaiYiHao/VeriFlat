@@ -732,11 +732,11 @@ proof fn create_process_from_staged_pages_eof_memory_management_inv(
     assert(allocator_1g_cpu_caches_empty_wf(post.allc_1g_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
     assert(pci_bar_table_wf(post.pci_bars.view())) by { reveal(create_process_from_staged_pages_eof_transition_framing); };
     assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); };
-    create_process_from_staged_pages_eof_io_mappings_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, false, 0, 0, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
+    create_process_from_staged_pages_eof_pagetable_pci_mappings_wf(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, false, 0, 0, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid);
 }
 
-/// `io_mappings_wf`: the BAR table and every existing page table and IOMMU table are unchanged, and the new tables are empty.
-pub(crate) proof fn create_process_from_staged_pages_eof_io_mappings_wf(
+/// `pagetable_pci_mappings_wf`: the BAR table and every existing page table and IOMMU table are unchanged, and the new tables are empty.
+pub(crate) proof fn create_process_from_staged_pages_eof_pagetable_pci_mappings_wf(
     pre: KernelK, post: KernelK, process_pg_ptr: PagePtr, pagetable_pg_ptr: PagePtr, l4_pg_ptr: PagePtr, with_iommu: bool,
     iommu_table_pg_ptr: PagePtr, iommu_l4_pg_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thrd_ptr: RwLockThreadPtr,
     ctn_ptr: RwLockContainerPtr, pcid_allc_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
@@ -745,11 +745,11 @@ pub(crate) proof fn create_process_from_staged_pages_eof_io_mappings_wf(
         pre.inv(),
         create_process_from_staged_pages_eof_transition_framing(pre, post, process_pg_ptr, pagetable_pg_ptr, l4_pg_ptr, with_iommu, iommu_table_pg_ptr, iommu_l4_pg_ptr, parent_ptr, staging_thrd_ptr, ctn_ptr, pcid_allc_ptr, pcid),
     ensures
-        io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
     reveal(create_process_from_staged_pages_eof_transition_framing);
-    reveal(io_mappings_wf);
+    reveal(pagetable_pci_mappings_wf);
 }
 
 /// The staged pages leave their thread for kernel-object states that name no owner object, so every page keeps its

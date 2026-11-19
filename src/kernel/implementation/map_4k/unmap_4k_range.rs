@@ -495,6 +495,7 @@ pub fn unmap_4k_range(
         checked_table.wf_mapping_4k(),
         checked_table.higher == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).higher,
         forall|j: int| #![trigger checked_table.mapping_4k().dom().contains(range.view().spec_index(j))] 0 <= j < range.len ==> checked_table.mapping_4k().dom().contains(range.view().spec_index(j)),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).spec_mapping_4k_va_range_ram(range),
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)), range.view().spec_index(j)]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) && 0 <= j < range.len
                 && spec_v2l4index(range.view().spec_index(j)) == spec_v2l4index(w.va) && spec_v2l3index(range.view().spec_index(j)) == spec_v2l3index(w.va) && spec_v2l2index(range.view().spec_index(j)) == spec_v2l2index(w.va)

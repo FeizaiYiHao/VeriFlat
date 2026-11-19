@@ -55,6 +55,8 @@ pub mod unmap_iommu_4k_remove;
 mod unmap_iommu_4k_remove_eof;
 pub mod unmap_io_leaf;
 mod unmap_io_leaf_eof;
+pub mod map_io_leaf;
+mod map_io_leaf_eof;
 pub mod unmap_iommu_4k_reclaim;
 mod unmap_iommu_4k_reclaim_eof;
 mod unmap_iommu_4k_reclaim_spec;

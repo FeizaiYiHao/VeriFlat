@@ -84,6 +84,8 @@ pub mod pagetable_l3_hidden;
 pub mod killed_owner_sets_empty;
 /// K->U lemma of a section that exchanges one thread's 4K and 2M quotas while changing only page, allocator, and lock state.
 pub mod thread_quota_exchange;
+/// K->U lemmas of sections that install or remove one IO 4K or 2M leaf together with its BAR mapping record.
+pub mod pci_bar_mapping;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -123,6 +125,7 @@ pub use process_1g_mapping::*;
 pub use pagetable_l3_hidden::*;
 pub use killed_owner_sets_empty::*;
 pub use thread_quota_exchange::*;
+pub use pci_bar_mapping::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

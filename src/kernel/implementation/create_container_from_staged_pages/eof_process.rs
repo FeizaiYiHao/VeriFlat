@@ -887,16 +887,16 @@ pub(super) proof fn publish_staged_container_root_eof_memory_management_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    publish_staged_container_root_eof_io_mappings_wf(
+    publish_staged_container_root_eof_pagetable_pci_mappings_wf(
         pre, post, parent_ctn_ptr, current_thrd_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
 }
 
-/// `io_mappings_wf`: the BAR table, the IOMMU tables and every existing page table are unchanged, and the new page table is
+/// `pagetable_pci_mappings_wf`: the BAR table, the IOMMU tables and every existing page table are unchanged, and the new page table is
 /// empty.
-pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
+pub(super) proof fn publish_staged_container_root_eof_pagetable_pci_mappings_wf(
     pre: KernelK, post: KernelK, parent_ctn_ptr: RwLockContainerPtr, current_thrd_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -936,11 +936,11 @@ pub(super) proof fn publish_staged_container_root_eof_io_mappings_wf(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        io_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+        pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     broadcast use whole_pagetable_is_empty_implies_no_held_4k, whole_pagetable_is_empty_implies_no_held_2m, whole_pagetable_is_empty_implies_no_held_1g;
     reveal(publish_staged_container_root_eof_transition_framing);
-    reveal(io_mappings_wf);
+    reveal(pagetable_pci_mappings_wf);
 }
 
 /// `pci_bar_pages_unavailable_wf`: the BAR table is unchanged and every page the publish changes was owned by the current thread,

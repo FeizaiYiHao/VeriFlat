@@ -72,25 +72,19 @@ pub open spec fn boot_page_map_perms_wf(perms: Map<PageMapPtr, PointsTo<PageMap>
         }
 }
 
-/// Every dom0 boot 4K mapping maps a valid 4K virtual address, is present and owned by the root container, and a RAM
-/// mapping maps a valid page.
+/// Every dom0 boot mapping maps a valid 4K virtual address to a present, valid RAM page owned by the root container; dom0 gets
+/// no IO leaf at boot.
 pub open spec fn boot_dom0_manifest_wf(manifest: Map<VAddr, MapEntry>, root_container: RwLockContainerPtr) -> bool {
     forall|va: VAddr|
         #![trigger manifest.dom().contains(va)]
         manifest.dom().contains(va) ==> {
             let entry = manifest.spec_index(va);
             &&& va_4k_valid(va)
-            &&& !entry.is_io ==> page_ptr_valid(entry.addr)
+            &&& !entry.is_io
+            &&& page_ptr_valid(entry.addr)
             &&& entry.present
             &&& entry.owning_container.view() == root_container
         }
-}
-
-/// Every IO mapping of dom0's boot 4K manifest maps a BAR page.
-#[verifier::opaque]
-pub open spec fn boot_dom0_io_manifest_wf(manifest_4k: Map<VAddr, MapEntry>, bars: Seq<PciBarEntry>) -> bool {
-    forall|va: VAddr| #![trigger manifest_4k.dom().contains(va)]
-        manifest_4k.dom().contains(va) && manifest_4k.spec_index(va).is_io ==> pci_bar_page(bars, manifest_4k.spec_index(va).addr)
 }
 
 /// Reverse maps recording where the boot loader linked each L3, L2, and L1 table page of dom0's page table.
@@ -240,14 +234,13 @@ pub open spec fn boot_page_array_ready(
                     &&& page.state is Mapped4k
                     &&& pt == layout.cpu_pagetable
                     &&& manifest_4k.dom().contains(va)
-                    &&& !manifest_4k.spec_index(va).is_io
                     &&& manifest_4k.spec_index(va).addr == pg_ptr
                 }
             &&& page.iommu_mappings() == Set::<(RwLockPageTableRoot, VAddr)>::empty()
         }
     &&& forall|va: VAddr|
         #![trigger manifest_4k.dom().contains(va)]
-        manifest_4k.dom().contains(va) && !manifest_4k.spec_index(va).is_io ==> {
+        manifest_4k.dom().contains(va) ==> {
             let page = pg_arr.spec_index(page_ptr2page_index(manifest_4k.spec_index(va).addr)).view().view();
             &&& page.state is Mapped4k
             &&& page.mappings().contains((layout.cpu_pagetable, va))
@@ -1025,7 +1018,6 @@ pub fn finish_init_from_boot(
         boot_page_array_ready(page_array, layout, cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom(), manifest_4k.view(), &free_4k_pool, &free_2m_pool, &free_1g_pool),
         pci_bar_table_wf(pci_bars.view()),
         pci_bar_pages_unavailable_wf(pci_bars.view(), page_array),
-        boot_dom0_io_manifest_wf(manifest_4k.view(), pci_bars.view()),
         boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
         boot_cpu_hw_cr3_pcid_ready(cpu_hw_cr3_pcid, default_pagetable.view().cr3),

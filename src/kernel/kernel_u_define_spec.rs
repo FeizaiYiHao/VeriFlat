@@ -22,6 +22,8 @@ verus! {
         pub cpu_tlb: Map<(CpuId, Pcid), SingleTLB>,
         pub iommu_tlb: Map<VtdDomainId, SingleTLB>,
         pub kernel_l4_end: usize,
+        /// The memory BARs of every PCI function; constant after boot.
+        pub pci_bars: Seq<PciBarEntry>,
     }
 
     /// The range starts at or above the first user L4 index, compared as the implementation's prechecks do.
@@ -37,6 +39,7 @@ verus! {
     pub open spec fn kernel_k_user_projection(krnl: KernelK) -> KernelU {
         KernelU {
             iommu_root_table: krnl.irt.view().user_view(), cpu_tlb: krnl.cpu_tlb.view(), iommu_tlb: krnl.iommu_tlb.view(), kernel_l4_end: krnl.dflt_pt.view().kernel_l4_end,
+            pci_bars: krnl.pci_bars.view(),
             endpoint_map: Map::new(krnl.ep_mp.dom(), |ptr: RwLockEndpointPtr| {
                 let e = krnl.ep_mp.spec_index(ptr);
                 EndpointU {

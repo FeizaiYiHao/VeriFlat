@@ -139,7 +139,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
             })
         }),
 {
-    assert(entry.dflt_pt == before.dflt_pt) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    assert(entry.dflt_pt == before.dflt_pt && entry.pci_bars == before.pci_bars) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     if before.thrd_mp.dom().contains(current_thrd_ptr) { kernel_thread_projection_at(before, current_thrd_ptr); }
     if before.thrd_mp.dom().contains(peer_thrd_ptr) { kernel_thread_projection_at(before, peer_thrd_ptr); }
@@ -438,7 +438,7 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
             })
         }),
 {
-    assert(post.dflt_pt == pre.dflt_pt) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    assert(post.dflt_pt == pre.dflt_pt && post.pci_bars == pre.pci_bars) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), caller);
     post.thrd_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer);
     post.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), endpoint);
