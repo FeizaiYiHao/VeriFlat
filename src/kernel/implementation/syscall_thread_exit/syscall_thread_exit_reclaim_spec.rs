@@ -29,12 +29,12 @@ pub(super) open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: K
     &&& post.thrd_mp.spec_index(thrd_ptr).control() == thread.control()
 }
 
-/// Detaching the write-held IOMMU table `iommu_table` of the exiting process under the held root-table lock: every root-table
-/// slot its owner owns drops its IOMMU root and DID, the table drops its DID, and the IOTLB domain of that DID, if any, is
-/// emptied; cached context entries of other DIDs stay and any left tagged with it match a present slot. Owners, the table
-/// base, the root-table lock, the table's lock, and every other object stay.
+/// Detaching the write-held IOMMU table `iommu_table` of the exiting process under the held root-table lock: every function
+/// of the PCI function array of the process's page table `pagetable` drops its IOMMU root and DID, the table drops its DID,
+/// and the IOTLB domain of that DID, if any, is emptied; cached context entries of other DIDs stay and any left tagged with
+/// it match a present slot. Owners, the table base, the root-table lock, the table's lock, and every other object stay.
 #[verifier::opaque]
-pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot) -> bool {
     let table = pre.it_mp.spec_index(iommu_table);
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
@@ -43,7 +43,7 @@ pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_fram
     &&& post.pci_bars.view() == pre.pci_bars.view()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-        let owned = pre.irt.view().spec_index_owner(b, d, f) == table.view().proc_ptr;
+        let owned = pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains((b, d, f));
         &&& post.irt.view().spec_index_iommu_root(b, d, f) == if owned { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
         &&& post.irt.view().spec_index_iommu_did(b, d, f) == if owned { None } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
     }

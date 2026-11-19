@@ -184,6 +184,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
         emptied_pt.lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         emptied_pt.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         emptied_pt.higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+        emptied_pt.higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         emptied_pt.kernel_l4_end() == KERNEL_MEM_END_L4INDEX,
         emptied_pt.lower.hidden_l1_tables_in_locked_windows(),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger emptied_pt.spec_held_4k_l1(l4i, l3i, l2i, l1i)]

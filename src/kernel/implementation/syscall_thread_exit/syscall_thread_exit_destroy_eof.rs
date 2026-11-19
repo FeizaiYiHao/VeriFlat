@@ -502,12 +502,12 @@ proof fn thread_exit_destroy_eof_iommu_relations(
         thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, ctn_ptr, prc_ptr, thrd_ptr, owner, allc_ptr, proc_node_addr, cache_node_addr),
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
         iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(thread_exit_destroy_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
 }
 

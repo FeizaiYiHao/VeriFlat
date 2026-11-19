@@ -56,7 +56,7 @@ proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, prc_ptr: RwLoc
     assert(mid.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, mid); };
 }
 
-/// Marking the write-held exiting thread `thrd_ptr` as exited and its write-held process `prc_ptr`, whose tables map nothing and whose only thread is `thrd_ptr`, as having emptied its tables keeps the kernel invariant.
+/// Marking the write-held exiting thread `thrd_ptr` as exited and its write-held process `prc_ptr`, whose tables map nothing, whose page table holds no PCI function, and whose only thread is `thrd_ptr`, as having emptied its tables keeps the kernel invariant.
 pub(super) proof fn thread_exit_tables_emptied_eof(
     pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
 )
@@ -82,6 +82,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
         forall|l4i: L4Index, l3i: L3Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i)]
             KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_held_1g_l3(l4i, l3i) is None,
         pre.prc_mp.spec_index(prc_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
     ensures post.inv(),
 {
     thread_exit_mark_exited_eof(pre, post, prc_ptr, thrd_ptr);
@@ -109,16 +110,16 @@ pub(super) proof fn thread_exit_tables_emptied_eof(
     };
     thread_exit_tables_emptied_eof_process(pre, post, prc_ptr, thrd_ptr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { process_pci_function_ownership_wf_preserved_for_process_fields_except_quota(); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { pci_function_ownership_wf_preserved_for_process_fields_except_quota(); };
     assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
 /// Detaching the IOMMU table `iommu_table` keeps the memory invariants: the table keeps its mappings, pages, and owner.
-proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot)
+proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        thread_exit_detach_process_functions_eof_transition_framing(pre, post, iommu_table),
+        thread_exit_detach_process_functions_eof_transition_framing(pre, post, pagetable, iommu_table),
         pre.it_mp.dom().contains(iommu_table),
     ensures post.memory_management_inv(),
 {
@@ -145,12 +146,17 @@ proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: Ker
     assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
 }
 
-/// Detaching the IOMMU table `iommu_table` of the exiting process keeps every invariant: only slots of its owner lose their
-/// root and DID, the table drops its DID, and that DID loses its anchor together with its IOTLB domain and cached contexts.
-pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot)
+/// Detaching the IOMMU table `iommu_table` of the exiting process `prc_ptr` from every function of the PCI function array
+/// of its page table `pagetable` keeps every invariant: only those slots lose their root and DID, the table drops its DID,
+/// and that DID loses its anchor, a function of the array, together with its IOTLB domain and cached contexts.
+pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        thread_exit_detach_process_functions_eof_transition_framing(pre, post, iommu_table),
+        thread_exit_detach_process_functions_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.prc_mp.dom().contains(prc_ptr),
+        !pre.prc_mp.spec_index(prc_ptr).view().zombie,
+        pre.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(prc_ptr).view().iommu_table == Some(iommu_table),
         pre.it_mp.dom().contains(iommu_table),
         post.irt.inv(),
         post.iommu_tlb.inv(),
@@ -161,16 +167,21 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
         post.inv(),
         pre.it_mp.spec_index(iommu_table).view().leaves_present() ==> post.it_mp.spec_index(iommu_table).view().leaves_present(),
 {
-    thread_exit_detach_process_functions_eof_memory(pre, post, iommu_table);
+    thread_exit_detach_process_functions_eof_memory(pre, post, pagetable, iommu_table);
     reveal(thread_exit_detach_process_functions_eof_transition_framing);
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    // The DID's anchor belonged to the detached owner, so no cached context entry keeps it.
+    // A function of the array is owned by the process; a function attached to its table is owned by it, hence in the array.
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
+        reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf); reveal(process_pagetable_wf);
+    };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    // The DID's anchor is a function of the array, so no cached context entry keeps it.
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
         assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]))
-            by { reveal(iommu_root_table_process_wf); };
+            by { reveal(iommu_root_table_process_wf); reveal(pci_function_ownership_wf); reveal(process_iommu_table_wf); };
     }
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
+        reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(IommuTLB::inv); reveal(pci_function_ownership_wf); reveal(process_pagetable_wf);
+    };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!
