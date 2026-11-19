@@ -63,7 +63,8 @@ impl KernelK {
             update is Release ==> {
                 let bdf = old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).bdf;
                 &&& old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.spec_entry(index as int).used
-                &&& old(self).irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None
+                &&& old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
+                    ==> old(self).irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is None
             },
         ensures
             final(self).inv(),
@@ -118,6 +119,9 @@ impl KernelK {
             if self.pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((bus, device, function)) {
                 pci_function_ownership_wf_pagetable_at(self.irt.view(), self.prc_mp, self.pt_mp, pagetable_ptr, (bus, device, function));
             }
+            if update is Release && self.prc_mp.spec_index(proc_ptr).view().iommu_table is None {
+                update_pci_entry_eof_released_function_detached(*old(self), pagetable_ptr, (bus, device, function));
+            }
         }
         let pagetable = self.pt_mp.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(pagetable_perm));
         match update {
@@ -166,7 +170,8 @@ impl KernelK {
             irt_perm.state() is WriteLock,
             irt_perm.thread_id() == lctx.thread_id(),
             irt_perm.lock_id() == old(self).irt.locking_thread()->Write_lock_id,
-            forall|b: usize, d: usize, f: usize| #![trigger old(self).irt.view().spec_index_iommu_root(b, d, f)]
+            old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
+                ==> forall|b: usize, d: usize, f: usize| #![trigger old(self).irt.view().spec_index_iommu_root(b, d, f)]
                 old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f)) ==> old(self).irt.view().spec_index_iommu_root(b, d, f) is None,
         ensures
             final(self).inv(),
@@ -214,7 +219,8 @@ impl KernelK {
                 forall|b: usize, d: usize, f: usize| #![trigger self.irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> self.irt.view().spec_index_owner(b, d, f)
                     == if old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f))
                         && old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.index_of((b, d, f)) < i { None } else { old(self).irt.view().spec_index_owner(b, d, f) },
-                forall|b: usize, d: usize, f: usize| #![trigger self.irt.view().spec_index_iommu_root(b, d, f)]
+                old(self).prc_mp.spec_index(old(self).pt_mp.spec_index(pagetable_ptr).view().higher.proc_ptr).view().iommu_table is Some
+                    ==> forall|b: usize, d: usize, f: usize| #![trigger self.irt.view().spec_index_iommu_root(b, d, f)]
                     old(self).pt_mp.spec_index(pagetable_ptr).view().higher.pci.view().dom().contains((b, d, f)) ==> self.irt.view().spec_index_iommu_root(b, d, f) is None,
                 self.pt_mp.unchanged_except(&old(self).pt_mp, pagetable_ptr),
                 forall|k: RwLockPageTableRoot| #![trigger self.pt_mp.lock_id_by_key(k)] old(self).pt_mp.dom().contains(k) ==> self.pt_mp.lock_id_by_key(k) == old(self).pt_mp.lock_id_by_key(k),

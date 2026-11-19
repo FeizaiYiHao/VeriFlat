@@ -192,6 +192,21 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); };
 }
 
+/// A function of the array of a page table whose process has no IOMMU table is detached: a present context entry would name
+/// the function's owner, the table's process, and that process's IOMMU table.
+pub(super) proof fn update_pci_entry_eof_released_function_detached(pre: KernelK, root: RwLockPageTableRoot, f: PciBdf)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains(f),
+        pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view().iommu_table is None,
+    ensures
+        pre.irt.view().spec_index_iommu_root(f.0, f.1, f.2) is None,
+{
+    pci_function_ownership_wf_pagetable_at(pre.irt.view(), pre.prc_mp, pre.pt_mp, root, f);
+    assert(pre.irt.view().spec_index_iommu_root(f.0, f.1, f.2) is None) by { reveal(iommu_root_table_process_wf); };
+}
+
 /// EOF closure of `KernelK::update_pci_entry` for the root-table invariants: a claimed function was unowned, hence detached, and
 /// a released one is detached, so no context entry or DID anchor changes its owner; the owner and the array of the updated
 /// function move together.
