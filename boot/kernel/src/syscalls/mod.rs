@@ -82,6 +82,7 @@ use veriflat_monolith::kernel::implementation::syscall_new_process::syscall_new_
 use veriflat_monolith::kernel::implementation::syscall_new_thread::syscall_new_thread::syscall_new_thread;
 use veriflat_monolith::kernel::implementation::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint;
 use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_attach_dma::syscall_pci_attach_dma;
+use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_claim::syscall_pci_claim;
 use veriflat_monolith::kernel::implementation::syscall_schedule::syscall_schedule::{syscall_schedule, ScheduleResult};
 use veriflat_monolith::kernel::implementation::syscall_thread_exit::syscall_thread_exit::syscall_thread_exit;
 use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4k;
@@ -566,6 +567,11 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorIommuVaNotMapped => 48,
         ErrorContainerLockOrderConflict => 49,
         ErrorIpcRangeNotUser => 50,
+        ErrorIpcPciBarMapped => 51,
+        ErrorIpcPciReceiverFull => 52,
+        ErrorPciNotRootProcess => 53,
+        ErrorPciAlreadyOwned => 54,
+        ErrorPciFunctionArrayFull => 55,
     }
 }
 
@@ -835,6 +841,10 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_PCI_ATTACH_DMA => {
             require!(bdf_ok(a1, a2, a3));
             syscall_pci_attach_dma(k, t!(), t!(), cpu_id, a1, a2, a3)
+        }
+        vsys::NR_PCI_CLAIM => {
+            require!(bdf_ok(a1, a2, a3));
+            syscall_pci_claim(k, t!(), t!(), cpu_id, a1, a2, a3)
         }
         _ => {
             set_trap_error(regs, vsys::ERR_INVALID_SYSCALL);

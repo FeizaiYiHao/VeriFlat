@@ -598,12 +598,12 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let pci_bars: &'static PciBarTable = (*(&raw mut PCI_BAR_TABLE)).write(PciBarTable::new(bar_entries, boot_info.bar_slots.len()));
 
     // Ghost arguments, in order: the kernel's L4 entries, dom0's 4K manifest (every present user leaf `walk_dom0`
-    // checked, RAM and IO, at its VA, owned by the root container), every page pointer, every PCI function, and the boot
-    // table reverse maps; the BAR table sits between the manifest and the page pointers.
+    // checked, RAM and IO, at its VA, owned by the root container), every page pointer, and the boot table reverse maps;
+    // the BAR table sits between the manifest and the page pointers. Every PCI function starts unowned.
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_array, cpu_tlb, iommu_tlb,
         free_4k_pool, free_2m_pool, free_1g_pool,
-        Ghost::assume_new(), Ghost::assume_new(), pci_bars, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
+        Ghost::assume_new(), Ghost::assume_new(), pci_bars, Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

@@ -2,6 +2,9 @@
 //! its result, logging `self-test: <name> ok` the first time each one succeeds. It exits with
 //! `sys_debug_exit(0)` once every syscall passed and with a nonzero code at the first failure.
 //!
+//! PCI functions: every function starts unowned; dom0, the root process, claims the DMA test device before attaching or
+//! sending it, and claims it again once the child it sent the device to is killed.
+//!
 //! Device memory: dom0's boot page table maps every BAR page at `PCI_BAR_WINDOW_BASE + p` as a 4K IO leaf; the IO
 //! checks (`io_*`, `iommu_io`) read a device register through it, unmap an IO page for good, and check that an IO page
 //! can be neither IOMMU-mapped nor sent to a child process.
@@ -20,13 +23,13 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use vsys::*;
 
 /// The verified syscalls (SystemCalls.md section 14) with the names the log uses.
-const SYSCALLS: [(usize, &str); 50] = [
+const SYSCALLS: [(usize, &str); 51] = [
     (NR_ALLOC_QUOTA_4K, "alloc_quota_4k"), (NR_ALLOC_THREAD_QUOTA_4K, "alloc_thread_quota_4k"),
     (NR_ALLOC_QUOTA_2M, "alloc_quota_2m"), (NR_ALLOC_THREAD_QUOTA_2M, "alloc_thread_quota_2m"),
     (NR_ALLOC_QUOTA_1G, "alloc_quota_1g"), (NR_ALLOC_THREAD_QUOTA_1G, "alloc_thread_quota_1g"),
     (NR_SCHEDULE, "schedule"), (NR_MMAP_4K, "mmap_4k"), (NR_UNMAP_4K, "unmap_4k"), (NR_MMAP_2M, "mmap_2m"),
     (NR_UNMAP_2M, "unmap_2m"), (NR_SPLIT_2M, "split_2m"), (NR_MERGE_2M, "merge_2m"), (NR_MMAP_1G, "mmap_1g"),
-    (NR_UNMAP_1G, "unmap_1g"), (NR_PCI_ATTACH_DMA, "pci_attach_dma"), (NR_IOMMU_MAP_4K, "iommu_map_4k"),
+    (NR_UNMAP_1G, "unmap_1g"), (NR_PCI_CLAIM, "pci_claim"), (NR_PCI_ATTACH_DMA, "pci_attach_dma"), (NR_IOMMU_MAP_4K, "iommu_map_4k"),
     (NR_IOMMU_UNMAP_4K, "iommu_unmap_4k"), (NR_NEW_ENDPOINT, "new_endpoint"), (NR_NEW_THREAD, "new_thread"),
     (NR_NEW_THREAD_WITH_ENDPOINT, "new_thread_with_endpoint"), (NR_SEND_EMPTY, "send_empty"),
     (NR_RECEIVE_EMPTY, "receive_empty"), (NR_SEND_EMPTY_NO_BLOCK, "send_empty_no_block"),
@@ -249,11 +252,13 @@ extern "C" fn ipc_thread() -> ! {
 }
 
 /// First thread of the IOMMU child process: takes the DMA test device over the root endpoint and
-/// attaches it to its own IOMMU table.
+/// attaches it to its own IOMMU table. Only the root process may claim a function.
 extern "C" fn iommu_child() -> ! {
     let (bus, dev, fun) = dma_bdf();
     ok(NR_RECEIVE_PCI, unsafe { sys_receive_pci(ROOT_ENDPOINT, bus, dev, fun) });
     ok(NR_PCI_ATTACH_DMA, unsafe { sys_pci_attach_dma(bus, dev, fun) });
+    expect_error("pci_claim by a child process", unsafe { sys_pci_claim(bus, dev, fun) }, "ErrorPciNotRootProcess");
+    log::info!("self-test: pci_claim_child ok (refused)");
     IOMMU_CHILD_ATTACHED.store(true, Ordering::SeqCst);
     yield_forever()
 }
@@ -336,8 +341,8 @@ fn test_memory() -> bool {
     true
 }
 
-/// VT-d with QEMU's `edu`: once attached to dom0's IOMMU table, the device reads a page dom0 maps
-/// at the probe IOVA and faults again once it is unmapped.
+/// VT-d with QEMU's `edu`: dom0 cannot attach the unowned device; once claimed, it cannot claim it again; once attached
+/// to dom0's IOMMU table, the device reads a page dom0 maps at the probe IOVA and faults again once it is unmapped.
 fn test_iommu() {
     let bdf = unsafe { sys_debug_dma_device() };
     if bdf < 0 {
@@ -351,6 +356,11 @@ fn test_iommu() {
         unsafe { sys_debug_exit(1) };
     }
     log::info!("self-test: pci_info ok");
+    expect_error("pci_attach_dma of an unowned function", unsafe { sys_pci_attach_dma(bus, dev, fun) }, "ErrorPciOwnerMismatch");
+    log::info!("self-test: pci_attach_unowned ok (refused)");
+    ok(NR_PCI_CLAIM, unsafe { sys_pci_claim(bus, dev, fun) });
+    expect_error("pci_claim of an owned function", unsafe { sys_pci_claim(bus, dev, fun) }, "ErrorPciAlreadyOwned");
+    log::info!("self-test: pci_claim_twice ok (refused)");
     ok(NR_PCI_ATTACH_DMA, unsafe { sys_pci_attach_dma(bus, dev, fun) });
     ok(NR_MMAP_4K, unsafe { sys_mmap_4k(VA_DMA, 1) });
     unsafe { (VA_DMA as *mut u64).write_volatile(MAGIC) };
@@ -445,7 +455,8 @@ fn test_ipc() {
 
 /// Child processes sharing dom0's image: one with an IOMMU table that takes the DMA device, one that
 /// receives the root endpoint and sends a page back, and a plain one that keeps yielding. The first
-/// two are killed; the plain one and a yielding thread of dom0 keep CPUs busy for `test_cpus`.
+/// two are killed, which leaves the DMA device unowned, so dom0 claims it again; the plain one and a yielding thread of
+/// dom0 keep CPUs busy for `test_cpus`.
 fn test_processes() {
     let (image, pages) = image_range();
     let (bus, dev, fun) = dma_bdf();
@@ -470,6 +481,8 @@ fn test_processes() {
     // Children are numbered in creation order: the IOMMU child, then the peer child.
     ok(NR_KILL_PROCESS, unsafe { sys_kill_process(0) });
     ok(NR_KILL_PROCESS, unsafe { sys_kill_process(0) });
+    ok(NR_PCI_CLAIM, unsafe { sys_pci_claim(bus, dev, fun) });
+    log::info!("self-test: pci_claim_after_kill ok");
 }
 
 /// CPU 1 comes online and pulls a yielding thread (or dom0's). Then whichever of CPUs 0 and 1 dom0 does

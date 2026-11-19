@@ -96,6 +96,7 @@ pub const NR_ALLOC_QUOTA_1G: usize = 51;
 pub const NR_ALLOC_THREAD_QUOTA_1G: usize = 52;
 pub const NR_MERGE_2M: usize = 53;
 pub const NR_SPLIT_2M: usize = 54;
+pub const NR_PCI_CLAIM: usize = 57;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -105,7 +106,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 51] = [
+const RET_VALUE_NAMES: [&str; 56] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -118,6 +119,7 @@ const RET_VALUE_NAMES: [&str; 51] = [
     "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow", "ErrorContainerZombie",
     "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild", "ErrorIommuIovaAlreadyMapped",
     "ErrorIommuIovaNotMapped", "ErrorIommuVaNotMapped", "ErrorContainerLockOrderConflict", "ErrorIpcRangeNotUser",
+    "ErrorIpcPciBarMapped", "ErrorIpcPciReceiverFull", "ErrorPciNotRootProcess", "ErrorPciAlreadyOwned", "ErrorPciFunctionArrayFull",
 ];
 
 /// Names the result in `rax`.
@@ -474,4 +476,10 @@ pub unsafe fn sys_debug_null(force_iret: bool) -> isize {
 
 pub unsafe fn sys_pci_attach_dma(bus: usize, dev: usize, fun: usize) -> isize {
     syscall3(NR_PCI_ATTACH_DMA, bus, dev, fun).rax
+}
+
+/// Claims the unowned PCI function `bus:dev.fun` for the calling process, which must be the root process of the root
+/// container.
+pub unsafe fn sys_pci_claim(bus: usize, dev: usize, fun: usize) -> isize {
+    syscall3(NR_PCI_CLAIM, bus, dev, fun).rax
 }
