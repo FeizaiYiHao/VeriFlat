@@ -2,6 +2,10 @@
 //! its result, logging `self-test: <name> ok` the first time each one succeeds. It exits with
 //! `sys_debug_exit(0)` once every syscall passed and with a nonzero code at the first failure.
 //!
+//! Device memory: dom0's boot page table maps every BAR page at `PCI_BAR_WINDOW_BASE + p` as a 4K IO leaf; the IO
+//! checks (`io_*`, `iommu_io`) read a device register through it, IOMMU-map an IO page, unmap one for good, and send
+//! one to a child process, which reads the register through its own mapping and keeps it until it is killed.
+//!
 //! Nothing here waits for a timer tick, so the same binary passes on a `no-timer` kernel: threads
 //! that share a CPU take turns at blocking IPC and `sys_schedule`, and every CPU that has to run a
 //! thread is woken by the IPI of `cpu_online` and kept busy by a thread that only yields, since a
@@ -55,6 +59,8 @@ const VA_2M: usize = 0xc1_0000_0000;
 const VA_1G: usize = 0xc2_0000_0000;
 const VA_DMA: usize = 0xc3_0000_0000;
 const VA_PAGES: usize = 0xc4_0000_0000;
+/// Where the peer child receives the IO page dom0 sends it.
+const VA_IO: usize = 0xc5_0000_0000;
 const SIZE_2M: usize = 1 << 21;
 const SIZE_1G: usize = 1 << 30;
 const MAGIC: u64 = 0x5afe_9a9e;
@@ -62,6 +68,8 @@ const MAGIC: u64 = 0x5afe_9a9e;
 const PROBE_IOVA: usize = 0x80_0010_0000;
 /// QEMU's `edu` device.
 const EDU_VENDOR_DEVICE: usize = 0x1234_11e8;
+/// QEMU's `ivshmem-plain`, whose BAR2 (shared memory) the extra high-BAR boot places above 4 GiB.
+const IVSHMEM_VENDOR_DEVICE: usize = 0x1af4_1110;
 
 /// Descriptor 0 holds dom0's root endpoint; dom0 creates a second endpoint at descriptor 1.
 const ROOT_ENDPOINT: usize = 0;
@@ -86,6 +94,11 @@ static mut PLAIN_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_STACK: [u8; 16384] = [0; 16384];
 static mut CONTAINER_YIELD_STACK: [u8; 16384] = [0; 16384];
 static DMA_BDF: AtomicUsize = AtomicUsize::new(0);
+/// The window address of the edu BAR0 page with its identification register, the register's offset in the page,
+/// and the value dom0 read there.
+static IO_PAGE: AtomicUsize = AtomicUsize::new(0);
+static IO_ID_OFFSET: AtomicUsize = AtomicUsize::new(0);
+static IO_ID: AtomicUsize = AtomicUsize::new(0);
 static IOMMU_CHILD_ATTACHED: AtomicBool = AtomicBool::new(false);
 static PEER_DONE: AtomicBool = AtomicBool::new(false);
 static CONTAINER_CPU_ONLINED: AtomicBool = AtomicBool::new(false);
@@ -203,6 +216,15 @@ fn dma_bdf() -> (usize, usize, usize) {
     (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 0x7)
 }
 
+/// Fails unless edu's identification register, in the IO page mapped at `page`, reads what dom0 read first.
+fn expect_io_id(what: &str, page: usize) {
+    let id = unsafe { ((page + IO_ID_OFFSET.load(Ordering::SeqCst)) as *const u32).read_volatile() } as usize;
+    if id != IO_ID.load(Ordering::SeqCst) {
+        log::error!("self-test: {}: edu identification reads {:#x}, expected {:#x}", what, id, IO_ID.load(Ordering::SeqCst));
+        unsafe { sys_debug_exit(1) };
+    }
+}
+
 /// Yields forever, recording where it runs: keeps a CPU busy, so a thread queued there runs and the CPU
 /// notices an offline request.
 extern "C" fn yield_forever() -> ! {
@@ -242,6 +264,11 @@ extern "C" fn peer_child() -> ! {
     ok(NR_RECEIVE_ENDPOINT, unsafe { sys_receive_endpoint(ROOT_ENDPOINT, 1) });
     ok(NR_SEND_EMPTY, unsafe { sys_send_empty(1) });
     ok(NR_SEND_PAGES, unsafe { sys_send_pages(ROOT_ENDPOINT, (&raw const SHARED_PAGE) as usize, 1) });
+    // The IO page dom0 sends: neither process owns the edu function now. The mapping stays for kill_process to clear.
+    fund(4);
+    ok(NR_RECEIVE_PAGES, unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_IO, 1) });
+    expect_io_id("the IO page received by the peer child", VA_IO);
+    log::info!("self-test: io_send ok");
     PEER_DONE.store(true, Ordering::SeqCst);
     yield_forever()
 }
@@ -341,6 +368,64 @@ fn test_iommu() {
     ok(NR_UNMAP_4K, unsafe { sys_unmap_4k(VA_DMA, 1) });
 }
 
+/// Device memory through the boot IO leaves of edu's BAR0, which dom0's IOMMU table has attached: reads the
+/// identification register, IOMMU-maps and unmaps an IO page, and unmaps another IO page, which nothing maps back.
+fn test_io() {
+    let (bus, dev, fun) = dma_bdf();
+    let (_, bar0, bar_pages) = unsafe { sys_pci_info(bus, dev, fun) };
+    let page = PCI_BAR_WINDOW_BASE + (bar0 & !0xfff);
+    IO_PAGE.store(page, Ordering::SeqCst);
+    IO_ID_OFFSET.store(bar0 & 0xfff, Ordering::SeqCst);
+    let id = unsafe { ((PCI_BAR_WINDOW_BASE + bar0) as *const u32).read_volatile() } as usize;
+    if id & 0xff != 0xed {
+        log::error!("self-test: edu identification at {:#x} reads {:#x}", PCI_BAR_WINDOW_BASE + bar0, id);
+        unsafe { sys_debug_exit(1) };
+    }
+    IO_ID.store(id, Ordering::SeqCst);
+    log::info!("self-test: io_read ok");
+
+    fund(4);
+    ok(NR_IOMMU_MAP_4K, unsafe { sys_iommu_map_4k(page + 4096, PROBE_IOVA, 1) });
+    ok(NR_IOMMU_UNMAP_4K, unsafe { sys_iommu_unmap_4k(PROBE_IOVA, 1) });
+    log::info!("self-test: iommu_io ok");
+
+    let last = page + (bar_pages - 1) * 4096;
+    ok(NR_UNMAP_4K, unsafe { sys_unmap_4k(last, 1) });
+    let ret = unsafe { sys_unmap_4k(last, 1) };
+    if ret >= 0 {
+        fail("unmap_4k of an unmapped IO page (expected an error)", ret);
+    }
+    let ret = unsafe { sys_iommu_map_4k(last, PROBE_IOVA, 1) };
+    if ret >= 0 {
+        fail("iommu_map_4k of an unmapped IO page (expected an error)", ret);
+    }
+    expect_io_id("the IO page next to an unmapped one", page);
+    log::info!("self-test: io_unmap ok");
+}
+
+/// A BAR above 4 GiB, when the boot has one (QEMU ivshmem's BAR2 in the extra high-BAR boot): written and read back
+/// at both ends through its boot IO leaves.
+fn test_high_bar() {
+    let mut i = 0;
+    loop {
+        let (key, base, size) = unsafe { sys_pci_bar(i) };
+        if key < 0 {
+            log::info!("self-test: io_high_bar skipped: no ivshmem BAR above 4 GiB");
+            return;
+        }
+        let key = key as usize;
+        if key >> 24 == IVSHMEM_VENDOR_DEVICE && key & 0xff == 2 && base >= 1 << 32 {
+            for va in [PCI_BAR_WINDOW_BASE + base, PCI_BAR_WINDOW_BASE + base + size - 8] {
+                unsafe { (va as *mut u64).write_volatile(MAGIC ^ va as u64) };
+                expect_word("an ivshmem word above 4 GiB", va, MAGIC ^ va as u64);
+            }
+            log::info!("self-test: io_high_bar ok (BAR2 at {:#x}, {:#x} bytes)", base, size);
+            return;
+        }
+        i += 1;
+    }
+}
+
 /// Threads and IPC on dom0's CPU: a new endpoint, a second thread on it that answers every IPC kind
 /// and exits, which fails dom0's last call with ErrorIpcCalleeExited.
 fn test_ipc() {
@@ -378,6 +463,7 @@ fn test_processes() {
     ok(NR_RECEIVE_PAGES, unsafe { sys_receive_pages(ROOT_ENDPOINT, VA_PAGES, 1) });
     unsafe { (VA_PAGES as *mut u64).write_volatile(MAGIC) };
     expect_word("the page sent by the peer child, through its own mapping", (&raw const SHARED_PAGE) as usize, MAGIC);
+    ok(NR_SEND_PAGES, unsafe { sys_send_pages(ROOT_ENDPOINT, IO_PAGE.load(Ordering::SeqCst), 1) });
     wait_yield("the peer child", || PEER_DONE.load(Ordering::SeqCst));
 
     ok(NR_NEW_PROCESS, unsafe { sys_new_process(image, pages, entry(yield_forever), stack_top(&raw const PLAIN_STACK)) });
@@ -440,6 +526,8 @@ pub extern "C" fn _start() -> ! {
     log::info!("self-test: debug_null ok");
     let has_1g = test_memory();
     test_iommu();
+    test_io();
+    test_high_bar();
     test_ipc();
     test_processes();
     test_cpus();

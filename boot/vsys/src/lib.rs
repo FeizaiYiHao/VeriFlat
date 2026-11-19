@@ -40,7 +40,10 @@ pub const NR_DEBUG_DMA_PROBE: usize = 29;
 pub const NR_DEBUG_NULL: usize = 36;
 /// Reads the loader's record of a PCI function (see `sys_pci_info`).
 pub const NR_PCI_INFO: usize = 55;
-/// dom0 sees a recorded BAR0 page at physical address `p` at virtual address `PCI_BAR_WINDOW_BASE + p`.
+/// Reads the loader's BAR slot `i` (see `sys_pci_bar`).
+pub const NR_PCI_BAR: usize = 56;
+/// dom0's boot page table maps every page `p` of every BAR slot's page envelope at virtual address
+/// `PCI_BAR_WINDOW_BASE + p`, as a 4K IO leaf.
 pub const PCI_BAR_WINDOW_BASE: usize = 0xd0_0000_0000;
 // ---- verified entries (SystemCalls.md section 14) ----
 pub const NR_ALLOC_QUOTA_4K: usize = 2;
@@ -454,6 +457,14 @@ pub unsafe fn sys_debug_dma_write_probe() -> isize {
 /// count (both 0 on error). dom0 sees the BAR0 pages at `PCI_BAR_WINDOW_BASE + base`.
 pub unsafe fn sys_pci_info(bus: usize, dev: usize, fun: usize) -> (isize, usize, usize) {
     let r = syscall3(NR_PCI_INFO, bus, dev, fun);
+    (r.rax, r.rdx, r.rsi)
+}
+
+/// Reads BAR slot `i` of the loader's inventory (every assigned memory BAR, in B/D/F and BAR order). Returns
+/// `(rax, rdx, rsi)`: `rax` is `(vendor << 40) | (device << 24) | (bdf << 8) | bar` and `rdx`, `rsi` the BAR's
+/// physical base and size in bytes, or `rax` is `ERR_INVALID_ARGUMENT` past the last slot.
+pub unsafe fn sys_pci_bar(i: usize) -> (isize, usize, usize) {
+    let r = syscall1(NR_PCI_BAR, i);
     (r.rax, r.rdx, r.rsi)
 }
 

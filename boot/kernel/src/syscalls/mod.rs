@@ -651,6 +651,20 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             }
             return;
         }
+        vsys::NR_PCI_BAR => {
+            // Reads the loader's BAR slot record only, outside any kernel step.
+            match crate::boot::get_boot_info().bar_slots.get(a1) {
+                Some(b) => {
+                    regs.rax = (b.vendor as u64) << 40 | (b.device as u64) << 24 | (b.bdf as u64) << 8 | b.bar as u64;
+                    (regs.rdx, regs.rsi) = (b.base, b.size);
+                }
+                None => {
+                    set_trap_error(regs, vsys::ERR_INVALID_ARGUMENT);
+                    (regs.rdx, regs.rsi) = (0, 0);
+                }
+            }
+            return;
+        }
         vsys::NR_DEBUG_DMA_PROBE => {
             let result = match a1 {
                 0 => crate::iommu::dma_probe(),

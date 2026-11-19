@@ -1349,6 +1349,64 @@ recorded peer is `IPC_TRANSIT` with partner `T`, and `ipc_pages_held` states
 `edp_idx_valid(endpoint_index)`; the proof assumes nothing beyond the step
 specifications.
 
+## 13a. Device (IO) pages
+
+Model (`src/define/pci_bar.rs`, `src/kernel/memory_management/io_mappings_spec.rs`):
+
+- The PCI table (`IommuRootTable`) holds sealed ghost BAR slots (`PciBarSlots`),
+  keyed by `(B/D/F, BAR index 0..5)`, each the exact byte range of one memory
+  BAR. The boot glue fills them once; no syscall changes them, PCI transfer and
+  attachment included. A BAR page is a 4K page in the outward-rounded 4K
+  envelope of some slot (`pci_bar_page`).
+- BAR pages have no page-array bookkeeping: a page-array page in an envelope is
+  `Unavailable` for good (`pci_bar_pages_unavailable_wf`), and an IO mapping has
+  no owner, reference count, reverse map, or quota.
+- An IO leaf is a page-table or IOMMU leaf with the IO bit (bit 53,
+  `PAGE_ENTRY_IO_MASK`); it always carries PCD and PWT (uncached). Every IO
+  leaf, present or held, maps BAR pages over its whole span
+  (`io_mappings_wf`).
+- IO leaves come from boot only: dom0's boot page table maps every page `p` of
+  every slot envelope at `PCI_BAR_WINDOW_BASE + p` (`0xd0_0000_0000 + p`) as a
+  writable, execute-disabled 4K IO leaf. Afterwards an IO leaf is only copied
+  from a present 4K IO leaf or removed. No syscall maps a physical address.
+
+Per syscall, as implemented on this branch (the U step specs are those of the
+sections named; an IO leaf is one more entry of `mapping_4k`, `mapping_2m`,
+`mapping_1g`, or the IOMMU `mapping_4k`):
+
+- `mmap_4k`, `mmap_2m`, `mmap_1g` (§6, §7c): every new leaf is a RAM leaf.
+- `unmap_4k` (§7): an IO leaf of the range is removed under the same window
+  lock and TLB flush as a RAM leaf; no page changes state and the refund step
+  refunds nothing for it. `unmap_2m` (§7d) and `unmap_1g` (§7c) remove a 2M
+  or 1G IO leaf the same way; none exists yet, since boot builds 4K IO leaves
+  only and no syscall builds a huge one.
+- `share_4k` (§8), used by `send_pages`/`receive_pages` (§13), `new_process*`
+  (§9), and `new_container*` (§10): a present 4K IO source leaf is copied
+  unchanged (address, IO bit, write, execute-disable) to the target without
+  locking a page or checking the owner, so any holder can pass it to any
+  process in any container. The target's directory pages cost quota as for RAM.
+  A source VA under a 2M or 1G IO leaf is not in `mapping_4k` and fails the
+  source check: huge IO leaves cannot be shared yet.
+- `iommu_map_4k` (§7a): a present 4K IO source leaf is copied into the IOMMU
+  table as an IO leaf, without page lock or owner check. `iommu_unmap_4k`
+  (§7b) removes an IOMMU IO leaf with the same IOTLB flush; no page or quota
+  changes for it.
+- `thread_exit` of a process's last thread (§17), `kill_process` (§18), and
+  `kill_container` (§19): every IO leaf of the reclaimed page tables (4K, 2M,
+  1G) and IOMMU tables is cleared with no page-array bookkeeping and no refund.
+- `send_pci`, `receive_pci` (§11), `pci_attach_dma` (§4d), and the PCI
+  reassignment of the kills leave the BAR slots and every IO mapping as they
+  are.
+
+Threat model. Holding a mapping of a device's registers is control of that
+device. IO mappings are not tied to PCI ownership: owning a function (and its
+DMA attachment) and mapping its BARs are separate, and moving ownership with
+`send_pci` does not revoke anyone's IO mappings. IO pages may be passed to any
+process of any container. Small BARs of different devices that share a 4K
+page are mapped together, so holding that page controls every one of them.
+An IO page that every holder has unmapped is gone: nothing can map it again.
+2M and 1G IO leaves cannot be shared yet.
+
 ## 14. Syscall entry list
 
 | Entry point | Section |

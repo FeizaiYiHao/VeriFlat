@@ -36,6 +36,9 @@ const PHYSICAL_PAGE_MASK: u64 = PAGE_MASK & PHYSICAL_MASK;
 /// Accessed (bit 5) and Dirty (bit 6), preset on present entries so hardware never performs the read-modify-write on a page-table word the kernel's PointsTo claims.
 const ACCESSED_DIRTY: u64 = (1 << 5) | (1 << 6);
 
+/// VeriFlat's IO-leaf bit (`PAGE_ENTRY_IO_MASK`, software bit 53): the leaf maps device memory, not RAM.
+const IO_LEAF: u64 = 1 << 53;
+
 pub struct AddressSpace {
     pml4: *mut PageTable,
 }
@@ -88,17 +91,40 @@ impl AddressSpace {
         self.map_entry(allocator, paddr, paddr, false, 3, false, true, true);
     }
 
-    /// Maps a 4K user page, writable and execute-disabled, for device registers. No PCD: the
-    /// caller checks that the MTRRs make the page uncacheable.
-    pub unsafe fn map_user_mmio(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64) {
-        self.map_entry(allocator, vaddr, paddr, true, 3, false, true, false);
+    /// Maps a 4K kernel-only page identity, writable, execute-disabled and uncached (PCD and PWT, PAT entry 3), over
+    /// the cacheable identity mapping of a device page.
+    pub unsafe fn map_kernel_uc(&mut self, allocator: &mut impl PhysicalAllocator, paddr: u64) {
+        self.map_entry(allocator, paddr, paddr, false, 3, true, true, true);
     }
 
-    /// Maps device registers for the user, writable, execute-disabled and uncached by the page attributes
-    /// (PCD and PWT), whatever the MTRRs say: a 2 MiB page when `huge`, else a 4K page. For a BAR0 above the
-    /// kernel's page array (see `pci.rs`), which the kernel never learns of.
-    pub unsafe fn map_user_mmio_uc(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64, huge: bool) {
-        self.map_entry(allocator, vaddr, paddr, true, if huge { 2 } else { 3 }, true, true, true);
+    /// Maps device page `paddr` at `vaddr` for the user as a 4K IO leaf, in the kernel's encoding of an IO leaf
+    /// (`page_entry2usize` with `is_io`): present (Accessed and Dirty preset), writable, user, execute-disabled,
+    /// kernel-present, IO bit 53, and uncached by PCD and PWT (PAT entry 3, which the loader checks is UC). Returns
+    /// false when the same IO leaf is already there (two BARs share the page); panics on any other leaf there.
+    pub unsafe fn map_user_io_4k(&mut self, allocator: &mut impl PhysicalAllocator, vaddr: u64, paddr: u64) -> bool {
+        let mut cur = self.pml4;
+        for level in 0..3 {
+            let index = Self::index(vaddr, level);
+            let mut entry = (*cur).read(index);
+            if !entry.present() {
+                let table = Self::allocate_page_table(allocator);
+                entry = Entry::new().with_present(true).with_read_write(true).with_address(table as u64).with_user(true).with_kernel_present(true);
+                (*cur).write(index, entry);
+            }
+            assert!(!entry.page_size_bit() && entry.0 & IO_LEAF == 0, "IO page {:#x} at {:#x} lies under a huge leaf", paddr, vaddr);
+            cur = entry.address() as *mut PageTable;
+        }
+        let index = Self::index(vaddr, 3);
+        let leaf = Entry::new().with_present(true).with_read_write(true).with_address(paddr).with_cache_disable(true).with_write_through(true)
+            .with_execute_disable(true).with_user(true).with_kernel_present(true);
+        let leaf = Entry(leaf.0 | IO_LEAF);
+        let old = (*cur).read(index);
+        if old.present() {
+            assert!(old.0 == leaf.0, "IO page {:#x} at {:#x} collides with leaf {:#x}", paddr, vaddr, old.0);
+            return false;
+        }
+        (*cur).write(index, leaf);
+        true
     }
 
     #[allow(clippy::too_many_arguments)]

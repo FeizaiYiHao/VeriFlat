@@ -6,11 +6,15 @@
 //! and every PCID-needflush lock into its cell in the needflush-cell static, threads every free page's
 //! intrusive node into the global 4K pool, every free 2M head's node into the global 2M pool and the
 //! free 1G head's node into the global 1G pool at that final address, and hands the rest to the verified initializer.
+//!
+//! Device memory: the loader reports every assigned memory BAR as a BAR slot and maps every page of every slot's page
+//! envelope into dom0 with a 4K IO leaf. The verified initializer takes the slots (sealed `PciBarSlots`) and the IO
+//! leaves on trust; `check_bar_slots` and `walk_dom0` check at boot what it assumes about them.
 
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
 
-use astd::boot::{BootInfo, PhysicalMemoryType, MAX_PAGES, PCI_BAR_WINDOW_BASE};
+use astd::boot::{BarSlot, BootInfo, PhysicalMemoryType, MAX_PAGES};
 use veriflat_monolith::*;
 use vstd::prelude::{Ghost, Tracked};
 
@@ -54,6 +58,19 @@ const fn parse_decimal(text: &str) -> usize {
 const PTE_PRESENT: u64 = 1;
 const PTE_HUGE: u64 = 1 << 7;
 const PTE_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
+/// The IO bit and its uncached attributes (PWT, PCD), as the kernel encodes an IO leaf.
+const PTE_IO: u64 = PAGE_ENTRY_IO_MASK;
+const PTE_IO_CACHE: u64 = PAGE_ENTRY_IO_CACHE_MASK;
+/// Every bit of a dom0 boot IO leaf other than its address, exactly as `page_entry2usize` writes a present, writable,
+/// user, execute-disabled, kernel-present IO leaf: P, W, U, PWT, PCD, A, D, kernel-present, IO, XD. PS (PAT on a 4K
+/// leaf) and G stay clear, so PCD|PWT select PAT entry 3, UC.
+const IO_LEAF_FLAGS: u64 = PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_WRITE_MASK | PAGE_ENTRY_USER_MASK | PTE_IO_CACHE | PAGE_ENTRY_ACCESSED_MASK
+    | PAGE_ENTRY_DIRTY_MASK | PAGE_ENTRY_KERNEL_PRESENT_MASK | PTE_IO | PAGE_ENTRY_EXECUTE_MASK;
+/// End of the physical addresses a BAR slot may cover: `BarRegion::wf` (`start + len <= MEM_4K_MASK + 4K`, 2^48).
+const IO_ADDRESS_LIMIT: u64 = MEM_4K_MASK + PAGE_SIZE as u64;
+/// The fixed MMIO pages the kernel drives besides the VT-d units and ECAM windows: IOAPIC, and the xAPIC default.
+const IOAPIC_BASE: u64 = 0xfec0_0000;
+const LAPIC_DEFAULT_BASE: u64 = 0xfee0_0000;
 
 type PageLock = LockCell<Page, (), (), NO_KILL_STATE>;
 type NeedFlushLock = LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>;
@@ -70,10 +87,6 @@ enum Kind {
     Dom0Table,
     /// A dom0 user page.
     Dom0Leaf,
-    /// A page of a recorded PCI function's BAR0 that dom0's page table does not map (yet).
-    IoUnmapped,
-    /// A BAR0 page mapped in dom0's BAR0 window: an io page of the root container.
-    IoLeaf,
     /// Taken for a boot singleton; its state is set explicitly.
     Singleton,
     /// The head of a free 2M block in the global 2M pool.
@@ -118,11 +131,109 @@ unsafe fn entry(table: usize, index: usize) -> u64 {
     ptr::read_volatile((table as *const u64).add(index))
 }
 
-/// Marks the dom0 page-table closure and its user leaves, except under the L4 slots in `skip`: those hold the loader's
-/// mapping of a high BAR0 (above the page array), whose table pages stay Unavailable and which the kernel never models.
-unsafe fn walk_dom0(dom0_pml4: usize, skip: &[usize]) -> (usize, usize) {
+/// Whether `[a.0, a.1)` and `[b.0, b.1)` overlap.
+fn overlaps(a: (u64, u64), b: (u64, u64)) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+fn bdf_text(bdf: u16) -> (u16, u16, u16) {
+    (bdf >> 8, (bdf >> 3) & 0x1f, bdf & 7)
+}
+
+/// The checked page envelope `(first page, end)` of `slot`.
+fn envelope(slot: &BarSlot) -> (u64, u64) {
+    let (b, d, f) = bdf_text(slot.bdf);
+    slot.envelope().unwrap_or_else(|| panic!("BAR{} of {:02x}:{:02x}.{}: base {:#x} + size {:#x} overflows", slot.bar, b, d, f, slot.base, slot.size))
+}
+
+/// Checks at boot everything `finish_init_from_boot` takes on trust about the BAR slots (`pci_bar_slots_wf`,
+/// `pci_bar_pages_unavailable_wf`) and what the platform needs of them; panics with the slot otherwise:
+/// - each slot's key is unique and its BAR index below 6 (the B/D/F is valid by its 16-bit encoding);
+/// - each range is nonempty, a naturally aligned power of two, and ends at or below 2^48 (`BarRegion::wf`), below the
+///   processor's physical address width, and below the DMAR host address width (IO pages can be IOMMU-mapped);
+/// - no page envelope overlaps firmware RAM at any address, nor the MMIO the kernel drives: IOAPIC, local APIC,
+///   VT-d register pages, ECAM windows;
+/// - every page-array page in an envelope has the loader type Reserved: not the kernel image, a boot page table,
+///   dom0's reservation or free memory (the page-array state check comes after the classification, `check_bar_pages`).
+/// Returns the number of page-array pages in BAR envelopes.
+fn check_bar_slots(boot_info: &BootInfo) -> usize {
+    assert!(core::arch::x86_64::__cpuid(0x8000_0000).eax >= 0x8000_0008, "no CPUID leaf 8000_0008h (physical address width)");
+    let cpu_width = core::arch::x86_64::__cpuid(0x8000_0008).eax & 0xff;
+    let iommu_width = boot_info.iommu_address_width as u32;
+    assert!((32..=64).contains(&cpu_width) && (32..=64).contains(&iommu_width), "address widths {} / {}", cpu_width, iommu_width);
+    let lapic = unsafe { x86::msr::rdmsr(x86::msr::IA32_APIC_BASE) } & PTE_ADDR_MASK;
+    let mut kernel_mmio = [(0u64, 0u64); 3 + astd::boot::MAX_IOMMU_UNITS + astd::boot::MAX_MMCONFIG_WINDOWS];
+    let mut n = 0;
+    for base in [IOAPIC_BASE, LAPIC_DEFAULT_BASE, lapic].into_iter().chain(boot_info.iommu_units.iter().copied()) {
+        kernel_mmio[n] = (base, base + PAGE_SIZE as u64);
+        n += 1;
+    }
+    for &(base, size) in boot_info.mmconfig.iter() {
+        kernel_mmio[n] = (base, base + size);
+        n += 1;
+    }
+    let mut pages = 0;
+    for (k, slot) in boot_info.bar_slots.iter().enumerate() {
+        let (b, d, f) = bdf_text(slot.bdf);
+        assert!(slot.bar < 6, "BAR{} of {:02x}:{:02x}.{}: BAR index above 5", slot.bar, b, d, f);
+        assert!(
+            !boot_info.bar_slots[..k].iter().any(|o| (o.bdf, o.bar) == (slot.bdf, slot.bar)),
+            "BAR{} of {:02x}:{:02x}.{} reported twice", slot.bar, b, d, f
+        );
+        assert!(slot.size.is_power_of_two() && slot.base % slot.size == 0, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} is not a naturally aligned power of two", slot.bar, b, d, f, slot.base, slot.size);
+        let (start, end) = envelope(slot);
+        assert!(end <= IO_ADDRESS_LIMIT, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends above 2^48, beyond the kernel's IO leaves", slot.bar, b, d, f, slot.base, slot.size);
+        assert!(end <= 1 << cpu_width, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends beyond the processor's {}-bit physical addresses", slot.bar, b, d, f, slot.base, slot.size, cpu_width);
+        assert!(end <= 1 << iommu_width, "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} ends beyond the VT-d {}-bit host addresses", slot.bar, b, d, f, slot.base, slot.size, iommu_width);
+        for &(base, size) in boot_info.ram_ranges.iter() {
+            assert!(!overlaps((start, end), (base, base.saturating_add(size))), "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} overlaps firmware RAM {:#x}..{:#x}", slot.bar, b, d, f, slot.base, slot.size, base, base.saturating_add(size));
+        }
+        for &(base, mmio_end) in kernel_mmio[..n].iter() {
+            assert!(!overlaps((start, end), (base, mmio_end)), "BAR{} of {:02x}:{:02x}.{}: {:#x} size {:#x} overlaps kernel MMIO {:#x}..{:#x}", slot.bar, b, d, f, slot.base, slot.size, base, mmio_end);
+        }
+        let mut page = start;
+        while page < end.min((NUM_PAGES * PAGE_SIZE) as u64) {
+            let ty = boot_info.pages[index_of(page)].1;
+            assert!(ty == PhysicalMemoryType::Reserved, "page {:#x} of BAR{} of {:02x}:{:02x}.{} is {:?}", page, slot.bar, b, d, f, ty);
+            pages += 1;
+            page += PAGE_SIZE as u64;
+        }
+    }
+    pages
+}
+
+/// Checks that every page-array page in a BAR envelope ends Unavailable (`pci_bar_pages_unavailable_wf`), after
+/// every page is classified.
+fn check_bar_pages(boot_info: &BootInfo) {
+    let kinds = kinds();
+    for slot in boot_info.bar_slots.iter() {
+        let (start, end) = envelope(slot);
+        let mut page = start;
+        while page < end.min((NUM_PAGES * PAGE_SIZE) as u64) {
+            let i = index_of(page);
+            assert!(kinds[i] == Kind::Unavailable, "BAR page {:#x} is {:?}", page, kinds[i]);
+            page += PAGE_SIZE as u64;
+        }
+    }
+}
+
+/// Whether 4K page `page` lies in the page envelope of some BAR slot (`pci_bar_page`).
+fn bar_page(boot_info: &BootInfo, page: u64) -> bool {
+    boot_info.bar_slots.iter().any(|slot| {
+        let (start, end) = envelope(slot);
+        start <= page && page < end
+    })
+}
+
+/// Marks the dom0 page-table closure and its user leaves; returns the numbers of table pages, RAM leaves and IO leaves.
+/// dom0's boot page table holds 4K leaves only (the 2M and 1G manifests are empty) and no IO bit above a leaf. An IO
+/// leaf (bit 53) must carry exactly `IO_LEAF_FLAGS` and map a BAR page (`boot_dom0_io_manifests_wf`); a RAM leaf must
+/// carry neither the IO bit nor PWT/PCD and map a page of dom0's reservation.
+unsafe fn walk_dom0(boot_info: &BootInfo) -> (usize, usize, usize) {
+    let dom0_pml4 = boot_info.dom0_pml4 as usize;
     let mut tables = 0;
     let mut leaves = 0;
+    let mut io_leaves = 0;
     let mut mark_table = |addr: u64| {
         let kinds = kinds();
         let i = index_of(addr);
@@ -130,29 +241,32 @@ unsafe fn walk_dom0(dom0_pml4: usize, skip: &[usize]) -> (usize, usize) {
         kinds[i] = Kind::Dom0Table;
         tables += 1;
     };
+    let directory = |e: u64, level: &str| {
+        assert!(e & PTE_HUGE == 0, "dom0's boot page table has a {} leaf: boot maps 4K pages only", level);
+        assert!(e & (PTE_IO | PTE_IO_CACHE) == 0, "dom0 {} directory entry {:#x} has the IO bit or PWT/PCD", level, e);
+        (e & PTE_ADDR_MASK) as usize
+    };
     mark_table(dom0_pml4 as u64);
     for l4i in KERNEL_MEM_END_L4INDEX..512 {
         let e4 = entry(dom0_pml4, l4i);
-        if e4 & PTE_PRESENT == 0 || skip.contains(&l4i) {
+        if e4 & PTE_PRESENT == 0 {
             continue;
         }
-        let l3 = (e4 & PTE_ADDR_MASK) as usize;
+        let l3 = directory(e4, "L4");
         mark_table(l3 as u64);
         for l3i in 0..512 {
             let e3 = entry(l3, l3i);
             if e3 & PTE_PRESENT == 0 {
                 continue;
             }
-            assert!(e3 & PTE_HUGE == 0, "dom0 uses a 1G page");
-            let l2 = (e3 & PTE_ADDR_MASK) as usize;
+            let l2 = directory(e3, "1G");
             mark_table(l2 as u64);
             for l2i in 0..512 {
                 let e2 = entry(l2, l2i);
                 if e2 & PTE_PRESENT == 0 {
                     continue;
                 }
-                assert!(e2 & PTE_HUGE == 0, "dom0 uses a 2M page");
-                let l1 = (e2 & PTE_ADDR_MASK) as usize;
+                let l1 = directory(e2, "2M");
                 mark_table(l1 as u64);
                 for l1i in 0..512 {
                     let e1 = entry(l1, l1i);
@@ -160,19 +274,26 @@ unsafe fn walk_dom0(dom0_pml4: usize, skip: &[usize]) -> (usize, usize) {
                         continue;
                     }
                     let leaf = e1 & PTE_ADDR_MASK;
+                    let va = (l4i << 39 | l3i << 30 | l2i << 21 | l1i << 12) as u64;
+                    if e1 & PTE_IO != 0 {
+                        assert!(e1 & !PTE_ADDR_MASK == IO_LEAF_FLAGS, "dom0 IO leaf {:#x} at {:#x}: flags are not those of a kernel IO leaf", e1, va);
+                        assert!(bar_page(boot_info, leaf), "dom0 IO leaf at {:#x} maps {:#x}, outside every BAR slot", va, leaf);
+                        io_leaves += 1;
+                        continue;
+                    }
+                    assert!(e1 & PTE_IO_CACHE == 0, "dom0 RAM leaf {:#x} at {:#x} has PWT/PCD", e1, va);
                     let kinds = kinds();
                     let i = index_of(leaf);
                     kinds[i] = match kinds[i] {
                         Kind::DomainSpare => Kind::Dom0Leaf,
-                        Kind::IoUnmapped => Kind::IoLeaf,
-                        k => panic!("dom0 leaf {:#x} is {:?}", leaf, k),
+                        k => panic!("dom0 leaf {:#x} at {:#x} is {:?}", leaf, va, k),
                     };
                     leaves += 1;
                 }
             }
         }
     }
-    (tables, leaves)
+    (tables, leaves, io_leaves)
 }
 
 fn take_4k(cursor: &mut usize) -> usize {
@@ -257,13 +378,10 @@ fn singleton_state(layout: &BootKernelLayout, addr: usize) -> Option<PageState> 
     }
 }
 
-fn new_page(
-    addr: usize, state: PageState, is_io_page: bool, ref_count: usize, owning_container: usize, free_list_node_storage: ExternalNode<PageIndex>,
-) -> Page {
+fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: usize, free_list_node_storage: ExternalNode<PageIndex>) -> Page {
     Page {
         addr,
         state,
-        is_io_page,
         ref_count,
         owning_container,
         mappings: Ghost::assume_new(),
@@ -311,31 +429,10 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             _ => Kind::Unavailable,
         };
     }
-    // BAR0 pages of the recorded PCI functions: above RAM, so the loader typed them Reserved.
-    let mut io_pages = 0usize;
-    // High BAR0s (above the page array): the loader mapped each into its own dom0 L4 slot; no page object, no io page.
-    let mut high_slots = [usize::MAX; astd::boot::MAX_PCI_DEVICES];
-    for (k, device) in boot_info.pci_devices.iter().enumerate() {
-        if device.bar0_base as usize + device.bar0_pages as usize * PAGE_SIZE > NUM_PAGES * PAGE_SIZE {
-            let slot = ((PCI_BAR_WINDOW_BASE + device.bar0_base) >> 39) as usize;
-            assert!(slot >= 2 && slot < 256, "high BAR0 {:#x} outside a free dom0 L4 slot", device.bar0_base);
-            log::info!(
-                "PCI {:02x}:{:02x}.{}: high BAR0 {:#x} ({} pages) mapped by the loader in dom0 L4 slot {}, outside the kernel's model",
-                device.bdf >> 8, (device.bdf >> 3) & 0x1f, device.bdf & 7, device.bar0_base, device.bar0_pages, slot
-            );
-            high_slots[k] = slot;
-            continue;
-        }
-        for page in 0..device.bar0_pages as usize {
-            let i = index_of(device.bar0_base + (page * PAGE_SIZE) as u64);
-            assert!(kinds[i] == Kind::Unavailable, "BAR0 page {:#x} is {:?}", i * PAGE_SIZE, kinds[i]);
-            kinds[i] = Kind::IoUnmapped;
-            io_pages += 1;
-        }
-    }
+    // BAR slots, and dom0's page table with its IO leaves.
+    let bar_pages = check_bar_slots(boot_info);
     let dom0_pml4 = boot_info.dom0_pml4 as usize;
-    let (tables, leaves) = walk_dom0(dom0_pml4, &high_slots);
-    assert!(!kinds.contains(&Kind::IoUnmapped), "a BAR0 page is not mapped in dom0's BAR0 window");
+    let (tables, leaves, io_leaves) = walk_dom0(boot_info);
     for k in kinds.iter_mut() {
         if *k == Kind::DomainSpare {
             *k = Kind::Free;
@@ -383,6 +480,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         kinds[head] = Kind::Free2m;
         kinds[head + 1..head + PAGES_PER_2M].fill(Kind::Merged2m);
     }
+    check_bar_pages(boot_info);
 
     // 3. Page lock cells, written in place at their final address, each holding its page's parked free-list node.
     let page_base = page_cells_base();
@@ -407,15 +505,15 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
                 },
                 0,
             ),
-            Kind::Dom0Leaf | Kind::IoLeaf => (PageState::Mapped4k, 1),
+            Kind::Dom0Leaf => (PageState::Mapped4k, 1),
             Kind::Singleton => (singleton_state(&layout, addr).expect("unclassified singleton page"), 0),
-            Kind::DomainSpare | Kind::IoUnmapped => unreachable!(),
+            Kind::DomainSpare => unreachable!(),
         };
         let lock_ptr = (page_base + i * size_of::<PageLock>()) as *mut PageLock;
         let node_addr = node_base + i * size_of::<Node<PageIndex>>();
         ptr::write(node_addr as *mut Node<PageIndex>, Node { value: 0, next: None, prev: None });
         let node = ExternalNode::new_parked(node_addr, Tracked::assume_new());
-        let page = new_page(addr, state, kinds[i] == Kind::IoLeaf, ref_count, root_container, node);
+        let page = new_page(addr, state, ref_count, root_container, node);
         ptr::write(lock_ptr, LockCell::new_unlocked(page, (), Ghost::assume_new()));
         if matches!(kinds[i], Kind::Free | Kind::Free2m | Kind::Free1g) {
             let page = &mut *((lock_ptr as usize + page_value_offset) as *mut Page);
@@ -434,8 +532,8 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     }
     let page_array = PageLockedArray::from_token_cells(TokenCells { perms: Tracked::assume_new() });
     log::info!(
-        "pages: {} free, {} free 2M blocks, {} free 1G blocks, {} dom0 tables, {} dom0 leaves ({} io pages)",
-        free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves, io_pages
+        "pages: {} free, {} free 2M blocks, {} free 1G blocks, {} dom0 tables, {} dom0 RAM leaves; {} BAR slots, {} BAR pages in the page array (Unavailable), {} dom0 4K IO leaves",
+        free_count, BOOT_FREE_2M_BLOCKS, free_1g_blocks, tables, leaves, boot_info.bar_slots.len(), bar_pages, io_leaves
     );
 
     // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.
@@ -468,10 +566,17 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let cpu_tlb = CpuTLB::new_empty();
     let iommu_tlb = IommuTLB::new_empty();
 
+    // 8. The PCI table's BAR slots: the ghost map from (B/D/F, BAR index) to each slot's exact byte range, built from
+    // `boot_info.bar_slots` (checked by `check_bar_slots`); like every ghost argument it is erased in this build.
+    let bar_slots = PciBarSlots::new(Ghost::assume_new());
+
+    // Ghost arguments, in order: the kernel's L4 entries, dom0's 4K manifest (every present user leaf `walk_dom0`
+    // checked, RAM and IO, at its VA, owned by the root container), the 2M and 1G manifests (empty: boot maps 4K
+    // leaves only), the BAR slots, every page pointer, every PCI function, and the boot table reverse maps.
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable, cpu_array, cpu_tlb, iommu_tlb,
         free_4k_pool, free_2m_pool, free_1g_pool,
-        Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
+        Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), bar_slots, Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
