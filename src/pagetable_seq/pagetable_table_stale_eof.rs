@@ -50,12 +50,11 @@ proof fn table_stale_cpus_update_eof_process_pagetable(pre: KernelK, post: Kerne
         table_stale_cpus_update_eof_transition_framing(pre, post, root),
     ensures process_pagetable_wf(post.prc_mp, post.pt_mp),
 {
-    broadcast use table_stale_cpus_update_eof_process_pagetable_at;
     assert(post.prc_mp == pre.prc_mp && post.pt_mp.unchanged_except(&pre.pt_mp, root) && post.pt_mp.spec_index(root).view().higher
         == (PageTableHigher { table_stale_cpus: post.pt_mp.spec_index(root).view().higher.table_stale_cpus, ..pre.pt_mp.spec_index(root).view().higher })) by {
         reveal(table_stale_cpus_update_eof_transition_framing);
     };
-    reveal(process_pagetable_wf);
+    assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { broadcast use table_stale_cpus_update_eof_process_pagetable_at; reveal(process_pagetable_wf); };
 }
 
 /// EOF closure of `KernelK::replace_table_stale_cpus`: the page-table half of `process_pagetable_wf` at one table, which keeps
