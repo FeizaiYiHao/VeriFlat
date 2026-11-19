@@ -151,8 +151,6 @@ pub(super) proof fn pagetable_map_update_pci_mapping_eof(
     assert(pagetable_perms_wf(post_pt)) by { lock_op_implies_pagetable_perms_wf_preserved_forall(); };
     assert(post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id)) by {
         reveal(LockedMap::typed_lock_map_aligned);
-        assert(post_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).locked_by_thread(thread_id));
-        assert(post_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).rlocked_by_thread(thread_id));
         assert(post_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id) == pre_pt.spec_index(pagetable_ptr).wlocked_by_thread(thread_id));
     };
     assert(pagetable_lower_wf(post_pt, pt_lower)) by { reveal(pagetable_lower_wf); };

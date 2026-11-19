@@ -9,8 +9,6 @@ use veriflat_map_4k::map_4k::map_io_leaf::install_io_4k_mapping;
 use crate::kernel::implementation::map_4k::map_io_leaf::install_io_4k_mapping;
 
 verus! {
-broadcast use {spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid};
-
 /// With the directories of `va` installed, its 2M window held through `window_perm`, and cpu `cpu_id`, its running thread, and the
 /// pagetable `pagetable` of the thread's process write-held: installs the IO leaf mapping the slot's page `addr` for the function of
 /// the array entry `index`, releases the window, the progress, and every lock, and records the exit step that completes the trace
@@ -153,12 +151,12 @@ pub(super) fn map_pci_bar_4k_install_and_exit(
     let ghost installed = *krnl;
     let ghost installed_lctx = *lctx;
     proof {
-        assert(spec_va_add_range(va, 0) == va);
         assert(va < 0x1_0000_0000_0000usize) by (bit_vector) requires va & (!0x0000_ffff_ffff_f000u64) as usize == 0;
     }
     let range = VaRange4K::new(va, 1);
     let tracked mut window_perms = Map::<WindowVa, LockPerm>::tracked_empty();
     proof {
+        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
         window_perms.tracked_insert(window_of(va), window_perm);
         range.wf_implies_view_index_is_start_plus_offset();
         assert(range.view()[0] == va && va_range_2m_windows(range).contains(window_of(va)));

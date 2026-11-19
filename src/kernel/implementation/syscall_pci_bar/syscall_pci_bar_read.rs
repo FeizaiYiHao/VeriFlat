@@ -92,8 +92,9 @@ pub(super) fn pci_bar_va_2m_free(krnl: &KernelK, pagetable_ptr: RwLockPageTableR
     let indices = va2index(va);
     let ghost table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     proof {
-        broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && spec_index2va((indices.0, indices.1, indices.2, 0usize)) == va);
+        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && spec_index2va((indices.0, indices.1, indices.2, 0usize)) == va) by {
+            broadcast use spec_va_2m_valid_index_roundtrip;
+        };
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         table.wf_mapping_2m_at(indices.0, indices.1, indices.2); table.higher.wf_mapping_1g_at(indices.0, indices.1);
     }

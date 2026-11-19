@@ -144,8 +144,9 @@ pub(super) fn unmap_pci_bar_2m_unmap_and_finish(
     let ghost ctn_ptr = krnl.thrd_mp.spec_index(thrd_ptr).view().owning_container;
     let indices = va2index(va);
     proof {
-        broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && spec_index2va((indices.0, indices.1, indices.2, 0usize)) == va);
+        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && spec_index2va((indices.0, indices.1, indices.2, 0usize)) == va) by {
+            broadcast use spec_va_2m_valid_index_roundtrip;
+        };
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr); process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);

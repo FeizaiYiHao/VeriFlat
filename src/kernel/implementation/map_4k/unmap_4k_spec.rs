@@ -30,7 +30,7 @@ pub open spec fn held_windows_hidden_leaves_va_flushed(table: WholePageTable<PT_
             && table.mapping_4k().dom().contains(v) && !table.mapping_4k().spec_index(v).present ==> va_range_flush_drops_4k(va, count, stride_2m, v)
 }
 
-/// A leaf step clears the next VA of the recorded range, which is still mapped, before the flush.
+/// A leaf step clears the next VA of the recorded range, which is still mapped to RAM, before the flush.
 #[verifier::opaque]
 pub open spec fn unmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -40,6 +40,7 @@ pub open spec fn unmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress->Unmap4k_unmapped < progress->Unmap4k_range.len
     &&& !progress->Unmap4k_flushed
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k.dom().contains(progress->Unmap4k_range.view()[progress->Unmap4k_unmapped as int])
+    &&& !old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k[progress->Unmap4k_range.view()[progress->Unmap4k_unmapped as int]].is_io
 }
 
 /// A leaf step removes the next VA of the recorded range from the process's user mapping and advances unmap progress.

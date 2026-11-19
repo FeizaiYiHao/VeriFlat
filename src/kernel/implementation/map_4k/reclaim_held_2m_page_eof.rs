@@ -165,7 +165,7 @@ proof fn remove_held_2m_mapping_without_free_eof_memory_management_inv(pre: Kern
 /// `reclaim_held_2m_page` EOF: the CPU TLB and paging-structure caches stay consistent after the held, unresolvable 2M leaf
 /// `va` of `pagetable` is cleared: its root does not resolve and the table lists no CPU stale, so no TLB entry or cached
 /// directory entry of a dirty table names it.
-pub(super) proof fn reclaim_held_2m_page_eof_cpu_caches(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+proof fn reclaim_held_2m_page_eof_cpu_caches(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable),

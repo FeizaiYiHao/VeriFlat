@@ -1,7 +1,5 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use super::reclaim_held_2m_page_eof::reclaim_held_2m_page_eof_cpu_caches;
 
 verus! {
 /// Clears the held, unresolvable IO 4K leaf `va` of `pagetable`; every other held entry of the table and every other kernel field,
@@ -258,7 +256,11 @@ pub(super) proof fn remove_held_io_2m_mapping_eof(pre: KernelK, post: KernelK, p
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    reclaim_held_2m_page_eof_cpu_caches(pre, post, pagetable, va);
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
+        reveal(cpu_tlb_wf); reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+    };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
     assert(kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)) by { kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;

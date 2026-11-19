@@ -790,7 +790,7 @@ pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id
 { reveal(kill_process_flushed_step); }
 
 /// Releasing the PCI functions of the page table `pagetable` of the live target, reclaimed and flushed, from `pre` to `post`
-/// is a visible middle step. Up to `mid`, the root-table lock and, when the target has the IOMMU table `iommu_table`, that
+/// is a visible middle step once its user mappings and window locks are gone. Up to `mid`, the root-table lock and, when the target has the IOMMU table `iommu_table`, that
 /// table's write lock are taken, and each function of the array is detached while the table drops its DID; from `mid`, each
 /// function of the array becomes unowned and the array empties. A target holding no function only write-locks its IOMMU table.
 pub(crate) proof fn kill_unown_step_from_k(
@@ -808,6 +808,10 @@ pub(crate) proof fn kill_unown_step_from_k(
         pre.prc_mp.spec_index(target).view().iommu_table == iommu_table,
         iommu_table matches Some(t) ==> pre.it_mp.spec_index(t).locking_thread() is None,
         pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() || iommu_table is Some,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         typed_lock_maps_aligned(post, lctx),
         lctx.cpu_id() == cpu_id,
         iommu_table matches Some(t) ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write),
@@ -834,7 +838,10 @@ pub(crate) proof fn kill_unown_step_from_k(
     ensures
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
         kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
-{ kernel_pci_functions_released_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, iommu_table, mid.irt.view()); reveal(kill_process_unown_functions_step); }
+{
+    kill_table_unmapped_pre_from_k(pre, target);
+    kernel_pci_functions_released_implies_u_step(pre, post, lctx, cpu_id, target, pagetable, iommu_table, mid.irt.view()); reveal(kill_process_unown_functions_step);
+}
 
 /// Removing or hiding the 4K leaf `iova` of the target's write-locked IOMMU table after the flush is a middle step; the
 /// kill's step precondition, read on `post`, ignores that leaf.

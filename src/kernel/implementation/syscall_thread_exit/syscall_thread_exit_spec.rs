@@ -265,13 +265,19 @@ pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// Unowning runs after the flush is recorded, while the process's IOMMU table, if any, is unlocked.
+/// Unowning runs after the flush is recorded, once the page table has no user 4K mapping, 2M or 1G mapping, or window lock, while the
+/// process's IOMMU table, if any, is unlocked.
 #[verifier::opaque]
 pub open spec fn thread_exit_unown_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let process = old_u.process_map.spec_index(thread.owning_proc);
+    let pagetable = process.pagetable->Some_0;
     &&& thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true })
     &&& process.iommu_table is Some ==> process.iommu_table->Some_0.lock_state is Unlocked
+    &&& process_user_4k_unmapped(old_u, pagetable)
+    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
+    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
+    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
 }
 
 /// The attached flags after exit detaches every function in `functions`.

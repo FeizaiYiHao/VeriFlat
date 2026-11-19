@@ -176,14 +176,11 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
         };
         process_thread_wf_thread_at(mid.prc_mp, mid.thrd_mp, thrd_ptr); container_process_wf_process_at(mid.ctn_mp, mid.prc_mp, prc_ptr); process_perms_wf_at(mid.prc_mp, prc_ptr);
         process_pagetable_wf_process_at(mid.prc_mp, mid.pt_mp, prc_ptr);
-        assert(mid.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr && mid.thrd_mp.spec_index(thrd_ptr).view().proc_pagetable_ptr == pagetable);
         thread_cpu_wf_cpu_at(mid.thrd_mp, mid.cpu_arr, cpu_id); process_cpu_wf_at(mid.prc_mp, mid.cpu_arr, cpu_id);
         map_pci_bar_2m_reclaim_step_from_k(&*steps, reclaim_before, &mid, &mid_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
         let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
         let flushed = whole_pagetable(flushed_k.pt_mp, flushed_k.pt_lower.view(), pagetable);
-        broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(window_of(va).va == va);
-        assert(flushed.window_view(window_of(va)).lock_state == pre.lower.l2_owner(pre.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)));
+        assert(window_of(va).va == va) by { broadcast use spec_va_2m_valid_index_roundtrip; };
     }
 }
 } // verus!

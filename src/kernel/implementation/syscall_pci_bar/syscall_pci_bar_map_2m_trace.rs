@@ -416,6 +416,5 @@ pub(super) proof fn map_pci_bar_2m_trace_exit_step(
 {
     kernel_u_domains_projection(entry_k); kernel_cpu_projection_at(entry_k, cpu_id); kernel_thread_projection_at(entry_k, thrd_ptr);
     reveal(map_pci_bar_2m_trace_after_range); reveal(map_pci_bar_2m_syscall_trace);
-    assert(steps.view().take(steps.view().len() - 1) =~= before);
 }
 } // verus!

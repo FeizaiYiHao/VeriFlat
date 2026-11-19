@@ -70,7 +70,8 @@ pub fn clear_2m_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher == old(krnl).pt_mp.spec_index(pagetable).view().higher,
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m()
-            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va) }),
+            == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().insert(va,
+                MapEntry { present: false, ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().spec_index(va) }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k(),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         final(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts() == old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.mapping_counts(),
@@ -87,7 +88,6 @@ pub fn clear_2m_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
     let ghost window_va = window_of(va);
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip;
-        assert(indices.0 == spec_v2l4index(va) && indices.1 == spec_v2l3index(va) && indices.2 == spec_v2l2index(va) && window_va.va == va);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_2m_at(indices.0, indices.1, indices.2);
@@ -115,7 +115,6 @@ pub fn clear_2m_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         wlocker_holds_no_windows_implies_l2_windows_unlocked(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable,
             indices.0, indices.1, old_c.window_l2_page(indices.0, indices.1));
         old_c.wf_window_locks_va_at(window_va);
-        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= old_c.lower.pagetable_window_locks);
     }
 }
 }

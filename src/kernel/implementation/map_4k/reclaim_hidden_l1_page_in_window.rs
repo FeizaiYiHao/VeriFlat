@@ -279,11 +279,7 @@ pub fn reclaim_hidden_l1_page_in_window(
                 && lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map());
         };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
-        assert(whole_pagetable(cache_pre.pt_mp, cache_pre.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable));
-        assert(page_lctx.pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map() && locked_lctx.pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map());
         kernel_page_freed_to_owner_quota_implies_u_step(&steps.snapshot_k(), &*krnl, false, pagetable, owner, allc_ptr, owner);
-        assert(steps.snapshot_k() == mid);
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
     }
     (owner, Ghost(mid), Ghost(mid_lctx))
@@ -411,7 +407,6 @@ fn reclaim_hidden_l1_page_to_cache_wlocked(
         };
         reclaim_hidden_l1_page_to_cache_wlocked_eof(pre, *krnl, pagetable, va, l2_ptr, l1_ptr, owner, allc_ptr, cpu_id, node_addr);
         reclaim_hidden_l1_page_to_cache_wlocked_eof_hidden_l1_tables(pre, *krnl, pagetable, va, l2_ptr, l1_ptr, allc_ptr, cpu_id, node_addr);
-        assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
     }
 }
 
@@ -544,14 +539,9 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
         let c0 = whole_pagetable(cache_pre.pt_mp, cache_pre.pt_lower.view(), pagetable);
         let c1 = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         spec_va_4k_index_roundtrip_at(w.va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, 0usize);
-        assert(c1.window_view(w) == c0.window_view(w) && c1.higher == c0.higher && krnl.pt_mp.spec_index(pagetable).view().higher == cache_pre.pt_mp.spec_index(pagetable).view().higher);
-        assert(c0 == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable));
-        assert(c1.lower.l1_page(l2_ptr, spec_va2index(va).2) == c0.lower.l1_page(l2_ptr, spec_va2index(va).2));
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         c1.higher.wf_l4_at(spec_va2index(va).0); c1.l3_links_l2_wf_at(c1.spec_resolve_mapping_l4(spec_va2index(va).0)->0.addr, spec_va2index(va).1);
         c1.wf_l2_at(l2_ptr, spec_va2index(va).2);
-        assert(c1.lower.l2_entry(l2_ptr, spec_va2index(va).2).addr == l1_ptr && c1.lower.l2_page(l2_ptr).entry_lock(spec_va2index(va).2).l1() is Some);
-        assert(c1.page_closure().contains(l1_ptr));
         pagetable_pages_wf_closure_page_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, l1_ptr);
         page_array_wf_at(krnl.pg_arr, pg_idx);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); };

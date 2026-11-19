@@ -177,9 +177,12 @@ pub(super) proof fn map_pci_bar_4k_directory_step_from_k(pre: &KernelK, post: &K
         mmap_4k_directory_rank(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_directory) < mmap_4k_directory_rank(mmap_4k_installed_directory(level)),
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
-        level is L3 ==> l4i == spec_v2l4index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && l3i == spec_v2l3index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && lo == spec_v2l2index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && hi == lo,
+        level is L3 ==> l4i == spec_v2l4index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va)
+            && l3i == spec_v2l3index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va) && lo == spec_v2l2index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va)
+            && hi == lo,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) },
+                |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         !(level is L3) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
@@ -192,7 +195,8 @@ pub(super) proof fn map_pci_bar_4k_directory_step_from_k(pre: &KernelK, post: &K
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
-        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page_of(old_windows, pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va, cpu_id));
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page_of(old_windows,
+            pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar4k_va, cpu_id));
     }
 }
 
@@ -229,12 +233,16 @@ pub(super) proof fn map_pci_bar_2m_directory_step_from_k(pre: &KernelK, post: &K
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         kernel_thread_quota_4k_changed(pre, post, thrd_ptr, -1),
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() is Some && pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0 is MapPciBar2m,
-        (level is L4 && pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is None) || (level is L3 && !(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is L3)),
+        (level is L4 && pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is None)
+            || (level is L3 && !(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_directory is L3)),
         post.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == mmap_2m_progress_after_directory(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
-        level is L3 ==> l4i == spec_v2l4index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && l3i == spec_v2l3index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && lo == spec_v2l2index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && hi == lo,
+        level is L3 ==> l4i == spec_v2l4index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va)
+            && l3i == spec_v2l3index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va) && lo == spec_v2l2index(pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va)
+            && hi == lo,
         level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) },
+                |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked { writer: cpu_id } } else { LockStateU::Unlocked }),
         !(level is L3) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
@@ -247,7 +255,8 @@ pub(super) proof fn map_pci_bar_2m_directory_step_from_k(pre: &KernelK, post: &K
     process_pagetable_wf_process_at(pre.prc_mp, pre.pt_mp, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     if level is L3 {
         let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
-        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page_of(old_windows, pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va, cpu_id));
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page_of(old_windows,
+            pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view()->Some_0->MapPciBar2m_va, cpu_id));
     }
 }
 } // verus!

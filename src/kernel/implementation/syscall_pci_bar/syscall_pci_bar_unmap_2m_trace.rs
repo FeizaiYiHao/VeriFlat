@@ -341,6 +341,5 @@ pub(super) proof fn unmap_pci_bar_2m_trace_exit_steps(
     ensures unmap_pci_bar_2m_syscall_trace(steps.view(), cpu_id, va),
 {
     reveal(unmap_pci_bar_2m_trace_after_flush); reveal(unmap_pci_bar_2m_syscall_trace);
-    assert(steps.view().take(steps.view().len() - 2) =~= flushed);
 }
 } // verus!

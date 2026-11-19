@@ -340,6 +340,10 @@ pub open spec fn kill_process_unown_functions_step(old_u: KernelU, new_u: Kernel
     let functions = pagetable.pci_functions.dom();
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true })
     &&& target.iommu_table is Some ==> target.iommu_table->Some_0.lock_state is Unlocked
+    &&& process_user_4k_unmapped(old_u, pagetable)
+    &&& pagetable.mapping_2m.dom() == Set::<VAddr>::empty()
+    &&& pagetable.mapping_1g.dom() == Set::<VAddr>::empty()
+    &&& pagetable.pagetable_window_locks.dom() == Set::<WindowVa>::empty()
     &&& new_u == (KernelU {
         process_map: old_u.process_map.insert(prc_ptr, ProcessU {
             pagetable: Some(PageTableU { pci_functions: Map::empty(), ..pagetable }),

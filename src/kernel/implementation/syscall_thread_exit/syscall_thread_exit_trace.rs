@@ -476,6 +476,10 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_proc == prc_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().owning_container == ctn_ptr,
         pre.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom() =~= Set::<VAddr>::empty(),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= Set::<WindowVa>::empty(),
         *post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, pt_mp: post.pt_mp, ..*pre }),
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
         post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
@@ -502,6 +506,9 @@ pub(super) proof fn thread_exit_unown_step_from_k(
         iommu_table is Some || pre.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() != Set::<PciBdf>::empty() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
 {
     kernel_write_held_context_projection(pre, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    kernel_pagetable_user_4k_unmapped_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
+    let table = kernel_k_to_kernel_u(*pre).process_map[prc_ptr].pagetable->Some_0;
+    assert(table.mapping_2m.dom() =~= Set::<VAddr>::empty()); assert(table.mapping_1g.dom() =~= Set::<VAddr>::empty());
     kernel_pci_functions_released_implies_u_step(pre, post, post_lctx, cpu_id, prc_ptr, pagetable, iommu_table, detached);
     reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step);
 }

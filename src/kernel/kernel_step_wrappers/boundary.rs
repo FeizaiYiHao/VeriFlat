@@ -744,7 +744,8 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
 /// Setting the cpu, thread, and write-held pagetable lock modes to the thread's mode, replacing the thread's progress, and locking or
 /// unlocking windows of the pagetable changes only those projections and the table's window locks. `lctx` is aligned with `pre`; the
 /// objects it write-holds project as write-locked before the section.
-pub proof fn kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot)
+pub proof fn kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr,
+    pagetable_ptr: RwLockPageTableRoot)
     requires
         process_cpu_wf(pre.prc_mp, pre.cpu_arr),
         process_pagetable_wf(pre.prc_mp, pre.pt_mp),

@@ -20,7 +20,7 @@ pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
 /// process and container exist; no thread write-holds the process's pagetable; every 2M window of the range exists and is unlocked;
-/// and every VA of the valid, non-empty user range is mapped.
+/// and every VA of the valid, non-empty user range is mapped to RAM.
 #[verifier::opaque]
 pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -38,7 +38,8 @@ pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range)
-    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len
+        ==> pagetable.mapping_4k.dom().contains(range.view()[i]) && !pagetable.mapping_4k[range.view()[i]].is_io
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, and its running thread, read-locks the pagetable of the

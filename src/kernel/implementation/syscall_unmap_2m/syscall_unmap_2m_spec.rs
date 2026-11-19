@@ -20,7 +20,7 @@ pub open spec fn unmap_2m_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr,
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu and the thread are unlocked; the thread's
 /// process has a pagetable that no thread write-holds and in which every 2M window of the range exists and is unlocked; the
-/// thread's container exists; and every page of the valid, non-empty user range is mapped by a 2M leaf.
+/// thread's container exists; and every page of the valid, non-empty user range is mapped by a 2M RAM leaf.
 #[verifier::opaque]
 pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange2M) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -38,7 +38,8 @@ pub open spec fn unmap_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range.covering_4k_range())
-    &&& forall|i: int| #![trigger pagetable.mapping_2m.dom().contains(range.view()[i])] 0 <= i < range.len ==> pagetable.mapping_2m.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger pagetable.mapping_2m.dom().contains(range.view()[i])] 0 <= i < range.len
+        ==> pagetable.mapping_2m.dom().contains(range.view()[i]) && !pagetable.mapping_2m[range.view()[i]].is_io
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, and its running thread, read-locks the pagetable of the
@@ -60,7 +61,7 @@ pub open spec fn unmap_2m_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 }
 
 /// A leaf step runs while the range is not fully cleared and before the flush, and the next page of the range, the
-/// `unmapped`-th, is still mapped.
+/// `unmapped`-th, is still mapped to RAM.
 #[verifier::opaque]
 pub open spec fn unmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -70,6 +71,7 @@ pub open spec fn unmap_2m_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress->Unmap2m_unmapped < progress->Unmap2m_range.len
     &&& !progress->Unmap2m_flushed
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_2m.dom().contains(progress->Unmap2m_range.view()[progress->Unmap2m_unmapped as int])
+    &&& !old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_2m[progress->Unmap2m_range.view()[progress->Unmap2m_unmapped as int]].is_io
 }
 
 /// A leaf step removes the next page of the range, the `unmapped`-th, from the process's 2M user mapping and advances

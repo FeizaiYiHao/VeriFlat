@@ -207,6 +207,7 @@ pub(super) proof fn unmap_2m_leaf_step_from_u(
         progress == Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false }),
         unmapped < range.len,
         pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.dom().contains(range.view()[unmapped as int]),
+        !pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m[range.view()[unmapped as int]].is_io,
         post == (KernelU {
             process_map: pre.process_map.insert(prc_ptr, ProcessU {
                 pagetable: Some(PageTableU { mapping_2m: pre.process_map[prc_ptr].pagetable->Some_0.mapping_2m.remove(range.view()[unmapped as int]), ..pre.process_map[prc_ptr].pagetable->Some_0 }),
@@ -268,6 +269,7 @@ pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
         post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view(),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).present,
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).is_io,
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m()
             == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().insert(va, MapEntry { present: false, ..whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va) }),
         whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
@@ -288,7 +290,7 @@ pub(super) proof fn unmap_2m_leaf_range_steps_from_k(
     } else {
         pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
-    kernel_pagetable_mappings_projection_at(pre, prc_ptr);
+    kernel_pagetable_mappings_projection_at(pre, prc_ptr); kernel_process_projection_at(pre, prc_ptr);
     unmap_2m_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, prc_ptr, thrd_ptr, range, unmapped,
         Some(SyscallProgress::Unmap2m { range, unmapped: (unmapped + 1) as usize, flushed: false }));
     unmap_2m_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id);
