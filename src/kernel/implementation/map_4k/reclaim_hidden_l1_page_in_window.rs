@@ -497,6 +497,8 @@ pub fn reclaim_hidden_l1_page_in_window_wlocked(
             ..whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va))
         }),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).l2_entry.is_empty(),
+        !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_entry_hides_l1(
+            whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)),
         whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(window_of(va).va)
             == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m().dom().contains(window_of(va).va),
 {
