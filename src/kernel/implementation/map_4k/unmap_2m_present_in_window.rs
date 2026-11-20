@@ -4,19 +4,21 @@ use crate::*;
 use super::unmap_2m_present_in_window_eof::*;
 
 verus! {
-/// The L2 page that the 2M window `indices` of the read-held `pagetable` links.
-fn clear_2m_mapping_l2_ptr(krnl: &KernelK, pagetable: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&LocalContext>, pagetable_perm: Tracked<&LockPerm>)
-    -> (ret: PageMapPtr)
+/// The L2 page that the 2M window `indices` of the read- or write-held `pagetable` links.
+pub(super) fn clear_2m_mapping_l2_ptr(krnl: &KernelK, pagetable: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&LocalContext>,
+    pagetable_perm: Tracked<&LockPerm>) -> (ret: PageMapPtr)
     requires
         krnl.inv(),
         typed_lock_maps_aligned(krnl, lctx),
         krnl.pt_mp.dom().contains(pagetable),
         krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
         whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
-        pagetable_perm.view().state() is ReadLock,
         pagetable_perm.view().thread_id() == lctx.thread_id(),
-        krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
+        pagetable_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        pagetable_perm.view().state() is WriteLock ==> pagetable_perm.view().lock_id() == krnl.pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
+        pagetable_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Read),
+        pagetable_perm.view().state() is ReadLock ==> krnl.pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_perm.view().lock_id()),
+        pagetable_perm.view().state() is ReadLock || pagetable_perm.view().state() is WriteLock,
     ensures whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == ret,
 {
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }

@@ -2,30 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::unmap_2m_present_eof::*;
+use super::unmap_2m_present_in_window::clear_2m_mapping_l2_ptr;
 
 verus! {
-/// The L2 page that the 2M window `indices` of the write-held `pagetable` links.
-fn clear_2m_mapping_l2_ptr_wlocked(krnl: &KernelK, pagetable: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&LocalContext>,
-    pagetable_perm: Tracked<&LockPerm>) -> (ret: PageMapPtr)
-    requires
-        krnl.inv(),
-        typed_lock_maps_aligned(krnl, lctx),
-        krnl.pt_mp.dom().contains(pagetable),
-        krnl.pt_mp.spec_index(pagetable).view().higher.kernel_l4_end <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
-        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
-        pagetable_perm.view().state() is WriteLock,
-        pagetable_perm.view().thread_id() == lctx.thread_id(),
-        pagetable_perm.view().lock_id() == krnl.pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-    ensures whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == ret,
-{
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
-    let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), pagetable_perm);
-    let l4 = pt.higher.get_entry_l4(indices.0).unwrap();
-    let l3 = pt.higher.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    l3.addr
-}
-
 /// Clear the user present bit of the 2M leaf `va` of the write-held `pagetable`, listing every CPU stale for its window first;
 /// the leaf's 2M window is locked around the write and released before return, so the caller holds no window of any table
 /// on entry and exit.
@@ -101,7 +80,7 @@ pub fn clear_2m_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_va);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
-    let l2_ptr = clear_2m_mapping_l2_ptr_wlocked(krnl, pagetable, (indices.0, indices.1, indices.2), Tracked(&*lctx), pagetable_perm);
+    let l2_ptr = clear_2m_mapping_l2_ptr(krnl, pagetable, (indices.0, indices.1, indices.2), Tracked(&*lctx), pagetable_perm);
     pagetable_map_clear_2m_present(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, (indices.0, indices.1, indices.2), l2_ptr, Tracked(&window_perm), Tracked(&mut *lctx), pagetable_perm);
     proof {
         assert(clear_2m_mapping_present_eof_transition_framing(locked, *krnl, pagetable, va, l2_ptr)) by { reveal(clear_2m_mapping_present_eof_transition_framing); };

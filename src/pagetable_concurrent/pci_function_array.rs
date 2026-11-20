@@ -164,22 +164,9 @@ impl PciFunctionArray {
         ensures
             ret == (self.view().dom() == Set::<PciBdf>::empty()),
     {
-        let mut i: usize = 0;
-        while i < PCI_FUNCTIONS_PER_PROCESS
-            invariant
-                self.wf(),
-                i <= PCI_FUNCTIONS_PER_PROCESS,
-                forall|j: int| #![trigger self.entries_view()[j]] 0 <= j < i ==> !self.spec_entry(j).used,
-            decreases PCI_FUNCTIONS_PER_PROCESS - i,
-        {
-            if self.entry(i).used {
-                proof { self.wf_entry_at(i as int); }
-                return false;
-            }
-            i = i + 1;
-        }
-        assert(self.view().dom() =~= Set::<PciBdf>::empty()) by { reveal(PciFunctionArray::wf); };
-        true
+        let ret = self.len == 0;
+        assert(ret == (self.view().dom() == Set::<PciBdf>::empty())) by { reveal(PciFunctionArray::wf); broadcast use vstd::set_lib::lemma_set_empty_equivalency_len; };
+        ret
     }
 
     /// An unused entry, if any; there is none exactly when the array owns `PCI_FUNCTIONS_PER_PROCESS` functions.

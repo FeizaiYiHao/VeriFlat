@@ -315,6 +315,8 @@ pub fn adopt_boot_dom0_pagetable(
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
         (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
+        ret.0.pci.wf(),
+        ret.0.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
@@ -1083,16 +1085,10 @@ pub fn finish_init_from_boot(
 {
     let tracked mut kernel_perm = kernel_perm;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
-    let (mut cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
+    let (cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
         layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
         Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
-    let ghost adopted_pagetable = cpu_pagetable;
-    cpu_pagetable.pci = PciFunctionArray::new_empty();
-    proof {
-        boot_dom0_pagetable_pci_eof(WholePageTable { higher: adopted_pagetable, lower: cpu_pagetable_lower }, WholePageTable { higher: cpu_pagetable, lower: cpu_pagetable_lower });
-        boot_dom0_pagetable_pci_eof_walks(adopted_pagetable, cpu_pagetable);
-    }
     let (iommu_l4, Tracked(iommu_l4_perm)) = iommu_page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     assert(iommu_l4_perm.value().iommu_wf()) by {
         assert(iommu_word_valid(0usize)) by (compute);
