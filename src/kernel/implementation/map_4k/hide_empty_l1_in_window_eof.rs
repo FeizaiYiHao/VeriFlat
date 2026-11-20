@@ -135,13 +135,7 @@ proof fn hide_empty_l1_in_window_eof_cpu_tlb(pre: KernelK, post: KernelK, pageta
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((l2_ptr, spec_va2index(va).2)),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((l2_ptr, spec_va2index(va).2)) == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(hide_empty_l1_in_window_eof_transition_framing);
@@ -378,13 +372,7 @@ proof fn hide_empty_l1_in_window_wlocked_eof_mapped_4k_pages(pre: KernelK, post:
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((l2_ptr, spec_va2index(va).2)),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((l2_ptr, spec_va2index(va).2)) == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing);
@@ -405,13 +393,7 @@ proof fn hide_empty_l1_in_window_wlocked_eof_cpu_tlb(pre: KernelK, post: KernelK
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((l2_ptr, spec_va2index(va).2)),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((l2_ptr, spec_va2index(va).2)) == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(hide_empty_l1_in_window_wlocked_eof_transition_framing);

@@ -20,12 +20,10 @@ pub(super) open spec fn ipc_pci_rendezvous_eof_pagetable_frame(
     &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p)] pre.pt_mp.dom().contains(p) ==> {
         let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
         let after = whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p);
-        let counts = before.higher.pci.mapping_counts();
         &&& after.mapping_4k() == before.mapping_4k()
         &&& after.mapping_2m() == before.mapping_2m()
         &&& after.mapping_1g() == before.mapping_1g()
         &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
-        &&& after.higher.pci.mapping_counts() == if transferred && p == sender_pt { counts.remove(bdf) } else if transferred && p == receiver_pt { counts.insert(bdf, 0) } else { counts }
     }
     &&& mid.pt_mp.spec_index(sender_pt).being_killed() == pre.pt_mp.spec_index(sender_pt).being_killed()
     &&& mid.pt_mp.spec_index(receiver_pt).being_killed() == pre.pt_mp.spec_index(receiver_pt).being_killed()

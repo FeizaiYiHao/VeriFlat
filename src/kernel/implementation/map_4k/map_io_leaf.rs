@@ -68,8 +68,6 @@ pub fn install_io_4k_mapping(
             let f = old_c.higher.pci.spec_entry(index as int).bdf;
             &&& old_c.higher.pci.view().dom().contains(f) && !old_c.higher.pci.view()[f].contains((va, PageSize::SZ4k))
             &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
-            &&& new_c.higher.pci.view() == old_c.higher.pci.view().insert(f, old_c.higher.pci.view()[f].insert((va, PageSize::SZ4k)))
-            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
             &&& new_c.higher.pci.mapping_counts() == old_c.higher.pci.mapping_counts().insert(f, (old_c.higher.pci.mapping_counts()[f] + 1) as nat)
             &&& new_c.mapping_4k() == old_c.mapping_4k().insert(va, *entry) && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g()
             &&& new_c.page_closure() == old_c.page_closure()
@@ -83,9 +81,7 @@ pub fn install_io_4k_mapping(
 {
     let indices = va2index(va);
     let ghost f = krnl.pt_mp.spec_index(pagetable).view().higher.pci.spec_entry(index as int).bdf;
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
-    };
+    assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
     proof {
         let c = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -175,8 +171,6 @@ pub fn install_io_2m_mapping(
             let f = old_c.higher.pci.spec_entry(index as int).bdf;
             &&& old_c.higher.pci.view().dom().contains(f) && !old_c.higher.pci.view()[f].contains((va, PageSize::SZ2m))
             &&& new_c.higher == (PageTableHigher { pci: new_c.higher.pci, ..old_c.higher })
-            &&& new_c.higher.pci.view() == old_c.higher.pci.view().insert(f, old_c.higher.pci.view()[f].insert((va, PageSize::SZ2m)))
-            &&& new_c.higher.pci.view().dom() == old_c.higher.pci.view().dom()
             &&& new_c.higher.pci.mapping_counts() == old_c.higher.pci.mapping_counts().insert(f, (old_c.higher.pci.mapping_counts()[f] + 1) as nat)
             &&& new_c.mapping_2m() == old_c.mapping_2m().insert(va, *entry) && new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_1g() == old_c.mapping_1g()
             &&& new_c.page_closure() == old_c.page_closure()

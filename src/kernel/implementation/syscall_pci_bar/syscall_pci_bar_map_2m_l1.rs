@@ -133,7 +133,6 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
     }
     let (l2_ptr, l1_ptr) = hide_empty_l1_in_window_wlocked(krnl, pagetable, va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(window_perm));
-    let ghost hidden_steps = steps.view();
     proof {
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
@@ -178,10 +177,8 @@ pub(super) fn map_pci_bar_2m_drop_empty_l1(
         thread_cpu_wf_cpu_at(mid.thrd_mp, mid.cpu_arr, cpu_id); process_cpu_wf_at(mid.prc_mp, mid.cpu_arr, cpu_id);
         map_pci_bar_2m_tlb_flush_steps_from_k(&flush_steps_snap, flush_before, &flush_entry, &flush_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
         map_pci_bar_2m_flushed_step_from_k(&flushed_steps_snap, flushed_before, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable,
-            pcid, slot, index, va);
-        map_pci_bar_2m_reclaim_step_from_k(&*steps, reclaim_before, &mid, &mid_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, pcid, slot, index, va);
-        let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
-        let flushed = whole_pagetable(flushed_k.pt_mp, flushed_k.pt_lower.view(), pagetable);
+            slot, index, va);
+        map_pci_bar_2m_reclaim_step_from_k(&*steps, reclaim_before, &mid, &mid_lctx, cpu_id, prc_ptr, thrd_ptr, ctn_ptr, pagetable, slot, index, va);
         assert(window_of(va).va == va) by { broadcast use spec_va_2m_valid_index_roundtrip; };
     }
 }

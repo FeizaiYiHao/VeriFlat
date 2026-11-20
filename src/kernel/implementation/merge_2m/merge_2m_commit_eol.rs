@@ -191,28 +191,6 @@ pub proof fn merge_2m_commit_eol_step_source_lists(pre: KernelK, cur: KernelK, m
                 == (cur.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other).view().contains(value) && (other != source as usize || value != node_perm.value().view())),
         forall|other: usize| #![trigger mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other)] other <= NUM_CPUS && other != source as usize ==>
             mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other) == cur.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other),
-        post == (KernelK { pg_arr: post.pg_arr, ..mid }),
-        offset == 0 ==> post.pg_arr == mid.pg_arr && post_head_node_addr == node_perm.addr() && post_head_node_perm == Some(node_perm) && post_tail_perms == tail_perms,
-        offset > 0 ==> {
-            let index = (candidate.head + offset) as usize;
-            let mid_cell = mid.pg_arr.spec_index(index).view();
-            let post_cell = post.pg_arr.spec_index(index).view();
-            &&& post.pg_arr.entries_unchanged_except(&mid.pg_arr, index)
-            &&& post_cell.is_init() == mid_cell.is_init()
-            &&& post_cell.locking_thread() == mid_cell.locking_thread()
-            &&& post_cell.view_rodata() == mid_cell.view_rodata()
-            &&& post_cell.view_ghost() == mid_cell.view_ghost()
-            &&& post_cell.control() == mid_cell.control()
-            &&& post_cell.killer_info() == mid_cell.killer_info()
-            &&& post.pg_arr.lock_id_by_index(index) == mid.pg_arr.lock_id_by_index(index)
-            &&& merge_2m_tail_eof_transition_framing(mid_cell.view(), post_cell.view())
-            &&& post_tail_perms == tail_perms.insert(offset, mid_cell.view().perm_4k.view().unwrap())
-            &&& post_tail_perms.spec_index(offset).is_init()
-            &&& post_tail_perms.spec_index(offset).addr() == (candidate.head + offset) * PAGE_SZ_4K
-            &&& post_cell.view().perm_2m.view().is_none()
-            &&& post_head_node_addr == head_node_addr
-            &&& post_head_node_perm == head_node_perm
-        },
     ensures
         forall|source: usize| #![trigger mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source)] source <= NUM_CPUS ==>
             LinkedList::<PagePtr, 233>::values_sorted(mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(source).view()),
@@ -254,16 +232,9 @@ pub proof fn merge_2m_commit_eol_step_caches(pre: KernelK, cur: KernelK, mid: Ke
         candidate.wf(),
         candidate.sources.len() == 512,
         page_index_2m_valid(candidate.head),
-        forall|index: PageIndex| #![trigger pre.pg_arr.spec_index(index)] candidate.head <= index < candidate.head + 512 ==> {
-            let source = candidate.sources.view().spec_index(index as int - candidate.head as int) as usize;
-            &&& index_valid(NUM_PAGES, index)
-            &&& pre.pg_arr.spec_index(index).view().view().state == PageState::Free4k { allocator_ptr: Ghost(allocator_4k), state:
-                if source < NUM_CPUS { FreePageAllocatorState::PreCpuCache { cpu_id: source } } else { FreePageAllocatorState::GlobalList } }
-        },
         merge_2m_commit_eol_loop_framing(pre, cur, allocator_4k, candidate, offset, head_node_addr, head_node_perm, tail_perms),
         offset < 512,
         source == candidate.sources.view().spec_index(offset as int),
-        cur.pg_arr.spec_index((candidate.head + offset) as usize) == pre.pg_arr.spec_index((candidate.head + offset) as usize),
         mid == (KernelK { allc_4k_mp: mid.allc_4k_mp, ..cur }),
         mid.allc_4k_mp.unchanged_except(&cur.allc_4k_mp, allocator_4k),
         PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_4K>::merge_2m_remove_source_eof_transition_framing(cur.allc_4k_mp, mid.allc_4k_mp, allocator_4k, source,
@@ -286,28 +257,6 @@ pub proof fn merge_2m_commit_eol_step_caches(pre: KernelK, cur: KernelK, mid: Ke
                 == (cur.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other).view().contains(value) && (other != source as usize || value != node_perm.value().view())),
         forall|other: usize| #![trigger mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other)] other <= NUM_CPUS && other != source as usize ==>
             mid.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other) == cur.allc_4k_mp.spec_index(allocator_4k).merge_2m_source_list(other),
-        post == (KernelK { pg_arr: post.pg_arr, ..mid }),
-        offset == 0 ==> post.pg_arr == mid.pg_arr && post_head_node_addr == node_perm.addr() && post_head_node_perm == Some(node_perm) && post_tail_perms == tail_perms,
-        offset > 0 ==> {
-            let index = (candidate.head + offset) as usize;
-            let mid_cell = mid.pg_arr.spec_index(index).view();
-            let post_cell = post.pg_arr.spec_index(index).view();
-            &&& post.pg_arr.entries_unchanged_except(&mid.pg_arr, index)
-            &&& post_cell.is_init() == mid_cell.is_init()
-            &&& post_cell.locking_thread() == mid_cell.locking_thread()
-            &&& post_cell.view_rodata() == mid_cell.view_rodata()
-            &&& post_cell.view_ghost() == mid_cell.view_ghost()
-            &&& post_cell.control() == mid_cell.control()
-            &&& post_cell.killer_info() == mid_cell.killer_info()
-            &&& post.pg_arr.lock_id_by_index(index) == mid.pg_arr.lock_id_by_index(index)
-            &&& merge_2m_tail_eof_transition_framing(mid_cell.view(), post_cell.view())
-            &&& post_tail_perms == tail_perms.insert(offset, mid_cell.view().perm_4k.view().unwrap())
-            &&& post_tail_perms.spec_index(offset).is_init()
-            &&& post_tail_perms.spec_index(offset).addr() == (candidate.head + offset) * PAGE_SZ_4K
-            &&& post_cell.view().perm_2m.view().is_none()
-            &&& post_head_node_addr == head_node_addr
-            &&& post_head_node_perm == head_node_perm
-        },
     ensures
         mid.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator_4k),
         mid.allc_4k_mp.spec_index(allocator_4k).quota == pre.allc_4k_mp.spec_index(allocator_4k).quota,

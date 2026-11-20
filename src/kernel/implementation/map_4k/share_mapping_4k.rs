@@ -144,11 +144,6 @@ pub fn share_mapping_4k_source_precheck(krnl: &KernelK, source_range: &VaRange4K
             &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_range.view().spec_index(j)).present
         },
         ret.0 ==> ret.1 == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_mapping_4k_va_range_ram(source_range),
-        ret.0 ==> ret.1 == forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
-            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_range.view().spec_index(j))
-            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_range.view().spec_index(j)).present
-            &&& !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_range.view().spec_index(j)).is_io
-        },
 {
     assert({
         &&& krnl.pt_mp.perms_wf()

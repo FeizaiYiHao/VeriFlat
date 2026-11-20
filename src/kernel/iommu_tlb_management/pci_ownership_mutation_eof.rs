@@ -22,7 +22,6 @@ pub open spec fn update_pci_entry_eof_transition_framing(pre: KernelK, post: Ker
     &&& after.control() == before.control()
     &&& after.view().higher == (PageTableHigher { pci: after.view().higher.pci, ..before.view().higher })
     &&& after.view().lower_backup == before.view().lower_backup
-    &&& after.view().higher.pci.wf()
     &&& after.view().higher.pci.view() == pci_entry_update_view(before.view().higher.pci, index, update)
 }
 
@@ -65,7 +64,6 @@ pub open spec fn update_pci_entry_eof_owner_update(pre: KernelK, post: KernelK, 
     let before = pre.pt_mp.spec_index(root);
     let bdf = pci_entry_update_bdf(before.view().higher.pci, index, update);
     let owner = if update is Claim { Some(before.view().higher.proc_ptr) } else { None };
-    &&& post.irt.inv()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
     &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
     &&& post.irt.view().iommu_dids() == pre.irt.view().iommu_dids()
@@ -198,6 +196,7 @@ proof fn update_pci_entry_eof_pci_mappings(pre: KernelK, post: KernelK, root: Rw
         post.pt_mp.perms_wf(),
         post.irt.inv(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
         update is Claim ==> {
             let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
             &&& !(process.state.view() is TablesEmptied)
@@ -230,20 +229,10 @@ proof fn update_pci_entry_eof_page_tables_page_mappings(pre: KernelK, post: Kern
         post.pt_mp.perms_wf(),
         post.irt.inv(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
-        update is Claim ==> {
-            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
-            &&& !(process.state.view() is TablesEmptied)
-            &&& !(process.state.view() is Zombie)
-        },
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
-            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
-            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
-        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
     ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(update_pci_entry_eof_transition_framing);
-    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
     update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -261,20 +250,10 @@ proof fn update_pci_entry_eof_page_tables_cpu_tlb(pre: KernelK, post: KernelK, r
         post.pt_mp.perms_wf(),
         post.irt.inv(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
-        update is Claim ==> {
-            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
-            &&& !(process.state.view() is TablesEmptied)
-            &&& !(process.state.view() is Zombie)
-        },
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
-            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
-            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
-        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(update_pci_entry_eof_transition_framing);
-    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
     update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -292,20 +271,10 @@ proof fn update_pci_entry_eof_page_tables_structure_cache(pre: KernelK, post: Ke
         post.pt_mp.perms_wf(),
         post.irt.inv(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
-        update is Claim ==> {
-            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
-            &&& !(process.state.view() is TablesEmptied)
-            &&& !(process.state.view() is Zombie)
-        },
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
-        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
-            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
-            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
-        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
     ensures structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(update_pci_entry_eof_transition_framing);
-    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
     update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
@@ -324,6 +293,7 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
         post.pt_mp.perms_wf(),
         post.irt.inv(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
         update is Claim ==> {
             let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
             &&& !(process.state.view() is TablesEmptied)
@@ -347,7 +317,6 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
         cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
-    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
     update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
     reveal(update_pci_entry_eof_transition_framing);
     pagetable_perms_wf_at(pre.pt_mp, root);
@@ -399,6 +368,7 @@ proof fn update_pci_entry_eof_root_table(pre: KernelK, post: KernelK, root: RwLo
         0 <= index < PCI_FUNCTIONS_PER_PROCESS,
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
         update_pci_entry_eof_owner_update(pre, post, root, index, update),
+        post.irt.inv(),
         update matches PciEntryUpdate::Claim { bus, device, function } ==> pre.irt.view().spec_index_owner(bus, device, function) is None,
         update is Release ==> {
             let bdf = pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).bdf;
@@ -439,6 +409,8 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
         pre.pt_mp.spec_index(root).locking_thread() is Write,
         post.pt_mp.perms_wf(),
         update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        post.pt_mp.spec_index(root).view().higher.pci.wf(),
+        post.irt.inv(),
         update_pci_entry_eof_owner_update(pre, post, root, index, update),
         update is Claim ==> {
             let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
@@ -458,7 +430,6 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
     ensures
         post.inv(),
 {
-    assert(post.irt.inv()) by { reveal(update_pci_entry_eof_owner_update); };
     update_pci_entry_eof_page_tables(pre, post, root, index, update);
     update_pci_entry_eof_root_table(pre, post, root, index, update);
     reveal(update_pci_entry_eof_transition_framing);
@@ -470,12 +441,11 @@ pub(super) proof fn update_pci_entry_eof(pre: KernelK, post: KernelK, root: RwLo
 /// `done` leaves the owners with `done` and `g` released.
 pub(super) proof fn release_pci_functions_eol_owners(
     old_owners: Seq3<Option<RwLockProcessPtr>>, cur: Seq3<Option<RwLockProcessPtr>>, new: Seq3<Option<RwLockProcessPtr>>, done: Set<PciBdf>, g: PciBdf,
-    released: bool,
 )
     requires
         pci_bdf_valid(g.0, g.1, g.2),
-        released ==> cur == pci_owners_released(old_owners, done),
-        !released ==> cur == old_owners && done == Set::<PciBdf>::empty(),
+        done == Set::<PciBdf>::empty() ==> cur == old_owners,
+        done != Set::<PciBdf>::empty() ==> cur == pci_owners_released(old_owners, done),
         new == seq3_update(cur, g.0 as int, g.1 as int, g.2 as int, None),
     ensures
         new == pci_owners_released(old_owners, done.insert(g)),

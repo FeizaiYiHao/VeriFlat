@@ -419,6 +419,8 @@ pub(super) open spec fn reclaim_hidden_l1_page_to_cache_wlocked_eof_transition_f
     &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
     &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks
     &&& new_c.lower.l2_entry(l2_ptr, target.2).is_empty()
+    &&& new_c.lower.l2_page(l2_ptr).entry_lock(target.2).l1() is None
+    &&& new_c.lower.l2_perms.dom() == old_c.lower.l2_perms.dom()
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_entry(p, i)] (p, i) != (l2_ptr, target.2) ==> new_c.lower.l2_entry(p, i) == old_c.lower.l2_entry(p, i)
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
     &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_page(p).entry_lock(i).l1()]
@@ -468,8 +470,6 @@ pub(super) proof fn reclaim_hidden_l1_page_to_cache_wlocked_eof_hidden_l1_tables
 )
     requires
         reclaim_hidden_l1_page_to_cache_wlocked_eof_transition_framing(pre, post, pagetable, va, l2_ptr, l1_ptr, allc_ptr, cpu_id, node_addr),
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.l2_page(l2_ptr).entry_lock(spec_va2index(va).2).l1() is None,
-        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.l2_perms.dom() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.l2_perms.dom(),
     ensures
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows()
             ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.hidden_l1_tables_in_locked_windows(),
@@ -670,7 +670,6 @@ proof fn reclaim_hidden_l1_page_to_cache_wlocked_eof_cpu_caches(
 {
     reveal(reclaim_hidden_l1_page_to_cache_wlocked_eof_transition_framing);
     spec_va_4k_index_roundtrip_at(va, spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3);
-    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable); pagetable_lower_wf_at(post.pt_mp, post.pt_lower.view(), pagetable);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
     reclaim_hidden_l1_page_to_cache_wlocked_eof_tlb(pre, post, pagetable, va, l2_ptr, l1_ptr, allc_ptr, cpu_id, node_addr);
     reveal(structure_cache_wf);

@@ -526,24 +526,22 @@ verus! {
         let ghost bdf: PciBdf = (bus, dev, fun);
         let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
         let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, dev, fun);
-        proof { process_perms_wf_at(krnl.prc_mp, sender_proc); }
+        proof { process_perms_wf_at(krnl.prc_mp, sender_proc); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); }
         let iommu_table = if attached { krnl.prc_mp.borrow_rodata(sender_proc).borrow().iommu_table_ptr } else { None };
         let ghost mut anchor: Option<PciBdf> = None;
         let ghost mut locked_it = *krnl;
-        let ghost mut detached = *krnl;
         let Tracked(iommu_table_lock_perm) = match iommu_table {
             Some(t) => {
                 proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, sender_proc); }
                 let Tracked(perm) = krnl.wlock_iommu_table(t, Tracked(&mut *lctx));
                 let ghost locked = *krnl;
-                proof { krnl.it_mp.spec_index(t).view().table_pages_wf_cr3_at(); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt); }
+                proof { krnl.it_mp.spec_index(t).view().table_pages_wf_cr3_at(); }
                 let new_anchor = iommu_root_table_detach_owned(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, t,
                     &krnl.pt_mp.borrow_typed(sender_pt, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(sender_pt_perm)).higher.pci, bus, dev, fun, Ghost(locked),
                     Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(&perm));
                 proof {
                     anchor = new_anchor;
                     locked_it = locked;
-                    detached = *krnl;
                     ipc_pci_detach_eof(locked, *krnl, sender_proc, sender_pt, t, bdf, new_anchor);
                     assert({
                         &&& krnl.it_mp.spec_index(t).view().mapping_4k() == locked.it_mp.spec_index(t).view().mapping_4k()
@@ -556,12 +554,8 @@ verus! {
             None => Tracked(None),
         };
         let ghost detached = *krnl;
-        proof {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, sender_pt);
-            process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, sender_proc);
-        }
+        proof { process_iommu_table_wf_process_at(krnl.prc_mp, krnl.it_mp, sender_proc); }
         krnl.update_pci_entry(sender_pt, sender_index, PciEntryUpdate::Release, Tracked(&*lctx), Tracked(sender_pt_perm), Tracked(&irt_lock_perm));
-        let ghost released = *krnl;
         krnl.update_pci_entry(receiver_pt, receiver_index, PciEntryUpdate::Claim { bus, device: dev, function: fun }, Tracked(&*lctx), Tracked(receiver_pt_perm),
             Tracked(&irt_lock_perm));
         proof {
@@ -590,6 +584,7 @@ verus! {
             }
             ipc_pci_transfer_eof_pagetable_frame(pre, *krnl, sender_pt, receiver_pt, bdf);
             assert(ipc_pci_rendezvous_eof_pci_handoff(pre, *krnl, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, true, lctx.thread_id(), iommu_table, anchor)) by {
+                broadcast use IommuRootTable::wf_context_entry_at;
                 reveal(ipc_pci_rendezvous_eof_pci_handoff);
             };
         }
@@ -747,7 +742,6 @@ verus! {
             wunlock_ensures(ret.3.view().1.pt_mp.spec_index(sender_pt), final(krnl).pt_mp.spec_index(sender_pt)),
             wunlock_ensures(ret.3.view().1.pt_mp.spec_index(receiver_pt), final(krnl).pt_mp.spec_index(receiver_pt)),
             !old(krnl).sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(old(krnl).thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
-            final(krnl).prc_mp == old(krnl).prc_mp,
             final(krnl).thrd_mp.unchanged_except(&old(krnl).thrd_mp, peer_thrd_ptr),
             final(krnl).thrd_mp.spec_index(peer_thrd_ptr).locking_thread() == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).locking_thread(),
             final(krnl).thrd_mp.spec_index(peer_thrd_ptr).being_killed() == old(krnl).thrd_mp.spec_index(peer_thrd_ptr).being_killed(),

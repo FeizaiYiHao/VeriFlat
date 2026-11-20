@@ -81,13 +81,7 @@ proof fn clear_4k_mapping_present_eof_mapped_4k_pages(pre: KernelK, post: Kernel
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(clear_4k_mapping_present_eof_transition_framing);
@@ -112,13 +106,7 @@ proof fn clear_4k_mapping_present_eof_cpu_tlb(pre: KernelK, post: KernelK, paget
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
         whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(clear_4k_mapping_present_eof_transition_framing);

@@ -74,14 +74,7 @@ proof fn hide_user_l4_entry_eof_page_mappings(pre: KernelK, post: KernelK, paget
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
     ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);
@@ -97,14 +90,7 @@ proof fn hide_user_l4_entry_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: 
         hide_user_l4_entry_eof_transition_framing(pre, post, pagetable, l4i),
         pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
         pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(hide_user_l4_entry_eof_transition_framing);

@@ -8,6 +8,9 @@ proof fn kill_unown_detach_eof_memory(pre: KernelK, post: KernelK, pagetable: Rw
     requires
         pre.inv(),
         kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.pt_mp.dom().contains(pagetable),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         post.subsystems_inv(),
         iommu_table_perms_wf(post.it_mp),
     ensures post.memory_management_inv(),
@@ -27,6 +30,9 @@ proof fn kill_unown_detach_eof_root_table(pre: KernelK, post: KernelK, pagetable
     requires
         pre.inv(),
         kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.pt_mp.dom().contains(pagetable),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         post.irt.inv(),
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
@@ -48,14 +54,16 @@ proof fn kill_unown_detach_eof_iotlb(pre: KernelK, post: KernelK, pagetable: RwL
     requires
         pre.inv(),
         kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.pt_mp.dom().contains(pagetable),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         post.iommu_tlb.inv(),
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
-        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
+    broadcast use IommuRootTable::wf_context_entry_at;
     reveal(kill_unown_detach_eof_transition_framing);
     reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf); reveal(IommuTLB::inv);
     if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
@@ -68,6 +76,9 @@ proof fn kill_unown_detach_eof_array_detached(pre: KernelK, post: KernelK, paget
     requires
         pre.inv(),
         kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.pt_mp.dom().contains(pagetable),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
     ensures
         forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
             post.pt_mp.spec_index(pagetable).view().higher.pci.view().dom().contains((b, d, f)) ==> post.irt.view().spec_index_iommu_root(b, d, f) is None,
@@ -79,14 +90,15 @@ pub(crate) proof fn kill_unown_detach_eof(pre: KernelK, post: KernelK, pagetable
     requires
         pre.inv(),
         kill_unown_detach_eof_transition_framing(pre, post, pagetable, iommu_table),
+        pre.pt_mp.dom().contains(pagetable),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         pre.it_mp.spec_index(iommu_table).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().pagetable == pagetable,
         pre.prc_mp.spec_index(pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr).view().iommu_table == Some(iommu_table),
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
-        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures
         post.inv(),
         forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
@@ -100,24 +112,6 @@ pub(crate) proof fn kill_unown_detach_eof(pre: KernelK, post: KernelK, pagetable
     kill_unown_detach_eof_iotlb(pre, post, pagetable, iommu_table);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
-
-/// The walks, leaves, and mappings of the target's page table, whose higher part changed only in its PCI function array, are
-/// as before.
-pub(crate) proof fn kill_unown_eof_pagetable_walks(pre: WholePageTable<PT_TYPE>, post: WholePageTable<PT_TYPE>)
-    requires
-        post.higher == (PageTableHigher { pci: post.higher.pci, ..pre.higher }),
-        post.lower == pre.lower,
-    ensures
-        post.mapping_4k() == pre.mapping_4k(),
-        post.mapping_2m() == pre.mapping_2m(),
-        post.mapping_1g() == pre.mapping_1g(),
-        post.kernel_l4_end() == pre.kernel_l4_end(),
-        forall|l4i: L4Index| #![trigger post.spec_resolve_mapping_l4(l4i)] post.spec_resolve_mapping_l4(l4i) == pre.spec_resolve_mapping_l4(l4i),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger post.spec_held_4k_l1(l4i, l3i, l2i, l1i)]
-            post.spec_held_4k_l1(l4i, l3i, l2i, l1i) == pre.spec_held_4k_l1(l4i, l3i, l2i, l1i),
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_held_2m_l2(l4i, l3i, l2i)] post.spec_held_2m_l2(l4i, l3i, l2i) == pre.spec_held_2m_l2(l4i, l3i, l2i),
-        forall|l4i: L4Index, l3i: L3Index| #![trigger post.spec_held_1g_l3(l4i, l3i)] post.spec_held_1g_l3(l4i, l3i) == pre.spec_held_1g_l3(l4i, l3i),
-{}
 
 proof fn kill_quota_eof_allocator_quota(pre: KernelK, post: KernelK, prc_ptr: RwLockProcessPtr, allc_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires

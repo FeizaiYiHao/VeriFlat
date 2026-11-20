@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// S of `pagetable_map_update_pci_mapping`: of the write-held table `pagetable_ptr` only the PCI function array of the big-lock
-/// payload changed, and it stays well formed; the lock state, kill mark, ghost slot, window halves, and every other table stay.
+/// payload changed; the lock state, kill mark, ghost slot, window halves, and every other table stay.
 #[verifier::opaque]
 pub(super) open spec fn pagetable_map_update_pci_mapping_eof_transition_framing(pre_pt: PageTableLockedMap, post_pt: PageTableLockedMap, pt_lower: PageTableLowerMap,
     pagetable_ptr: RwLockPageTableRoot) -> bool
@@ -19,7 +19,6 @@ pub(super) open spec fn pagetable_map_update_pci_mapping_eof_transition_framing(
     &&& post_pt.lock_id_by_key(pagetable_ptr) == pre_pt.lock_id_by_key(pagetable_ptr)
     &&& after.view().lower_backup == before.view().lower_backup
     &&& after.view().higher == (PageTableHigher { pci: after.view().higher.pci, ..before.view().higher })
-    &&& after.view().higher.pci.wf()
     &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, pt_lower, r)]
         pre_pt.dom().contains(r) && r != pagetable_ptr ==> whole_pagetable(post_pt, pt_lower, r) == whole_pagetable(pre_pt, pt_lower, r)
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
@@ -157,6 +156,7 @@ pub(super) proof fn pagetable_map_update_pci_mapping_eof(
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         pagetable_map_update_pci_mapping_eof_transition_framing(pre_pt, post_pt, pt_lower, pagetable_ptr),
+        post_pt.spec_index(pagetable_ptr).view().higher.pci.wf(),
     ensures
         pagetable_perms_wf(post_pt),
         post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),

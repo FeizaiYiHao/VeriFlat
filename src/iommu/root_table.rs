@@ -249,7 +249,8 @@ impl IommuRootTable {
     }
 
     /// The root and context tables sit at `table_base` in hardware format: every bus's root entry points at its context
-    /// table, and every context entry is all zero or a present 4-level entry with translation type 0.
+    /// table, and every context entry is all zero or a present 4-level entry with translation type 0. The owned flag of a
+    /// B/D/F is set exactly when its ghost owning process is `Some`.
     #[verifier::opaque]
     pub closed spec fn wf(&self) -> bool {
         &&& self.root_entries.wf()
@@ -436,12 +437,6 @@ impl IommuRootTable {
             final(self).iommu_roots() == old(self).iommu_roots(),
             final(self).iommu_dids() == old(self).iommu_dids(),
             final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, owner.view()),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { owner.view() } else { old(self).spec_index_owner(b, d, f) }
-                &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
-                &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
-            },
     {
         proof { reveal(IommuRootTable::wf); }
         let slot = Self::pci_bdf_slot(bus, device, function);
@@ -473,12 +468,6 @@ impl IommuRootTable {
             final(self).iommu_roots() == old(self).iommu_roots(),
             final(self).iommu_dids() == old(self).iommu_dids(),
             final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, Some(owner.view())),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { Some(owner.view()) } else { old(self).spec_index_owner(b, d, f) }
-                &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
-                &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
-            },
     {
         self.set_owner(bus, device, function, true, Ghost(Some(owner.view())));
     }
@@ -495,12 +484,6 @@ impl IommuRootTable {
             final(self).iommu_roots() == old(self).iommu_roots(),
             final(self).iommu_dids() == old(self).iommu_dids(),
             final(self).owners() == seq3_update(old(self).owners(), bus as int, device as int, function as int, None),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(self).spec_index_owner(b, d, f) }
-                &&& final(self).spec_index_iommu_root(b, d, f) == old(self).spec_index_iommu_root(b, d, f)
-                &&& final(self).spec_index_iommu_did(b, d, f) == old(self).spec_index_iommu_did(b, d, f)
-            },
     {
         self.set_owner(bus, device, function, false, Ghost(None));
     }
@@ -516,9 +499,8 @@ impl IommuRootTable {
             final(self).owners() == old(self).owners(),
             final(self).iommu_roots() == seq3_update(old(self).iommu_roots(), bus as int, device as int, function as int, None),
             final(self).iommu_dids() == seq3_update(old(self).iommu_dids(), bus as int, device as int, function as int, None),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == old(self).spec_index_owner(b, d, f)
+            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_iommu_root(b, d, f)] #![trigger final(self).spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> {
                 &&& final(self).spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(self).spec_index_iommu_root(b, d, f) }
                 &&& final(self).spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(self).spec_index_iommu_did(b, d, f) }
             },
@@ -547,9 +529,8 @@ impl IommuRootTable {
             final(self).owners() == old(self).owners(),
             final(self).iommu_roots() == seq3_update(old(self).iommu_roots(), bus as int, device as int, function as int, Some(root)),
             final(self).iommu_dids() == seq3_update(old(self).iommu_dids(), bus as int, device as int, function as int, Some(did)),
-            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
-                #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                &&& final(self).spec_index_owner(b, d, f) == old(self).spec_index_owner(b, d, f)
+            forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_iommu_root(b, d, f)] #![trigger final(self).spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> {
                 &&& final(self).spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { Some(root) } else { old(self).spec_index_iommu_root(b, d, f) }
                 &&& final(self).spec_index_iommu_did(b, d, f) == if (b, d, f) == (bus, device, function) { Some(did) } else { old(self).spec_index_iommu_did(b, d, f) }
             },
@@ -588,8 +569,6 @@ impl IommuRootTable {
             forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) && (b, d, f) != removed && pci.view().dom().contains((b, d, f)) && self.spec_index_iommu_did(b, d, f) == Some(did)
                     ==> ret is Some && !pci_bdf_lt((b, d, f), ret.unwrap()),
-            forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
     {
         broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
         proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_implies_context_entries_wf(); }; }
@@ -640,8 +619,6 @@ impl IommuRootTable {
             final(self).wf(),
             final(self).table_base() == old(self).table_base(),
             final(self).owners() == old(self).owners(),
-            forall|b: usize, d: usize, f: usize| #![trigger old(self).spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) ==> (old(self).spec_index_iommu_did(b, d, f) is Some) == (old(self).spec_index_iommu_root(b, d, f) is Some),
             forall|b: usize, d: usize, f: usize| #![trigger final(self).spec_index_owner(b, d, f)] #![trigger final(self).spec_index_iommu_root(b, d, f)]
                 #![trigger final(self).spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
                 let owned = pci.view().dom().contains((b, d, f));

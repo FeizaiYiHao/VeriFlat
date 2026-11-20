@@ -821,7 +821,6 @@ pub(super) open spec fn pagetable_map_hide_l1_page_eof_transition_framing(
         #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
-    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
@@ -853,6 +852,7 @@ pub(super) proof fn pagetable_map_hide_l1_page_eof(
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         pagetable_map_hide_l1_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
     ensures
         pagetable_perms_wf(post_pt),
         post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
@@ -901,7 +901,6 @@ pub(super) open spec fn pagetable_map_unlink_hidden_l1_page_eof_transition_frami
         #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
-    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
@@ -933,6 +932,7 @@ pub(super) proof fn pagetable_map_unlink_hidden_l1_page_eof(
         pre_pt.dom().contains(pagetable_ptr),
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         pagetable_map_unlink_hidden_l1_page_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr),
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
     ensures
         pagetable_perms_wf(post_pt),
         post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
@@ -1161,7 +1161,6 @@ pub(super) open spec fn pagetable_map_insert_2m_wlocked_eof_transition_framing(
         #![trigger whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         #![trigger whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         whole_pagetable(post_pt, post_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
-    &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).wf()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).kernel_l4_end() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).kernel_l4_end()
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.pagetable_window_locks
     &&& whole_pagetable(post_pt, post_lower, pagetable_ptr).lower.l2_perms.dom() == whole_pagetable(pre_pt, pre_lower, pagetable_ptr).lower.l2_perms.dom()
@@ -1195,6 +1194,7 @@ pub(super) proof fn pagetable_map_insert_2m_wlocked_eof(
         pre_pt.spec_index(pagetable_ptr).locking_thread() is Write,
         target_entry.present,
         pagetable_map_insert_2m_wlocked_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr, va, target_entry),
+        whole_pagetable(post_pt, post_lower, pagetable_ptr).wf(),
     ensures
         pagetable_perms_wf(post_pt),
         post_pt.typed_lock_map_aligned(pagetable_lock_map, thread_id),
