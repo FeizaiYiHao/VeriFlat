@@ -733,44 +733,14 @@ proof fn kill_retire_table_page_scoped_eof_allocator_quota_wf(
 
 /// The retired table page was no BAR page, so the BAR pages stay unavailable.
 proof fn kill_retire_table_page_scoped_eof_pci_bar_pages(
-    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
         kill_retire_table_page_scoped_eof_transition_framing(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr),
         page_ptr_valid(pg_ptr),
-        index_valid(NUM_CPUS, cpu_id),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
-        pre.allc_4k_mp.dom().contains(allc_ptr),
-        iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
-        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
-        !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
-        pagetable_perms_wf(post.pt_mp),
-        iommu_table_perms_wf(post.it_mp),
-        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        page_array_wf(post.pg_arr),
-        !iommu ==> page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), pre.pg_arr),
-        !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
-        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        post.allc_4k_mp.perms_wf(),
-        post.allc_4k_mp.spec_index(allc_ptr).wf(),
-        post.subsystems_inv(),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
 {
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
@@ -779,7 +749,7 @@ proof fn kill_retire_table_page_scoped_eof_pci_bar_pages(
 
 /// The retired page held no leaf, so every PCI mapping record and held IO leaf stays.
 proof fn kill_retire_table_page_scoped_eof_pci_mappings(
-    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
@@ -788,9 +758,6 @@ proof fn kill_retire_table_page_scoped_eof_pci_mappings(
         page_ptr_valid(pg_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
         pre.allc_4k_mp.dom().contains(allc_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
         !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
@@ -814,9 +781,6 @@ proof fn kill_retire_table_page_scoped_eof_pci_mappings(
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
         !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
         post.allc_4k_mp.perms_wf(),
-        post.allc_4k_mp.spec_index(allc_ptr).wf(),
-        post.subsystems_inv(),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
 {
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
@@ -825,44 +789,12 @@ proof fn kill_retire_table_page_scoped_eof_pci_mappings(
 
 /// The PCI function arrays and the owners stay.
 proof fn kill_retire_table_page_scoped_eof_pci_ownership(
-    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
         kill_retire_table_page_scoped_eof_transition_framing(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr),
-        page_ptr_valid(pg_ptr),
-        index_valid(NUM_CPUS, cpu_id),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
-        pre.allc_4k_mp.dom().contains(allc_ptr),
-        iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
-        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
-        !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
-        pagetable_perms_wf(post.pt_mp),
-        iommu_table_perms_wf(post.it_mp),
-        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        page_array_wf(post.pg_arr),
-        !iommu ==> page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), pre.pg_arr),
-        !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
-        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        post.allc_4k_mp.perms_wf(),
-        post.allc_4k_mp.spec_index(allc_ptr).wf(),
-        post.subsystems_inv(),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
@@ -871,44 +803,12 @@ proof fn kill_retire_table_page_scoped_eof_pci_ownership(
 
 /// The IOTLB caches only what the root table still maps.
 proof fn kill_retire_table_page_scoped_eof_iotlb(
-    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
         kill_retire_table_page_scoped_eof_transition_framing(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr),
-        page_ptr_valid(pg_ptr),
-        index_valid(NUM_CPUS, cpu_id),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
-        pre.allc_4k_mp.dom().contains(allc_ptr),
-        iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
-        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
-        !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
-        pagetable_perms_wf(post.pt_mp),
-        iommu_table_perms_wf(post.it_mp),
-        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        page_array_wf(post.pg_arr),
-        !iommu ==> page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), pre.pg_arr),
-        !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
-        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        post.allc_4k_mp.perms_wf(),
-        post.allc_4k_mp.spec_index(allc_ptr).wf(),
-        post.subsystems_inv(),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
@@ -917,44 +817,16 @@ proof fn kill_retire_table_page_scoped_eof_iotlb(
 
 /// No CPU caches a translation through the retired table page.
 proof fn kill_retire_table_page_scoped_eof_cpu_tlb(
-    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, owner: RwLockContainerPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )
     requires
         pre.inv(),
         kill_retire_table_page_scoped_eof_transition_framing(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr),
-        page_ptr_valid(pg_ptr),
-        index_valid(NUM_CPUS, cpu_id),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == owner,
-        pre.ctn_mp.dom().contains(owner),
-        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allc_ptr,
-        pre.allc_4k_mp.dom().contains(allc_ptr),
-        iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(pg_ptr),
         !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(pg_ptr),
-        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
-        !iommu ==> pre.pt_mp.spec_index(table).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
-        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().free_list_node_storage.addr() == node_addr,
-        !pre.allc_4k_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
-        pagetable_perms_wf(post.pt_mp),
-        iommu_table_perms_wf(post.it_mp),
-        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        page_array_wf(post.pg_arr),
-        !iommu ==> page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), pre.pg_arr),
-        !iommu ==> pre.pt_mp.spec_index(table).locking_thread() is Write,
         !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
             whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
         !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
-        post.allc_4k_mp.perms_wf(),
-        post.allc_4k_mp.spec_index(allc_ptr).wf(),
-        post.subsystems_inv(),
-        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
     ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
@@ -1014,14 +886,14 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
     kill_retire_table_page_scoped_eof_page_relations(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr);
     kill_retire_table_page_scoped_eof_allocator_quota_wf(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { kill_retire_table_page_scoped_eof_pci_bar_pages(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { kill_retire_table_page_scoped_eof_pci_mappings(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { kill_retire_table_page_scoped_eof_pci_bar_pages(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { kill_retire_table_page_scoped_eof_pci_mappings(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { kill_retire_table_page_scoped_eof_iotlb(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { kill_retire_table_page_scoped_eof_pci_ownership(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { kill_retire_table_page_scoped_eof_iotlb(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { kill_retire_table_page_scoped_eof_pci_ownership(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { kill_retire_table_page_scoped_eof_cpu_tlb(pre, post, iommu, table, pg_ptr, owner, allc_ptr, cpu_id, node_addr); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { kill_retire_table_page_scoped_eof_cpu_tlb(pre, post, iommu, table, pg_ptr, allc_ptr, cpu_id, node_addr); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);

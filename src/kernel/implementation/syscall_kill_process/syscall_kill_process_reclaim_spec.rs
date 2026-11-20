@@ -89,10 +89,6 @@ pub(crate) open spec fn kill_unown_detach_eof_transition_framing(pre: KernelK, p
         &&& post.irt.view().spec_index_iommu_root(b, d, f) == if detached { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
         &&& post.irt.view().spec_index_iommu_did(b, d, f) == if detached { None } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
     }
-    &&& pre.pt_mp.dom().contains(pagetable)
-    &&& pre.pt_mp.spec_index(pagetable).view().higher.proc_ptr == table.view().proc_ptr
-    &&& pre.it_mp.dom().contains(iommu_table)
-    &&& table.locking_thread() is Write
     &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table)
     &&& post.it_mp.spec_index(iommu_table).locking_thread() == table.locking_thread()
     &&& post.it_mp.spec_index(iommu_table).being_killed() == table.being_killed()

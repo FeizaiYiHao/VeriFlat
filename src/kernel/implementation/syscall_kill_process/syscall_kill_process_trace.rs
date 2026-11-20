@@ -395,6 +395,8 @@ pub(crate) proof fn kill_reclaim_pre_from_k(
         kernel_k_to_kernel_u(*krnl).process_map[target].pcid == krnl.prc_mp.spec_index(target).view_rodata().view().pcid,
         iommu_table matches Some(t) && typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write)
             ==> kernel_k_to_kernel_u(*krnl).process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
+        krnl.pt_mp.dom().contains(pagetable) && krnl.pt_mp.spec_index(pagetable).view().higher.pci.view().dom() == Set::<PciBdf>::empty()
+            ==> kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thrd_ptr, None); kernel_process_projection_at(krnl, target);
     if let Some(t) = iommu_table {
@@ -450,16 +452,6 @@ pub(crate) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
         kernel_k_to_kernel_u(*krnl).process_map[target].iommu_table is Some,
         process_iommu_4k_unmapped(kernel_k_to_kernel_u(*krnl).process_map[target].iommu_table->Some_0),
 { kernel_iommu_table_4k_unmapped_projection_at(krnl, target); }
-
-/// With no PCI function in the live target's page table on `krnl`, the target's projected page table has none.
-pub(crate) proof fn kill_target_pci_released_implies_u_pci_functions_empty(krnl: &KernelK, target: RwLockProcessPtr)
-    requires
-        krnl.prc_mp.dom().contains(target),
-        !krnl.prc_mp.spec_index(target).view().zombie,
-        krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
-        krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
-    ensures kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
-{ kernel_process_projection_at(krnl, target); }
 
 /// The target, owned by `ctn_ptr` on `krnl`, is owned by it on the projection.
 pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr)
