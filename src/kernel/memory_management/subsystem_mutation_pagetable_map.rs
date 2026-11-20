@@ -2837,6 +2837,7 @@ pub fn pagetable_map_insert_1g(
         page_ptr_1g_valid(target_entry.addr),
         page_table_key_1g_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, 0, 0))),
         target_entry.present,
+        !target_entry.is_io,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),

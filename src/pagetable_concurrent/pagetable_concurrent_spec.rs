@@ -317,13 +317,14 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             }
     }
 
-    /// 1G keys and frames are valid; the 4K/2M half is `WholePageTable::va_addr_valid`.
+    /// 1G keys and frames are valid, and no 1G leaf maps IO; the 4K/2M half is `WholePageTable::va_addr_valid`.
     pub open spec fn va_addr_valid(&self) -> bool {
         forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g.view().dom().contains(va)]
             #![trigger self.mapping_1g.view().dom().contains(va), page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)]
             #![trigger self.mapping_1g.view().dom().contains(va)]
-            self.mapping_1g.view().dom().contains(va) ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
+            self.mapping_1g.view().dom().contains(va)
+                ==> page_table_key_1g_valid::<TABLE_TYPE>(va) && page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr) && !self.mapping_1g.view().spec_index(va).is_io
     }
 
     /// mapping_1g holds exactly the resolved 1G leaves, with their frame, write, execute_disable and present bits.

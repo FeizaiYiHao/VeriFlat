@@ -35,6 +35,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             page_ptr_1g_valid(target_entry.addr),
             page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
+            !target_entry.is_io,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
         ensures
             post.wf(),
@@ -58,6 +59,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             page_ptr_1g_valid(target_entry.addr),
             page_table_key_1g_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, 0, 0))),
             target_entry.present,
+            !target_entry.is_io,
             Self::map_1g_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_entry),
         ensures
             post.higher.inv(),
