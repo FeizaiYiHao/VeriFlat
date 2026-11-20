@@ -220,6 +220,99 @@ proof fn update_pci_entry_eof_pci_mappings(pre: KernelK, post: KernelK, root: Rw
     reveal(pagetable_pci_mappings_wf);
 }
 
+/// The page records of the page tables close after the transition.
+proof fn update_pci_entry_eof_page_tables_page_mappings(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        0 <= index < PCI_FUNCTIONS_PER_PROCESS,
+        pre.pt_mp.spec_index(root).locking_thread() is Write,
+        post.pt_mp.perms_wf(),
+        post.irt.inv(),
+        update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        update is Claim ==> {
+            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
+            &&& !(process.state.view() is TablesEmptied)
+            &&& !(process.state.view() is Zombie)
+        },
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
+            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
+            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
+        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+    ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(update_pci_entry_eof_transition_framing);
+    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+    update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
+    pagetable_perms_wf_at(pre.pt_mp, root);
+    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
+    update_pci_entry_eof_table_wf(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), whole_pagetable(post.pt_mp, post.pt_lower.view(), root));
+    reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
+}
+
+/// The CPU TLBs stay covered by the page tables after the transition.
+proof fn update_pci_entry_eof_page_tables_cpu_tlb(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        0 <= index < PCI_FUNCTIONS_PER_PROCESS,
+        pre.pt_mp.spec_index(root).locking_thread() is Write,
+        post.pt_mp.perms_wf(),
+        post.irt.inv(),
+        update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        update is Claim ==> {
+            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
+            &&& !(process.state.view() is TablesEmptied)
+            &&& !(process.state.view() is Zombie)
+        },
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
+            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
+            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
+        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+    ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(update_pci_entry_eof_transition_framing);
+    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+    update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
+    pagetable_perms_wf_at(pre.pt_mp, root);
+    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
+    update_pci_entry_eof_table_wf(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), whole_pagetable(post.pt_mp, post.pt_lower.view(), root));
+    reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
+}
+
+/// The paging-structure caches stay covered by the page tables after the transition.
+proof fn update_pci_entry_eof_page_tables_structure_cache(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        0 <= index < PCI_FUNCTIONS_PER_PROCESS,
+        pre.pt_mp.spec_index(root).locking_thread() is Write,
+        post.pt_mp.perms_wf(),
+        post.irt.inv(),
+        update_pci_entry_eof_transition_framing(pre, post, root, index, update),
+        update is Claim ==> {
+            let process = pre.prc_mp.spec_index(pre.pt_mp.spec_index(root).view().higher.proc_ptr).view();
+            &&& !(process.state.view() is TablesEmptied)
+            &&& !(process.state.view() is Zombie)
+        },
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).used,
+        update is Release ==> pre.pt_mp.spec_index(root).view().higher.pci.spec_entry(index).count == 0
+            || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k().dom() == Set::<VAddr>::empty()
+            && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m().dom() == Set::<VAddr>::empty(),
+        update matches PciEntryUpdate::Claim { bus, device, function } ==> !pre.pt_mp.spec_index(root).view().higher.pci.view().dom().contains((bus, device, function)),
+    ensures structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(update_pci_entry_eof_transition_framing);
+    broadcast use PciFunctionArray::wf_function_at, PciFunctionArray::wf_entry_at;
+    update_pci_entry_eof_tables_unchanged(pre, post, root, index, update);
+    pagetable_perms_wf_at(pre.pt_mp, root);
+    pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
+    update_pci_entry_eof_table_wf(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root), whole_pagetable(post.pt_mp, post.pt_lower.view(), root));
+    reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
+}
+
 /// EOF closure of `KernelK::update_pci_entry` for the page-table invariants: no leaf, held entry, table page, or process link
 /// moved, and the array of a process whose tables were emptied stays empty.
 proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, index: int, update: PciEntryUpdate)
@@ -270,15 +363,15 @@ proof fn update_pci_entry_eof_page_tables(pre: KernelK, post: KernelK, root: RwL
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp)) by { reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(pagetable_hidden_roots_only_when_write_locked_or_emptied(post.pt_mp, post.prc_mp)) by { reveal(pagetable_hidden_roots_only_when_write_locked_or_emptied); };
-    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { update_pci_entry_eof_page_tables_page_mappings(pre, post, root, index, update); };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { update_pci_entry_eof_pci_mappings(pre, post, root, index, update); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); reveal(cpu_dirty_map_pagetable_pcid_match); };
-    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { update_pci_entry_eof_page_tables_cpu_tlb(pre, post, root, index, update); };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { update_pci_entry_eof_page_tables_structure_cache(pre, post, root, index, update); };
 }
 
 /// A function of the array of a page table whose process has no IOMMU table is detached: a present context entry would name
