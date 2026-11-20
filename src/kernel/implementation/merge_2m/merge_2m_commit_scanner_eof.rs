@@ -73,7 +73,6 @@ pub broadcast proof fn merge_2m_commit_eof_implies_cursor_wf_and_suffix_unchange
                 let old_index = before.view().skip(position).index_of(pointer);
                 vstd::seq_lib::lemma_seq_skip_index(before.view(), position, old_index);
                 vstd::seq_lib::lemma_seq_skip_contains(before.view(), position, pointer);
-                reveal(KernelK::inv);
                 if cursor.source < NUM_CPUS { allocator_free_page_ptrs_wf_cache_at(pre.allc_4k_mp, allocator_4k, cursor.source, pointer); }
                 else { allocator_free_page_ptrs_wf_global_at(pre.allc_4k_mp, allocator_4k, pointer); }
                 assert(!region.contains(spec_page_ptr2page_index(pointer))) by {
