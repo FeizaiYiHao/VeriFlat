@@ -129,7 +129,23 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
         ensures
             post.user_only(),
-    { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::user_only); }
+    {
+        Self::clear_held_2m_leaf_eof_l1_pages_unchanged(pre, post, target_l4i, target_l3i, target_l2i);
+        reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); reveal(WholePageTable::user_only);
+    }
+
+    /// EOF closure of `clear_held_2m_leaf`: every L1 page owned after the clear was owned before with the same entries; the
+    /// cleared leaf owned none.
+    proof fn clear_held_2m_leaf_eof_l1_pages_unchanged(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index)
+        requires
+            Self::clear_held_2m_leaf_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i),
+            pre.lower.l2_page(pre.spec_held_l3(target_l4i, target_l3i)->0.addr).entry_lock(target_l2i).l1() is None,
+        ensures
+            forall|p: PageMapPtr, l2i: L2Index, l1i: L1Index| #![trigger post.lower.l1_page(p, l2i).spec_index(l1i)]
+                post.lower.l2_perms.dom().contains(p) && post.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                    ==> pre.lower.l2_perms.dom().contains(p) && pre.lower.l2_page(p).entry_lock(l2i).l1() is Some
+                    && post.lower.l1_page(p, l2i).spec_index(l1i) == pre.lower.l1_page(p, l2i).spec_index(l1i),
+    { reveal(WholePageTable::clear_held_2m_leaf_eof_transition_framing); }
 
     /// EOF closure of `clear_held_2m_leaf`: `rwx_upper_level_entries`.
     proof fn clear_held_2m_leaf_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index)
