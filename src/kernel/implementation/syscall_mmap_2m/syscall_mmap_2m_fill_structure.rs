@@ -200,13 +200,6 @@ fn mmap_2m_fill_page_directories(
         },
 {
     let tracked mut window_perms = window_perms;
-    proof {
-        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
-        assert(!(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(krnl.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie)) by {
-            process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_perms_wf_at(krnl.prc_mp, prc_ptr);
-            process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
-        };
-    }
     let cur_va = range.index(i);
     let cur = va2index(cur_va);
     proof {
@@ -229,7 +222,6 @@ fn mmap_2m_fill_page_directories(
         }
     };
     if !l4_present {
-        proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ghost before = steps.view();
         let _ = install_one_mmap_2m_directory_page(
             krnl, MissingPageTableLevel::L4, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, (cur.0, cur.1, cur.2), cur.2, cur.2, Tracked(&mut *lctx),
@@ -239,10 +231,7 @@ fn mmap_2m_fill_page_directories(
     }
     if !l3_present {
         let (lo, hi) = mmap_2m_range_l2_bounds(cover, cur_va, cur, start_indices, end_indices);
-        proof {
-            kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-            pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.wf_mapping_1g_at(cur.0, cur.1);
-        }
+        proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.wf_mapping_1g_at(cur.0, cur.1); }
         let ghost before = steps.view();
         let Tracked(minted) = install_one_mmap_2m_directory_page(
             krnl, MissingPageTableLevel::L3, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable_ptr, (cur.0, cur.1, cur.2), lo, hi, Tracked(&mut *lctx),

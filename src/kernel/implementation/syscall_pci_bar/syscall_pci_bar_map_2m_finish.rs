@@ -217,25 +217,13 @@ pub(super) fn map_pci_bar_2m_map_and_finish(
         // directory steps: the missing L4 and L3 entries, in increasing rank
         if !l4_present {
             let ghost before = steps.view();
-            proof {
-                kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-                process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-                process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-            }
             let _ = install_one_mmap_2m_directory_page(krnl, MissingPageTableLevel::L4, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable, (indices.0, indices.1, indices.2),
                 indices.2, indices.2, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm), Tracked(&pagetable_perm));
             proof { map_pci_bar_2m_trace_directory_step(&*steps, before, cpu_id, slot, index, va); }
         }
         if !l3_present {
             let ghost before = steps.view();
-            proof {
-                kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.wf_mapping_1g_at(indices.0, indices.1);
-                process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr);
-                process_perms_wf_at(krnl.prc_mp, prc_ptr); process_emptied_threads_wf_at(krnl.prc_mp, krnl.thrd_mp, prc_ptr, thrd_ptr);
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, ctn_ptr);
-            }
+            proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).higher.wf_mapping_1g_at(indices.0, indices.1); }
             let Tracked(minted) = install_one_mmap_2m_directory_page(krnl, MissingPageTableLevel::L3, alloc_ptr_4k, thrd_ptr, prc_ptr, ctn_ptr, cpu_id, pagetable,
                 (indices.0, indices.1, indices.2), indices.2, indices.2, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm), Tracked(&pagetable_perm));
             proof {
