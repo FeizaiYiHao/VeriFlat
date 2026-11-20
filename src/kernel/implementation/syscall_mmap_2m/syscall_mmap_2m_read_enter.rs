@@ -272,8 +272,8 @@ pub(super) fn mmap_2m_try_read_enter(
             Tracked(thread_lock_perm), Tracked(cpu_lock_perm));
         return (ret, Ghost(anchor));
     }
-    let ret = mmap_2m_read_lock_windows_and_map(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, &cover, alloc_ptr_4k, thrd_ptr, prc_ptr,
-        ctn_ptr, pagetable_ptr, Ghost(entry_lctx), Ghost(pre_k), Ghost(pre_lctx), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(cpu_lock_perm));
+    let ret = mmap_2m_read_lock_windows_and_map(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, &cover, thrd_ptr, prc_ptr, ctn_ptr,
+        pagetable_ptr, Ghost(entry_lctx), Ghost(pre_k), Ghost(pre_lctx), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(cpu_lock_perm));
     (ret, Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())))
 }
 } // verus!
