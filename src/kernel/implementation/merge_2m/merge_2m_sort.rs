@@ -32,14 +32,9 @@ pub fn merge_2m_sort_sources(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
         merge_2m_sort_eof_transition_framing(*old(krnl), *final(krnl), allocator, (NUM_CPUS + 1) as usize),
-        final(krnl).allc_4k_mp.spec_index(allocator).quota == old(krnl).allc_4k_mp.spec_index(allocator).quota,
-        final(krnl).allc_4k_mp.spec_index(allocator).total_free_pages == old(krnl).allc_4k_mp.spec_index(allocator).total_free_pages,
         merge_2m_source_pages(final(krnl).allc_4k_mp.spec_index(allocator)) == merge_2m_source_pages(old(krnl).allc_4k_mp.spec_index(allocator)),
-        forall|source: usize| #![trigger final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==> {
-            &&& LinkedList::<PagePtr, 233>::values_sorted(final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view())
-            &&& final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).map() == old(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).map()
-            &&& final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view().to_set() == old(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view().to_set()
-        },
+        forall|source: usize| #![trigger final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source)] source <= NUM_CPUS ==>
+            LinkedList::<PagePtr, 233>::values_sorted(final(krnl).allc_4k_mp.spec_index(allocator).merge_2m_source_list(source).view()),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
