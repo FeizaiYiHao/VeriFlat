@@ -1095,8 +1095,8 @@ pub open spec fn kernel_process_2m_mapping_changed(pre: &KernelK, post: &KernelK
     &&& post.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
     &&& pre.pt_mp.dom().contains(pagetable_ptr)
     &&& post.pt_mp.dom().contains(pagetable_ptr)
-    &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
-        != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(v).present).dom().contains(va)
+    &&& (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va).present)
+        != (whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(va) && whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m().spec_index(va).present)
 }
 
 #[verifier::opaque]
@@ -1109,8 +1109,8 @@ pub open spec fn kernel_process_1g_mapping_changed(pre: &KernelK, post: &KernelK
     &&& post.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr
     &&& pre.pt_mp.dom().contains(pagetable_ptr)
     &&& post.pt_mp.dom().contains(pagetable_ptr)
-    &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(v).present).dom().contains(va)
-        != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(v).present).dom().contains(va)
+    &&& (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().dom().contains(va) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va).present)
+        != (whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().dom().contains(va) && whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g().spec_index(va).present)
 }
 
 /// `share_4k_objects` read from the kernel objects it projects from.
