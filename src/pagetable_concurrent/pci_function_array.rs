@@ -165,10 +165,7 @@ impl PciFunctionArray {
             ret == (self.view().dom() == Set::<PciBdf>::empty()),
     {
         let ret = self.len == 0;
-        assert(ret == (self.view().dom() == Set::<PciBdf>::empty())) by {
-            reveal(PciFunctionArray::wf);
-            broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
-        };
+        assert(ret == (self.view().dom() == Set::<PciBdf>::empty())) by { reveal(PciFunctionArray::wf); broadcast use vstd::set_lib::lemma_set_empty_equivalency_len; };
         ret
     }
 
