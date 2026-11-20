@@ -20,8 +20,8 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pci_mappings_wf(pre: Kerne
     broadcast use spec_va_4k_valid_index_roundtrip;
 }
 
-/// Removes the non-present 4K leaf `va` from `pagetable` and its mapping record from a page that keeps other references
-/// or is an I/O page; the table keeps its L2 entries and every other held leaf, and every other kernel field is unchanged.
+/// Removes the non-present 4K leaf `va` from `pagetable` and its mapping record from a page that keeps other references;
+/// the table keeps its L2 entries and every other held leaf, and every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn remove_4k_mapping_without_free_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr) -> bool {
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -81,17 +81,9 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages_mapped_4k_pages(pre:
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
         pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
-        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((
-            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
-        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
-        post.subsystems_inv(),
     ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(remove_4k_mapping_without_free_eof_transition_framing);
@@ -136,7 +128,6 @@ proof fn remove_4k_mapping_without_free_eof_pagetable_pages(pre: KernelK, post: 
     reveal(remove_4k_mapping_without_free_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
-    pre.default_pagetable_wf_at(pagetable);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { remove_4k_mapping_without_free_eof_pagetable_pages_mapped_4k_pages(pre, post, pagetable, va, pg_ptr); };
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf);

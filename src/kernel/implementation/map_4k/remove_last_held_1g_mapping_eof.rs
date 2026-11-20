@@ -29,10 +29,6 @@ pub(super) open spec fn remove_last_held_1g_mapping_to_allocator_eof_transition_
     &&& post.pt_mp.spec_index(pagetable).view().lower_backup.view() == pre.pt_mp.spec_index(pagetable).view().lower_backup.view()
     &&& new_c.lower == old_c.lower
     &&& new_c.higher == (PageTableHigher { l3_tables: new_c.higher.l3_tables, mapping_1g: new_c.higher.mapping_1g, ..old_c.higher })
-    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.proc_ptr]
-        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.proc_ptr == pre.pt_mp.spec_index(pt).view().higher.proc_ptr
-    &&& forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt).view().higher.pci]
-        post.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt).view().higher.pci == pre.pt_mp.spec_index(pt).view().higher.pci
     &&& new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && new_c.mapping_1g() == old_c.mapping_1g().remove(va)
     &&& new_c.page_closure() == old_c.page_closure()
     &&& forall|l4i: L4Index| #![trigger new_c.spec_resolve_mapping_l4(l4i)] old_c.kernel_l4_end() <= l4i && pei_valid(l4i) ==> new_c.spec_resolve_mapping_l4(l4i) == old_c.spec_resolve_mapping_l4(l4i)
@@ -198,6 +194,7 @@ proof fn remove_last_held_1g_mapping_to_allocator_eof_page_relations(
         process_pagetable_wf(post.prc_mp, post.pt_mp),
         iommu_table_no_huge_leaf_wf(post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr),
+        pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
 {
     reveal(remove_last_held_1g_mapping_to_allocator_eof_transition_framing);
     let pg_idx = page_ptr2page_index(pg_ptr);
@@ -484,6 +481,5 @@ pub(super) proof fn remove_last_held_1g_mapping_to_allocator_eof(
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
-    remove_last_held_1g_mapping_to_allocator_eof_process_links(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, old_counter, new_counter, node_addr);
 }
 }
