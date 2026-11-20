@@ -62,6 +62,44 @@ pub(super) open spec fn share_one_mapping_4k_eof_transition_framing(
     &&& new_page.view().perm_1g.view() == old_page.view().perm_1g.view()
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn share_one_mapping_4k_eof_pci_mappings(pre: KernelK, post: KernelK, pg_idx: PageIndex, source_pagetable: RwLockPageTableRoot, source_va: VAddr, target_pagetable: RwLockPageTableRoot, target_va: VAddr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        share_one_mapping_4k_eof_transition_framing(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va),
+        pre.pt_mp.dom().contains(source_pagetable),
+        pre.pt_mp.dom().contains(target_pagetable),
+        source_pagetable != target_pagetable,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).is_io,
+        page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).addr),
+        pg_idx == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).addr),
+        index_valid(NUM_PAGES, pg_idx),
+        pre.pg_arr.spec_index(pg_idx).view().view().state is Mapped4k,
+        va_4k_valid(target_va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_v2l4index(target_va),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).spec_held_4k_l1(spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va)) is None,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va)) is Some,
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(share_one_mapping_4k_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The BAR pages stay unavailable.
+proof fn share_one_mapping_4k_eof_pci_bar_pages(pre: KernelK, post: KernelK, pg_idx: PageIndex, source_pagetable: RwLockPageTableRoot, source_va: VAddr, target_pagetable: RwLockPageTableRoot, target_va: VAddr)
+    requires
+        pci_bar_pages_unavailable_wf(pre.pci_bars.view(), pre.pg_arr),
+        share_one_mapping_4k_eof_transition_framing(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va),
+    ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
+{ reveal(share_one_mapping_4k_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn share_one_mapping_4k_eof_pci_ownership(pre: KernelK, post: KernelK, pg_idx: PageIndex, source_pagetable: RwLockPageTableRoot, source_va: VAddr, target_pagetable: RwLockPageTableRoot, target_va: VAddr)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        share_one_mapping_4k_eof_transition_framing(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(share_one_mapping_4k_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 pub(super) proof fn share_one_mapping_4k_eof(
     pre: KernelK, post: KernelK, pg_idx: PageIndex, source_pagetable: RwLockPageTableRoot, source_va: VAddr, target_pagetable: RwLockPageTableRoot, target_va: VAddr,
     target_process: RwLockProcessPtr, target_container: RwLockContainerPtr, target_thread: RwLockThreadPtr,
@@ -106,8 +144,8 @@ pub(super) proof fn share_one_mapping_4k_eof(
 {
     reveal(share_one_mapping_4k_eof_transition_framing);
     let pg_ptr = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va).addr;
-    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { share_one_mapping_4k_eof_pci_bar_pages(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { share_one_mapping_4k_eof_pci_mappings(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(pagetable_table_stale_cpus_only_when_write_locked); };
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
@@ -169,7 +207,7 @@ pub(super) proof fn share_one_mapping_4k_eof(
         tlb_wf_spec_preserved_for_4k_mapping_insert(post.cpu_tlb, post.cpu_arr, pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), target_pagetable, target_va, post.pcid_needflush);
     };
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { share_one_mapping_4k_eof_pci_ownership(pre, post, pg_idx, source_pagetable, source_va, target_pagetable, target_va); };
 }
 
 /// Loop state of `share_mapping_4k_build_and_share` after its first `i` leaves: the trace grew by `i` share range steps, the last one

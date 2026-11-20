@@ -288,6 +288,14 @@ proof fn table_stale_cpus_update_eof_structure_cache_wf(pre: KernelK, post: Kern
     reveal(structure_cache_wf); reveal(cpu_dirty_map_pagetable_pcid_match);
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn table_stale_cpus_update_eof_page_tables_pci_mappings(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        table_stale_cpus_update_eof_transition_framing(pre, post, root),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(table_stale_cpus_update_eof_transition_framing); reveal(pagetable_pci_mappings_wf); }
+
 /// Page-to-table records, table pages and emptied-process tables after `KernelK::replace_table_stale_cpus`: no leaf, held
 /// entry or table page moved.
 proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, root: RwLockPageTableRoot)
@@ -305,7 +313,7 @@ proof fn table_stale_cpus_update_eof_page_tables(pre: KernelK, post: KernelK, ro
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
     assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { table_stale_cpus_update_eof_page_tables_pci_mappings(pre, post, root); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_wf); };
 }

@@ -54,6 +54,8 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
         !old(krnl).prc_mp.spec_index(prc_ptr).view().zombie,
         old(krnl).prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
         old(krnl).prc_mp.spec_index(prc_ptr).view().iommu_table == iommu_table,
+        old(krnl).pt_mp.dom().contains(pagetable),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         old(krnl).thrd_mp.dom().contains(thrd_ptr),

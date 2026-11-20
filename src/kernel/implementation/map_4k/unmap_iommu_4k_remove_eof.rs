@@ -39,6 +39,15 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_page.view() == (Page { iommu_mappings: new_page.view().iommu_mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
+/// The page keeps its `Mapped4k` state, so it is no BAR page, and every other page is unchanged.
+proof fn remove_iommu_4k_mapping_without_free_eof_pci_bar_pages(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, pg_ptr: PagePtr)
+    requires
+        pci_bar_pages_unavailable_wf(pre.pci_bars.view(), pre.pg_arr),
+        remove_iommu_4k_mapping_without_free_eof_transition_framing(pre, post, iommu_table, iova, pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped4k,
+    ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
+{ reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); }
+
 pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, pg_ptr: PagePtr, was_present: bool)
     requires
         pre.inv(),
@@ -69,9 +78,8 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { remove_iommu_4k_mapping_without_free_eof_pci_bar_pages(pre, post, iommu_table, iova, pg_ptr); };
     reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

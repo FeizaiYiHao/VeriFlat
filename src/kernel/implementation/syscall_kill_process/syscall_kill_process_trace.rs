@@ -451,6 +451,19 @@ pub(crate) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
         process_iommu_4k_unmapped(kernel_k_to_kernel_u(*krnl).process_map[target].iommu_table->Some_0),
 { kernel_iommu_table_4k_unmapped_projection_at(krnl, target); }
 
+/// With no PCI function in the live target's page table on `krnl`, the target's projected page table has none.
+pub(crate) proof fn kill_target_pci_released_implies_u_pci_functions_empty(krnl: &KernelK, target: RwLockProcessPtr)
+    requires
+        krnl.prc_mp.dom().contains(target),
+        !krnl.prc_mp.spec_index(target).view().zombie,
+        krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
+        krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
+    ensures kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
+{
+    kernel_process_projection_at(krnl, target);
+    assert(kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0.pci_functions =~= Map::<PciBdf, nat>::empty());
+}
+
 /// The target, owned by `ctn_ptr` on `krnl`, is owned by it on the projection.
 pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr)
     requires
@@ -883,6 +896,7 @@ pub(crate) proof fn kill_quota_step_from_u(
         pre.process_map[target].iommu_table is Some ==> pre.process_map[target].iommu_table->Some_0.lock_state is WriteLocked,
         kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
         pre.container_map.dom().contains(pre.process_map[target].owning_container),
+        pre.process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
         pre.process_map[target].iommu_table is Some ==> process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         ({
             let process = pre.process_map[target];
@@ -921,6 +935,7 @@ pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
         pre.process_map[target].pagetable->Some_0.mapping_2m.dom() == Set::<VAddr>::empty(),
         pre.process_map[target].pagetable->Some_0.mapping_1g.dom() == Set::<VAddr>::empty(),
         pre.process_map[target].pagetable->Some_0.pagetable_window_locks.dom() == Set::<WindowVa>::empty(),
+        pre.process_map[target].pagetable->Some_0.pci_functions == Map::<PciBdf, nat>::empty(),
         pre.process_map[target].iommu_table is Some ==> process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         post == (KernelU {
             thread_map: pre.thread_map.insert(thrd_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Zombie), ..pre.thread_map[thrd_ptr] }),

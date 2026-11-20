@@ -109,6 +109,7 @@ pub(crate) fn kill_reclaim_return_quota(
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, prc_ptr, thrd_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         (*iommu_perm is Some) == (iommu_table is Some),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
@@ -179,6 +180,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
             iommu_table, *pagetable_perm, *iommu_perm),
         (*iommu_perm is Some) == (iommu_table is Some),
         kill_process_quota_stage_after(stage) == Some(KillStage::Quota { returned: size }),
+        old(krnl).pt_mp.spec_index(pagetable).view().higher.pci.view().dom() =~= Set::<PciBdf>::empty(),
         old(krnl).thrd_mp.spec_index(thrd_ptr).view().free_quota_pending_clean(),
         target == chain[chain.len() - 1],
         iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
@@ -236,6 +238,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thrd_ptr);
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, prc_ptr, thrd_ptr, target, stage, scope);
         kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thrd_ptr, target, stage, pagetable, iommu_table);
+        kill_target_pci_released_implies_u_pci_functions_empty(&entry_k, target);
         if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&entry_k, target); }
         kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thrd_ptr, target, stage, size, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
@@ -635,7 +638,7 @@ pub(crate) fn kill_reclaim_unlock_table(
         let before_u = kernel_k_to_kernel_u(unlock_k);
         kill_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, prc_ptr, thrd_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, scope);
         kill_reclaim_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, thrd_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, pagetable, iommu_table);
-        kill_table_unmapped_pre_from_k(&unlock_k, target);
+        kill_table_unmapped_pre_from_k(&unlock_k, target); kill_target_pci_released_implies_u_pci_functions_empty(&unlock_k, target);
         if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&unlock_k, target); }
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, target, pagetable, thrd_ptr, false);
         kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thrd_ptr, target, scope);

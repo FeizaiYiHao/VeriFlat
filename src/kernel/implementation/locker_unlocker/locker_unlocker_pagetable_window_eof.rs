@@ -134,6 +134,22 @@ proof fn lock_pagetable_window_eof_tlb_caches(pre: KernelK, post: KernelK, root:
     structure_caches_dirty_maps_and_table_structures_unchanged_implies_structure_cache_wf(pre, post);
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn lock_pagetable_window_eof_pci_mappings(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        lock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i, thread_id, lock_token),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(lock_pagetable_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn lock_pagetable_window_eof_pci_ownership(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        lock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i, thread_id, lock_token),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(lock_pagetable_window_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 /// Closes `inv()` after `lock_pagetable_window`: the new window owner holds the table's big lock and nothing a table
 /// invariant reads besides window ownership moved. The window was free, so a table that is not write-locked hides no
 /// leaf in it and lists no stale CPU for it, and its L2 entry hides no L1 page while every hiding entry is write-locked.
@@ -209,10 +225,10 @@ pub(super) proof fn lock_pagetable_window_eof(pre: KernelK, post: KernelK, root:
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         pagetable_invariant_fields_unchanged_implies_process_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
-        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { lock_pagetable_window_eof_pci_mappings(pre, post, root, l4i, l3i, l2i, thread_id, lock_token); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { lock_pagetable_window_eof_pci_ownership(pre, post, root, l4i, l3i, l2i, thread_id, lock_token); };
 }
 
 /// Page-to-table records, table pages and emptied-process tables after `unlock_pagetable_window`: the leaves, held entries
@@ -237,6 +253,22 @@ proof fn unlock_pagetable_window_eof_page_tables(pre: KernelK, post: KernelK, ro
         pagetable_lock_op_preserves_invariant_fields(pre.pt_mp, post.pt_mp, pre.pt_lower.view(), root); reveal(process_emptied_tables_wf); reveal(process_pagetable_wf);
     };
 }
+
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn unlock_pagetable_window_eof_pci_mappings(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        unlock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(unlock_pagetable_window_eof_transition_framing); reveal(pagetable_pci_mappings_wf); }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn unlock_pagetable_window_eof_pci_ownership(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        unlock_pagetable_window_eof_transition_framing(pre, post, root, l4i, l3i, l2i),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(unlock_pagetable_window_eof_transition_framing); reveal(pci_function_ownership_wf); }
 
 /// Closes `inv()` after `unlock_pagetable_window`: releasing a window only drops one window owner, a table that is not
 /// write-locked hides no leaf in that window and lists no stale CPU for it, and nothing a table invariant reads besides
@@ -299,9 +331,9 @@ pub(super) proof fn unlock_pagetable_window_eof(pre: KernelK, post: KernelK, roo
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         pagetable_invariant_fields_unchanged_implies_process_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
-        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { unlock_pagetable_window_eof_pci_mappings(pre, post, root, l4i, l3i, l2i); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { unlock_pagetable_window_eof_pci_ownership(pre, post, root, l4i, l3i, l2i); };
 }
 } // verus!

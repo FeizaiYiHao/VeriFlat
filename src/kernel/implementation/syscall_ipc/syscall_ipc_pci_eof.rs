@@ -7,16 +7,58 @@ use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
 verus! {
 
-/// Detaching the attached function `bdf` of the live process `sender_proc` from its write-held IOMMU table `table` under the
-/// held root-table lock: the function loses its context entry, `table` re-anchors at `anchor` or loses its DID when `bdf` was its
-/// anchor, the other functions of the sender's PCI function array that carried the old DID move with it, and the old DID domain
-/// is invalidated. Owners and every other object are as before.
-pub(super) proof fn ipc_pci_detach_eof(
+/// Detaching `bdf` changes only the root table, the IOTLB, and the IOMMU table `table`: the function loses its context entry,
+/// `table` re-anchors at `anchor` or loses its DID when `bdf` was its anchor, the other functions of the PCI function array of
+/// `sender_pt` that carried the old DID move with it, the old DID domain is invalidated, and owners are as before.
+pub(super) open spec fn ipc_pci_detach_eof_transition_framing(pre: KernelK, post: KernelK, sender_pt: RwLockPageTableRoot, table: RwLockPageTableRoot, bdf: PciBdf, anchor: Option<PciBdf>) -> bool {
+    let pci = pre.pt_mp.spec_index(sender_pt).view().higher.pci;
+    let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
+    let anchored = old_did == Some(pci_bdf_did(bdf.0, bdf.1, bdf.2));
+    &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })
+    &&& post.irt.view().owners() == pre.irt.view().owners()
+    &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+        #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+        let moved = anchor is Some && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did;
+        &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
+        &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(pre.it_mp.spec_index(table).view().cr3) }
+            else { pre.irt.view().spec_index_iommu_root(b, d, f) }
+        &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
+            else { pre.irt.view().spec_index_iommu_did(b, d, f) }
+    }
+    &&& anchor matches Some(a) ==> {
+        &&& anchored
+        &&& pci_bdf_valid(a.0, a.1, a.2)
+        &&& a != bdf
+        &&& pci.view().dom().contains(a)
+        &&& pre.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == old_did
+    }
+    &&& anchor is None && anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+        pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did
+    &&& post.it_mp.unchanged_except(&pre.it_mp, table)
+    &&& post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread()
+    &&& post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed()
+    &&& post.it_mp.spec_index(table).view() == (IommuTable { did: post.it_mp.spec_index(table).view().did, ..pre.it_mp.spec_index(table).view() })
+    &&& post.it_mp.spec_index(table).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
+        else if anchored { None } else { pre.it_mp.spec_index(table).view().did }
+    &&& old_did matches Some(did) ==> {
+        &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did))
+        &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+        &&& iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.spec_index(did))
+        &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
+            == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+        &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
+            ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
+    }
+    &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+}
+
+/// The root table still names, for every attached function, the IOMMU table of the function's owner.
+proof fn ipc_pci_detach_eof_root_table(
     pre: KernelK, post: KernelK, sender_proc: RwLockProcessPtr, sender_pt: RwLockPageTableRoot, table: RwLockPageTableRoot, bdf: PciBdf, anchor: Option<PciBdf>,
 )
     requires
         pre.inv(),
-        post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre }),
+        ipc_pci_detach_eof_transition_framing(pre, post, sender_pt, table, bdf, anchor),
         pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         pre.prc_mp.dom().contains(sender_proc),
         pre.pt_mp.dom().contains(sender_pt),
@@ -31,48 +73,7 @@ pub(super) proof fn ipc_pci_detach_eof(
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),
-        post.irt.view().owners() == pre.irt.view().owners(),
-        ({
-            let pci = pre.pt_mp.spec_index(sender_pt).view().higher.pci;
-            let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
-            let anchored = old_did == Some(pci_bdf_did(bdf.0, bdf.1, bdf.2));
-            &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
-                #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                let moved = anchor is Some && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did;
-                &&& post.irt.view().spec_index_owner(b, d, f) == pre.irt.view().spec_index_owner(b, d, f)
-                &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(pre.it_mp.spec_index(table).view().cr3) }
-                    else { pre.irt.view().spec_index_iommu_root(b, d, f) }
-                &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
-                    else { pre.irt.view().spec_index_iommu_did(b, d, f) }
-            }
-            &&& anchor matches Some(a) ==> {
-                &&& anchored
-                &&& pci_bdf_valid(a.0, a.1, a.2)
-                &&& a != bdf
-                &&& pci.view().dom().contains(a)
-                &&& pre.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == old_did
-            }
-            &&& anchor is None && anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
-                pci_bdf_valid(b, d, f) && (b, d, f) != bdf && pci.view().dom().contains((b, d, f)) ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did
-            &&& post.it_mp.unchanged_except(&pre.it_mp, table)
-            &&& post.it_mp.spec_index(table).locking_thread() == pre.it_mp.spec_index(table).locking_thread()
-            &&& post.it_mp.spec_index(table).being_killed() == pre.it_mp.spec_index(table).being_killed()
-            &&& post.it_mp.spec_index(table).view() == (IommuTable { did: post.it_mp.spec_index(table).view().did, ..pre.it_mp.spec_index(table).view() })
-            &&& post.it_mp.spec_index(table).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
-                else if anchored { None } else { pre.it_mp.spec_index(table).view().did }
-            &&& old_did matches Some(did) ==> {
-                &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did))
-                &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
-                &&& iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.spec_index(did))
-                &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
-                    == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
-                &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
-                    ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
-            }
-            &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
-        }),
-    ensures
-        post.inv(),
+    ensures iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
     let t = pre.it_mp.spec_index(table).view();
     let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
@@ -100,25 +101,122 @@ pub(super) proof fn ipc_pci_detach_eof(
         &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
         &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
     });
-    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
-        reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf);
+    reveal(iommu_root_table_process_wf); reveal(process_iommu_table_wf); reveal(pci_function_ownership_wf);
+}
+
+/// The IOTLB and the context cache keep only what the detached root table may still cache.
+proof fn ipc_pci_detach_eof_iotlb(
+    pre: KernelK, post: KernelK, sender_proc: RwLockProcessPtr, sender_pt: RwLockPageTableRoot, table: RwLockPageTableRoot, bdf: PciBdf, anchor: Option<PciBdf>,
+)
+    requires
+        pre.inv(),
+        ipc_pci_detach_eof_transition_framing(pre, post, sender_pt, table, bdf, anchor),
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.pt_mp.dom().contains(sender_pt),
+        pre.pt_mp.spec_index(sender_pt).view().higher.proc_ptr == sender_proc,
+        pre.prc_mp.spec_index(sender_proc).view().pagetable == sender_pt,
+        pre.prc_mp.spec_index(sender_proc).view().iommu_table == Some(table),
+        pre.it_mp.dom().contains(table),
+        pre.it_mp.spec_index(table).locking_thread() is Write,
+        pre.it_mp.spec_index(table).view().leaves_present(),
+        pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some,
+        pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains(bdf),
+        post.irt.inv(),
+        post.iommu_tlb.inv(),
+        iommu_table_perms_wf(post.it_mp),
+        iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
+    ensures iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+{
+    let t = pre.it_mp.spec_index(table).view();
+    let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
+    assert({
+        &&& t.proc_ptr == sender_proc
+        &&& pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc)
+        &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(t.cr3)
+        &&& old_did == t.did
+        &&& t.did is Some
+        &&& vtd_domain_id_valid(t.did->Some_0)
+    }) by {
+        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); pci_function_ownership_wf_pagetable_at(pre.irt.view(), pre.prc_mp, pre.pt_mp, sender_pt, bdf);
+        reveal(iommu_root_table_process_wf);
     };
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
-    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
-    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
+    assert(pci_bdf_of_did(pci_bdf_did(bdf.0, bdf.1, bdf.2)) == bdf) by (nonlinear_arith) requires pci_bdf_valid(bdf.0, bdf.1, bdf.2);
+    assert(pci_bdf_valid(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2)
+        && pci_bdf_did(pci_bdf_of_did(t.did->Some_0).0, pci_bdf_of_did(t.did->Some_0).1, pci_bdf_of_did(t.did->Some_0).2) == t.did->Some_0) by (nonlinear_arith)
+        requires vtd_domain_id_valid(t.did->Some_0);
+    if let Some(a) = anchor {
+        assert(pci_bdf_of_did(pci_bdf_did(a.0, a.1, a.2)) == a && vtd_domain_id_valid(pci_bdf_did(a.0, a.1, a.2))) by (nonlinear_arith) requires pci_bdf_valid(a.0, a.1, a.2);
+    }
+    assert({
+        &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()
+        &&& post.it_mp.spec_index(table).view().mapping_4k() == t.mapping_4k()
+        &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
+        &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
+    });
     if old_did is Some {
         let did = old_did->Some_0;
         assert(post.iommu_tlb.context_cache() =~= Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
             .union_prefer_right(Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 == did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])));
     }
-    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
-        reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); reveal(process_iommu_table_wf);
+    reveal(iommu_tlb_wf); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); reveal(process_iommu_table_wf);
+}
+
+/// Detaching the attached function `bdf` of the live process `sender_proc` from its write-held IOMMU table `table` under the
+/// held root-table lock: the function loses its context entry, `table` re-anchors at `anchor` or loses its DID when `bdf` was its
+/// anchor, the other functions of the sender's PCI function array that carried the old DID move with it, and the old DID domain
+/// is invalidated. Owners and every other object are as before.
+pub(super) proof fn ipc_pci_detach_eof(
+    pre: KernelK, post: KernelK, sender_proc: RwLockProcessPtr, sender_pt: RwLockPageTableRoot, table: RwLockPageTableRoot, bdf: PciBdf, anchor: Option<PciBdf>,
+)
+    requires
+        pre.inv(),
+        ipc_pci_detach_eof_transition_framing(pre, post, sender_pt, table, bdf, anchor),
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.pt_mp.dom().contains(sender_pt),
+        pre.pt_mp.spec_index(sender_pt).view().higher.proc_ptr == sender_proc,
+        pre.prc_mp.spec_index(sender_proc).view().pagetable == sender_pt,
+        pre.prc_mp.spec_index(sender_proc).view().iommu_table == Some(table),
+        pre.it_mp.dom().contains(table),
+        pre.it_mp.spec_index(table).locking_thread() is Write,
+        pre.it_mp.spec_index(table).view().leaves_present(),
+        pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some,
+        pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains(bdf),
+        post.irt.inv(),
+        post.iommu_tlb.inv(),
+        iommu_table_perms_wf(post.it_mp),
+    ensures
+        post.inv(),
+{
+    let t = pre.it_mp.spec_index(table).view();
+    let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
+    assert({
+        &&& t.proc_ptr == sender_proc
+        &&& pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == Some(sender_proc)
+        &&& pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) == Some(t.cr3)
+        &&& old_did == t.did
+        &&& t.did is Some
+        &&& vtd_domain_id_valid(t.did->Some_0)
+    }) by {
+        process_iommu_table_wf_process_at(pre.prc_mp, pre.it_mp, sender_proc); pci_function_ownership_wf_pagetable_at(pre.irt.view(), pre.prc_mp, pre.pt_mp, sender_pt, bdf);
+        reveal(iommu_root_table_process_wf);
     };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+    assert({
+        &&& post.it_mp.spec_index(table).view().page_closure() == t.page_closure()
+        &&& post.it_mp.spec_index(table).view().mapping_4k() == t.mapping_4k()
+        &&& post.it_mp.spec_index(table).view().mapping_2m() == t.mapping_2m()
+        &&& post.it_mp.spec_index(table).view().mapping_1g() == t.mapping_1g()
+    });
+    assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp, post.pg_arr)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_root_table(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
+    assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(iommu_table_pages_wf); };
+    assert(iommu_tlb_wf(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { ipc_pci_detach_eof_iotlb(pre, post, sender_proc, sender_pt, table, bdf, anchor); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 

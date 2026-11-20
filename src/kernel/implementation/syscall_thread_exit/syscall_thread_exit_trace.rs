@@ -863,8 +863,8 @@ pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
     thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thrd_ptr, ctn_ptr);
 }
 
-/// A state holding the cpu, `ctn_ptr`, `prc_ptr` with its page table `pagetable`, and the running `thrd_ptr`
-/// whose progress is followed by returning its `size` quota gives the quota step precondition.
+/// A state holding the cpu, `ctn_ptr`, `prc_ptr` with its page table `pagetable`, which keeps no PCI function, and the
+/// running `thrd_ptr` whose progress is followed by returning its `size` quota gives the quota step precondition.
 pub(super) proof fn thread_exit_quota_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctn_ptr: RwLockContainerPtr, prc_ptr: RwLockProcessPtr, thrd_ptr: RwLockThreadPtr,
     pagetable: RwLockPageTableRoot, size: PageSize,
@@ -882,6 +882,8 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
         krnl.prc_mp.dom().contains(prc_ptr),
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable,
+        krnl.pt_mp.dom().contains(pagetable),
+        krnl.pt_mp.spec_index(pagetable).view().higher.pci.view() == Map::<PciBdf, Set<PciBarMapping>>::empty(),
         krnl.prc_mp.spec_index(prc_ptr).view().iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
             #![trigger krnl.it_mp.spec_index(krnl.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !krnl.it_mp.spec_index(krnl.prc_mp.spec_index(prc_ptr).view().iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
@@ -894,7 +896,8 @@ pub(super) proof fn thread_exit_quota_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thrd_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thrd_ptr].syscall_progress == krnl.thrd_mp.spec_index(thrd_ptr).view().syscall_progress.view(),
 {
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, prc_ptr, thrd_ptr, None); kernel_process_projection_at(krnl, prc_ptr);
+    assert(kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0.pci_functions =~= Map::empty());
     if krnl.prc_mp.spec_index(prc_ptr).view().iommu_table is Some { kernel_iommu_table_4k_unmapped_projection_at(krnl, prc_ptr); }
     reveal(thread_exit_quota_step_pre); reveal(thread_exit_reclaim_step_pre);
 }

@@ -66,7 +66,9 @@ proof fn kill_retire_table_page_eof_table_pages(
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); };
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     }
-    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { reveal(process_object_pages_owner_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip(); };
+    assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by {
+        reveal(process_object_pages_owner_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    };
     assert(page_object_owner_wf(post.ctn_mp, post.thrd_mp, post.pg_arr)) by { reveal(page_object_owner_wf); reveal(container_owned_pages_wf); };
     assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
     assert(process_iommu_table_wf(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_wf); };
@@ -132,10 +134,14 @@ proof fn kill_retire_table_page_eof_page_relations(
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     if iommu {
-        assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx); };
+        assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+            page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx);
+        };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     } else {
-        assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(post.pt_mp, post.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx); };
+        assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+            page_pagetable_wf_preserved_for_nonmapped_page_change(post.pt_mp, post.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, pg_idx);
+        };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_nonmapped_page_change(pre.ctn_mp, pre.prc_mp, pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr, pg_idx); };
     }
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
@@ -184,8 +190,12 @@ proof fn kill_retire_table_page_eof_allocator_quota_wf(
         unchanged_members_implies_thread_effective_quota_4k_fold_sum_eq_forall();
         one_member_changed_implies_thread_pending_4k_fold_sums_changed_by_forall(thrd_ptr, 1int, depth as int, 0int);
     };
-    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp); };
-    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp); };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_2m_mp)) by {
+        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_2m_mp);
+    };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thrd_mp, post.allc_1g_mp)) by {
+        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thrd_mp, post.thrd_mp, post.allc_1g_mp);
+    };
 }
 
 proof fn kill_retire_table_page_eof_process_management_inv(
@@ -212,6 +222,42 @@ proof fn kill_retire_table_page_eof_process_management_inv(
     assert(thread_dangling_chain_end_wf(post.thrd_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thrd_mp, post.thrd_mp); };
 }
 
+/// The CPU TLBs stay covered by the page tables after the transition.
+proof fn kill_retire_table_page_eof_tlb_caches_cpu_tlb(
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    node_addr: usize,
+)
+    requires
+        pre.inv(),
+        kill_retire_table_page_eof_transition_framing(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr),
+        !iommu ==> pre.pt_mp.dom().contains(table),
+        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+    ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(kill_retire_table_page_eof_transition_framing);
+    reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
+}
+
+/// The paging-structure caches stay covered by the page tables after the transition.
+proof fn kill_retire_table_page_eof_tlb_caches_structure_cache(
+    pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
+    node_addr: usize,
+)
+    requires
+        pre.inv(),
+        kill_retire_table_page_eof_transition_framing(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr),
+        !iommu ==> pre.pt_mp.dom().contains(table),
+        !iommu ==> forall|l4i: L4Index| #![trigger whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i)]
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).spec_resolve_mapping_l4(l4i) is None,
+        !iommu ==> pre.pt_mp.spec_index(table).view().higher.table_stale_cpus.view() == Set::<CpuId>::empty(),
+    ensures structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(kill_retire_table_page_eof_transition_framing);
+    reveal(structure_cache_wf);
+}
+
 /// The CPU TLBs and paging-structure caches keep only what the table still holds: a page table, which resolves no user
 /// root entry and lists no cpu stale, backs no cached entry.
 proof fn kill_retire_table_page_eof_tlb_caches(
@@ -230,8 +276,10 @@ proof fn kill_retire_table_page_eof_tlb_caches(
         structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
 {
     reveal(kill_retire_table_page_eof_transition_framing);
-    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_tlb_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; };
-    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { kill_retire_table_page_eof_tlb_caches_cpu_tlb(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr); };
+    assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        kill_retire_table_page_eof_tlb_caches_structure_cache(pre, post, iommu, table, pg_ptr, thrd_ptr, allc_ptr, cpu_id, node_addr);
+    };
 }
 
 /// The table page leaving its zombie table for the owner's cpu cache, with the killer's pending refund grown by one,

@@ -43,6 +43,62 @@ pub(super) open spec fn remove_2m_mapping_without_free_in_window_eof_transition_
     &&& new_page.view() == (Page { mappings: new_page.view().mappings, ref_count: new_page.view().ref_count, ..old_page.view() })
 }
 
+/// Every 4K page record still names a held leaf: the removal changes no 4K leaf.
+proof fn remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, l2_ptr: PageMapPtr)
+    requires
+        pre.inv(),
+        remove_2m_mapping_without_free_in_window_eof_transition_framing(pre, post, pagetable, va, pg_ptr, l2_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_2m_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        post.pg_arr.inv(),
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
+        post.subsystems_inv(),
+    ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, pg_idx);
+    pre.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
+}
+
+/// Every 2M page record but the removed one still names a held leaf, and the page lists the leaf no more.
+proof fn remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, l2_ptr: PageMapPtr)
+    requires
+        pre.inv(),
+        remove_2m_mapping_without_free_in_window_eof_transition_framing(pre, post, pagetable, va, pg_ptr, l2_ptr),
+        pre.pt_mp.dom().contains(pagetable),
+        va_2m_valid(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().dom().contains(va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m().spec_index(va).addr == pg_ptr,
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().ref_count > 1,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().mappings().contains((pagetable, va)),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        post.pg_arr.inv(),
+        post.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().inv(),
+        post.subsystems_inv(),
+    ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(remove_2m_mapping_without_free_in_window_eof_transition_framing);
+    let pg_idx = page_ptr2page_index(pg_ptr);
+    assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
+    page_array_wf_at(pre.pg_arr, pg_idx);
+    pre.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
+}
+
 /// The page-table relations close after the non-present 2M leaf `va` and its record on `pg_ptr` leave together.
 proof fn remove_2m_mapping_without_free_in_window_eof_page_tables(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, l2_ptr: PageMapPtr)
     requires
@@ -74,12 +130,8 @@ proof fn remove_2m_mapping_without_free_in_window_eof_page_tables(pre: KernelK, 
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     page_array_wf_at(pre.pg_arr, pg_idx);
     pre.default_pagetable_wf_at(pagetable);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
-    };
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
-    };
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_4k_pages(pre, post, pagetable, va, pg_ptr, l2_ptr); };
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { remove_2m_mapping_without_free_in_window_eof_page_tables_mapped_2m_pages(pre, post, pagetable, va, pg_ptr, l2_ptr); };
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_lower_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); reveal(page_array_wf); };
