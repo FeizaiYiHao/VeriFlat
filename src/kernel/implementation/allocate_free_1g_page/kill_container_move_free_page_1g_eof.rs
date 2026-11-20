@@ -140,7 +140,7 @@ broadcast proof fn kill_container_move_free_page_1g_eof_region_member(head: Page
         head <= page_ptr2page_index(pg_ptr) < head + 262144,
     ensures
         #[trigger] page_1g_all_ptrs(head).contains(pg_ptr),
-{ page_1g_all_ptrs_contains_index(head, page_ptr2page_index(pg_ptr)); page_ptr_roundtrip(); }
+{ index_in_page_1g_region_implies_all_ptrs_contain_index_ptr(head, page_ptr2page_index(pg_ptr)); page_ptr_roundtrip(); }
 
 /// No CPU cache changes and only the moved head, which stays on a global list, changes, so every cached 1G page keeps its state, owner, and free-list node.
 proof fn kill_container_move_free_page_1g_eof_cpu_cache_1g(
@@ -217,7 +217,7 @@ proof fn kill_container_move_free_page_1g_eof_container_page_owner(
     ensures container_owned_pages_wf(post.ctn_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_1g_eof_transition_framing);
-    broadcast use page_1g_ptr_prefix_member_bounds, kill_container_move_free_page_1g_eof_region_member;
+    broadcast use page_1g_ptr_prefix_contains_implies_valid_ptr_head_or_tail_index_in_bounds, kill_container_move_free_page_1g_eof_region_member;
     page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid();
     assert(container_owned_pages_forward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_1g_wf); };
     assert(container_owned_pages_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_owned_pages_wf); reveal(hugepage_1g_wf); };
