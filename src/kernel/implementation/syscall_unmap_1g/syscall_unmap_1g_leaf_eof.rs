@@ -53,6 +53,137 @@ pub(super) open spec fn unmap_1g_hide_leaf_eof_transition_framing(pre: KernelK, 
     &&& new_c.spec_held_1g_l3(target.0, target.1) == Some(hidden)
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn unmap_1g_hide_leaf_eof_pci_mappings(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(unmap_1g_hide_leaf_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn unmap_1g_hide_leaf_eof_pci_ownership(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(unmap_1g_hide_leaf_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
+/// Every 4K page record still names a held leaf: the hide changes no 4K mapping.
+proof fn unmap_1g_hide_leaf_eof_mapped_4k_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pre.inv(),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+        va_1g_valid(va),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
+    ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(unmap_1g_hide_leaf_eof_transition_framing);
+    pre.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
+}
+
+/// Every 2M page record still names a held leaf: the hide changes no 2M mapping.
+proof fn unmap_1g_hide_leaf_eof_mapped_2m_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pre.inv(),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+        va_1g_valid(va),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
+    ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(unmap_1g_hide_leaf_eof_transition_framing);
+    pre.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf);
+}
+
+/// Every 1G page record still names a held leaf with its frame: the hidden leaf stays held.
+proof fn unmap_1g_hide_leaf_eof_mapped_1g_pages(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pre.inv(),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+        va_1g_valid(va),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
+    ensures mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(unmap_1g_hide_leaf_eof_transition_framing);
+    pre.default_pagetable_wf_at(pagetable);
+    let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable);
+    broadcast use spec_va_1g_valid_index_roundtrip;
+    reveal(mapped_1g_page_pagetable_wf);
+    pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
+    assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr);
+}
+
+/// A translation cached for `va` is covered by the table record, which lists every CPU stale.
+proof fn unmap_1g_hide_leaf_eof_cpu_tlb(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+    requires
+        pre.inv(),
+        unmap_1g_hide_leaf_eof_transition_framing(pre, post, pagetable, va),
+        va_1g_valid(va),
+        pre.pt_mp.dom().contains(pagetable),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g().dom().contains(va),
+        pre.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        pre.pt_mp.spec_index(pagetable).view().higher.table_stale_cpus.view() == Set::range(0usize, NUM_CPUS),
+        pagetable_perms_wf(post.pt_mp),
+        pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_l1_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
+        pagetable_table_stale_cpus_only_when_write_locked(post.pt_mp),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m(),
+    ensures cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(unmap_1g_hide_leaf_eof_transition_framing);
+    pre.default_pagetable_wf_at(pagetable);
+    broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
+}
+
 /// The invariant survives hiding the present 1G leaf `va` of the write-held `pagetable` while every CPU is listed stale for the whole table: a translation cached for `va` is covered by the table record, every page record still names a held leaf with its frame, and every other entry
 /// resolves as before.
 pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
@@ -81,18 +212,11 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
     assert(new_c.mapping_4k() == old_c.mapping_4k() && new_c.mapping_2m() == old_c.mapping_2m() && old_c.kernel_l4_end() == KERNEL_MEM_END_L4INDEX);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
-        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { unmap_1g_hide_leaf_eof_pci_mappings(pre, post, pagetable, va); };
         assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
-        assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-            broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
-        };
-        assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { broadcast use spec_va_2m_valid_index_roundtrip; reveal(mapped_2m_page_pagetable_wf); };
-        assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-            broadcast use spec_va_1g_valid_index_roundtrip;
-            reveal(mapped_1g_page_pagetable_wf);
-            pre.pt_mp.spec_index(pagetable).view().higher.spec_held_l4_resolves_implies_spec_held_1g_l3_eq_resolve(spec_v2l4index(va), spec_v2l3index(va));
-            assert(new_c.mapping_1g().spec_index(va).addr == old_c.mapping_1g().spec_index(va).addr);
-        };
+        assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { unmap_1g_hide_leaf_eof_mapped_4k_pages(pre, post, pagetable, va); };
+        assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { unmap_1g_hide_leaf_eof_mapped_2m_pages(pre, post, pagetable, va); };
+        assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { unmap_1g_hide_leaf_eof_mapped_1g_pages(pre, post, pagetable, va); };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(process_pagetable_wf(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_wf); };
         assert(iommu_table_no_huge_leaf_wf(post.it_mp)) by { reveal(iommu_table_no_huge_leaf_wf); };
@@ -101,10 +225,8 @@ pub(super) proof fn unmap_1g_hide_leaf_eof(pre: KernelK, post: KernelK, pagetabl
         assert(process_object_pages_owner_wf(post.prc_mp, post.pt_mp, post.it_mp, post.pg_arr)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_pagetable_pcid_match); };
-    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip; reveal(cpu_tlb_wf);
-    };
+    assert(cpu_tlb_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { unmap_1g_hide_leaf_eof_cpu_tlb(pre, post, pagetable, va); };
     assert(structure_cache_wf(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(structure_cache_wf); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { unmap_1g_hide_leaf_eof_pci_ownership(pre, post, pagetable, va); };
 }
 } // verus!

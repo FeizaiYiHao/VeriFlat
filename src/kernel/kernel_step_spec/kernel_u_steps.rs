@@ -1226,6 +1226,7 @@ pub open spec fn kernel_u_new_thread_changed(
     &&& new_u.cpu_tlb == old_u.cpu_tlb
     &&& new_u.iommu_tlb == old_u.iommu_tlb
     &&& new_u.kernel_l4_end == old_u.kernel_l4_end
+    &&& new_u.pci_bars == old_u.pci_bars
     &&& new_u.cpu_array == old_u.cpu_array
     &&& old_u.container_map.dom().contains(ctn_ptr)
     &&& new_u.container_map == old_u.container_map.insert(ctn_ptr, ContainerU {

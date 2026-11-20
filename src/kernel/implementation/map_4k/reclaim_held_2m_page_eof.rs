@@ -626,6 +626,19 @@ proof fn remove_last_held_2m_mapping_to_allocator_eof_allocator_quota_wf(
     };
 }
 
+/// The BAR pages stay unavailable.
+proof fn remove_last_held_2m_mapping_to_allocator_eof_pci_bar_pages(
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, pg_ptr: PagePtr, thrd_ptr: RwLockThreadPtr, depth: usize, allc_ptr: RwLockPageAllocatorPtr,
+    cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
+)
+    requires
+        pci_bar_pages_unavailable_wf(pre.pci_bars.view(), pre.pg_arr),
+        remove_last_held_2m_mapping_to_allocator_eof_transition_framing(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr),
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Mapped2m,
+    ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
+{ reveal(remove_last_held_2m_mapping_to_allocator_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); }
+
 /// EOF closure of `remove_last_held_2m_mapping_to_allocator`: the held leaf `va` and its record leave together, the leaf left
 /// `mapping_2m` with its root, so the freed page carries no other record and no CPU caches it, and the page's quota unit moves
 /// to the thread's pending 2M counter at the owner's depth.
@@ -685,7 +698,9 @@ pub(super) proof fn remove_last_held_2m_mapping_to_allocator_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_last_held_2m_mapping_to_allocator_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by {
+        remove_last_held_2m_mapping_to_allocator_eof_pci_bar_pages(pre, post, pagetable, va, pg_ptr, thrd_ptr, depth, allc_ptr, cpu_id, old_counter, new_counter, node_addr);
+    };
     assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by {
         page_ptr_valid_imply_page_index_valid();
         mapped_2m_page_pagetable_wf_page_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, page_ptr2page_index(pg_ptr), pagetable, va);

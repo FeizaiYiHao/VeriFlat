@@ -126,6 +126,90 @@ proof fn install_staged_4k_page_table_page_eof_subsystems_inv(
     };
 }
 
+/// The new table page is not a mapped page, so every 4K page mapping relation closes as before.
+proof fn install_staged_4k_page_table_page_eof_page_mappings_4k(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pre.inv(),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(install_staged_4k_page_table_page_eof_transition_framing);
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_4k_valid_index_roundtrip;
+    reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf);
+}
+
+/// The new table page is not a mapped page, so every 2M page mapping relation closes as before.
+proof fn install_staged_4k_page_table_page_eof_page_mappings_2m(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pre.inv(),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(install_staged_4k_page_table_page_eof_transition_framing);
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_2m_valid_index_roundtrip;
+    reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_2m_page_pagetable_wf);
+}
+
+/// The new table page is not a mapped page, so every 1G page mapping relation closes as before.
+proof fn install_staged_4k_page_table_page_eof_page_mappings_1g(
+    pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+)
+    requires
+        pre.inv(),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.thrd_mp.dom().contains(quota_thrd_ptr),
+        pre.prc_mp.dom().contains(prc_ptr),
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().owning_container == ctn_ptr,
+        pre.prc_mp.spec_index(prc_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is TablesEmptied) && !(pre.prc_mp.spec_index(prc_ptr).view().state.view() is Zombie),
+        pre.pt_mp.dom().contains(pagetable_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thrd_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().owning_container == ctn_ptr,
+        post.subsystems_inv(),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
+    ensures mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+{
+    reveal(install_staged_4k_page_table_page_eof_transition_framing);
+    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
+    pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_1g_valid_index_roundtrip;
+    reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_1g_page_pagetable_wf);
+}
+
 /// The new table page is not a mapped page, so every page mapping relation closes as before.
 proof fn install_staged_4k_page_table_page_eof_page_mappings(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
@@ -148,12 +232,9 @@ proof fn install_staged_4k_page_table_page_eof_page_mappings(
         post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
     ensures page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(index_valid(NUM_PAGES, page_ptr2page_index(pg_ptr))) by { page_ptr_valid_imply_page_index_valid(); };
-    assert(page_mappings_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        pre.default_pagetable_wf_at(pagetable_ptr); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip;
-        reveal(pagetable_lower_wf); reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
-    };
+    install_staged_4k_page_table_page_eof_page_mappings_4k(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
+    install_staged_4k_page_table_page_eof_page_mappings_2m(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
+    install_staged_4k_page_table_page_eof_page_mappings_1g(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
 }
 
 /// The new table page joins the table's page closure as a page-table page.
@@ -225,6 +306,24 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
     install_staged_4k_page_table_page_eof_pagetable_pages_wf(pre, post, level, pg_ptr, quota_thrd_ptr, prc_ptr, ctn_ptr, pagetable_ptr);
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn install_staged_4k_page_table_page_eof_memory_management_inv_pci_mappings(pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(install_staged_4k_page_table_page_eof_transition_framing); reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; }
+
+/// The BAR pages stay unavailable.
+proof fn install_staged_4k_page_table_page_eof_memory_management_inv_pci_bar_pages(pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot)
+    requires
+        pci_bar_pages_unavailable_wf(pre.pci_bars.view(), pre.pg_arr),
+        install_staged_4k_page_table_page_eof_transition_framing(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr),
+        page_ptr_valid(pg_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(pg_ptr)).view().view().state is Owned4k,
+    ensures pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr),
+{ reveal(install_staged_4k_page_table_page_eof_transition_framing); reveal(pci_bar_pages_unavailable_wf); }
+
 proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, level: MissingPageTableLevel, pg_ptr: PagePtr, quota_thrd_ptr: RwLockThreadPtr, prc_ptr: RwLockProcessPtr, ctn_ptr: RwLockContainerPtr,
     pagetable_ptr: RwLockPageTableRoot,
@@ -249,8 +348,8 @@ proof fn install_staged_4k_page_table_page_eof_memory_management_inv(
     ensures post.memory_management_inv(),
 {
     reveal(install_staged_4k_page_table_page_eof_transition_framing);
-    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { reveal(pci_bar_pages_unavailable_wf); };
-    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip; };
+    assert(pci_bar_pages_unavailable_wf(post.pci_bars.view(), post.pg_arr)) by { install_staged_4k_page_table_page_eof_memory_management_inv_pci_bar_pages(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr); };
+    assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { install_staged_4k_page_table_page_eof_memory_management_inv_pci_mappings(pre, post, level, pg_ptr, quota_thrd_ptr, pagetable_ptr); };
     let pg_idx = page_ptr2page_index(pg_ptr);
     assert(index_valid(NUM_PAGES, pg_idx)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };

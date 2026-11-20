@@ -108,6 +108,22 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
     &&& forall|l4: L4Index, l3: L3Index, l2: L2Index| #![trigger after.spec_held_2m_l2(l4, l3, l2)] after.spec_held_2m_l2(l4, l3, l2) == before.spec_held_2m_l2(l4, l3, l2)
 }
 
+/// The PCI mapping records of every page table carry over from `pre`.
+proof fn window_stale_cpus_update_eof_pci_mappings(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool)
+    requires
+        pagetable_pci_mappings_wf(pre.pci_bars.view(), pre.pt_mp, pre.pt_lower.view()),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
+    ensures pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view()),
+{ reveal(window_stale_cpus_update_eof_transition_framing); reveal(pagetable_pci_mappings_wf); }
+
+/// The PCI function ownership carries over from `pre`.
+proof fn window_stale_cpus_update_eof_pci_ownership(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, root_write_held: bool)
+    requires
+        pci_function_ownership_wf(pre.irt.view(), pre.prc_mp, pre.pt_mp),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root, root_write_held),
+    ensures pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp),
+{ reveal(window_stale_cpus_update_eof_transition_framing); reveal(pci_function_ownership_wf); }
+
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
 /// table that is not write-held has locked; a `Set` that only grows a record and a `ClearEmpty` keep every listed CPU listed,
 /// so the TLB invariant carries over; a `RemoveCpu` drops only `cpu_id`, whose TLB under the table's PCID is empty,
@@ -219,10 +235,10 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
         process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post);
         pagetable_invariant_fields_unchanged_implies_process_pagetable_wf_preserved_forall();
         container_process_page_pagetable_wf_preserved_for_pagetable_fields();
-        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_pci_mappings_wf); };
+        assert(pagetable_pci_mappings_wf(post.pci_bars.view(), post.pt_mp, post.pt_lower.view())) by { window_stale_cpus_update_eof_pci_mappings(pre, post, root, root_write_held); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { pagetable_invariant_fields_unchanged_implies_cpu_dirty_map_wf_preserved_forall(); };
-    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { reveal(pci_function_ownership_wf); };
+    assert(pci_function_ownership_wf(post.irt.view(), post.prc_mp, post.pt_mp)) by { window_stale_cpus_update_eof_pci_ownership(pre, post, root, root_write_held); };
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus` for the windows of `root` this thread holds: each names an L2 lock

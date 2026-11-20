@@ -604,7 +604,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     let post_u = kernel_k_to_kernel_u(*post);
     assert(pre.prc_mp.dom().contains(prc_ptr) && post.prc_mp.dom() == pre.prc_mp.dom() && pre.thrd_mp.dom().contains(thrd_ptr) && post.thrd_mp.dom().contains(new_thrd_ptr)
         && post.ep_mp.dom() == pre.ep_mp.dom() && (ep_ptr is Some ==> pre.ep_mp.dom().contains(ep_ptr->Some_0)) && pre.ctn_mp.dom().contains(ctn_ptr) && !pre.thrd_mp.dom().contains(new_thrd_ptr)
-        && pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k > 0 && post.cpu_tlb.view() == pre.cpu_tlb.view() && post.iommu_tlb.view() == pre.iommu_tlb.view() && post.dflt_pt == pre.dflt_pt
+        && pre.thrd_mp.spec_index(thrd_ptr).view().quota_4k > 0 && post.cpu_tlb.view() == pre.cpu_tlb.view() && post.iommu_tlb.view() == pre.iommu_tlb.view() && post.dflt_pt == pre.dflt_pt && post.pci_bars == pre.pci_bars
         && post.irt.view().owners() == pre.irt.view().owners() && post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()) by { reveal(kernel_new_thread_fields); };
     kernel_cpu_projection_at(post, cpu_id); kernel_cpu_projection_at(pre, cpu_id); kernel_process_projection_at(post, prc_ptr);
     if let Some(source) = release_source_process {
