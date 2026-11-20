@@ -25,6 +25,13 @@ pub proof fn new_container_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     ensures isolated(new_u, a, b),
 {
     reveal(new_container_enter_step_pre); reveal(new_container_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    assert(new_u.container_map.dom() =~= old_u.container_map.dom());
+    assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads
+        && new_u.endpoint_map[e].queue == old_u.endpoint_map[e].queue && new_u.endpoint_map[e].owning_container == old_u.endpoint_map[e].owning_container);
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
@@ -92,6 +99,31 @@ pub proof fn new_container_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
     reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_ipc_transit_wf);
     assert(new_u.container_map.dom() =~= old_u.container_map.dom());
     assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    let thrd_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map[thrd_ptr];
+    let origin = thread.syscall_progress->Some_0->Share4k_origin;
+    let child = origin->NewContainer_0.child_container->Some_0;
+    assert(in_domain(old_u, a, child)) by {
+        reveal(new_container_finish_step_pre);
+        let container = thread.owning_container;
+        assert(old_u.container_map[child].uppertree_seq.contains(container));
+        if container != a { assert(old_u.container_map[container].uppertree_seq.contains(a)); }
+    };
+    if origin->NewContainer_0.endpoint_index is Some && thread.endpoint_descriptors[origin->NewContainer_0.endpoint_index->Some_0 as int] is Some {
+        let i = origin->NewContainer_0.endpoint_index->Some_0;
+        reveal(new_container_finish_step_pre);
+        assert(old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0].owning_threads.contains((thrd_ptr, i)));
+    }
+    let new_t = new_u.process_map[old_u.container_map[child].root_process].owned_threads.last();
+    assert(!old_u.thread_map.dom().contains(new_t) && new_u.thread_map.dom() =~= old_u.thread_map.dom().insert(new_t));
+    assert(new_u.thread_map[new_t].owning_container == child);
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] old_u.thread_map.dom().contains(t) ==> new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].queue == old_u.endpoint_map[e].queue
+        && new_u.endpoint_map[e].owning_container == old_u.endpoint_map[e].owning_container);
+    assert(forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i))]
+        new_u.endpoint_map.dom().contains(e) && new_u.endpoint_map[e].owning_threads.contains((t, i)) ==> old_u.endpoint_map[e].owning_threads.contains((t, i)) || t == new_t);
+    assert(endpoint_iso(new_u, a, b));
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }

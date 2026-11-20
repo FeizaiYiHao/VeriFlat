@@ -329,6 +329,44 @@ pub proof fn thread_exit_lock_table_step_iso(old_u: KernelU, new_u: KernelU, cpu
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
+/// Giving up the PCI functions of the exiting thread's process, a process of `a`, empties its array, detaches only functions in
+/// that array, none of which a process of `b` holds, and changes root-table owners and the IOTLB, which no domain view contains.
+pub proof fn thread_exit_unown_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_unown_step_pre(old_u, cpu_id),
+        thread_exit_unown_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{
+    reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_pci_ownership_wf);
+    let prc_ptr = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc;
+    assert forall|q: RwLockProcessPtr, bdf: PciBdf| #![trigger old_u.process_map[q].pagetable->Some_0.pci_functions.dom().contains(bdf)]
+        old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some
+            && old_u.process_map[q].pagetable->Some_0.pci_functions.dom().contains(bdf)
+        implies new_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] == old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] by {
+        if old_u.process_map[prc_ptr].pagetable->Some_0.pci_functions.dom().contains(bdf) {
+            assert(old_u.iommu_root_table.owners[bdf.0 as int][bdf.1 as int][bdf.2 as int] == Some(prc_ptr));
+        }
+    };
+}
+
+/// The step of `thread_exit_unown_step_lr` preserves isolation: no mapping changes.
+pub proof fn thread_exit_unown_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_unown_step_pre(old_u, cpu_id),
+        thread_exit_unown_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{
+    reveal(thread_exit_unown_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_unown_step);
+    process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
+    memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
+}
+
 /// Hiding a root entry on a cpu of `a` drops only mappings and window locks of the page table of the exiting thread's
 /// process, a process of `a`.
 pub proof fn thread_exit_table_hidden_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

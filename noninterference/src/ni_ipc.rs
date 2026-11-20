@@ -87,7 +87,10 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
     assert(new_u.process_map.dom() =~= old_u.process_map.dom());
     assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
         &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-        &&& new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
         &&& (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
         &&& new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
         &&& new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
@@ -749,7 +752,8 @@ pub proof fn ipc_accept_call_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, 
 }
 
 /// The rendezvous result of a cpu of `b` reads only the view of `b`, the queue head it meets, the cpu a
-/// Cpu payload hands over, and the head's process when the head sends a PCI function.
+/// Cpu payload hands over, and the head's process when a PCI function is sent either way: the sender's function array
+/// and the receiver's array size decide the result.
 pub proof fn ipc_rendezvous_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, ep_idx: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
@@ -762,7 +766,7 @@ pub proof fn ipc_rendezvous_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, e
             let sent = if waiting_state is SENDING { payload } else { u1.thread_map[peer_ptr].ipc_payload };
             &&& u1.thread_map[peer_ptr] == u2.thread_map[peer_ptr]
             &&& sent matches IPCPayLoad::Cpu { cpu_id: transfer } ==> u1.cpu_array[transfer as int] == u2.cpu_array[transfer as int]
-            &&& sent is Pci && waiting_state is RECEIVING ==> u1.process_map[u1.thread_map[peer_ptr].owning_proc] == u2.process_map[u1.thread_map[peer_ptr].owning_proc]
+            &&& sent is Pci ==> u1.process_map[u1.thread_map[peer_ptr].owning_proc] == u2.process_map[u1.thread_map[peer_ptr].owning_proc]
         }),
     ensures ipc_rendezvous_result(u1, cpu_id, ep_idx, waiting_state, payload) == ipc_rendezvous_result(u2, cpu_id, ep_idx, waiting_state, payload),
 {

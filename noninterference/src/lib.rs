@@ -21,8 +21,16 @@
 //! objects: whether the IPC peer or the recorded caller is killed for the entry rejections, the calling
 //! head's payload for the acceptance result, and the peer thread with the handed-over cpu or its process
 //! for a PCI function, its payload endpoint or container, or its process and container for the
-//! rendezvous, endpoint transfer, and pages check results. With `trace_ni_at`, steps of A between two
-//! states leave B's results unchanged.
+//! rendezvous, endpoint transfer, and pages check results. The PCI claim result needs B disjoint from some
+//! other domain, which keeps the root container out of B, and the BAR map and unmap results also read the
+//! boot-time BAR table, which is not in the view because `kernel_u_new_thread_changed` does not state that it
+//! is unchanged. With `trace_ni_at`, steps of A between two states leave B's results unchanged.
+//!
+//! PCI functions and device memory: a function sits in the page-table function array of the process that owns
+//! it, so `domain_view` holds the attach state of exactly the domain's functions. A BAR mapping maps a page or 2M
+//! chunk of a BAR of a function its process owns, and `kernel_u_io_leaf_wf` (proved from the kernel invariant)
+//! says that every IO leaf maps a BAR page of a function of its process and that no RAM leaf covers a BAR page,
+//! so `memory_iso` covers device memory with no further premise.
 //!
 //! Object pointers and page addresses returned on success come from the shared global
 //! allocator and are guaranteed only to be fresh, so which pointer or page a domain receives can
@@ -57,6 +65,7 @@ pub mod ni_new_process;
 pub mod ni_new_container;
 pub mod ni_share_4k;
 pub mod ni_pci;
+pub mod ni_pci_bar;
 pub mod ni_kill_container;
 pub mod ni_kill_process;
 pub mod ni_thread_exit;

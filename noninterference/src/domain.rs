@@ -9,7 +9,7 @@ pub open spec fn in_domain(u: KernelU, root: RwLockContainerPtr, c: RwLockContai
 
 /// What the domain rooted at `root` observes, including lock modes: its containers; every process,
 /// thread, and endpoint one of its containers owns; whether DMA translation is attached for each PCI
-/// function of its processes; every endpoint its threads hold, per descriptor; its cpus; and the first
+/// function in its processes' page-table function arrays; every endpoint its threads hold, per descriptor; its cpus; and the first
 /// kernel L4 index, which bounds every user range.
 #[verifier::ext_equal]
 pub ghost struct DomainView {
@@ -23,6 +23,11 @@ pub ghost struct DomainView {
     pub kernel_l4_end: usize,
 }
 
+/// The PCI functions in the page-table function array of `process`; a zombie, which has no page table, holds none.
+pub open spec fn process_pci_functions(process: ProcessU) -> Set<PciBdf> {
+    if process.pagetable is Some { process.pagetable->Some_0.pci_functions.dom() } else { Set::empty() }
+}
+
 pub open spec fn domain_view(u: KernelU, root: RwLockContainerPtr) -> DomainView {
     let threads = u.thread_map.dom().filter(|t: RwLockThreadPtr| in_domain(u, root, u.thread_map[t].owning_container));
     let processes = u.process_map.dom().filter(|p: RwLockProcessPtr| in_domain(u, root, u.process_map[p].owning_container));
@@ -30,7 +35,7 @@ pub open spec fn domain_view(u: KernelU, root: RwLockContainerPtr) -> DomainView
         containers: Map::new(u.container_map.dom().filter(|c: RwLockContainerPtr| in_domain(u, root, c)), |c: RwLockContainerPtr| u.container_map[c]),
         processes: Map::new(processes, |p: RwLockProcessPtr| u.process_map[p]),
         pci_attached: Map::new(processes, |p: RwLockProcessPtr|
-            Map::new(u.process_map[p].owned_pci_functions, |bdf: PciBdf| u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int])),
+            Map::new(process_pci_functions(u.process_map[p]), |bdf: PciBdf| u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int])),
         threads: Map::new(threads, |t: RwLockThreadPtr| u.thread_map[t]),
         endpoints: Map::new(u.endpoint_map.dom().filter(|e: RwLockEndpointPtr| in_domain(u, root, u.endpoint_map[e].owning_container)),
             |e: RwLockEndpointPtr| u.endpoint_map[e]),

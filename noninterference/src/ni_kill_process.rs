@@ -622,19 +622,19 @@ pub proof fn kill_process_endpoint_released_step_iso(old_u: KernelU, new_u: Kern
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }
 }
 
-/// Handing the PCI functions of the empty target of a process kill on a cpu of `a`, which lies in `a`, to the killer's
-/// process detaches only functions the target owns, none of which a process of `b` owns, and clears only the DID of the
-/// target's IOMMU table, so it leaves the view of `b` unchanged.
-pub proof fn kill_process_reassign_functions_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// Releasing the PCI functions of the target of a process kill on a cpu of `a`, which lies in `a`, empties the target's array,
+/// detaches only functions in that array, none of which a process of `b` holds, and changes root-table owners and the IOTLB, which
+/// no domain view contains, so it leaves the view of `b` unchanged.
+pub proof fn kill_process_unown_functions_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reassign_functions_step(old_u, new_u, cpu_id),
+        kill_process_unown_functions_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_reassign_functions_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_pci_ownership_wf);
+    reveal(kill_process_step_pre); reveal(kill_process_unown_functions_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_pci_ownership_wf);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let target_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[target_ptr];
@@ -645,35 +645,44 @@ pub proof fn kill_process_reassign_functions_step_lr(old_u: KernelU, new_u: Kern
             assert(old_u.container_map[target.owning_container].uppertree_seq.contains(a));
         }
     };
-    assert forall|q: RwLockProcessPtr, bdf: PciBdf| #![trigger old_u.process_map[q].owned_pci_functions.contains(bdf)]
-        old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].owned_pci_functions.contains(bdf)
-        implies new_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] == old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] by {};
+    assert forall|q: RwLockProcessPtr, bdf: PciBdf| #![trigger old_u.process_map[q].pagetable->Some_0.pci_functions.dom().contains(bdf)]
+        old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some
+            && old_u.process_map[q].pagetable->Some_0.pci_functions.dom().contains(bdf)
+        implies new_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] == old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] by {
+        if target.pagetable->Some_0.pci_functions.dom().contains(bdf) {
+            assert(old_u.iommu_root_table.owners[bdf.0 as int][bdf.1 as int][bdf.2 as int] == Some(target_ptr));
+        }
+    };
 }
 
-/// The step of `kill_process_reassign_functions_step_lr` preserves isolation.
-pub proof fn kill_process_reassign_functions_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// The step of `kill_process_unown_functions_step_lr` preserves isolation: no mapping changes.
+pub proof fn kill_process_unown_functions_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_reassign_functions_step(old_u, new_u, cpu_id),
+        kill_process_unown_functions_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
     assert({
         &&& new_u.process_map.dom() =~= old_u.process_map.dom()
         &&& new_u.container_map == old_u.container_map && new_u.thread_map == old_u.thread_map && new_u.endpoint_map == old_u.endpoint_map
         &&& forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-            && new_u.process_map[p].pagetable == old_u.process_map[p].pagetable && (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
+            && (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+            && new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+            && new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+            && new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+            && (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
             && new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
             && new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
             && new_u.process_map[p].iommu_table->Some_0.mapping_1g == old_u.process_map[p].iommu_table->Some_0.mapping_1g
-    }) by { reveal(kill_process_step_pre); reveal(kill_process_reassign_functions_step); };
+    }) by { reveal(kill_process_step_pre); reveal(kill_process_unown_functions_step); };
     process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, a); process_mappings_unchanged_implies_memory_view_unchanged(old_u, new_u, b);
     memory_view_unchanged_implies_memory_iso_preserved(old_u, new_u, a, b);
 }
 
-/// Locking the tables of the target of a process kill on a cpu of `a`, which lies in `a`, changes only the target and
+/// Locking the page table of the target of a process kill on a cpu of `a`, which lies in `a`, changes only the target and
 /// the killer, so it leaves the view of `b` unchanged.
 pub proof fn kill_process_lock_table_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires

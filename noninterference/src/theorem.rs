@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use veriflat_syscall_merge_2m::syscall_merge_2m::syscall_merge_2m_spec::*;
 use veriflat_syscall_split_2m::syscall_split_2m::syscall_split_2m_spec::*;
-use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_mmap_2m::*, ni_unmap_2m::*, ni_mmap_1g::*, ni_unmap_1g::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
+use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_mmap_2m::*, ni_unmap_2m::*, ni_mmap_1g::*, ni_unmap_1g::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*, ni_pci_bar::*,
     ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*, ni_trap::*, ni_env::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::{syscall_alloc_quota_spec::*, syscall_alloc_quota_1g_spec::*};
@@ -21,6 +21,7 @@ use veriflat_syscall_new_container::syscall_new_container::syscall_new_container
 use veriflat_syscall_new_process::syscall_new_process::syscall_new_process_spec::*;
 use veriflat_syscall_new_thread::{syscall_new_endpoint::syscall_new_endpoint_spec::*, syscall_new_thread::syscall_new_thread_spec::*};
 use veriflat_syscall_pci::syscall_pci::syscall_pci_spec::*;
+use veriflat_syscall_pci_bar::syscall_pci_bar::syscall_pci_bar_spec::*;
 use veriflat_syscall_schedule::{rebalance_pull::rebalance_pull_spec::*, syscall_schedule::syscall_schedule_spec::*};
 use veriflat_syscall_thread_exit::syscall_thread_exit::syscall_thread_exit_spec::*;
 use veriflat_syscall_unmap_4k::syscall_unmap_4k::syscall_unmap_4k_spec::*;
@@ -45,7 +46,12 @@ pub ghost enum StepLabel {
     Schedule { flushed_pcid: Option<Pcid> }, RebalancePull,
     CpuOfflineRequest { target: CpuId }, CpuOfflineCheckHold, CpuOfflineCheck { flushed_default_pcid: bool }, CpuOfflineCheckRelease, CpuOnline { target: CpuId },
     CpuOfflineRequestChild { target: CpuId }, CpuOnlineChild { target: CpuId },
-    PciAttach { bus: usize, device: usize, function: usize },
+    PciAttach { bus: usize, device: usize, function: usize }, PciClaim { bus: usize, device: usize, function: usize },
+    MapPciBar4kEnter { bar_slot: usize, page_index: usize, va: VAddr }, MapPciBar4kDirectory, MapPciBar4kExit { bar_slot: usize, page_index: usize },
+    MapPciBar2mEnter { bar_slot: usize, chunk_index: usize, va: VAddr }, MapPciBar2mDirectory, MapPciBar2mFlush, MapPciBar2mFlushed, MapPciBar2mL1Reclaim,
+    MapPciBar2mExit { bar_slot: usize, chunk_index: usize },
+    UnmapPciBar4kHide { va: VAddr }, UnmapPciBar4kFlush, UnmapPciBar4kFlushed, UnmapPciBar4kExit { pci_function: PciBdf },
+    UnmapPciBar2mHide { va: VAddr }, UnmapPciBar2mFlush, UnmapPciBar2mFlushed, UnmapPciBar2mExit { pci_function: PciBdf },
     NewThreadEnter { regs: Registers, endpoint_index: Option<EndpointIdx> }, NewThreadFinish,
     NewEndpointEnter { slot: EndpointIdx }, NewEndpointFinish,
     NewProcessEnter { range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool }, NewProcessPublish, NewProcessFinish,
@@ -63,11 +69,11 @@ pub ghost enum StepLabel {
     KillContainerPages, KillContainerMovePage { size: PageSize }, KillContainerRetireStage, KillContainerRetire, KillContainerFinish,
     KillProcessEnter { child_index: usize }, KillProcessMarkChild, KillProcessDangling, KillProcessMarkThread, KillProcessDequeueScheduled,
     KillProcessDequeueEndpoint, KillProcessCpuToIdle, KillProcessUnlink, KillProcessDescriptorDropped, KillProcessCallerWoken, KillProcessCallerTakenOver,
-    KillProcessDanglingReclaimed, KillProcessEndpointReleased, KillProcessReassignFunctions, KillProcessLockTable, KillProcessTableHidden, KillProcessTlbCleared,
-    KillProcessFlushed, KillProcessIommuLeaf, KillProcessRefund, KillProcessQuota, KillProcessUnlockTable, KillProcessZombify,
+    KillProcessDanglingReclaimed, KillProcessEndpointReleased, KillProcessLockTable, KillProcessTableHidden, KillProcessTlbCleared,
+    KillProcessFlushed, KillProcessUnownFunctions, KillProcessIommuLeaf, KillProcessRefund, KillProcessQuota, KillProcessUnlockTable, KillProcessZombify,
     KillProcessZombieRetire, KillProcessRetire, KillProcessFinish,
     ThreadExitEnter, ThreadExitDescriptorDropped, ThreadExitCallerWoken, ThreadExitCallerTakenOver, ThreadExitDanglingReclaimed, ThreadExitEndpointReleased,
-    ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitTableHidden, ThreadExitTlbFlush, ThreadExitFlushed, ThreadExitIommuLeaf,
+    ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitTableHidden, ThreadExitTlbFlush, ThreadExitFlushed, ThreadExitUnown, ThreadExitIommuLeaf,
     ThreadExitRefund, ThreadExitQuota, ThreadExitUnlockTable, ThreadExitLockPcidAllocator, ThreadExitFinish,
     TrapEnter, TrapReturn, TrapDivert, RegsChanged { regs: Registers }, TrapReturnValuesWritten { rax: u64, rdx: u64, rsi: u64 },
     CpuTlbFilled { cpu_id: CpuId, pcid: Pcid, added: SingleTLB }, IommuTlbFilled { did: VtdDomainId, added: SingleTLB }, IommuContextCacheFilled,
@@ -163,6 +169,41 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
             cpu_offline_request_child_step_pre(old_u, cpu_id, target) && cpu_offline_request_child_step(old_u, new_u, cpu_id, target),
         StepLabel::CpuOnlineChild { target } => cpu_online_child_step_pre(old_u, cpu_id, target) && cpu_online_child_step(old_u, new_u, cpu_id, target),
         StepLabel::PciAttach { bus, device, function } => pci_attach_dma_step_pre(old_u, cpu_id, bus, device, function) && pci_attach_dma_step(old_u, new_u, cpu_id, bus, device, function),
+        StepLabel::PciClaim { bus, device, function } => pci_claim_step_pre(old_u, cpu_id, bus, device, function) && pci_claim_step(old_u, new_u, cpu_id, bus, device, function),
+        StepLabel::MapPciBar4kEnter { bar_slot: slot, page_index, va } =>
+            map_pci_bar_4k_enter_step_pre(old_u, cpu_id, slot, page_index, va) && map_pci_bar_4k_enter_step(old_u, new_u, cpu_id, va),
+        StepLabel::MapPciBar4kDirectory => map_pci_bar_4k_directory_step_pre(old_u, cpu_id) && map_pci_bar_4k_directory_step(old_u, new_u, cpu_id),
+        StepLabel::MapPciBar4kExit { bar_slot: slot, page_index } => {
+            let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+            let va = thread.syscall_progress->Some_0->MapPciBar4k_va;
+            &&& map_pci_bar_4k_exit_step_pre(old_u, cpu_id, va)
+            &&& slot < old_u.pci_bars.len()
+            &&& old_u.pci_bars[slot as int].spec_page_4k(page_index) is Some
+            &&& map_pci_bar_4k_exit_step(old_u, new_u, cpu_id, va, old_u.pci_bars[slot as int].bdf, map_pci_bar_io_entry(map_pci_bar_4k_page(old_u, slot, page_index), thread.owning_container))
+        },
+        StepLabel::MapPciBar2mEnter { bar_slot: slot, chunk_index, va } =>
+            map_pci_bar_2m_enter_step_pre(old_u, cpu_id, slot, chunk_index, va) && map_pci_bar_2m_enter_step(old_u, new_u, cpu_id, va),
+        StepLabel::MapPciBar2mDirectory => map_pci_bar_2m_directory_step_pre(old_u, cpu_id) && map_pci_bar_2m_directory_step(old_u, new_u, cpu_id),
+        StepLabel::MapPciBar2mFlush => map_pci_bar_2m_l1_step_pre(old_u, cpu_id, false) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::MapPciBar2mFlushed => map_pci_bar_2m_l1_step_pre(old_u, cpu_id, false) && map_pci_bar_2m_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::MapPciBar2mL1Reclaim => map_pci_bar_2m_l1_step_pre(old_u, cpu_id, true)
+            && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        StepLabel::MapPciBar2mExit { bar_slot: slot, chunk_index } => {
+            let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+            let va = thread.syscall_progress->Some_0->MapPciBar2m_va;
+            &&& map_pci_bar_2m_exit_step_pre(old_u, cpu_id, va)
+            &&& slot < old_u.pci_bars.len()
+            &&& old_u.pci_bars[slot as int].spec_chunk_2m(chunk_index) is Some
+            &&& map_pci_bar_2m_exit_step(old_u, new_u, cpu_id, va, old_u.pci_bars[slot as int].bdf, map_pci_bar_io_entry(map_pci_bar_2m_chunk(old_u, slot, chunk_index), thread.owning_container))
+        },
+        StepLabel::UnmapPciBar4kHide { va } => unmap_pci_bar_4k_hide_step_pre(old_u, cpu_id, va) && unmap_pci_bar_4k_hide_step(old_u, new_u, cpu_id, va),
+        StepLabel::UnmapPciBar4kFlush => unmap_pci_bar_4k_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::UnmapPciBar4kFlushed => unmap_pci_bar_4k_flush_step_pre(old_u, cpu_id) && unmap_pci_bar_4k_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::UnmapPciBar4kExit { pci_function } => unmap_pci_bar_4k_flushed_step_pre(old_u, cpu_id) && unmap_pci_bar_4k_exit_step(old_u, new_u, cpu_id, pci_function),
+        StepLabel::UnmapPciBar2mHide { va } => unmap_pci_bar_2m_hide_step_pre(old_u, cpu_id, va) && unmap_pci_bar_2m_hide_step(old_u, new_u, cpu_id, va),
+        StepLabel::UnmapPciBar2mFlush => unmap_pci_bar_2m_flush_step_pre(old_u, cpu_id) && unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
+        StepLabel::UnmapPciBar2mFlushed => unmap_pci_bar_2m_flush_step_pre(old_u, cpu_id) && unmap_pci_bar_2m_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::UnmapPciBar2mExit { pci_function } => unmap_pci_bar_2m_flushed_step_pre(old_u, cpu_id) && unmap_pci_bar_2m_exit_step(old_u, new_u, cpu_id, pci_function),
         StepLabel::NewThreadEnter { regs, endpoint_index: ep_idx } =>
             new_thread_enter_step_pre(old_u, cpu_id, ep_idx) && new_thread_enter_step(old_u, new_u, cpu_id, regs, ep_idx),
         StepLabel::NewThreadFinish => new_thread_finish_step_pre(old_u, cpu_id) && new_thread_finish_step(old_u, new_u, cpu_id),
@@ -230,11 +271,11 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::KillProcessCallerTakenOver => kill_process_step_pre(old_u, cpu_id) && killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container) && kernel_u_killed_caller_taken_over(old_u, new_u, cpu_id),
         StepLabel::KillProcessDanglingReclaimed => kill_process_step_pre(old_u, cpu_id) && killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container) && kernel_u_dangling_thread_reclaimed(old_u, new_u, cpu_id),
         StepLabel::KillProcessEndpointReleased => kill_process_step_pre(old_u, cpu_id) && killed_thread_reclaim_within_container(old_u, new_u, cpu_id, old_u.process_map[kill_target(old_u, cpu_id)].owning_container) && kernel_u_killed_endpoint_released(old_u, new_u, cpu_id),
-        StepLabel::KillProcessReassignFunctions => kill_process_step_pre(old_u, cpu_id) && kill_process_reassign_functions_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessLockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_lock_table_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessTableHidden => kill_process_step_pre(old_u, cpu_id) && kill_process_table_hidden_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessTlbCleared => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
         StepLabel::KillProcessFlushed => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessUnownFunctions => kill_process_step_pre(old_u, cpu_id) && kill_process_unown_functions_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessIommuLeaf => kill_process_step_pre(old_u, cpu_id) && kill_process_iommu_leaf_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessRefund => kill_process_step_pre(old_u, cpu_id) && kill_process_refund_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessQuota => kill_process_step_pre(old_u, cpu_id) && kill_process_quota_step(old_u, new_u, cpu_id),
@@ -256,6 +297,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
             && process_table_hidden_step(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc),
         StepLabel::ThreadExitTlbFlush => thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_tlb_flush_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitFlushed => thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitUnown => thread_exit_unown_step_pre(old_u, cpu_id) && thread_exit_unown_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitIommuLeaf => thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitRefund => thread_exit_reclaim_step_pre(old_u, cpu_id, SyscallProgress::ThreadExitReclaim { flushed: true }) && thread_exit_refund_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitQuota => thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id),
@@ -430,6 +472,42 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::CpuOfflineRequestChild { target } => { cpu_offline_request_child_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_child_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::CpuOnlineChild { target } => { cpu_online_child_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_online_child_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::PciAttach { bus, device, function } => { pci_attach_dma_step_lr(old_u, new_u, cpu_id, bus, device, function, x, y); pci_attach_dma_step_iso(old_u, new_u, cpu_id, bus, device, function, x, y); },
+            StepLabel::PciClaim { bus, device, function } => { pci_claim_step_lr(old_u, new_u, cpu_id, bus, device, function, x, y); pci_claim_step_iso(old_u, new_u, cpu_id, bus, device, function, x, y); },
+            StepLabel::MapPciBar4kEnter { bar_slot: slot, page_index, va } => {
+                map_pci_bar_4k_enter_step_lr(old_u, new_u, cpu_id, slot, page_index, va, x, y); map_pci_bar_4k_enter_step_iso(old_u, new_u, cpu_id, slot, page_index, va, x, y);
+            },
+            StepLabel::MapPciBar4kDirectory => { map_pci_bar_4k_directory_step_lr(old_u, new_u, cpu_id, x, y); map_pci_bar_4k_directory_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::MapPciBar4kExit { bar_slot: slot, page_index } => {
+                let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+                map_pci_bar_4k_exit_step_lr(old_u, new_u, cpu_id, thread.syscall_progress->Some_0->MapPciBar4k_va, old_u.pci_bars[slot as int].bdf,
+                    map_pci_bar_io_entry(map_pci_bar_4k_page(old_u, slot, page_index), thread.owning_container), x, y);
+                map_pci_bar_4k_exit_step_iso(old_u, new_u, cpu_id, slot, page_index, x, y);
+            },
+            StepLabel::MapPciBar2mEnter { bar_slot: slot, chunk_index, va } => {
+                map_pci_bar_2m_enter_step_lr(old_u, new_u, cpu_id, slot, chunk_index, va, x, y); map_pci_bar_2m_enter_step_iso(old_u, new_u, cpu_id, slot, chunk_index, va, x, y);
+            },
+            StepLabel::MapPciBar2mDirectory => { map_pci_bar_2m_directory_step_lr(old_u, new_u, cpu_id, x, y); map_pci_bar_2m_directory_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::MapPciBar2mFlush => { map_pci_bar_2m_flush_step_lr(old_u, new_u, cpu_id, x, y); map_pci_bar_2m_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::MapPciBar2mFlushed => { map_pci_bar_2m_flushed_step_lr(old_u, new_u, cpu_id, x, y); map_pci_bar_2m_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::MapPciBar2mL1Reclaim => { map_pci_bar_2m_l1_reclaim_step_lr(old_u, new_u, cpu_id, x, y); map_pci_bar_2m_l1_reclaim_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::MapPciBar2mExit { bar_slot: slot, chunk_index } => {
+                let thread = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0];
+                map_pci_bar_2m_exit_step_lr(old_u, new_u, cpu_id, thread.syscall_progress->Some_0->MapPciBar2m_va, old_u.pci_bars[slot as int].bdf,
+                    map_pci_bar_io_entry(map_pci_bar_2m_chunk(old_u, slot, chunk_index), thread.owning_container), x, y);
+                map_pci_bar_2m_exit_step_iso(old_u, new_u, cpu_id, slot, chunk_index, x, y);
+            },
+            StepLabel::UnmapPciBar4kHide { va } => { unmap_pci_bar_4k_hide_step_lr(old_u, new_u, cpu_id, va, x, y); unmap_pci_bar_4k_hide_step_iso(old_u, new_u, cpu_id, va, x, y); },
+            StepLabel::UnmapPciBar4kFlush => { unmap_pci_bar_4k_flush_step_lr(old_u, new_u, cpu_id, x, y); unmap_pci_bar_4k_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::UnmapPciBar4kFlushed => { unmap_pci_bar_4k_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_pci_bar_4k_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::UnmapPciBar4kExit { pci_function } => {
+                unmap_pci_bar_4k_exit_step_lr(old_u, new_u, cpu_id, pci_function, x, y); unmap_pci_bar_4k_exit_step_iso(old_u, new_u, cpu_id, pci_function, x, y);
+            },
+            StepLabel::UnmapPciBar2mHide { va } => { unmap_pci_bar_2m_hide_step_lr(old_u, new_u, cpu_id, va, x, y); unmap_pci_bar_2m_hide_step_iso(old_u, new_u, cpu_id, va, x, y); },
+            StepLabel::UnmapPciBar2mFlush => { unmap_pci_bar_4k_flush_step_lr(old_u, new_u, cpu_id, x, y); unmap_pci_bar_4k_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::UnmapPciBar2mFlushed => { unmap_pci_bar_2m_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_pci_bar_2m_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::UnmapPciBar2mExit { pci_function } => {
+                unmap_pci_bar_2m_exit_step_lr(old_u, new_u, cpu_id, pci_function, x, y); unmap_pci_bar_2m_exit_step_iso(old_u, new_u, cpu_id, pci_function, x, y);
+            },
             StepLabel::NewThreadEnter { regs, endpoint_index: ep_idx } => { new_thread_enter_step_lr(old_u, new_u, cpu_id, regs, ep_idx, x, y); new_thread_enter_step_iso(old_u, new_u, cpu_id, regs, ep_idx, x, y); },
             StepLabel::NewThreadFinish => { new_thread_finish_step_lr(old_u, new_u, cpu_id, x, y); new_thread_finish_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::NewEndpointEnter { slot } => { new_endpoint_enter_step_lr(old_u, new_u, cpu_id, slot, x, y); new_endpoint_enter_step_iso(old_u, new_u, cpu_id, slot, x, y); },
@@ -510,11 +588,11 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::KillProcessCallerTakenOver => { kill_process_caller_taken_over_step_lr(old_u, new_u, cpu_id, x, y); kill_process_caller_taken_over_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessDanglingReclaimed => { kill_process_dangling_reclaimed_step_lr(old_u, new_u, cpu_id, x, y); kill_process_dangling_reclaimed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessEndpointReleased => { kill_process_endpoint_released_step_lr(old_u, new_u, cpu_id, x, y); kill_process_endpoint_released_step_iso(old_u, new_u, cpu_id, x, y); },
-            StepLabel::KillProcessReassignFunctions => { kill_process_reassign_functions_step_lr(old_u, new_u, cpu_id, x, y); kill_process_reassign_functions_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessLockTable => { kill_process_lock_table_step_lr(old_u, new_u, cpu_id, x, y); kill_process_lock_table_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessTableHidden => { kill_process_table_hidden_step_lr(old_u, new_u, cpu_id, x, y); kill_process_table_hidden_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessTlbCleared => { kill_process_tlb_cleared_step_lr(old_u, new_u, cpu_id, x, y); kill_process_tlb_cleared_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessFlushed => { kill_process_flushed_step_lr(old_u, new_u, cpu_id, x, y); kill_process_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessUnownFunctions => { kill_process_unown_functions_step_lr(old_u, new_u, cpu_id, x, y); kill_process_unown_functions_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessIommuLeaf => { kill_process_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); kill_process_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessRefund => { kill_process_refund_step_lr(old_u, new_u, cpu_id, x, y); kill_process_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessQuota => { kill_process_quota_step_lr(old_u, new_u, cpu_id, x, y); kill_process_quota_step_iso(old_u, new_u, cpu_id, x, y); },
@@ -535,6 +613,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::ThreadExitTableHidden => { thread_exit_table_hidden_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_table_hidden_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitTlbFlush => { thread_exit_tlb_flush_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_tlb_flush_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitFlushed => { thread_exit_flushed_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitUnown => { thread_exit_unown_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_unown_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitIommuLeaf => { thread_exit_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitRefund => { thread_exit_refund_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitQuota => { thread_exit_quota_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_quota_step_iso(old_u, new_u, cpu_id, x, y); },
