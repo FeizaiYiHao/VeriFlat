@@ -220,10 +220,13 @@ verus! {
         let ghost bdf: PciBdf = (bus as usize, dev as usize, fun as usize);
         let ghost pci_transfer = if result is Success { Some((bdf, sender_proc, receiver_proc)) } else { None };
         proof {
-            ipc_pci_rendezvous_eof_rendezvous_fields(
-                *old(krnl), states.0, states.1, *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt,
-                bdf, result is Success, result, lctx.thread_id(), iommu_table, anchor, steps.snapshot_k(), cpu_id, prc_ptr, ep_idx, waiting_state,
-            );
+            {
+                broadcast use IommuRootTable::wf_context_entry_at;
+                ipc_pci_rendezvous_eof_rendezvous_fields(
+                    *old(krnl), states.0, states.1, *krnl, current_thrd_ptr, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt,
+                    bdf, result is Success, result, lctx.thread_id(), iommu_table, anchor, steps.snapshot_k(), cpu_id, prc_ptr, ep_idx, waiting_state,
+                );
+            }
             assert(old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.mapping_counts().dom() =~= old(krnl).pt_mp.spec_index(sender_pt).view().higher.pci.view().dom());
             assert(old(krnl).pt_mp.spec_index(receiver_pt).view().higher.pci.mapping_counts().dom() =~= old(krnl).pt_mp.spec_index(receiver_pt).view().higher.pci.view().dom());
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, ep_idx, waiting_state, payload, current_thrd_ptr, ep_ptr, peer_thrd_ptr, result);
