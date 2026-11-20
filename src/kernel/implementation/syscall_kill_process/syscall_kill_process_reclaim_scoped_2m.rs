@@ -11,9 +11,9 @@ use veriflat_map_4k::map_4k::reclaim_held_2m_page::remove_held_2m_mapping_withou
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::map_4k::reclaim_held_2m_page::remove_held_2m_mapping_without_free;
 #[cfg(feature = "split-crates")]
-use veriflat_alloc_page::free_2m_page::drain_2m_cache_batch;
+use veriflat_map_4k::map_4k::reclaim_held_2m_page::reclaim_last_lock_2m_cache_with_room;
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::free_2m_page::drain_2m_cache_batch;
+use crate::kernel::implementation::map_4k::reclaim_held_2m_page::reclaim_last_lock_2m_cache_with_room;
 #[cfg(all(verus_keep_ghost, feature = "split-crates"))]
 use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::kernel_inv_implies_container_allocator_2m_quota_bounded;
 #[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
@@ -24,87 +24,6 @@ use super::syscall_kill_process_reclaim_scoped_spec::*;
 use super::syscall_kill_process_reclaim_scoped_2m_eof::*;
 
 verus! {
-/// Write-lock the cache shard `cpu_id` of the 2M allocator `allc_ptr`, first moving a batch of a shard at its 2M watermark to
-/// the allocator's global pool; the lock changes nothing the projection shows and keeps every held object, and a step boundary
-/// follows.
-fn kill_reclaim_lock_cache_2m(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, allc_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
-    Ghost(pg_idx): Ghost<PageIndex>,
-) -> (ret: Tracked<LockPerm>)
-    requires
-        old(krnl).inv(),
-        typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(lctx).kernel_view_locking_state() is Acquire,
-        old(steps).snapshot_k() == *old(krnl),
-        index_valid(NUM_CPUS, cpu_id),
-        old(krnl).allc_2m_mp.dom().contains(allc_ptr),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_2M_MAJOR),
-        index_valid(NUM_PAGES, pg_idx),
-        old(lctx).page_lock_map().dom().contains(pg_idx),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
-        old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
-    ensures
-        forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)]
-            old(lctx).process_lock_map().dom().contains(p) ==> final(krnl).prc_mp.dom().contains(p)
-                && final(krnl).prc_mp.spec_index(p).view().children == old(krnl).prc_mp.spec_index(p).view().children,
-        final(lctx).process_lock_map() == old(lctx).process_lock_map(),
-        final(lctx).page_lock_map() == old(lctx).page_lock_map(),
-        final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
-        final(krnl).inv(),
-        typed_lock_maps_aligned(final(krnl), final(lctx)),
-        typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ2m, allc_ptr, cpu_id), final(lctx).allocator_cache_2m_lock_map()[(allc_ptr, cpu_id)]),
-        typed_lock_map_contains_mode(final(lctx).allocator_cache_2m_lock_map(), (allc_ptr, cpu_id), TypedLockMode::Write),
-        final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).kernel_view_locking_state() is Acquire,
-        final(steps).view() == old(steps).view(),
-        final(steps).snapshot_k() == *final(krnl),
-        ret.view().state() is WriteLock,
-        ret.view().thread_id() == final(lctx).thread_id(),
-        ret.view().lock_id() == final(krnl).allc_2m_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        final(krnl).allc_2m_mp.dom().contains(allc_ptr),
-        final(krnl).allc_2m_mp.spec_index(allc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
-        final(krnl).ctn_mp.dom().contains(old(krnl).pg_arr.spec_index(pg_idx).view().view().owning_container),
-        final(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(pg_idx).view().view().owning_container).view_rodata() == old(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(pg_idx).view().view().owning_container).view_rodata(),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
-        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
-        held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_threads_unchanged(old(krnl).thrd_mp, final(krnl).thrd_mp, old(lctx)),
-        held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-        held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
-        forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
-            ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
-        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
-        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
-{
-    proof { container_owned_pages_wf_backward_at(krnl.ctn_mp, krnl.pg_arr, pg_idx); held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
-    let Tracked(cache_perm) = krnl.wlock_allocator_cache_2m(allc_ptr, cpu_id, Tracked(&mut *lctx));
-    let len = krnl.allc_2m_mp.borrow_cache_typed(allc_ptr, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(&cache_perm)).linked_list.len();
-    if len >= ALLOCATOR_MAX_WATERMARK_2M {
-        let Tracked(pool_perm) = krnl.wlock_allocator_global_pool_2m(allc_ptr, Tracked(&mut *lctx));
-        proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
-        }
-        drain_2m_cache_batch(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cache_perm), Tracked(&pool_perm));
-        krnl.wunlock_allocator_global_pool_2m(allc_ptr, Tracked(&mut *lctx), Tracked(pool_perm));
-        proof {
-            assert_maps_equal!(lctx.allocator_global_pool_2m_lock_map(), old(lctx).allocator_global_pool_2m_lock_map());
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        }
-    } else {
-        proof {
-            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        }
-    }
-    Tracked(cache_perm)
-}
-
 /// Remove the final mapping of the 2M page `pg_ptr`, the held 2M leaf at `va` of the write-held page table `pagetable`, which
 /// lists no cpu stale and whose user root entries no longer resolve, clear the leaf, and return the page through the
 /// write-held cache shard `cpu_id` of the 2M allocator `allc_ptr` of its owner `owner`, crediting that allocator's write-held
@@ -369,7 +288,13 @@ fn kill_reclaim_last_held_2m_mapping_scoped(
         container_perms_wf_at(krnl.ctn_mp, owner); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner);
     }
     let allc_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_2m;
-    let Tracked(cache_perm) = kill_reclaim_lock_cache_2m(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allc_ptr, cpu_id, Ghost(pg_idx));
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    let Tracked(cache_perm) = reclaim_last_lock_2m_cache_with_room(krnl, allc_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps));
+    proof {
+        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
+        krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
+    }
     let ghost snap = *krnl;
     let ghost snap_lctx = *lctx;
     proof {
