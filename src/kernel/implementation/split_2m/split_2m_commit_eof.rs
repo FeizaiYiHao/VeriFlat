@@ -286,8 +286,49 @@ pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_wf(pre: Page
     ensures
         hugepage_2m_wf(post),
 {
-    assert(hugepage_2m_wf(post)) by { reveal(hugepage_2m_wf); };
+    assert(hugepage_2m_wf(post)) by {
+        reveal(hugepage_2m_wf);
+        split_2m_eof_page_state_transition_implies_hugepage_2m_head_aligned_wf(pre, post, head);
+        split_2m_eof_page_state_transition_implies_hugepage_2m_tail_forward_wf(pre, post, head);
+        split_2m_eof_page_state_transition_implies_hugepage_2m_tail_backward_wf(pre, post, head);
+    };
 }
+
+pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_head_aligned_wf(pre: PageLockedArray, post: PageLockedArray, head: PageIndex)
+    requires
+        hugepage_2m_wf(pre),
+        page_index_2m_valid(head),
+        pre.spec_index(head).view().view().state is Free2m,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] #![trigger pre.spec_index(index)]
+            index_valid(NUM_PAGES, index) && !(head <= index < head + 512) ==> post.spec_index(index).view().view().state == pre.spec_index(index).view().view().state,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] head <= index < head + 512 ==> post.spec_index(index).view().view().state is Free4k,
+    ensures
+        hugepage_2m_head_aligned_wf(post),
+{ reveal(hugepage_2m_wf); }
+
+pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_tail_forward_wf(pre: PageLockedArray, post: PageLockedArray, head: PageIndex)
+    requires
+        hugepage_2m_wf(pre),
+        page_index_2m_valid(head),
+        pre.spec_index(head).view().view().state is Free2m,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] #![trigger pre.spec_index(index)]
+            index_valid(NUM_PAGES, index) && !(head <= index < head + 512) ==> post.spec_index(index).view().view().state == pre.spec_index(index).view().view().state,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] head <= index < head + 512 ==> post.spec_index(index).view().view().state is Free4k,
+    ensures
+        hugepage_2m_tail_forward_wf(post),
+{ reveal(hugepage_2m_wf); }
+
+pub proof fn split_2m_eof_page_state_transition_implies_hugepage_2m_tail_backward_wf(pre: PageLockedArray, post: PageLockedArray, head: PageIndex)
+    requires
+        hugepage_2m_wf(pre),
+        page_index_2m_valid(head),
+        pre.spec_index(head).view().view().state is Free2m,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] #![trigger pre.spec_index(index)]
+            index_valid(NUM_PAGES, index) && !(head <= index < head + 512) ==> post.spec_index(index).view().view().state == pre.spec_index(index).view().view().state,
+        forall|index: PageIndex| #![trigger post.spec_index(index)] head <= index < head + 512 ==> post.spec_index(index).view().view().state is Free4k,
+    ensures
+        hugepage_2m_tail_backward_wf(post),
+{ reveal(hugepage_2m_wf); }
 
 pub proof fn split_2m_commit_eof_implies_hugepage_2m_wf(pre: KernelK, post: KernelK, thread: RwLockThreadPtr,
     allocator_4k: RwLockPageAllocatorPtr, allocator_2m: RwLockPageAllocatorPtr, head: PageIndex, source: usize, lctx: &LocalContext)
