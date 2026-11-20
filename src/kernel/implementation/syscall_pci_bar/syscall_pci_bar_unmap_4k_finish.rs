@@ -156,6 +156,7 @@ pub(super) fn unmap_pci_bar_4k_unmap_and_finish(
         kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&entry, &locked, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
         kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&locked, &hidden, pagetable, va, thrd_ptr);
         process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
+        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
         unmap_pci_bar_4k_hide_step_from_u(&entry, kernel_k_to_kernel_u(locked), kernel_k_to_kernel_u(hidden), cpu_id, prc_ptr, thrd_ptr, pagetable, va, addr);
         unmap_pci_bar_4k_trace_hide_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(hidden), cpu_id, va);
         process_thread_wf_thread_at(krnl.prc_mp, krnl.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(krnl.prc_mp, krnl.pt_mp, prc_ptr);

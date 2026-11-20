@@ -189,6 +189,7 @@ pub(super) fn map_pci_bar_4k_map_and_finish(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thrd_ptr);
         process_cpu_wf_at(entry.prc_mp, entry.cpu_arr, cpu_id); process_thread_wf_thread_at(entry.prc_mp, entry.thrd_mp, thrd_ptr);
         kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(&entry, &entered, &entry_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
+        pagetable_unlocked_implies_projected_window_unlocked(&entry, prc_ptr, window_of(va));
         map_pci_bar_4k_enter_step_from_u(&entry, kernel_k_to_kernel_u(entered), whole_pagetable(entered.pt_mp, entered.pt_lower.view(), pagetable).lower.pagetable_window_locks, cpu_id,
             prc_ptr, thrd_ptr, pagetable, slot, page_index, va);
         map_pci_bar_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(entered), cpu_id, slot, page_index, va);

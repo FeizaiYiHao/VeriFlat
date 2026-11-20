@@ -74,6 +74,11 @@ pub(super) proof fn unmap_pci_bar_2m_hide_step_from_u(
         !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
         krnl.prc_mp.spec_index(prc_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
+        ({
+            let pagetable = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
+            &&& kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable is Some
+            &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
+        }),
         krnl.thrd_mp.dom().contains(thrd_ptr),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(prc_ptr),
         krnl.thrd_mp.spec_index(thrd_ptr).view().state == (ThreadState::RUNNING { cpu_id }),

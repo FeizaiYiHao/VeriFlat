@@ -3,6 +3,33 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 
 verus! {
+/// In the projection, the 2M window `w` of the unlocked page table of the live process `prc_ptr` is unlocked when the table lists it: a
+/// thread that holds a window holds the table too.
+pub proof fn pagetable_unlocked_implies_projected_window_unlocked(krnl: &KernelK, prc_ptr: RwLockProcessPtr, w: WindowVa)
+    requires
+        pagetable_lower_wf(krnl.pt_mp, krnl.pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view()),
+        krnl.prc_mp.dom().contains(prc_ptr),
+        !krnl.prc_mp.spec_index(prc_ptr).view().zombie,
+        krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(prc_ptr).view().pagetable),
+        !krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(prc_ptr).view().pagetable).locked(),
+    ensures
+        ({
+            let pagetable = kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable->Some_0;
+            &&& kernel_k_to_kernel_u(*krnl).process_map[prc_ptr].pagetable is Some
+            &&& pagetable.pagetable_window_locks.dom().contains(w) ==> pagetable.pagetable_window_locks[w] is Unlocked
+        }),
+{
+    let pt = krnl.prc_mp.spec_index(prc_ptr).view().pagetable;
+    let e = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pt);
+    kernel_process_projection_at(krnl, prc_ptr);
+    if e.lower.pagetable_window_locks.dom().contains(w) {
+        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pt); e.wf_window_locks_va_at(w); spec_va_2m_valid_index_roundtrip(w.va);
+        pagetable_window_holders_hold_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), pt, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va),
+            e.lower.l2_owner(e.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))->Write_thread_id);
+    }
+}
+
 /// Installing the present IO 4K leaf at `va` in page table `pagetable` of the live process together with one more BAR mapping of
 /// its function `f` adds that leaf to the process's 4K user mapping and raises `f`'s mapped-BAR-page count by one.
 pub proof fn kernel_pci_bar_4k_mapped_implies_u_step(pre: &KernelK, post: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, f: PciBdf)

@@ -62,7 +62,7 @@ pub open spec fn map_pci_bar_2m_chunk(pre: KernelU, slot: usize, index: usize) -
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu, the thread, and the pagetable of the thread's process
 /// are unlocked; the thread's container exists; BAR table slot `slot` has the 2M chunk `index`; the process owns the slot's function;
-/// no leaf maps into the 2M window of `va`; and the thread has mmap's two 4K quota for one 2M page.
+/// no leaf maps into the 2M window of `va`, which is unlocked if it exists; and the thread has mmap's two 4K quota for one 2M page.
 #[verifier::opaque]
 pub open spec fn map_pci_bar_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, slot: usize, index: usize, va: VAddr) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -80,6 +80,7 @@ pub open spec fn map_pci_bar_2m_enter_step_pre(old_u: KernelU, cpu_id: CpuId, sl
     &&& old_u.pci_bars[slot as int].spec_chunk_2m(index) is Some
     &&& pagetable.pci_functions.dom().contains(old_u.pci_bars[slot as int].bdf)
     &&& pci_bar_va_2m_unmapped(pagetable, va)
+    &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
     &&& thread.quota_4k >= 2
 }
 
@@ -212,7 +213,7 @@ pub open spec fn map_pci_bar_io_entry(addr: PAddr, ctn_ptr: RwLockContainerPtr) 
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu, the thread, and the pagetable of the thread's process
 /// are unlocked; the thread's container exists; BAR table slot `slot` has the 4K page `page_index`; the process owns the slot's
-/// function; no leaf covers `va`; and the thread has mmap's four 4K quota for one page.
+/// function; no leaf covers `va`, whose 2M window is unlocked if it exists; and the thread has mmap's four 4K quota for one page.
 #[verifier::opaque]
 pub open spec fn map_pci_bar_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, slot: usize, page_index: usize, va: VAddr) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -230,6 +231,7 @@ pub open spec fn map_pci_bar_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, sl
     &&& old_u.pci_bars[slot as int].spec_page_4k(page_index) is Some
     &&& pagetable.pci_functions.dom().contains(old_u.pci_bars[slot as int].bdf)
     &&& pci_bar_va_4k_unmapped(pagetable, va)
+    &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
     &&& thread.quota_4k >= 4
 }
 
@@ -332,7 +334,7 @@ pub open spec fn unmap_pci_bar_4k_function(pre: KernelU, cpu_id: CpuId, va: VAdd
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu, the thread, and the pagetable of the thread's process
-/// are unlocked; the thread's container exists; and `va` is a 4K IO leaf of the process.
+/// are unlocked; the thread's container exists; `va` is a 4K IO leaf of the process; and its 2M window is unlocked if it exists.
 #[verifier::opaque]
 pub open spec fn unmap_pci_bar_4k_hide_step_pre(old_u: KernelU, cpu_id: CpuId, va: VAddr) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -348,6 +350,7 @@ pub open spec fn unmap_pci_bar_4k_hide_step_pre(old_u: KernelU, cpu_id: CpuId, v
     &&& spec_va_4k_valid(va)
     &&& pagetable.mapping_4k.dom().contains(va)
     &&& pagetable.mapping_4k[va].is_io
+    &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
 }
 
 /// Hiding write-locks the cpu, which enters its kernel step, its running thread, and the pagetable of the thread's process, removes
@@ -470,7 +473,7 @@ pub open spec fn unmap_pci_bar_2m_function(pre: KernelU, cpu_id: CpuId, va: VAdd
 }
 
 /// The cpu runs a live thread with no multi-step syscall in progress; the cpu, the thread, and the pagetable of the thread's process
-/// are unlocked; the thread's container exists; and `va` is a 2M IO leaf of the process.
+/// are unlocked; the thread's container exists; `va` is a 2M IO leaf of the process; and its 2M window is unlocked if it exists.
 #[verifier::opaque]
 pub open spec fn unmap_pci_bar_2m_hide_step_pre(old_u: KernelU, cpu_id: CpuId, va: VAddr) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -486,6 +489,7 @@ pub open spec fn unmap_pci_bar_2m_hide_step_pre(old_u: KernelU, cpu_id: CpuId, v
     &&& spec_va_2m_valid(va)
     &&& pagetable.mapping_2m.dom().contains(va)
     &&& pagetable.mapping_2m[va].is_io
+    &&& pagetable.pagetable_window_locks.dom().contains(window_of(va)) ==> pagetable.pagetable_window_locks[window_of(va)] is Unlocked
 }
 
 /// Hiding write-locks the cpu, which enters its kernel step, its running thread, and the pagetable of the thread's process, removes
