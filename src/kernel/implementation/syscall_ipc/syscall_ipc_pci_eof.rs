@@ -486,6 +486,8 @@ proof fn ipc_pci_rendezvous_eof_handoff(
         pre.prc_mp.spec_index(sender_proc).view().pagetable == sender_pt,
         transferred ==> pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains(bdf),
         ipc_pci_rendezvous_eof_pci_handoff(pre, mid, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, thread_id, iommu_table, anchor),
+        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures
         !transferred ==> mid.it_mp == pre.it_mp && mid.irt.view() == pre.irt.view() && mid.iommu_tlb == pre.iommu_tlb,
         transferred ==> {
@@ -585,6 +587,8 @@ pub(super) proof fn ipc_pci_rendezvous_eof_rendezvous_fields(
         transferred ==> pre.pt_mp.spec_index(sender_pt).view().higher.pci.view().dom().contains(bdf),
         !pre.sched_mp.spec_index(peer_sched_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thrd_mp.spec_index(peer_thrd_ptr).view().scheduler_linkedlist_node.addr()),
         ipc_pci_rendezvous_eof_transition_framing(pre, mid, scheduled, peer_thrd_ptr, ep_ptr, peer_sched_ptr, wake_cpu, sender_proc, receiver_proc, sender_pt, receiver_pt, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
         scheduled.sched_mp.spec_index(peer_sched_ptr).shards.inv(),
         scheduled.sched_mp.spec_index(peer_sched_ptr).shard(wake_cpu).queue.wf(),
         post == (KernelK { pt_mp: post.pt_mp, ..scheduled }),
