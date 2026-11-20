@@ -221,7 +221,7 @@ pub(super) fn unmap_pci_bar_4k_unmap_and_finish(
         assert(hidden_steps[0].old_u == kernel_k_to_kernel_u(entry));
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
-        kernel_pci_bar_4k_unmapped_implies_u_step(&exit_start, &removed, pagetable, va, f);
+        kernel_pci_bar_unmapped_implies_u_step(&exit_start, &removed, pagetable, va, f, PageSize::SZ4k);
         removed.pt_mp.typed_lock_map_aligned_write_at(removed_lctx.pagetable_lock_map(), removed_lctx.thread_id(), pagetable);
         process_cpu_wf_at(removed.prc_mp, removed.cpu_arr, cpu_id);
         kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&removed, &exit_k, &removed_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);

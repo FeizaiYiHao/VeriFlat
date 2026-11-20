@@ -108,12 +108,12 @@ pub proof fn kernel_pagetable_write_locked_and_progress_changed_implies_u_step(
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let process = a.process_map[prc_ptr];
-    kernel_process_projection_at(pre, prc_ptr);
+    kernel_process_projection_at(pre, prc_ptr); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr);
     assert_maps_equal!(b.process_map, a.process_map.insert(prc_ptr, ProcessU {
         pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked { writer: cpu_id }, ..process.pagetable->Some_0 }), ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, prc_ptr);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p);
     });
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }

@@ -1223,11 +1223,12 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     let s_pt = s.pagetable->Some_0;
     let r_pt = r.pagetable->Some_0;
     let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
+    process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, sender);
+    process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, sender); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, receiver);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, pagetable: Some(PageTableU { pci_functions: s_pt.pci_functions.remove(bdf), ..s_pt }), ..s })
         .insert(receiver, ProcessU { pagetable: Some(PageTableU { pci_functions: r_pt.pci_functions.insert(bdf, 0), ..r_pt }), ..r }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
-        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, sender);
-        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, sender); process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, receiver);
+        process_pagetable_wf_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_wf_process_at(post.prc_mp, post.it_mp, p);
     });
 }
 

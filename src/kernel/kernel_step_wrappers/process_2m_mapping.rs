@@ -3,6 +3,40 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 
 verus! {
+/// `default_pagetable_wf`, `pagetable_lower_wf` and `pagetable_pci_mappings_wf` at the 4K mapping `v` of page table `pt`: an IO 4K
+/// mapping maps a BAR page.
+pub proof fn kernel_io_4k_mapping_implies_pci_bar_page_at(k: KernelK, pt: RwLockPageTableRoot, v: VAddr)
+    requires
+        k.inv(),
+        k.pt_mp.dom().contains(pt),
+        whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().contains_key(v),
+        whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).is_io,
+    ensures pci_bar_page(k.pci_bars.view(), whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).addr),
+{
+    let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+    pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
+    c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+    c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+    pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+}
+
+/// `default_pagetable_wf`, `pagetable_lower_wf` and `pagetable_pci_mappings_wf` at the 2M mapping `v` of page table `pt`: an IO 2M
+/// mapping maps a 2M chunk of a BAR.
+pub proof fn kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k: KernelK, pt: RwLockPageTableRoot, v: VAddr)
+    requires
+        k.inv(),
+        k.pt_mp.dom().contains(pt),
+        whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v),
+        whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io,
+    ensures pci_bar_2m_chunk(k.pci_bars.view(), whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr),
+{
+    let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
+    pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
+    c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+    c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+    pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+}
+
 pub proof fn kernel_process_2m_mapping_changed_implies_u_neq(pre: &KernelK, post: &KernelK, prc_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr)
     requires kernel_process_2m_mapping_changed(pre, post, prc_ptr, pagetable_ptr, va),
     ensures kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
@@ -141,11 +175,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_2m_mapping_frame_differs_at(k:
         pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io {
             assert(pci_bar_page(k.pci_bars.view(), whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr)) by {
-                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
-                k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
-                c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                pagetable_pci_mappings_wf_held_2m_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k, pt, v);
             };
             assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
             pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
@@ -187,11 +217,7 @@ broadcast proof fn kernel_owned_2m_page_implies_u_4k_mapping_outside_its_frame_a
         let idx = page_ptr2page_index(a);
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_4k().spec_index(v).is_io && addr <= a < addr + 0x200000 {
             assert(pci_bar_page(k.pci_bars.view(), a)) by {
-                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
-                pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
-                c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-                c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-                pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+                kernel_io_4k_mapping_implies_pci_bar_page_at(k, pt, v);
             };
             hugepage_2m_wf_head_at(k.pg_arr, head);
             assert(head <= idx < head + 512 && idx < NUM_PAGES) by (nonlinear_arith)
@@ -267,10 +293,7 @@ broadcast proof fn kernel_owned_4k_page_implies_u_4k_mapping_target_differs_at(k
         mapped_4k_page_pagetable_wf_pagetable_at(k.pt_mp, k.pt_lower.view(), k.pg_arr, pt, v);
         let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
         if c.mapping_4k().contains_key(v) && c.mapping_4k().spec_index(v).is_io && c.mapping_4k().spec_index(v).addr == addr {
-            pagetable_lower_wf_at(k.pt_mp, k.pt_lower.view(), pt); k.default_pagetable_wf_at(pt); spec_va_4k_valid_index_roundtrip(v);
-            c.wf_mapping_4k_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-            c.spec_resolve_mapping_4k_l1_some_implies_spec_held_4k_l1_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
-            pagetable_pci_mappings_wf_held_4k_at(k.pci_bars.view(), k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v), spec_v2l1index(v));
+            kernel_io_4k_mapping_implies_pci_bar_page_at(k, pt, v);
             assert(index_valid(NUM_PAGES, page_ptr2page_index(addr)) && page_index2page_ptr(page_ptr2page_index(addr)) == addr) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
             pci_bar_pages_unavailable_wf_at(k.pci_bars.view(), k.pg_arr, page_ptr2page_index(addr));
         }
@@ -336,12 +359,8 @@ broadcast proof fn kernel_owned_4k_page_implies_u_outside_2m_mapping_frame_at(k:
         let m = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).addr;
         if whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().contains_key(v) && whole_pagetable(k.pt_mp, k.pt_lower.view(), pt).mapping_2m().spec_index(v).is_io && m <= addr < m + 0x200000 {
             assert(pci_bar_page(k.pci_bars.view(), addr)) by {
-                let c = whole_pagetable(k.pt_mp, k.pt_lower.view(), pt);
                 let bars = k.pci_bars.view();
-                k.default_pagetable_wf_at(pt); spec_va_2m_valid_index_roundtrip(v);
-                c.wf_mapping_2m_at(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                c.spec_resolve_mapping_2m_l2_some_implies_spec_held_2m_l2_eq(spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
-                pagetable_pci_mappings_wf_held_2m_at(bars, k.pt_mp, k.pt_lower.view(), pt, spec_v2l4index(v), spec_v2l3index(v), spec_v2l2index(v));
+                kernel_io_2m_mapping_implies_pci_bar_2m_chunk_at(k, pt, v);
                 assert(PAGE_SZ_4K == 0x1000 && PAGE_SZ_2M == 0x200000 && PAGE_SZ_1G == 0x40000000) by (compute);
                 assert(addr % 0x1000 == 0) by { page_ptr_valid_imply_page_index_valid(); };
                 assert(bars[pci_bar_entry_of_page(bars, m)->0].envelope_contains(addr));

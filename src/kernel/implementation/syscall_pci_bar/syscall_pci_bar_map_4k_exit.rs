@@ -174,7 +174,7 @@ pub(super) fn map_pci_bar_4k_install_and_exit(
         exit_start.pt_mp.typed_lock_map_aligned_write_at(exit_lctx.pagetable_lock_map(), exit_lctx.thread_id(), pagetable);
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thrd_ptr);
         process_thread_wf_thread_at(exit_start.prc_mp, exit_start.thrd_mp, thrd_ptr); process_pagetable_wf_process_at(exit_start.prc_mp, exit_start.pt_mp, prc_ptr);
-        kernel_pci_bar_4k_mapped_implies_u_step(&exit_start, &installed, pagetable, va, f);
+        kernel_pci_bar_mapped_implies_u_step(&exit_start, &installed, pagetable, va, f, PageSize::SZ4k);
         process_cpu_wf_at(installed.prc_mp, installed.cpu_arr, cpu_id);
         kernel_cpu_thread_pagetable_window_lock_states_and_progress_changed_implies_u_step(&installed, &exit_k, &installed_lctx, cpu_id, thrd_ptr, prc_ptr, pagetable);
         kernel_write_held_context_projection(&exit_start, &exit_lctx, cpu_id, prc_ptr, thrd_ptr, None);
